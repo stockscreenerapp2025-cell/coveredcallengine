@@ -4,8 +4,10 @@ import { useAuth } from '../contexts/AuthContext';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
-import { TrendingUp, Eye, EyeOff, AlertCircle } from 'lucide-react';
+import { Activity, Eye, EyeOff, AlertCircle } from 'lucide-react';
 import { toast } from 'sonner';
+
+const APP_NAME = "Covered Call Engine";
 
 const Login = () => {
   const navigate = useNavigate();
@@ -46,15 +48,15 @@ const Login = () => {
         {/* Logo */}
         <div className="text-center mb-8">
           <Link to="/" className="inline-flex items-center gap-2">
-            <TrendingUp className="w-10 h-10 text-violet-500" />
-            <span className="text-2xl font-bold text-white">Premium Hunter</span>
+            <Activity className="w-10 h-10 text-emerald-500" />
+            <span className="text-2xl font-bold text-white">{APP_NAME}</span>
           </Link>
         </div>
 
         {/* Login Card */}
         <div className="glass-card p-8">
           <h1 className="text-2xl font-bold text-white text-center mb-2">Welcome Back</h1>
-          <p className="text-zinc-400 text-center mb-8">Sign in to continue hunting premium</p>
+          <p className="text-zinc-400 text-center mb-8">Sign in to start scanning</p>
 
           {error && (
             <div className="mb-6 p-4 rounded-lg bg-red-500/10 border border-red-500/30 flex items-center gap-3">
@@ -103,7 +105,7 @@ const Login = () => {
 
             <Button
               type="submit"
-              className="w-full btn-primary h-12"
+              className="w-full bg-emerald-600 hover:bg-emerald-700 text-white h-12"
               disabled={loading}
               data-testid="login-submit-btn"
             >
