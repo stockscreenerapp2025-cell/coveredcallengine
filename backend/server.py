@@ -144,7 +144,7 @@ def create_token(user_id: str, email: str, is_admin: bool = False) -> str:
         "sub": user_id,
         "email": email,
         "is_admin": is_admin,
-        "exp": datetime.now(timezone.utc) + timedelta(days=7)
+        "exp": datetime.now(timezone.utc) + timedelta(days=30)
     }
     return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
 
