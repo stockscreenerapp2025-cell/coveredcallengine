@@ -32,7 +32,7 @@ JWT_SECRET = os.environ.get('JWT_SECRET', 'premium-hunter-secret-key-change-in-p
 JWT_ALGORITHM = "HS256"
 
 # Create the main app
-app = FastAPI(title="Premium Hunter - Options Trading Platform")
+app = FastAPI(title="Covered Call Engine - Options Trading Platform")
 
 # Create routers
 api_router = APIRouter(prefix="/api")
@@ -547,11 +547,17 @@ async def get_option_expirations(symbol: str, user: dict = Depends(get_current_u
 
 @screener_router.get("/covered-calls")
 async def screen_covered_calls(
-    min_roi: float = Query(1.0, ge=0),
+    min_roi: float = Query(0.5, ge=0),
     max_dte: int = Query(45, ge=1),
-    min_delta: float = Query(0.2, ge=0, le=1),
-    max_delta: float = Query(0.4, ge=0, le=1),
+    min_delta: float = Query(0.15, ge=0, le=1),
+    max_delta: float = Query(0.45, ge=0, le=1),
     min_iv_rank: float = Query(0, ge=0, le=100),
+    min_price: float = Query(10, ge=0),
+    max_price: float = Query(500, ge=0),
+    min_volume: int = Query(0, ge=0),
+    min_open_interest: int = Query(0, ge=0),
+    weekly_only: bool = Query(False),
+    monthly_only: bool = Query(False),
     user: dict = Depends(get_current_user)
 ):
     opportunities = generate_mock_covered_call_opportunities()
@@ -563,7 +569,16 @@ async def screen_covered_calls(
         and o["dte"] <= max_dte
         and min_delta <= o["delta"] <= max_delta
         and o["iv_rank"] >= min_iv_rank
+        and min_price <= o["stock_price"] <= max_price
+        and o["volume"] >= min_volume
+        and o["open_interest"] >= min_open_interest
     ]
+    
+    # Filter by expiration type
+    if weekly_only:
+        filtered = [o for o in filtered if o["dte"] <= 7]
+    elif monthly_only:
+        filtered = [o for o in filtered if o["dte"] > 7]
     
     return {"opportunities": filtered, "total": len(filtered), "is_mock": True}
 
@@ -935,7 +950,7 @@ async def make_admin(user_id: str, admin: dict = Depends(get_admin_user)):
 
 @api_router.get("/")
 async def root():
-    return {"message": "Premium Hunter API - Options Trading Platform", "version": "1.0.0"}
+    return {"message": "Covered Call Engine API - Options Trading Platform", "version": "1.0.0"}
 
 @api_router.get("/health")
 async def health():
