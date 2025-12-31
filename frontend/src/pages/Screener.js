@@ -4,11 +4,10 @@ import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
-import { Slider } from '../components/ui/slider';
 import { Badge } from '../components/ui/badge';
 import { Skeleton } from '../components/ui/skeleton';
-import { Switch } from '../components/ui/switch';
 import { Checkbox } from '../components/ui/checkbox';
+import { RadioGroup, RadioGroupItem } from '../components/ui/radio-group';
 import {
   Select,
   SelectContent,
@@ -23,12 +22,6 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '../components/ui/dialog';
-import {
-  Tabs,
-  TabsContent,
-  TabsList,
-  TabsTrigger,
-} from '../components/ui/tabs';
 import {
   Accordion,
   AccordionContent,
@@ -69,22 +62,23 @@ const Screener = () => {
   const [expirationFilters, setExpirationFilters] = useState({
     minDte: 1,
     maxDte: 45,
-    weeklyOnly: false,
-    monthlyOnly: false,
+    expirationType: 'all', // 'all', 'weekly', 'monthly'
   });
 
   // Stock Filters
   const [stockFilters, setStockFilters] = useState({
     minPrice: 10,
     maxPrice: 500,
-    securityTypes: ['stock', 'etf'],
+    includeStocks: true,
+    includeETFs: true,
+    includeIndex: false,
   });
 
   // Options Filters
   const [optionsFilters, setOptionsFilters] = useState({
     minVolume: 0,
     minOpenInterest: 100,
-    moneyness: 'all', // 'itm', 'atm', 'otm', 'all'
+    moneyness: 'all', // 'all', 'itm', 'atm', 'otm'
   });
 
   // Greeks Filters
@@ -97,29 +91,24 @@ const Screener = () => {
 
   // Probability Filters
   const [probabilityFilters, setProbabilityFilters] = useState({
-    minProbAssignment: 0,
-    maxProbAssignment: 100,
-    minProbNotAssignment: 0,
-    maxProbNotAssignment: 100,
+    minProbOTM: 50,
+    maxProbOTM: 100,
   });
 
   // Technical Filters
   const [technicalFilters, setTechnicalFilters] = useState({
-    aboveSma50: false,
-    aboveSma200: false,
-    minRsi: 0,
-    maxRsi: 100,
-    macdSignal: 'all', // 'bullish', 'bearish', 'all'
-    minAdx: 0,
-    signalStrength: 'all', // 'bullish', 'bearish', 'neutral', 'all'
+    smaFilter: 'none', // 'none', 'above_sma50', 'above_sma200', 'above_both'
+    rsiFilter: 'all', // 'all', 'oversold', 'neutral', 'overbought'
+    macdSignal: 'all', // 'all', 'bullish', 'bearish'
+    trendStrength: 'all', // 'all', 'strong', 'moderate', 'weak'
+    overallSignal: 'all', // 'all', 'bullish', 'bearish', 'neutral'
   });
 
   // Fundamental Filters
   const [fundamentalFilters, setFundamentalFilters] = useState({
-    minAnalystCoverage: 0,
-    minBuyRatings: 0,
-    minPe: 0,
-    maxPe: 100,
+    analystRating: 'all', // 'all', 'strong_buy', 'buy', 'hold', 'sell'
+    minAnalystCount: 0,
+    peRatio: 'all', // 'all', 'under_15', '15_to_25', '25_to_40', 'over_40'
     minRoe: 0,
   });
 
@@ -147,17 +136,13 @@ const Screener = () => {
         max_price: stockFilters.maxPrice,
         min_volume: optionsFilters.minVolume,
         min_open_interest: optionsFilters.minOpenInterest,
-        weekly_only: expirationFilters.weeklyOnly,
-        monthly_only: expirationFilters.monthlyOnly,
+        weekly_only: expirationFilters.expirationType === 'weekly',
+        monthly_only: expirationFilters.expirationType === 'monthly',
       });
       
       let results = response.data.opportunities || [];
       
-      // Client-side filtering for additional criteria
-      if (stockFilters.securityTypes.length < 3) {
-        // Filter by security type when implemented
-      }
-      
+      // Client-side filtering for moneyness
       if (optionsFilters.moneyness !== 'all') {
         results = results.filter(o => {
           const moneyness = (o.strike - o.stock_price) / o.stock_price;
@@ -167,6 +152,12 @@ const Screener = () => {
           return true;
         });
       }
+
+      // Filter by probability OTM
+      results = results.filter(o => {
+        const probOTM = Math.round((1 - o.delta) * 100);
+        return probOTM >= probabilityFilters.minProbOTM && probOTM <= probabilityFilters.maxProbOTM;
+      });
       
       setOpportunities(results);
     } catch (error) {
@@ -254,21 +245,21 @@ const Screener = () => {
   };
 
   const resetFilters = () => {
-    setExpirationFilters({ minDte: 1, maxDte: 45, weeklyOnly: false, monthlyOnly: false });
-    setStockFilters({ minPrice: 10, maxPrice: 500, securityTypes: ['stock', 'etf'] });
+    setExpirationFilters({ minDte: 1, maxDte: 45, expirationType: 'all' });
+    setStockFilters({ minPrice: 10, maxPrice: 500, includeStocks: true, includeETFs: true, includeIndex: false });
     setOptionsFilters({ minVolume: 0, minOpenInterest: 100, moneyness: 'all' });
     setGreeksFilters({ minDelta: 0.15, maxDelta: 0.45, minTheta: -999, maxTheta: 0 });
-    setProbabilityFilters({ minProbAssignment: 0, maxProbAssignment: 100, minProbNotAssignment: 0, maxProbNotAssignment: 100 });
-    setTechnicalFilters({ aboveSma50: false, aboveSma200: false, minRsi: 0, maxRsi: 100, macdSignal: 'all', minAdx: 0, signalStrength: 'all' });
-    setFundamentalFilters({ minAnalystCoverage: 0, minBuyRatings: 0, minPe: 0, maxPe: 100, minRoe: 0 });
+    setProbabilityFilters({ minProbOTM: 50, maxProbOTM: 100 });
+    setTechnicalFilters({ smaFilter: 'none', rsiFilter: 'all', macdSignal: 'all', trendStrength: 'all', overallSignal: 'all' });
+    setFundamentalFilters({ analystRating: 'all', minAnalystCount: 0, peRatio: 'all', minRoe: 0 });
     setRoiFilters({ minRoi: 0.5, minAnnualizedRoi: 10 });
     toast.success('Filters reset to defaults');
   };
 
   const exportToCSV = () => {
-    const headers = ['Symbol', 'Stock Price', 'Strike', 'Expiry', 'DTE', 'Premium', 'ROI %', 'Delta', 'Theta', 'IV', 'IV Rank', 'Volume', 'OI', 'Score'];
+    const headers = ['Symbol', 'Stock Price', 'Strike', 'Expiry', 'DTE', 'Premium', 'ROI %', 'Delta', 'Prob OTM', 'IV', 'IV Rank', 'Volume', 'OI', 'Score'];
     const rows = sortedOpportunities.map(o => [
-      o.symbol, o.stock_price, o.strike, o.expiry, o.dte, o.premium, o.roi_pct, o.delta, o.theta || 0, o.iv, o.iv_rank, o.volume, o.open_interest, o.score
+      o.symbol, o.stock_price, o.strike, o.expiry, o.dte, o.premium, o.roi_pct, o.delta, Math.round((1-o.delta)*100), o.iv, o.iv_rank, o.volume, o.open_interest, o.score
     ]);
     
     const csv = [headers, ...rows].map(row => row.join(',')).join('\n');
@@ -295,10 +286,6 @@ const Screener = () => {
       </div>
     </th>
   );
-
-  // Calculate probability based on delta
-  const getProbAssignment = (delta) => Math.round(delta * 100);
-  const getProbNotAssignment = (delta) => Math.round((1 - delta) * 100);
 
   return (
     <div className="space-y-6" data-testid="screener-page">
@@ -394,53 +381,60 @@ const Screener = () => {
                   <AccordionTrigger className="text-sm font-medium hover:no-underline">
                     <div className="flex items-center gap-2">
                       <Calendar className="w-4 h-4 text-emerald-400" />
-                      Days to Expiration
+                      Expiration
                     </div>
                   </AccordionTrigger>
                   <AccordionContent className="space-y-4 pt-2">
+                    {/* Expiration Type Selection */}
                     <div>
-                      <Label className="text-xs text-zinc-400">DTE Range: {expirationFilters.minDte} - {expirationFilters.maxDte} days</Label>
-                      <div className="flex gap-2 mt-2">
+                      <Label className="text-xs text-zinc-400 mb-3 block">Expiration Type</Label>
+                      <RadioGroup 
+                        value={expirationFilters.expirationType} 
+                        onValueChange={(value) => setExpirationFilters(f => ({ ...f, expirationType: value }))}
+                        className="space-y-2"
+                      >
+                        <div className="flex items-center space-x-3 p-2 rounded-lg hover:bg-zinc-800/50">
+                          <RadioGroupItem value="all" id="exp-all" className="border-emerald-500 text-emerald-500" />
+                          <Label htmlFor="exp-all" className="text-sm cursor-pointer">All Expirations</Label>
+                        </div>
+                        <div className="flex items-center space-x-3 p-2 rounded-lg hover:bg-zinc-800/50">
+                          <RadioGroupItem value="weekly" id="exp-weekly" className="border-emerald-500 text-emerald-500" />
+                          <Label htmlFor="exp-weekly" className="text-sm cursor-pointer">Weekly Options Only</Label>
+                        </div>
+                        <div className="flex items-center space-x-3 p-2 rounded-lg hover:bg-zinc-800/50">
+                          <RadioGroupItem value="monthly" id="exp-monthly" className="border-emerald-500 text-emerald-500" />
+                          <Label htmlFor="exp-monthly" className="text-sm cursor-pointer">Monthly Options Only</Label>
+                        </div>
+                      </RadioGroup>
+                    </div>
+
+                    {/* DTE Range */}
+                    <div className="pt-2 border-t border-zinc-800">
+                      <Label className="text-xs text-zinc-400">Days to Expiration Range</Label>
+                      <div className="flex items-center gap-2 mt-2">
                         <Input
                           type="number"
                           value={expirationFilters.minDte}
                           onChange={(e) => setExpirationFilters(f => ({ ...f, minDte: parseInt(e.target.value) || 1 }))}
-                          className="input-dark w-20"
+                          className="input-dark w-20 text-center"
                           min={1}
                           data-testid="min-dte-input"
                         />
-                        <span className="text-zinc-500 self-center">to</span>
+                        <span className="text-zinc-500">to</span>
                         <Input
                           type="number"
                           value={expirationFilters.maxDte}
                           onChange={(e) => setExpirationFilters(f => ({ ...f, maxDte: parseInt(e.target.value) || 45 }))}
-                          className="input-dark w-20"
+                          className="input-dark w-20 text-center"
                           data-testid="max-dte-input"
                         />
-                      </div>
-                    </div>
-                    <div className="space-y-2">
-                      <div className="flex items-center justify-between">
-                        <Label className="text-xs">Weekly Expirations Only</Label>
-                        <Switch
-                          checked={expirationFilters.weeklyOnly}
-                          onCheckedChange={(checked) => setExpirationFilters(f => ({ ...f, weeklyOnly: checked, monthlyOnly: false }))}
-                          data-testid="weekly-only-switch"
-                        />
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <Label className="text-xs">Monthly Expirations Only</Label>
-                        <Switch
-                          checked={expirationFilters.monthlyOnly}
-                          onCheckedChange={(checked) => setExpirationFilters(f => ({ ...f, monthlyOnly: checked, weeklyOnly: false }))}
-                          data-testid="monthly-only-switch"
-                        />
+                        <span className="text-zinc-500 text-sm">days</span>
                       </div>
                     </div>
                   </AccordionContent>
                 </AccordionItem>
 
-                {/* Stock Price */}
+                {/* Stock Price & Type */}
                 <AccordionItem value="stock" className="border-zinc-800">
                   <AccordionTrigger className="text-sm font-medium hover:no-underline">
                     <div className="flex items-center gap-2">
@@ -449,63 +443,77 @@ const Screener = () => {
                     </div>
                   </AccordionTrigger>
                   <AccordionContent className="space-y-4 pt-2">
+                    {/* Price Range */}
                     <div>
-                      <Label className="text-xs text-zinc-400">Price Range: ${stockFilters.minPrice} - ${stockFilters.maxPrice}</Label>
-                      <div className="flex gap-2 mt-2">
+                      <Label className="text-xs text-zinc-400">Stock Price Range ($)</Label>
+                      <div className="flex items-center gap-2 mt-2">
                         <Input
                           type="number"
                           value={stockFilters.minPrice}
                           onChange={(e) => setStockFilters(f => ({ ...f, minPrice: parseFloat(e.target.value) || 0 }))}
-                          className="input-dark w-24"
+                          className="input-dark w-24 text-center"
                           placeholder="Min"
                           data-testid="min-price-input"
                         />
-                        <span className="text-zinc-500 self-center">to</span>
+                        <span className="text-zinc-500">to</span>
                         <Input
                           type="number"
                           value={stockFilters.maxPrice}
                           onChange={(e) => setStockFilters(f => ({ ...f, maxPrice: parseFloat(e.target.value) || 1000 }))}
-                          className="input-dark w-24"
+                          className="input-dark w-24 text-center"
                           placeholder="Max"
                           data-testid="max-price-input"
                         />
                       </div>
                     </div>
-                    <div>
-                      <Label className="text-xs text-zinc-400 mb-2 block">Security Type</Label>
+
+                    {/* Security Type Checkboxes */}
+                    <div className="pt-2 border-t border-zinc-800">
+                      <Label className="text-xs text-zinc-400 mb-3 block">Security Type</Label>
                       <div className="space-y-2">
-                        {['stock', 'etf', 'index'].map((type) => (
-                          <div key={type} className="flex items-center gap-2">
-                            <Checkbox
-                              id={`type-${type}`}
-                              checked={stockFilters.securityTypes.includes(type)}
-                              onCheckedChange={(checked) => {
-                                if (checked) {
-                                  setStockFilters(f => ({ ...f, securityTypes: [...f.securityTypes, type] }));
-                                } else {
-                                  setStockFilters(f => ({ ...f, securityTypes: f.securityTypes.filter(t => t !== type) }));
-                                }
-                              }}
-                            />
-                            <Label htmlFor={`type-${type}`} className="text-xs capitalize">{type}</Label>
-                          </div>
-                        ))}
+                        <div className="flex items-center space-x-3 p-2 rounded-lg hover:bg-zinc-800/50">
+                          <Checkbox
+                            id="type-stock"
+                            checked={stockFilters.includeStocks}
+                            onCheckedChange={(checked) => setStockFilters(f => ({ ...f, includeStocks: checked }))}
+                            className="border-emerald-500 data-[state=checked]:bg-emerald-500"
+                          />
+                          <Label htmlFor="type-stock" className="text-sm cursor-pointer">Stocks</Label>
+                        </div>
+                        <div className="flex items-center space-x-3 p-2 rounded-lg hover:bg-zinc-800/50">
+                          <Checkbox
+                            id="type-etf"
+                            checked={stockFilters.includeETFs}
+                            onCheckedChange={(checked) => setStockFilters(f => ({ ...f, includeETFs: checked }))}
+                            className="border-emerald-500 data-[state=checked]:bg-emerald-500"
+                          />
+                          <Label htmlFor="type-etf" className="text-sm cursor-pointer">ETFs</Label>
+                        </div>
+                        <div className="flex items-center space-x-3 p-2 rounded-lg hover:bg-zinc-800/50">
+                          <Checkbox
+                            id="type-index"
+                            checked={stockFilters.includeIndex}
+                            onCheckedChange={(checked) => setStockFilters(f => ({ ...f, includeIndex: checked }))}
+                            className="border-emerald-500 data-[state=checked]:bg-emerald-500"
+                          />
+                          <Label htmlFor="type-index" className="text-sm cursor-pointer">Index Options</Label>
+                        </div>
                       </div>
                     </div>
                   </AccordionContent>
                 </AccordionItem>
 
-                {/* Options Volume & OI */}
+                {/* Volume & Open Interest */}
                 <AccordionItem value="options" className="border-zinc-800">
                   <AccordionTrigger className="text-sm font-medium hover:no-underline">
                     <div className="flex items-center gap-2">
                       <BarChart3 className="w-4 h-4 text-emerald-400" />
-                      Volume & Open Interest
+                      Volume & Moneyness
                     </div>
                   </AccordionTrigger>
                   <AccordionContent className="space-y-4 pt-2">
                     <div>
-                      <Label className="text-xs text-zinc-400">Min Option Volume</Label>
+                      <Label className="text-xs text-zinc-400">Minimum Option Volume</Label>
                       <Input
                         type="number"
                         value={optionsFilters.minVolume}
@@ -516,7 +524,7 @@ const Screener = () => {
                       />
                     </div>
                     <div>
-                      <Label className="text-xs text-zinc-400">Min Open Interest</Label>
+                      <Label className="text-xs text-zinc-400">Minimum Open Interest</Label>
                       <Input
                         type="number"
                         value={optionsFilters.minOpenInterest}
@@ -526,20 +534,22 @@ const Screener = () => {
                         data-testid="min-oi-input"
                       />
                     </div>
-                    <div>
+                    
+                    {/* Moneyness Dropdown */}
+                    <div className="pt-2 border-t border-zinc-800">
                       <Label className="text-xs text-zinc-400">Moneyness</Label>
                       <Select
                         value={optionsFilters.moneyness}
                         onValueChange={(value) => setOptionsFilters(f => ({ ...f, moneyness: value }))}
                       >
                         <SelectTrigger className="input-dark mt-2" data-testid="moneyness-select">
-                          <SelectValue />
+                          <SelectValue placeholder="Select moneyness" />
                         </SelectTrigger>
                         <SelectContent className="bg-zinc-900 border-zinc-800">
-                          <SelectItem value="all">All</SelectItem>
-                          <SelectItem value="itm">In The Money (ITM)</SelectItem>
-                          <SelectItem value="atm">At The Money (ATM)</SelectItem>
+                          <SelectItem value="all">All Options</SelectItem>
                           <SelectItem value="otm">Out of The Money (OTM)</SelectItem>
+                          <SelectItem value="atm">At The Money (ATM)</SelectItem>
+                          <SelectItem value="itm">In The Money (ITM)</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
@@ -556,29 +566,30 @@ const Screener = () => {
                   </AccordionTrigger>
                   <AccordionContent className="space-y-4 pt-2">
                     <div>
-                      <Label className="text-xs text-zinc-400">Delta Range: {greeksFilters.minDelta.toFixed(2)} - {greeksFilters.maxDelta.toFixed(2)}</Label>
-                      <div className="flex gap-2 mt-2">
+                      <Label className="text-xs text-zinc-400">Delta Range</Label>
+                      <div className="flex items-center gap-2 mt-2">
                         <Input
                           type="number"
                           step="0.05"
                           value={greeksFilters.minDelta}
                           onChange={(e) => setGreeksFilters(f => ({ ...f, minDelta: parseFloat(e.target.value) || 0 }))}
-                          className="input-dark w-20"
+                          className="input-dark w-20 text-center"
                           data-testid="min-delta-input"
                         />
-                        <span className="text-zinc-500 self-center">to</span>
+                        <span className="text-zinc-500">to</span>
                         <Input
                           type="number"
                           step="0.05"
                           value={greeksFilters.maxDelta}
                           onChange={(e) => setGreeksFilters(f => ({ ...f, maxDelta: parseFloat(e.target.value) || 1 }))}
-                          className="input-dark w-20"
+                          className="input-dark w-20 text-center"
                           data-testid="max-delta-input"
                         />
                       </div>
+                      <p className="text-xs text-zinc-500 mt-1">Typical range: 0.20 - 0.35 for covered calls</p>
                     </div>
-                    <div>
-                      <Label className="text-xs text-zinc-400">Max Theta (negative value)</Label>
+                    <div className="pt-2 border-t border-zinc-800">
+                      <Label className="text-xs text-zinc-400">Maximum Theta (daily decay)</Label>
                       <Input
                         type="number"
                         step="0.01"
@@ -602,28 +613,26 @@ const Screener = () => {
                   </AccordionTrigger>
                   <AccordionContent className="space-y-4 pt-2">
                     <div>
-                      <Label className="text-xs text-zinc-400">Prob. of Assignment: {probabilityFilters.minProbAssignment}% - {probabilityFilters.maxProbAssignment}%</Label>
-                      <Slider
-                        value={[probabilityFilters.minProbAssignment, probabilityFilters.maxProbAssignment]}
-                        onValueChange={([min, max]) => setProbabilityFilters(f => ({ ...f, minProbAssignment: min, maxProbAssignment: max }))}
-                        min={0}
-                        max={100}
-                        step={5}
-                        className="mt-2"
-                        data-testid="prob-assignment-slider"
-                      />
-                    </div>
-                    <div>
-                      <Label className="text-xs text-zinc-400">Prob. of NOT Assignment: {probabilityFilters.minProbNotAssignment}% - {probabilityFilters.maxProbNotAssignment}%</Label>
-                      <Slider
-                        value={[probabilityFilters.minProbNotAssignment, probabilityFilters.maxProbNotAssignment]}
-                        onValueChange={([min, max]) => setProbabilityFilters(f => ({ ...f, minProbNotAssignment: min, maxProbNotAssignment: max }))}
-                        min={0}
-                        max={100}
-                        step={5}
-                        className="mt-2"
-                        data-testid="prob-not-assignment-slider"
-                      />
+                      <Label className="text-xs text-zinc-400">Probability of Expiring OTM (Not Assigned)</Label>
+                      <div className="flex items-center gap-2 mt-2">
+                        <Input
+                          type="number"
+                          value={probabilityFilters.minProbOTM}
+                          onChange={(e) => setProbabilityFilters(f => ({ ...f, minProbOTM: parseInt(e.target.value) || 0 }))}
+                          className="input-dark w-20 text-center"
+                          data-testid="min-prob-otm-input"
+                        />
+                        <span className="text-zinc-500">% to</span>
+                        <Input
+                          type="number"
+                          value={probabilityFilters.maxProbOTM}
+                          onChange={(e) => setProbabilityFilters(f => ({ ...f, maxProbOTM: parseInt(e.target.value) || 100 }))}
+                          className="input-dark w-20 text-center"
+                          data-testid="max-prob-otm-input"
+                        />
+                        <span className="text-zinc-500">%</span>
+                      </div>
+                      <p className="text-xs text-zinc-500 mt-1">Higher = less likely to be assigned</p>
                     </div>
                   </AccordionContent>
                 </AccordionItem>
@@ -633,81 +642,100 @@ const Screener = () => {
                   <AccordionTrigger className="text-sm font-medium hover:no-underline">
                     <div className="flex items-center gap-2">
                       <TrendingUp className="w-4 h-4 text-emerald-400" />
-                      Technicals
+                      Technical Indicators
                     </div>
                   </AccordionTrigger>
                   <AccordionContent className="space-y-4 pt-2">
-                    <div className="space-y-2">
-                      <div className="flex items-center justify-between">
-                        <Label className="text-xs">Price Above SMA 50</Label>
-                        <Switch
-                          checked={technicalFilters.aboveSma50}
-                          onCheckedChange={(checked) => setTechnicalFilters(f => ({ ...f, aboveSma50: checked }))}
-                          data-testid="above-sma50-switch"
-                        />
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <Label className="text-xs">Price Above SMA 200</Label>
-                        <Switch
-                          checked={technicalFilters.aboveSma200}
-                          onCheckedChange={(checked) => setTechnicalFilters(f => ({ ...f, aboveSma200: checked }))}
-                          data-testid="above-sma200-switch"
-                        />
-                      </div>
-                    </div>
+                    {/* Moving Average Filter */}
                     <div>
-                      <Label className="text-xs text-zinc-400">RSI Range: {technicalFilters.minRsi} - {technicalFilters.maxRsi}</Label>
-                      <Slider
-                        value={[technicalFilters.minRsi, technicalFilters.maxRsi]}
-                        onValueChange={([min, max]) => setTechnicalFilters(f => ({ ...f, minRsi: min, maxRsi: max }))}
-                        min={0}
-                        max={100}
-                        step={5}
-                        className="mt-2"
-                        data-testid="rsi-slider"
-                      />
+                      <Label className="text-xs text-zinc-400">Moving Average Filter</Label>
+                      <Select
+                        value={technicalFilters.smaFilter}
+                        onValueChange={(value) => setTechnicalFilters(f => ({ ...f, smaFilter: value }))}
+                      >
+                        <SelectTrigger className="input-dark mt-2" data-testid="sma-filter-select">
+                          <SelectValue placeholder="Select MA filter" />
+                        </SelectTrigger>
+                        <SelectContent className="bg-zinc-900 border-zinc-800">
+                          <SelectItem value="none">No Filter</SelectItem>
+                          <SelectItem value="above_sma50">Price Above SMA 50</SelectItem>
+                          <SelectItem value="above_sma200">Price Above SMA 200</SelectItem>
+                          <SelectItem value="above_both">Price Above Both SMA 50 & 200</SelectItem>
+                        </SelectContent>
+                      </Select>
                     </div>
+
+                    {/* RSI Filter */}
+                    <div>
+                      <Label className="text-xs text-zinc-400">RSI Condition</Label>
+                      <Select
+                        value={technicalFilters.rsiFilter}
+                        onValueChange={(value) => setTechnicalFilters(f => ({ ...f, rsiFilter: value }))}
+                      >
+                        <SelectTrigger className="input-dark mt-2" data-testid="rsi-filter-select">
+                          <SelectValue placeholder="Select RSI condition" />
+                        </SelectTrigger>
+                        <SelectContent className="bg-zinc-900 border-zinc-800">
+                          <SelectItem value="all">All RSI Levels</SelectItem>
+                          <SelectItem value="oversold">Oversold (RSI &lt; 30)</SelectItem>
+                          <SelectItem value="neutral">Neutral (RSI 30-70)</SelectItem>
+                          <SelectItem value="overbought">Overbought (RSI &gt; 70)</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    {/* MACD Signal */}
                     <div>
                       <Label className="text-xs text-zinc-400">MACD Signal</Label>
                       <Select
                         value={technicalFilters.macdSignal}
                         onValueChange={(value) => setTechnicalFilters(f => ({ ...f, macdSignal: value }))}
                       >
-                        <SelectTrigger className="input-dark mt-2" data-testid="macd-select">
-                          <SelectValue />
+                        <SelectTrigger className="input-dark mt-2" data-testid="macd-signal-select">
+                          <SelectValue placeholder="Select MACD signal" />
                         </SelectTrigger>
                         <SelectContent className="bg-zinc-900 border-zinc-800">
-                          <SelectItem value="all">All</SelectItem>
-                          <SelectItem value="bullish">Bullish</SelectItem>
-                          <SelectItem value="bearish">Bearish</SelectItem>
+                          <SelectItem value="all">All Signals</SelectItem>
+                          <SelectItem value="bullish">Bullish (MACD Above Signal)</SelectItem>
+                          <SelectItem value="bearish">Bearish (MACD Below Signal)</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
+
+                    {/* Trend Strength (ADX) */}
                     <div>
-                      <Label className="text-xs text-zinc-400">Min ADX (Trend Strength)</Label>
-                      <Input
-                        type="number"
-                        value={technicalFilters.minAdx}
-                        onChange={(e) => setTechnicalFilters(f => ({ ...f, minAdx: parseInt(e.target.value) || 0 }))}
-                        className="input-dark mt-2"
-                        placeholder="25"
-                        data-testid="min-adx-input"
-                      />
-                    </div>
-                    <div>
-                      <Label className="text-xs text-zinc-400">Signal Strength</Label>
+                      <Label className="text-xs text-zinc-400">Trend Strength (ADX)</Label>
                       <Select
-                        value={technicalFilters.signalStrength}
-                        onValueChange={(value) => setTechnicalFilters(f => ({ ...f, signalStrength: value }))}
+                        value={technicalFilters.trendStrength}
+                        onValueChange={(value) => setTechnicalFilters(f => ({ ...f, trendStrength: value }))}
                       >
-                        <SelectTrigger className="input-dark mt-2" data-testid="signal-strength-select">
-                          <SelectValue />
+                        <SelectTrigger className="input-dark mt-2" data-testid="trend-strength-select">
+                          <SelectValue placeholder="Select trend strength" />
                         </SelectTrigger>
                         <SelectContent className="bg-zinc-900 border-zinc-800">
-                          <SelectItem value="all">All</SelectItem>
+                          <SelectItem value="all">All Trend Strengths</SelectItem>
+                          <SelectItem value="strong">Strong Trend (ADX &gt; 25)</SelectItem>
+                          <SelectItem value="moderate">Moderate Trend (ADX 15-25)</SelectItem>
+                          <SelectItem value="weak">Weak/No Trend (ADX &lt; 15)</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    {/* Overall Signal */}
+                    <div>
+                      <Label className="text-xs text-zinc-400">Overall Technical Signal</Label>
+                      <Select
+                        value={technicalFilters.overallSignal}
+                        onValueChange={(value) => setTechnicalFilters(f => ({ ...f, overallSignal: value }))}
+                      >
+                        <SelectTrigger className="input-dark mt-2" data-testid="overall-signal-select">
+                          <SelectValue placeholder="Select overall signal" />
+                        </SelectTrigger>
+                        <SelectContent className="bg-zinc-900 border-zinc-800">
+                          <SelectItem value="all">All Signals</SelectItem>
                           <SelectItem value="bullish">Bullish</SelectItem>
-                          <SelectItem value="bearish">Bearish</SelectItem>
                           <SelectItem value="neutral">Neutral</SelectItem>
+                          <SelectItem value="bearish">Bearish</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
@@ -723,58 +751,66 @@ const Screener = () => {
                     </div>
                   </AccordionTrigger>
                   <AccordionContent className="space-y-4 pt-2">
+                    {/* Analyst Rating */}
                     <div>
-                      <Label className="text-xs text-zinc-400">Min Analyst Coverage</Label>
+                      <Label className="text-xs text-zinc-400">Analyst Rating</Label>
+                      <Select
+                        value={fundamentalFilters.analystRating}
+                        onValueChange={(value) => setFundamentalFilters(f => ({ ...f, analystRating: value }))}
+                      >
+                        <SelectTrigger className="input-dark mt-2" data-testid="analyst-rating-select">
+                          <SelectValue placeholder="Select analyst rating" />
+                        </SelectTrigger>
+                        <SelectContent className="bg-zinc-900 border-zinc-800">
+                          <SelectItem value="all">All Ratings</SelectItem>
+                          <SelectItem value="strong_buy">Strong Buy</SelectItem>
+                          <SelectItem value="buy">Buy</SelectItem>
+                          <SelectItem value="hold">Hold</SelectItem>
+                          <SelectItem value="sell">Sell / Underperform</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div>
+                      <Label className="text-xs text-zinc-400">Minimum Analyst Coverage</Label>
                       <Input
                         type="number"
-                        value={fundamentalFilters.minAnalystCoverage}
-                        onChange={(e) => setFundamentalFilters(f => ({ ...f, minAnalystCoverage: parseInt(e.target.value) || 0 }))}
+                        value={fundamentalFilters.minAnalystCount}
+                        onChange={(e) => setFundamentalFilters(f => ({ ...f, minAnalystCount: parseInt(e.target.value) || 0 }))}
                         className="input-dark mt-2"
                         placeholder="5"
                         data-testid="min-analyst-input"
                       />
                     </div>
+
+                    {/* P/E Ratio */}
                     <div>
-                      <Label className="text-xs text-zinc-400">Min Buy/Strong Buy Ratings</Label>
-                      <Input
-                        type="number"
-                        value={fundamentalFilters.minBuyRatings}
-                        onChange={(e) => setFundamentalFilters(f => ({ ...f, minBuyRatings: parseInt(e.target.value) || 0 }))}
-                        className="input-dark mt-2"
-                        placeholder="10"
-                        data-testid="min-buy-ratings-input"
-                      />
+                      <Label className="text-xs text-zinc-400">P/E Ratio</Label>
+                      <Select
+                        value={fundamentalFilters.peRatio}
+                        onValueChange={(value) => setFundamentalFilters(f => ({ ...f, peRatio: value }))}
+                      >
+                        <SelectTrigger className="input-dark mt-2" data-testid="pe-ratio-select">
+                          <SelectValue placeholder="Select P/E range" />
+                        </SelectTrigger>
+                        <SelectContent className="bg-zinc-900 border-zinc-800">
+                          <SelectItem value="all">All P/E Ratios</SelectItem>
+                          <SelectItem value="under_15">Value (P/E &lt; 15)</SelectItem>
+                          <SelectItem value="15_to_25">Fair Value (P/E 15-25)</SelectItem>
+                          <SelectItem value="25_to_40">Growth (P/E 25-40)</SelectItem>
+                          <SelectItem value="over_40">High Growth (P/E &gt; 40)</SelectItem>
+                        </SelectContent>
+                      </Select>
                     </div>
+
                     <div>
-                      <Label className="text-xs text-zinc-400">P/E Ratio Range</Label>
-                      <div className="flex gap-2 mt-2">
-                        <Input
-                          type="number"
-                          value={fundamentalFilters.minPe}
-                          onChange={(e) => setFundamentalFilters(f => ({ ...f, minPe: parseFloat(e.target.value) || 0 }))}
-                          className="input-dark w-20"
-                          placeholder="0"
-                          data-testid="min-pe-input"
-                        />
-                        <span className="text-zinc-500 self-center">to</span>
-                        <Input
-                          type="number"
-                          value={fundamentalFilters.maxPe}
-                          onChange={(e) => setFundamentalFilters(f => ({ ...f, maxPe: parseFloat(e.target.value) || 100 }))}
-                          className="input-dark w-20"
-                          placeholder="30"
-                          data-testid="max-pe-input"
-                        />
-                      </div>
-                    </div>
-                    <div>
-                      <Label className="text-xs text-zinc-400">Min ROE (%)</Label>
+                      <Label className="text-xs text-zinc-400">Minimum ROE (%)</Label>
                       <Input
                         type="number"
                         value={fundamentalFilters.minRoe}
                         onChange={(e) => setFundamentalFilters(f => ({ ...f, minRoe: parseFloat(e.target.value) || 0 }))}
                         className="input-dark mt-2"
-                        placeholder="20"
+                        placeholder="15"
                         data-testid="min-roe-input"
                       />
                     </div>
@@ -791,19 +827,20 @@ const Screener = () => {
                   </AccordionTrigger>
                   <AccordionContent className="space-y-4 pt-2">
                     <div>
-                      <Label className="text-xs text-zinc-400">Min ROI (%): {roiFilters.minRoi}%</Label>
-                      <Slider
-                        value={[roiFilters.minRoi]}
-                        onValueChange={([val]) => setRoiFilters(f => ({ ...f, minRoi: val }))}
-                        min={0}
-                        max={10}
-                        step={0.25}
-                        className="mt-2"
-                        data-testid="min-roi-slider"
+                      <Label className="text-xs text-zinc-400">Minimum ROI per Trade (%)</Label>
+                      <Input
+                        type="number"
+                        step="0.25"
+                        value={roiFilters.minRoi}
+                        onChange={(e) => setRoiFilters(f => ({ ...f, minRoi: parseFloat(e.target.value) || 0 }))}
+                        className="input-dark mt-2"
+                        placeholder="0.5"
+                        data-testid="min-roi-input"
                       />
+                      <p className="text-xs text-zinc-500 mt-1">Premium / Stock Price</p>
                     </div>
                     <div>
-                      <Label className="text-xs text-zinc-400">Min Annualized ROI (%)</Label>
+                      <Label className="text-xs text-zinc-400">Minimum Annualized ROI (%)</Label>
                       <Input
                         type="number"
                         value={roiFilters.minAnnualizedRoi}
@@ -910,7 +947,7 @@ const Screener = () => {
                         <td className="text-emerald-400">${opp.premium?.toFixed(2)}</td>
                         <td className="text-cyan-400 font-medium">{opp.roi_pct?.toFixed(2)}%</td>
                         <td>{opp.delta?.toFixed(2)}</td>
-                        <td className="text-yellow-400">{getProbNotAssignment(opp.delta)}%</td>
+                        <td className="text-yellow-400">{Math.round((1 - opp.delta) * 100)}%</td>
                         <td>{(opp.iv * 100)?.toFixed(1)}%</td>
                         <td>{opp.iv_rank?.toFixed(0)}%</td>
                         <td>{opp.volume?.toLocaleString()}</td>
