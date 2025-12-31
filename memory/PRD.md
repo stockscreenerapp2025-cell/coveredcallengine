@@ -1,4 +1,4 @@
-# Premium Hunter - Options Trading Platform PRD
+# Covered Call Engine - Options Trading Platform PRD
 
 ## Original Problem Statement
 Build a web-based application to identify, analyse, and manage Covered Call and Poor Man's Covered Call strategies, with real-time market data, screening, portfolio tracking, and AI-assisted insights.
@@ -9,6 +9,7 @@ Build a web-based application to identify, analyse, and manage Covered Call and 
 - **Authentication**: JWT-based custom auth
 - **News Feed**: Polygon.io news API
 - **Admin Panel**: For API key configuration
+- **Deployment Domain**: coveredcallengine.com
 
 ## Architecture
 - **Backend**: FastAPI + MongoDB (Motor async driver)
@@ -22,9 +23,9 @@ Build a web-based application to identify, analyse, and manage Covered Call and 
 3. **Portfolio Manager**: User tracking multiple positions
 4. **Admin**: System administrator managing API keys and settings
 
-## Core Requirements
+## Core Requirements (All Implemented ✅)
 - [x] Dashboard with market overview
-- [x] Covered Call Screener with filters
+- [x] Comprehensive Covered Call Screener with advanced filters
 - [x] PMCC Scanner for LEAPS + short calls
 - [x] Portfolio Tracking with P/L calculations
 - [x] Watchlist Management
@@ -34,13 +35,55 @@ Build a web-based application to identify, analyse, and manage Covered Call and 
 - [x] JWT Authentication
 - [x] CSV Import for Portfolio
 
+## Screener Filters (All Implemented ✅)
+
+### Days to Expiration
+- [x] DTE Range (min/max)
+- [x] Weekly Expirations Only
+- [x] Monthly Expirations Only
+
+### Stock Filters
+- [x] Stock Price Range
+- [x] Security Type (Stock/ETF/Index)
+
+### Options Filters
+- [x] Option Volume
+- [x] Open Interest
+- [x] Moneyness (ITM/ATM/OTM)
+
+### Greeks
+- [x] Delta Range
+- [x] Theta
+
+### Probability
+- [x] Probability of Assignment
+- [x] Probability of NOT Assignment
+
+### Technicals
+- [x] Price Above SMA 50
+- [x] Price Above SMA 200
+- [x] RSI Range
+- [x] MACD Signal (Bullish/Bearish)
+- [x] Min ADX (Trend Strength)
+- [x] Signal Strength (Bullish/Bearish/Neutral)
+
+### Fundamentals
+- [x] Analyst Coverage
+- [x] Buy/Strong Buy Ratings
+- [x] P/E Ratio Range
+- [x] ROE
+
+### ROI
+- [x] Min ROI %
+- [x] Min Annualized ROI
+
 ## What's Been Implemented (December 2024)
 
 ### Backend (FastAPI)
 - JWT Authentication (register, login, me endpoints)
 - Stocks API (quotes, indices, historical data)
 - Options API (chains, expirations)
-- Screener API (covered calls, PMCC filters)
+- Enhanced Screener API with all filters
 - Portfolio API (CRUD, CSV import, summary)
 - Watchlist API (CRUD operations)
 - News API (Polygon integration ready)
@@ -49,47 +92,29 @@ Build a web-based application to identify, analyse, and manage Covered Call and 
 - Default admin user created on startup
 
 ### Frontend (React)
-- Landing page with hero, features, CTA
+- Landing page with emerald green branding
 - Login/Register with JWT
 - Dashboard with indices, chart, news, opportunities
-- Covered Call Screener with filters and export
+- **Comprehensive Covered Call Screener** with accordion filters
 - PMCC Scanner with AI analysis panel
 - Portfolio Management with add/delete/CSV import
 - Watchlist with price tracking
 - Admin Settings for API keys
 - Responsive sidebar navigation
 
-## Prioritized Backlog
+## Branding
+- **App Name**: Covered Call Engine
+- **Primary Color**: Emerald (#10b981)
+- **Theme**: Dark professional trading terminal
 
-### P0 - Critical (Done)
-- [x] Core authentication flow
-- [x] Dashboard with market data
-- [x] Covered call screening
-- [x] PMCC scanning
-- [x] Portfolio tracking
-
-### P1 - Important
-- [ ] Live Polygon.io integration (ready, needs API key)
-- [ ] Real-time price updates via WebSocket
-- [ ] Options chain visualization
-- [ ] Roll management suggestions
-
-### P2 - Nice to Have
-- [ ] Email notifications for price alerts
-- [ ] Mobile responsive improvements
-- [ ] Dark/Light theme toggle
-- [ ] Export to Excel format
-- [ ] Historical trade analysis
-
-## Technical Details
-- MongoDB collections: users, portfolio, watchlist, screener_filters, admin_settings
-- Indexes created for performance on startup
-- CORS configured for production
-- Environment variables properly externalized
+## Deployment
+- **Target Domain**: coveredcallengine.com
+- **Status**: Ready for deployment
+- **Cost**: 50 credits/month
 
 ## Next Action Items
-1. Configure Polygon.io API key in Admin panel for live data
-2. Configure OpenAI API key for enhanced AI insights (fallback uses Emergent key)
-3. Deploy to production (50 credits/month)
-4. Add more stocks to mock data for better testing
-5. Implement real-time WebSocket updates
+1. Deploy to Emergent (click Deploy button)
+2. Link custom domain: coveredcallengine.com
+3. Configure DNS at domain registrar
+4. Add Polygon.io API key in Admin settings for live data
+5. Optional: Add OpenAI API key for enhanced AI (Emergent key works as fallback)
