@@ -15,7 +15,8 @@ import {
   ArrowRight,
   RefreshCw,
   DollarSign,
-  BarChart3
+  BarChart3,
+  Search
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
@@ -79,7 +80,10 @@ const Dashboard = () => {
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl md:text-3xl font-bold text-white">Dashboard</h1>
+          <h1 className="text-2xl md:text-3xl font-bold text-white flex items-center gap-3">
+            <Search className="w-8 h-8 text-emerald-500" />
+            Dashboard
+          </h1>
           <p className="text-zinc-400 mt-1">Real-time market overview and opportunities</p>
         </div>
         <Button
@@ -129,7 +133,7 @@ const Dashboard = () => {
         <Card className="glass-card lg:col-span-2" data-testid="portfolio-summary-card">
           <CardHeader className="flex flex-row items-center justify-between">
             <CardTitle className="text-lg flex items-center gap-2">
-              <DollarSign className="w-5 h-5 text-violet-400" />
+              <DollarSign className="w-5 h-5 text-emerald-400" />
               Portfolio Overview
             </CardTitle>
             <Button
@@ -157,8 +161,8 @@ const Dashboard = () => {
                     <AreaChart data={chartData}>
                       <defs>
                         <linearGradient id="colorValue" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor="#7c3aed" stopOpacity={0.3}/>
-                          <stop offset="95%" stopColor="#7c3aed" stopOpacity={0}/>
+                          <stop offset="5%" stopColor="#10b981" stopOpacity={0.3}/>
+                          <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
                         </linearGradient>
                       </defs>
                       <XAxis dataKey="day" hide />
@@ -174,7 +178,7 @@ const Dashboard = () => {
                       <Area
                         type="monotone"
                         dataKey="value"
-                        stroke="#7c3aed"
+                        stroke="#10b981"
                         strokeWidth={2}
                         fillOpacity={1}
                         fill="url(#colorValue)"
@@ -217,7 +221,7 @@ const Dashboard = () => {
         <Card className="glass-card" data-testid="news-feed-card">
           <CardHeader>
             <CardTitle className="text-lg flex items-center gap-2">
-              <Newspaper className="w-5 h-5 text-violet-400" />
+              <Newspaper className="w-5 h-5 text-emerald-400" />
               Market News
             </CardTitle>
           </CardHeader>
@@ -258,14 +262,14 @@ const Dashboard = () => {
       <Card className="glass-card" data-testid="opportunities-card">
         <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle className="text-lg flex items-center gap-2">
-            <Target className="w-5 h-5 text-violet-400" />
+            <Target className="w-5 h-5 text-emerald-400" />
             Top Covered Call Opportunities
           </CardTitle>
           <Button
             variant="ghost"
             size="sm"
             onClick={() => navigate('/screener')}
-            className="text-violet-400 hover:text-violet-300"
+            className="text-emerald-400 hover:text-emerald-300"
           >
             View All <ArrowRight className="w-4 h-4 ml-1" />
           </Button>
@@ -309,7 +313,7 @@ const Dashboard = () => {
                       <td>{opp.delta?.toFixed(2)}</td>
                       <td>{opp.iv_rank?.toFixed(0)}%</td>
                       <td>
-                        <Badge className={`${opp.score >= 80 ? 'badge-success' : opp.score >= 60 ? 'badge-warning' : 'badge-info'}`}>
+                        <Badge className={`${opp.score >= 80 ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' : opp.score >= 60 ? 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30' : 'bg-cyan-500/20 text-cyan-400 border-cyan-500/30'}`}>
                           {opp.score?.toFixed(0)}
                         </Badge>
                       </td>
