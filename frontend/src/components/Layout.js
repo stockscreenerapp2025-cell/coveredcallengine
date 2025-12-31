@@ -3,7 +3,7 @@ import { NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { Button } from './ui/button';
 import {
-  TrendingUp,
+  Activity,
   LayoutDashboard,
   Search,
   LineChart,
@@ -22,6 +22,8 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from './ui/dropdown-menu';
+
+const APP_NAME = "Covered Call Engine";
 
 const Layout = ({ children }) => {
   const { user, logout, isAdmin } = useAuth();
@@ -53,8 +55,8 @@ const Layout = ({ children }) => {
           {/* Logo */}
           <div className="flex items-center justify-between p-4 border-b border-white/5">
             <div className="flex items-center gap-2">
-              <TrendingUp className="w-8 h-8 text-violet-500" />
-              <span className="text-lg font-bold text-white">Premium Hunter</span>
+              <Activity className="w-8 h-8 text-emerald-500" />
+              <span className="text-lg font-bold text-white">{APP_NAME}</span>
             </div>
             <button
               className="md:hidden text-zinc-400 hover:text-white"
@@ -137,8 +139,8 @@ const Layout = ({ children }) => {
               <Menu className="w-6 h-6" />
             </button>
             <div className="flex items-center gap-2">
-              <TrendingUp className="w-6 h-6 text-violet-500" />
-              <span className="font-bold text-white">Premium Hunter</span>
+              <Activity className="w-6 h-6 text-emerald-500" />
+              <span className="font-bold text-white">{APP_NAME}</span>
             </div>
             <div className="w-6" /> {/* Spacer */}
           </div>
