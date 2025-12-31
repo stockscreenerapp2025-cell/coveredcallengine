@@ -25,22 +25,27 @@ const Register = () => {
   }
 
   const passwordRequirements = [
-    { met: password.length >= 8, text: 'At least 8 characters' },
-    { met: /[A-Z]/.test(password), text: 'One uppercase letter' },
-    { met: /[0-9]/.test(password), text: 'One number' },
+    { met: password.length >= 6, text: 'At least 6 characters' },
   ];
+
+  const passwordsMatch = confirmPassword.length === 0 || password === confirmPassword;
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
+
+    if (!password || !confirmPassword) {
+      setError('Please fill in all password fields');
+      return;
+    }
 
     if (password !== confirmPassword) {
       setError('Passwords do not match');
       return;
     }
 
-    if (!passwordRequirements.every(req => req.met)) {
-      setError('Password does not meet requirements');
+    if (password.length < 6) {
+      setError('Password must be at least 6 characters');
       return;
     }
 
@@ -155,10 +160,12 @@ const Register = () => {
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
                 placeholder="••••••••"
-                className="input-dark"
-                required
+                className={`input-dark ${confirmPassword && !passwordsMatch ? 'border-red-500' : ''}`}
                 data-testid="register-confirm-password-input"
               />
+              {confirmPassword && !passwordsMatch && (
+                <p className="text-xs text-red-400 mt-1">Passwords do not match</p>
+              )}
             </div>
 
             <Button
