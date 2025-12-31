@@ -1,0 +1,135 @@
+{
+  "design_system": {
+    "name": "Onyx Terminal",
+    "description": "A high-performance, data-dense trading environment inspired by Bloomberg Terminals and Cyberpunk aesthetics. Prioritizes speed, clarity, and eye comfort in low-light environments.",
+    "theme_strategy": "dark_only",
+    "typography": {
+      "font_family": {
+        "heading": "Manrope, sans-serif",
+        "body": "Inter, sans-serif",
+        "mono": "JetBrains Mono, monospace"
+      },
+      "scale": {
+        "h1": "text-4xl md:text-5xl font-bold tracking-tight",
+        "h2": "text-3xl font-semibold tracking-tight",
+        "h3": "text-2xl font-semibold tracking-tight",
+        "body": "text-base leading-relaxed text-zinc-400",
+        "small": "text-sm text-zinc-500",
+        "mono_lg": "font-mono text-lg tracking-tight",
+        "mono_base": "font-mono text-base"
+      }
+    },
+    "colors": {
+      "background": {
+        "default": "#09090b",
+        "paper": "#18181b",
+        "subtle": "#27272a"
+      },
+      "primary": {
+        "main": "#7c3aed",
+        "hover": "#6d28d9",
+        "foreground": "#ffffff"
+      },
+      "secondary": {
+        "main": "#06b6d4",
+        "foreground": "#ffffff"
+      },
+      "accent": {
+        "ai": "#d946ef",
+        "success": "#22c55e",
+        "warning": "#eab308",
+        "error": "#ef4444"
+      },
+      "border": {
+        "default": "rgba(255, 255, 255, 0.1)",
+        "active": "rgba(124, 58, 237, 0.5)"
+      }
+    },
+    "visual_enhancers": {
+      "glassmorphism": "bg-zinc-900/60 backdrop-blur-xl border border-white/10 shadow-2xl",
+      "neon_glow": "shadow-[0_0_20px_rgba(124,58,237,0.3)]",
+      "grid_background": "bg-[linear-gradient(to_right,#80808012_1px,transparent_1px),linear-gradient(to_bottom,#80808012_1px,transparent_1px)] bg-[size:24px_24px]",
+      "gradients": {
+        "hero": "bg-gradient-to-br from-violet-900/20 via-zinc-900 to-zinc-950",
+        "card_hover": "hover:bg-zinc-800/50 transition-colors duration-300"
+      }
+    },
+    "layout": {
+      "container": "max-w-7xl mx-auto px-4 sm:px-6 lg:px-8",
+      "section_spacing": "py-12 md:py-24",
+      "grid_gap": "gap-6 md:gap-8",
+      "border_radius": "rounded-lg"
+    },
+    "animation": {
+      "transition": "transition-all duration-200 ease-in-out",
+      "hover_lift": "hover:-translate-y-1 hover:shadow-lg",
+      "fade_in": "animate-in fade-in duration-500"
+    }
+  },
+  "components": {
+    "buttons": {
+      "primary": "bg-primary text-primary-foreground hover:bg-primary/90 h-10 px-4 py-2 rounded-md font-medium transition-all shadow-[0_0_10px_rgba(124,58,237,0.2)] hover:shadow-[0_0_20px_rgba(124,58,237,0.4)]",
+      "secondary": "bg-secondary text-secondary-foreground hover:bg-secondary/80 h-10 px-4 py-2 rounded-md font-medium",
+      "outline": "border border-input bg-background hover:bg-accent hover:text-accent-foreground h-10 px-4 py-2 rounded-md",
+      "ghost": "hover:bg-accent hover:text-accent-foreground h-10 px-4 py-2 rounded-md",
+      "destructive": "bg-destructive text-destructive-foreground hover:bg-destructive/90 h-10 px-4 py-2 rounded-md"
+    },
+    "cards": {
+      "default": "rounded-xl border border-white/10 bg-zinc-900/50 text-card-foreground shadow-sm backdrop-blur-sm",
+      "interactive": "rounded-xl border border-white/10 bg-zinc-900/50 text-card-foreground shadow-sm backdrop-blur-sm hover:border-primary/50 transition-colors cursor-pointer"
+    },
+    "inputs": {
+      "default": "flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+    },
+    "tables": {
+      "wrapper": "relative w-full overflow-auto rounded-md border border-white/10",
+      "header": "h-12 px-4 text-left align-middle font-medium text-muted-foreground [&:has([role=checkbox])]:pr-0",
+      "row": "border-b border-white/5 transition-colors hover:bg-muted/50 data-[state=selected]:bg-muted",
+      "cell": "p-4 align-middle [&:has([role=checkbox])]:pr-0 font-mono text-sm"
+    }
+  },
+  "assets": {
+    "images": {
+      "hero_background": "https://images.unsplash.com/photo-1611974789855-9c2a0a7236a3?crop=entropy&cs=srgb&fm=jpg&q=85",
+      "landing_city": "https://images.unsplash.com/photo-1765741836950-76bc831f380e?crop=entropy&cs=srgb&fm=jpg&q=85",
+      "trader_working": "https://images.pexels.com/photos/7567561/pexels-photo-7567561.jpeg",
+      "chart_abstract": "https://images.unsplash.com/photo-1643962579745-bcaa05ffc573?crop=entropy&cs=srgb&fm=jpg&q=85",
+      "logos": {
+        "polygon": "https://images.unsplash.com/photo-1729830374700-815ba13f5203?crop=entropy&cs=srgb&fm=jpg&q=85",
+        "openai": "https://images.unsplash.com/photo-1761223956853-7c7c12ebff18?crop=entropy&cs=srgb&fm=jpg&q=85",
+        "mongodb": "https://images.unsplash.com/photo-1618518162330-e9855c4bd2d2?crop=entropy&cs=srgb&fm=jpg&q=85"
+      }
+    },
+    "icons": {
+      "library": "lucide-react",
+      "instructions": "Use Lucide React icons for all UI elements. For specific tech logos not found in Lucide, use the image URLs provided above or generic 'Database', 'Cpu', 'Activity' icons."
+    }
+  },
+  "page_guidelines": {
+    "landing": {
+      "layout": "Hero section with 'landing_city' as background with heavy overlay. Feature grid using 'glassmorphism' cards. Trust section with partner logos.",
+      "elements": "Large 'Get Started' CTA with neon glow. Animated text for value props."
+    },
+    "dashboard": {
+      "layout": "Bento grid layout. Sidebar navigation. Top bar with global market indices.",
+      "elements": "Real-time charts (Recharts). Scrollable news feed. Quick action buttons for 'New Trade'."
+    },
+    "screener": {
+      "layout": "Full-width data table. Collapsible filter panel on the left or top.",
+      "elements": "Dense table rows. Color-coded columns for 'Profit' (Green) and 'Loss' (Red). Range sliders for filters."
+    },
+    "pmcc_builder": {
+      "layout": "Two-column layout: 'Long Leg' selection vs 'Short Leg' selection. Payoff diagram at the bottom.",
+      "elements": "Interactive strike price selectors. Profit/Loss calculator card."
+    }
+  },
+  "universal_guidelines": [
+    "Always use 'data-testid' for interactive elements.",
+    "Ensure text contrast meets WCAG AA standards, especially on dark backgrounds.",
+    "Use 'JetBrains Mono' for all financial data (prices, percentages, Greeks).",
+    "Do not use pure black (#000000); use Zinc-950 (#09090b) for better eye comfort.",
+    "Add 'backdrop-blur' to all floating elements (modals, sticky headers).",
+    "Use 'sonner' for all toast notifications.",
+    "Implement 'Skeleton' loaders for all data-fetching states."
+  ]
+}
