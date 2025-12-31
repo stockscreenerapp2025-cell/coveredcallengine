@@ -11,8 +11,11 @@ import {
   ChevronRight,
   LineChart,
   Wallet,
-  Settings
+  Settings,
+  Activity
 } from 'lucide-react';
+
+const APP_NAME = "Covered Call Engine";
 
 const Landing = () => {
   const navigate = useNavigate();
@@ -65,8 +68,8 @@ const Landing = () => {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
             <div className="flex items-center gap-2">
-              <TrendingUp className="w-8 h-8 text-violet-500" />
-              <span className="text-xl font-bold text-white">Premium Hunter</span>
+              <Activity className="w-8 h-8 text-emerald-500" />
+              <span className="text-xl font-bold text-white">{APP_NAME}</span>
             </div>
             <div className="flex items-center gap-4">
               {isAuthenticated ? (
@@ -112,25 +115,25 @@ const Landing = () => {
             </div>
             
             <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold text-white mb-6 animate-fade-in stagger-1">
-              Hunt Premium with
-              <span className="block text-transparent bg-clip-text bg-gradient-to-r from-violet-400 to-cyan-400">
-                Covered Calls & PMCC
+              Find the Best
+              <span className="block text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 to-cyan-400">
+                Covered Call Opportunities
               </span>
             </h1>
             
             <p className="text-lg sm:text-xl text-zinc-400 max-w-3xl mx-auto mb-10 animate-fade-in stagger-2">
-              Professional-grade options screening platform for identifying, analyzing, 
-              and managing covered call and Poor Man's Covered Call strategies with real-time data and AI insights.
+              Professional-grade options screening engine with advanced filters for technicals, fundamentals, 
+              and Greeks. Find optimal covered call and PMCC setups with AI-powered insights.
             </p>
             
             <div className="flex flex-col sm:flex-row items-center justify-center gap-4 animate-fade-in stagger-3">
               <Button 
                 size="lg"
                 onClick={() => navigate('/register')}
-                className="btn-primary text-lg px-8 py-6 animate-pulse-glow"
+                className="bg-emerald-600 hover:bg-emerald-700 text-white text-lg px-8 py-6 shadow-[0_0_20px_rgba(16,185,129,0.3)] hover:shadow-[0_0_30px_rgba(16,185,129,0.5)]"
                 data-testid="hero-get-started-btn"
               >
-                Start Hunting Premium
+                Start Scanning Now
                 <ChevronRight className="w-5 h-5 ml-2" />
               </Button>
               <Button 
@@ -191,12 +194,12 @@ const Landing = () => {
       <section className="py-20 relative">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
           <div className="glass-card p-12 neon-glow">
-            <Shield className="w-12 h-12 text-violet-400 mx-auto mb-6" />
+            <Shield className="w-12 h-12 text-emerald-400 mx-auto mb-6" />
             <h2 className="text-3xl font-bold text-white mb-4">
-              Ready to Start Hunting Premium?
+              Ready to Find Your Next Trade?
             </h2>
             <p className="text-zinc-400 mb-8 max-w-xl mx-auto">
-              Join thousands of traders using Premium Hunter to find the best covered call and PMCC opportunities.
+              Join thousands of traders using {APP_NAME} to find the best covered call and PMCC opportunities.
             </p>
             <Button 
               size="lg"
@@ -216,8 +219,8 @@ const Landing = () => {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex flex-col md:flex-row items-center justify-between gap-4">
             <div className="flex items-center gap-2">
-              <TrendingUp className="w-5 h-5 text-violet-500" />
-              <span className="text-sm text-zinc-500">© 2025 Premium Hunter. All rights reserved.</span>
+              <Activity className="w-5 h-5 text-emerald-500" />
+              <span className="text-sm text-zinc-500">© 2025 {APP_NAME}. All rights reserved.</span>
             </div>
             <div className="flex items-center gap-6 text-sm text-zinc-500">
               <span>Powered by Polygon.io & OpenAI</span>
