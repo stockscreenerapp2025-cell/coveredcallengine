@@ -1,34 +1,208 @@
-.App-logo {
-    height: 40vmin;
-    pointer-events: none;
+/* Premium Hunter - Onyx Terminal Theme */
+
+/* Hero section */
+.hero-gradient {
+    background: linear-gradient(135deg, rgba(124, 58, 237, 0.15) 0%, rgba(9, 9, 11, 1) 50%, rgba(9, 9, 11, 1) 100%);
 }
 
-@media (prefers-reduced-motion: no-preference) {
-    .App-logo {
-        animation: App-logo-spin infinite 20s linear;
+/* Chart container */
+.chart-container {
+    @apply bg-zinc-900/30 rounded-xl p-4 border border-white/5;
+}
+
+/* Market indices ticker */
+.ticker-container {
+    @apply overflow-hidden whitespace-nowrap;
+}
+
+.ticker-content {
+    display: inline-flex;
+    animation: ticker 30s linear infinite;
+}
+
+@keyframes ticker {
+    0% { transform: translateX(0); }
+    100% { transform: translateX(-50%); }
+}
+
+/* Options chain table */
+.options-table {
+    @apply text-xs;
+}
+
+.options-table th {
+    @apply sticky top-0 bg-zinc-900 z-10;
+}
+
+.options-table .call-side {
+    @apply bg-emerald-500/5;
+}
+
+.options-table .put-side {
+    @apply bg-red-500/5;
+}
+
+.options-table .atm-row {
+    @apply bg-violet-500/10 border-y border-violet-500/30;
+}
+
+/* Screener filter panel */
+.filter-panel {
+    @apply bg-zinc-900/50 rounded-xl border border-white/10 p-4;
+}
+
+.filter-group {
+    @apply mb-4;
+}
+
+.filter-label {
+    @apply text-xs font-medium text-zinc-400 mb-2 block;
+}
+
+/* Portfolio card */
+.position-card {
+    @apply glass-card p-4 card-hover;
+}
+
+.position-card .symbol {
+    @apply text-lg font-bold text-white;
+}
+
+.position-card .position-type {
+    @apply text-xs uppercase tracking-wider text-zinc-500;
+}
+
+/* Watchlist item */
+.watchlist-item {
+    @apply flex items-center justify-between p-3 rounded-lg bg-zinc-900/30 border border-white/5 hover:border-white/10 transition-colors;
+}
+
+/* News feed */
+.news-item {
+    @apply p-4 border-b border-white/5 hover:bg-zinc-800/30 transition-colors cursor-pointer;
+}
+
+.news-item:last-child {
+    @apply border-b-0;
+}
+
+.news-item .title {
+    @apply text-sm font-medium text-white mb-1 line-clamp-2;
+}
+
+.news-item .meta {
+    @apply text-xs text-zinc-500 flex items-center gap-2;
+}
+
+/* AI insights */
+.ai-insight-card {
+    @apply glass-card p-4 border-l-4 border-fuchsia-500;
+}
+
+.ai-score {
+    @apply inline-flex items-center justify-center w-12 h-12 rounded-full text-lg font-bold;
+}
+
+.ai-score.high {
+    @apply bg-emerald-500/20 text-emerald-400 border border-emerald-500/30;
+}
+
+.ai-score.medium {
+    @apply bg-yellow-500/20 text-yellow-400 border border-yellow-500/30;
+}
+
+.ai-score.low {
+    @apply bg-red-500/20 text-red-400 border border-red-500/30;
+}
+
+/* Admin panel */
+.admin-section {
+    @apply glass-card p-6 mb-6;
+}
+
+.admin-section h3 {
+    @apply text-lg font-semibold mb-4 flex items-center gap-2;
+}
+
+/* Sidebar navigation */
+.sidebar {
+    @apply fixed left-0 top-0 h-full w-64 bg-zinc-950 border-r border-white/5 z-50;
+}
+
+.sidebar-nav-item {
+    @apply flex items-center gap-3 px-4 py-3 text-zinc-400 hover:text-white hover:bg-zinc-800/50 transition-colors rounded-lg mx-2;
+}
+
+.sidebar-nav-item.active {
+    @apply text-white bg-violet-600/20 border border-violet-500/30;
+}
+
+/* Modal overlay */
+.modal-overlay {
+    @apply fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center;
+}
+
+.modal-content {
+    @apply bg-zinc-900 border border-white/10 rounded-2xl shadow-2xl max-w-lg w-full mx-4 max-h-[90vh] overflow-auto;
+}
+
+/* Form styles */
+.form-group {
+    @apply mb-4;
+}
+
+.form-label {
+    @apply block text-sm font-medium text-zinc-300 mb-2;
+}
+
+/* Range slider */
+input[type="range"] {
+    @apply w-full h-2 bg-zinc-800 rounded-lg appearance-none cursor-pointer;
+}
+
+input[type="range"]::-webkit-slider-thumb {
+    @apply appearance-none w-4 h-4 bg-violet-500 rounded-full cursor-pointer;
+}
+
+/* Tab styles */
+.tab-list {
+    @apply flex gap-1 p-1 bg-zinc-900/50 rounded-lg border border-white/5;
+}
+
+.tab-trigger {
+    @apply px-4 py-2 text-sm font-medium text-zinc-400 rounded-md transition-colors;
+}
+
+.tab-trigger[data-state="active"] {
+    @apply bg-violet-600 text-white;
+}
+
+/* Loading states */
+.loading-pulse {
+    @apply animate-pulse bg-zinc-800 rounded;
+}
+
+.loading-spinner {
+    @apply w-6 h-6 border-2 border-zinc-700 border-t-violet-500 rounded-full animate-spin;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    .sidebar {
+        @apply -translate-x-full;
+    }
+    
+    .sidebar.open {
+        @apply translate-x-0;
+    }
+    
+    .main-content {
+        @apply ml-0;
     }
 }
 
-.App-header {
-    background-color: #0f0f10;
-    min-height: 100vh;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    font-size: calc(10px + 2vmin);
-    color: white;
-}
-
-.App-link {
-    color: #61dafb;
-}
-
-@keyframes App-logo-spin {
-    from {
-        transform: rotate(0deg);
-    }
-    to {
-        transform: rotate(360deg);
+@media (min-width: 769px) {
+    .main-content {
+        @apply ml-64;
     }
 }
