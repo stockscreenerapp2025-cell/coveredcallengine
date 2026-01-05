@@ -676,6 +676,131 @@ async def screen_covered_calls(
     monthly_only: bool = Query(False),
     user: dict = Depends(get_current_user)
 ):
+    # Check if we have Massive.com credentials for live data
+    massive_creds = await get_massive_client()
+    
+    if massive_creds:
+        try:
+            opportunities = []
+            # Scan popular stocks for options
+            symbols_to_scan = ["AAPL", "MSFT", "GOOGL", "AMZN", "NVDA", "META", "TSLA", "JPM", "SPY", "QQQ"]
+            
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                for symbol in symbols_to_scan:
+                    try:
+                        # Get options chain snapshot
+                        params = {
+                            "apiKey": massive_creds["api_key"],
+                            "limit": 100,
+                            "contract_type": "call"
+                        }
+                        
+                        response = await client.get(
+                            f"https://api.massive.com/v3/snapshot/options/{symbol}",
+                            params=params
+                        )
+                        
+                        if response.status_code == 200:
+                            data = response.json()
+                            results = data.get("results", [])
+                            
+                            if results:
+                                underlying_price = results[0].get("underlying_asset", {}).get("price", 0)
+                                
+                                # Skip if price out of range
+                                if underlying_price < min_price or underlying_price > max_price:
+                                    continue
+                                
+                                for opt in results:
+                                    details = opt.get("details", {})
+                                    day = opt.get("day", {})
+                                    greeks = opt.get("greeks", {})
+                                    last_quote = opt.get("last_quote", {})
+                                    
+                                    # Only process calls
+                                    if details.get("contract_type") != "call":
+                                        continue
+                                    
+                                    strike = details.get("strike_price", 0)
+                                    expiry = details.get("expiration_date", "")
+                                    dte = calculate_dte(expiry)
+                                    
+                                    # Apply DTE filters
+                                    if dte > max_dte or dte < 1:
+                                        continue
+                                    if weekly_only and dte > 7:
+                                        continue
+                                    if monthly_only and dte <= 7:
+                                        continue
+                                    
+                                    delta = abs(greeks.get("delta", 0))
+                                    if delta < min_delta or delta > max_delta:
+                                        continue
+                                    
+                                    # Calculate premium and ROI
+                                    bid = last_quote.get("bid", 0)
+                                    ask = last_quote.get("ask", 0)
+                                    premium = (bid + ask) / 2 if bid and ask else day.get("close", 0)
+                                    
+                                    if underlying_price > 0 and premium > 0:
+                                        roi_pct = (premium / underlying_price) * 100
+                                    else:
+                                        roi_pct = 0
+                                    
+                                    if roi_pct < min_roi:
+                                        continue
+                                    
+                                    volume = day.get("volume", 0)
+                                    open_interest = opt.get("open_interest", 0)
+                                    
+                                    if volume < min_volume or open_interest < min_open_interest:
+                                        continue
+                                    
+                                    iv = opt.get("implied_volatility", 0.25)
+                                    iv_rank = min(100, iv * 200)  # Estimate IV rank
+                                    
+                                    if iv_rank < min_iv_rank:
+                                        continue
+                                    
+                                    # Calculate score
+                                    roi_score = min(roi_pct * 15, 40)
+                                    iv_score = iv_rank / 100 * 20
+                                    delta_score = 20 - abs(delta - 0.3) * 50
+                                    protection = ((strike - underlying_price + premium) / underlying_price * 100) if strike > underlying_price else (premium / underlying_price * 100)
+                                    protection_score = min(protection, 10) * 2
+                                    
+                                    score = round(roi_score + iv_score + delta_score + protection_score, 1)
+                                    
+                                    opportunities.append({
+                                        "symbol": symbol,
+                                        "stock_price": round(underlying_price, 2),
+                                        "strike": strike,
+                                        "expiry": expiry,
+                                        "dte": dte,
+                                        "premium": round(premium, 2),
+                                        "roi_pct": round(roi_pct, 2),
+                                        "delta": round(delta, 3),
+                                        "theta": round(greeks.get("theta", 0), 4),
+                                        "iv": round(iv, 4),
+                                        "iv_rank": round(iv_rank, 1),
+                                        "downside_protection": round(protection, 2),
+                                        "volume": volume,
+                                        "open_interest": open_interest,
+                                        "score": score
+                                    })
+                    except Exception as e:
+                        logging.error(f"Error scanning {symbol}: {e}")
+                        continue
+            
+            # Sort by score
+            opportunities.sort(key=lambda x: x["score"], reverse=True)
+            
+            return {"opportunities": opportunities[:100], "total": len(opportunities), "is_live": True}
+            
+        except Exception as e:
+            logging.error(f"Screener error with Massive.com: {e}")
+    
+    # Fallback to mock data
     opportunities = generate_mock_covered_call_opportunities()
     
     # Apply filters
