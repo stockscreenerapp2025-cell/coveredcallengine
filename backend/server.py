@@ -829,6 +829,114 @@ async def screen_pmcc(
     max_short_delta: float = Query(0.3, ge=0.1, le=0.5),
     user: dict = Depends(get_current_user)
 ):
+    # Check if we have Massive.com credentials for live data
+    massive_creds = await get_massive_client()
+    
+    if massive_creds:
+        try:
+            opportunities = []
+            symbols_to_scan = ["AAPL", "MSFT", "GOOGL", "AMZN", "NVDA", "META", "TSLA", "SPY", "QQQ"]
+            
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                for symbol in symbols_to_scan:
+                    try:
+                        # Get options chain
+                        params = {
+                            "apiKey": massive_creds["api_key"],
+                            "limit": 250,
+                            "contract_type": "call"
+                        }
+                        
+                        response = await client.get(
+                            f"https://api.massive.com/v3/snapshot/options/{symbol}",
+                            params=params
+                        )
+                        
+                        if response.status_code == 200:
+                            data = response.json()
+                            results = data.get("results", [])
+                            
+                            if not results:
+                                continue
+                            
+                            underlying_price = results[0].get("underlying_asset", {}).get("price", 0)
+                            
+                            # Separate LEAPS (>300 DTE) and short-term options (<45 DTE)
+                            leaps_options = []
+                            short_options = []
+                            
+                            for opt in results:
+                                details = opt.get("details", {})
+                                greeks = opt.get("greeks", {})
+                                
+                                if details.get("contract_type") != "call":
+                                    continue
+                                
+                                dte = calculate_dte(details.get("expiration_date", ""))
+                                delta = abs(greeks.get("delta", 0))
+                                
+                                if dte >= 300 and delta >= min_leaps_delta:
+                                    leaps_options.append({
+                                        "strike": details.get("strike_price", 0),
+                                        "expiry": details.get("expiration_date", ""),
+                                        "dte": dte,
+                                        "delta": delta,
+                                        "cost": opt.get("last_quote", {}).get("midpoint", 0) or opt.get("day", {}).get("close", 0)
+                                    })
+                                elif 7 <= dte <= 45 and delta <= max_short_delta and delta >= 0.1:
+                                    short_options.append({
+                                        "strike": details.get("strike_price", 0),
+                                        "expiry": details.get("expiration_date", ""),
+                                        "dte": dte,
+                                        "delta": delta,
+                                        "premium": opt.get("last_quote", {}).get("midpoint", 0) or opt.get("day", {}).get("close", 0)
+                                    })
+                            
+                            # Match LEAPS with short calls
+                            if leaps_options and short_options:
+                                best_leap = max(leaps_options, key=lambda x: x["delta"])
+                                best_short = min(short_options, key=lambda x: abs(x["delta"] - 0.25))
+                                
+                                if best_leap["cost"] > 0:
+                                    max_profit = best_short["strike"] - best_leap["strike"] + best_short["premium"] - best_leap["cost"]
+                                    max_loss = best_leap["cost"] - best_short["premium"]
+                                    breakeven = best_leap["strike"] + best_leap["cost"] - best_short["premium"]
+                                    roi_on_capital = (best_short["premium"] / best_leap["cost"]) * 100 if best_leap["cost"] > 0 else 0
+                                    
+                                    opportunities.append({
+                                        "symbol": symbol,
+                                        "stock_price": round(underlying_price, 2),
+                                        "leaps": {
+                                            "strike": best_leap["strike"],
+                                            "expiry": best_leap["expiry"],
+                                            "delta": round(best_leap["delta"], 2),
+                                            "cost": round(best_leap["cost"], 2),
+                                            "dte": best_leap["dte"]
+                                        },
+                                        "short_call": {
+                                            "strike": best_short["strike"],
+                                            "expiry": best_short["expiry"],
+                                            "delta": round(best_short["delta"], 2),
+                                            "premium": round(best_short["premium"], 2),
+                                            "dte": best_short["dte"]
+                                        },
+                                        "max_profit": round(max_profit, 2),
+                                        "max_loss": round(max_loss, 2),
+                                        "breakeven": round(breakeven, 2),
+                                        "monthly_income_potential": round(best_short["premium"] * 12, 2),
+                                        "roi_on_capital": round(roi_on_capital, 2)
+                                    })
+                    except Exception as e:
+                        logging.error(f"PMCC scan error for {symbol}: {e}")
+                        continue
+            
+            opportunities.sort(key=lambda x: x["roi_on_capital"], reverse=True)
+            return {"opportunities": opportunities, "total": len(opportunities), "is_live": True}
+            
+        except Exception as e:
+            logging.error(f"PMCC screener error: {e}")
+    
+    # Fallback to mock data
     opportunities = generate_mock_pmcc_opportunities()
     
     filtered = [
