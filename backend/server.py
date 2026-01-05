@@ -121,8 +121,15 @@ class ScreenerFilterCreate(BaseModel):
     filters: Dict[str, Any]
 
 class AdminSettings(BaseModel):
-    polygon_api_key: Optional[str] = None
+    # Massive.com API credentials for stock/options data
+    massive_api_key: Optional[str] = None
+    massive_access_id: Optional[str] = None
+    massive_secret_key: Optional[str] = None
+    # MarketAux API for news/sentiment
+    marketaux_api_token: Optional[str] = None
+    # OpenAI for AI analysis
     openai_api_key: Optional[str] = None
+    # General settings
     data_refresh_interval: int = 60
     enable_live_data: bool = False
 
@@ -178,12 +185,23 @@ async def get_admin_settings() -> AdminSettings:
         return AdminSettings(**settings)
     return AdminSettings()
 
-async def get_polygon_client():
+async def get_massive_client():
+    """Get Massive.com API credentials"""
     settings = await get_admin_settings()
-    api_key = settings.polygon_api_key
-    if not api_key:
-        return None
-    return api_key
+    if settings.massive_api_key and settings.massive_access_id and settings.massive_secret_key:
+        return {
+            "api_key": settings.massive_api_key,
+            "access_id": settings.massive_access_id,
+            "secret_key": settings.massive_secret_key
+        }
+    return None
+
+async def get_marketaux_client():
+    """Get MarketAux API token"""
+    settings = await get_admin_settings()
+    if settings.marketaux_api_token:
+        return settings.marketaux_api_token
+    return None
 
 # Mock market data (used when Polygon API is not configured)
 MOCK_STOCKS = {
@@ -428,31 +446,35 @@ async def get_me(user: dict = Depends(get_current_user)):
 async def get_stock_quote(symbol: str, user: dict = Depends(get_current_user)):
     symbol = symbol.upper()
     
-    # Try Polygon API first
-    api_key = await get_polygon_client()
-    if api_key:
+    # Try Massive.com API first
+    massive_creds = await get_massive_client()
+    if massive_creds:
         try:
             async with httpx.AsyncClient() as client:
+                headers = {
+                    "X-API-Key": massive_creds["api_key"],
+                    "X-Access-ID": massive_creds["access_id"],
+                    "X-Secret-Key": massive_creds["secret_key"]
+                }
                 response = await client.get(
-                    f"https://api.polygon.io/v2/aggs/ticker/{symbol}/prev",
-                    params={"apiKey": api_key}
+                    f"https://api.massive.com/v1/stocks/{symbol}/quote",
+                    headers=headers
                 )
                 if response.status_code == 200:
                     data = response.json()
-                    if data.get("results"):
-                        result = data["results"][0]
-                        return {
-                            "symbol": symbol,
-                            "price": result["c"],
-                            "open": result["o"],
-                            "high": result["h"],
-                            "low": result["l"],
-                            "volume": result["v"],
-                            "change": round(result["c"] - result["o"], 2),
-                            "change_pct": round((result["c"] - result["o"]) / result["o"] * 100, 2)
-                        }
+                    return {
+                        "symbol": symbol,
+                        "price": data.get("price") or data.get("last"),
+                        "open": data.get("open"),
+                        "high": data.get("high"),
+                        "low": data.get("low"),
+                        "volume": data.get("volume"),
+                        "change": data.get("change"),
+                        "change_pct": data.get("change_percent") or data.get("changePercent"),
+                        "is_live": True
+                    }
         except Exception as e:
-            logging.error(f"Polygon API error: {e}")
+            logging.error(f"Massive.com API error: {e}")
     
     # Fallback to mock data
     if symbol in MOCK_STOCKS:
@@ -788,32 +810,39 @@ async def get_market_news(
     limit: int = Query(10, ge=1, le=50),
     user: dict = Depends(get_current_user)
 ):
-    # Try Polygon News API
-    api_key = await get_polygon_client()
-    if api_key:
+    # Try MarketAux API for news and sentiment
+    marketaux_token = await get_marketaux_client()
+    if marketaux_token:
         try:
             async with httpx.AsyncClient() as client:
-                params = {"apiKey": api_key, "limit": limit}
+                params = {
+                    "api_token": marketaux_token,
+                    "limit": limit,
+                    "language": "en"
+                }
                 if symbol:
-                    params["ticker"] = symbol.upper()
+                    params["symbols"] = symbol.upper()
                 
                 response = await client.get(
-                    "https://api.polygon.io/v2/reference/news",
+                    "https://api.marketaux.com/v1/news/all",
                     params=params
                 )
                 if response.status_code == 200:
                     data = response.json()
-                    if data.get("results"):
+                    if data.get("data"):
                         return [{
                             "title": n.get("title"),
                             "description": n.get("description"),
-                            "source": n.get("publisher", {}).get("name"),
-                            "url": n.get("article_url"),
-                            "published_at": n.get("published_utc"),
-                            "tickers": n.get("tickers", [])
-                        } for n in data["results"]]
+                            "source": n.get("source"),
+                            "url": n.get("url"),
+                            "published_at": n.get("published_at"),
+                            "sentiment": n.get("sentiment"),  # MarketAux provides sentiment
+                            "sentiment_score": n.get("sentiment_score"),
+                            "tickers": [e.get("symbol") for e in n.get("entities", []) if e.get("symbol")],
+                            "is_live": True
+                        } for n in data["data"]]
         except Exception as e:
-            logging.error(f"Polygon News API error: {e}")
+            logging.error(f"MarketAux API error: {e}")
     
     # Return mock news
     return MOCK_NEWS[:limit]
@@ -919,11 +948,17 @@ async def ai_opportunity_scan(
 async def get_settings(user: dict = Depends(get_admin_user)):
     settings = await db.admin_settings.find_one({}, {"_id": 0})
     if settings:
-        # Mask API keys
-        if settings.get("polygon_api_key"):
-            settings["polygon_api_key"] = settings["polygon_api_key"][:8] + "..." + settings["polygon_api_key"][-4:]
+        # Mask API keys for security
+        if settings.get("massive_api_key"):
+            settings["massive_api_key"] = settings["massive_api_key"][:8] + "..." + settings["massive_api_key"][-4:] if len(settings["massive_api_key"]) > 12 else "****"
+        if settings.get("massive_access_id"):
+            settings["massive_access_id"] = settings["massive_access_id"][:8] + "..." + settings["massive_access_id"][-4:] if len(settings["massive_access_id"]) > 12 else "****"
+        if settings.get("massive_secret_key"):
+            settings["massive_secret_key"] = settings["massive_secret_key"][:8] + "..." + settings["massive_secret_key"][-4:] if len(settings["massive_secret_key"]) > 12 else "****"
+        if settings.get("marketaux_api_token"):
+            settings["marketaux_api_token"] = settings["marketaux_api_token"][:8] + "..." + settings["marketaux_api_token"][-4:] if len(settings["marketaux_api_token"]) > 12 else "****"
         if settings.get("openai_api_key"):
-            settings["openai_api_key"] = settings["openai_api_key"][:8] + "..." + settings["openai_api_key"][-4:]
+            settings["openai_api_key"] = settings["openai_api_key"][:8] + "..." + settings["openai_api_key"][-4:] if len(settings["openai_api_key"]) > 12 else "****"
     return settings or {}
 
 @admin_router.post("/settings")
@@ -931,10 +966,10 @@ async def update_settings(settings: AdminSettings, user: dict = Depends(get_admi
     settings_dict = settings.model_dump(exclude_unset=True)
     
     # Don't update masked values
-    if settings_dict.get("polygon_api_key") and "..." in settings_dict["polygon_api_key"]:
-        del settings_dict["polygon_api_key"]
-    if settings_dict.get("openai_api_key") and "..." in settings_dict["openai_api_key"]:
-        del settings_dict["openai_api_key"]
+    masked_fields = ["massive_api_key", "massive_access_id", "massive_secret_key", "marketaux_api_token", "openai_api_key"]
+    for field in masked_fields:
+        if settings_dict.get(field) and "..." in settings_dict[field]:
+            del settings_dict[field]
     
     await db.admin_settings.update_one({}, {"$set": settings_dict}, upsert=True)
     return {"message": "Settings updated successfully"}
