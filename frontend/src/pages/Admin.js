@@ -16,20 +16,35 @@ import {
   Shield,
   Eye,
   EyeOff,
-  AlertTriangle
+  AlertTriangle,
+  Newspaper,
+  BarChart3,
+  Brain
 } from 'lucide-react';
 import { toast } from 'sonner';
 
 const Admin = () => {
   const [settings, setSettings] = useState({
-    polygon_api_key: '',
+    // Massive.com credentials
+    massive_api_key: '',
+    massive_access_id: '',
+    massive_secret_key: '',
+    // MarketAux credentials
+    marketaux_api_token: '',
+    // OpenAI credentials
     openai_api_key: '',
+    // General settings
     data_refresh_interval: 60,
     enable_live_data: false
   });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [showPolygonKey, setShowPolygonKey] = useState(false);
+  
+  // Visibility toggles
+  const [showMassiveApiKey, setShowMassiveApiKey] = useState(false);
+  const [showMassiveAccessId, setShowMassiveAccessId] = useState(false);
+  const [showMassiveSecretKey, setShowMassiveSecretKey] = useState(false);
+  const [showMarketauxToken, setShowMarketauxToken] = useState(false);
   const [showOpenAIKey, setShowOpenAIKey] = useState(false);
 
   useEffect(() => {
@@ -64,19 +79,54 @@ const Admin = () => {
     }
   };
 
+  const PasswordInput = ({ label, value, onChange, show, onToggle, placeholder, helpText, linkUrl, linkText }) => (
+    <div className="space-y-2">
+      <Label className="flex items-center gap-2">
+        {label}
+        {linkUrl && (
+          <a 
+            href={linkUrl} 
+            target="_blank" 
+            rel="noopener noreferrer"
+            className="text-xs text-emerald-400 hover:text-emerald-300"
+          >
+            ({linkText})
+          </a>
+        )}
+      </Label>
+      <div className="relative">
+        <Input
+          type={show ? 'text' : 'password'}
+          value={value}
+          onChange={onChange}
+          placeholder={placeholder}
+          className="input-dark pr-10"
+        />
+        <button
+          type="button"
+          onClick={onToggle}
+          className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-300"
+        >
+          {show ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+        </button>
+      </div>
+      {helpText && <p className="text-xs text-zinc-500">{helpText}</p>}
+    </div>
+  );
+
   return (
     <div className="space-y-6" data-testid="admin-page">
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl md:text-3xl font-bold text-white flex items-center gap-3">
-            <Settings className="w-8 h-8 text-violet-500" />
+            <Settings className="w-8 h-8 text-emerald-500" />
             Admin Settings
           </h1>
-          <p className="text-zinc-400 mt-1">Configure API credentials and system settings</p>
+          <p className="text-zinc-400 mt-1">Configure API credentials and data sources</p>
         </div>
         <div className="flex items-center gap-2">
-          <Badge className="badge-ai">
+          <Badge className="bg-emerald-500/20 text-emerald-400 border-emerald-500/30">
             <Shield className="w-3 h-3 mr-1" />
             Admin Access
           </Badge>
@@ -97,102 +147,169 @@ const Admin = () => {
       </div>
 
       <div className="grid lg:grid-cols-2 gap-6">
-        {/* API Configuration */}
-        <Card className="glass-card" data-testid="api-config-card">
+        
+        {/* Massive.com - Stock & Options Data */}
+        <Card className="glass-card" data-testid="massive-config-card">
           <CardHeader>
             <CardTitle className="text-lg flex items-center gap-2">
-              <Key className="w-5 h-5 text-violet-400" />
-              API Configuration
+              <BarChart3 className="w-5 h-5 text-emerald-400" />
+              Massive.com - Market Data
             </CardTitle>
             <CardDescription>
-              Configure your market data and AI service credentials
+              Stock quotes, options chains, and real-time market data
             </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-6">
-            {/* Polygon API Key */}
-            <div className="space-y-2">
-              <Label className="flex items-center gap-2">
-                Polygon.io API Key
-                <a 
-                  href="https://polygon.io/dashboard/api-keys" 
-                  target="_blank" 
-                  rel="noopener noreferrer"
-                  className="text-xs text-violet-400 hover:text-violet-300"
-                >
-                  (Get key)
-                </a>
-              </Label>
-              <div className="relative">
-                <Input
-                  type={showPolygonKey ? 'text' : 'password'}
-                  value={settings.polygon_api_key}
-                  onChange={(e) => setSettings(s => ({ ...s, polygon_api_key: e.target.value }))}
-                  placeholder="Enter your Polygon.io API key"
-                  className="input-dark pr-10"
-                  data-testid="polygon-api-key-input"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPolygonKey(!showPolygonKey)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-300"
-                >
-                  {showPolygonKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                </button>
-              </div>
-              <p className="text-xs text-zinc-500">
-                Required for real-time stock quotes, options chains, and market news
-              </p>
-            </div>
+          <CardContent className="space-y-4">
+            <PasswordInput
+              label="API Key"
+              value={settings.massive_api_key}
+              onChange={(e) => setSettings(s => ({ ...s, massive_api_key: e.target.value }))}
+              show={showMassiveApiKey}
+              onToggle={() => setShowMassiveApiKey(!showMassiveApiKey)}
+              placeholder="Enter your Massive.com API Key"
+              linkUrl="https://www.massive.com"
+              linkText="Get API Key"
+              helpText="Primary authentication key for Massive.com API"
+            />
+            
+            <PasswordInput
+              label="Access ID Key"
+              value={settings.massive_access_id}
+              onChange={(e) => setSettings(s => ({ ...s, massive_access_id: e.target.value }))}
+              show={showMassiveAccessId}
+              onToggle={() => setShowMassiveAccessId(!showMassiveAccessId)}
+              placeholder="Enter your Access ID Key"
+              helpText="Access identifier for API requests"
+            />
+            
+            <PasswordInput
+              label="Secret Key"
+              value={settings.massive_secret_key}
+              onChange={(e) => setSettings(s => ({ ...s, massive_secret_key: e.target.value }))}
+              show={showMassiveSecretKey}
+              onToggle={() => setShowMassiveSecretKey(!showMassiveSecretKey)}
+              placeholder="Enter your Secret Key"
+              helpText="Secret key for secure API authentication"
+            />
 
-            {/* OpenAI API Key */}
-            <div className="space-y-2">
-              <Label className="flex items-center gap-2">
-                OpenAI API Key
-                <a 
-                  href="https://platform.openai.com/api-keys" 
-                  target="_blank" 
-                  rel="noopener noreferrer"
-                  className="text-xs text-violet-400 hover:text-violet-300"
-                >
-                  (Get key)
-                </a>
-              </Label>
-              <div className="relative">
-                <Input
-                  type={showOpenAIKey ? 'text' : 'password'}
-                  value={settings.openai_api_key}
-                  onChange={(e) => setSettings(s => ({ ...s, openai_api_key: e.target.value }))}
-                  placeholder="Enter your OpenAI API key"
-                  className="input-dark pr-10"
-                  data-testid="openai-api-key-input"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowOpenAIKey(!showOpenAIKey)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-300"
-                >
-                  {showOpenAIKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                </button>
+            {/* Status */}
+            <div className="pt-4 border-t border-zinc-800">
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-zinc-400">Connection Status</span>
+                <Badge className={settings.massive_api_key && settings.massive_access_id && settings.massive_secret_key ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' : 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30'}>
+                  {settings.massive_api_key && settings.massive_access_id && settings.massive_secret_key ? 'Configured' : 'Not Configured'}
+                </Badge>
               </div>
-              <p className="text-xs text-zinc-500">
-                Required for AI-powered trade analysis and recommendations (GPT-5.2)
-              </p>
-              <p className="text-xs text-emerald-400">
-                Note: Emergent Universal Key is pre-configured as fallback
-              </p>
             </div>
           </CardContent>
         </Card>
 
-        {/* Data Settings */}
-        <Card className="glass-card" data-testid="data-settings-card">
+        {/* MarketAux - News & Sentiment */}
+        <Card className="glass-card" data-testid="marketaux-config-card">
           <CardHeader>
             <CardTitle className="text-lg flex items-center gap-2">
-              <Database className="w-5 h-5 text-violet-400" />
-              Data Settings
+              <Newspaper className="w-5 h-5 text-emerald-400" />
+              MarketAux - News & Sentiment
             </CardTitle>
             <CardDescription>
-              Configure data refresh and live data options
+              Market news, sentiment analysis for enhanced trading strategies
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <PasswordInput
+              label="API Token"
+              value={settings.marketaux_api_token}
+              onChange={(e) => setSettings(s => ({ ...s, marketaux_api_token: e.target.value }))}
+              show={showMarketauxToken}
+              onToggle={() => setShowMarketauxToken(!showMarketauxToken)}
+              placeholder="Enter your MarketAux API Token"
+              linkUrl="https://www.marketaux.com"
+              linkText="Get API Token"
+              helpText="Used for market news and sentiment analysis to enhance covered call and PMCC strategies"
+            />
+
+            {/* Features */}
+            <div className="pt-4 border-t border-zinc-800 space-y-2">
+              <Label className="text-xs text-zinc-400">Features Enabled</Label>
+              <ul className="text-xs text-zinc-500 space-y-1">
+                <li className="flex items-center gap-2">
+                  <div className={`w-2 h-2 rounded-full ${settings.marketaux_api_token ? 'bg-emerald-400' : 'bg-zinc-600'}`} />
+                  Real-time market news feed
+                </li>
+                <li className="flex items-center gap-2">
+                  <div className={`w-2 h-2 rounded-full ${settings.marketaux_api_token ? 'bg-emerald-400' : 'bg-zinc-600'}`} />
+                  Sentiment analysis per stock
+                </li>
+                <li className="flex items-center gap-2">
+                  <div className={`w-2 h-2 rounded-full ${settings.marketaux_api_token ? 'bg-emerald-400' : 'bg-zinc-600'}`} />
+                  Strategy enhancement signals
+                </li>
+              </ul>
+            </div>
+
+            {/* Status */}
+            <div className="pt-4 border-t border-zinc-800">
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-zinc-400">Connection Status</span>
+                <Badge className={settings.marketaux_api_token ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' : 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30'}>
+                  {settings.marketaux_api_token ? 'Configured' : 'Not Configured'}
+                </Badge>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* OpenAI - AI Analysis */}
+        <Card className="glass-card" data-testid="openai-config-card">
+          <CardHeader>
+            <CardTitle className="text-lg flex items-center gap-2">
+              <Brain className="w-5 h-5 text-emerald-400" />
+              OpenAI - AI Analysis
+            </CardTitle>
+            <CardDescription>
+              AI-powered trade analysis, scoring, and recommendations
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <PasswordInput
+              label="OpenAI API Key"
+              value={settings.openai_api_key}
+              onChange={(e) => setSettings(s => ({ ...s, openai_api_key: e.target.value }))}
+              show={showOpenAIKey}
+              onToggle={() => setShowOpenAIKey(!showOpenAIKey)}
+              placeholder="Enter your OpenAI API Key"
+              linkUrl="https://platform.openai.com/api-keys"
+              linkText="Get API Key"
+              helpText="Powers AI trade analysis and recommendations (GPT-5.2)"
+            />
+
+            <div className="p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/30">
+              <p className="text-xs text-emerald-400">
+                ✓ Emergent Universal Key is pre-configured as fallback
+              </p>
+            </div>
+
+            {/* Status */}
+            <div className="pt-4 border-t border-zinc-800">
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-zinc-400">Connection Status</span>
+                <Badge className="bg-emerald-500/20 text-emerald-400 border-emerald-500/30">
+                  {settings.openai_api_key ? 'Custom Key' : 'Using Fallback'}
+                </Badge>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* General Settings */}
+        <Card className="glass-card" data-testid="general-settings-card">
+          <CardHeader>
+            <CardTitle className="text-lg flex items-center gap-2">
+              <Database className="w-5 h-5 text-emerald-400" />
+              General Settings
+            </CardTitle>
+            <CardDescription>
+              Data refresh and live data configuration
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
@@ -218,7 +335,7 @@ const Admin = () => {
               <div>
                 <Label className="text-white">Enable Live Data</Label>
                 <p className="text-xs text-zinc-500 mt-1">
-                  Use real-time data instead of mock data
+                  Use real-time data from Massive.com instead of mock data
                 </p>
               </div>
               <Switch
@@ -228,25 +345,34 @@ const Admin = () => {
               />
             </div>
 
-            {/* Status Indicators */}
-            <div className="space-y-3 pt-4 border-t border-white/5">
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-zinc-400">Polygon.io Status</span>
-                <Badge className={settings.polygon_api_key ? 'badge-success' : 'badge-warning'}>
-                  {settings.polygon_api_key ? 'Configured' : 'Not Configured'}
-                </Badge>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-zinc-400">OpenAI Status</span>
-                <Badge className={settings.openai_api_key ? 'badge-success' : 'badge-info'}>
-                  {settings.openai_api_key ? 'Configured' : 'Using Fallback'}
-                </Badge>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-zinc-400">Data Mode</span>
-                <Badge className={settings.enable_live_data ? 'badge-success' : 'badge-warning'}>
-                  {settings.enable_live_data ? 'Live' : 'Mock Data'}
-                </Badge>
+            {/* Overall Status */}
+            <div className="pt-4 border-t border-zinc-800 space-y-3">
+              <Label className="text-xs text-zinc-400">System Status</Label>
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-zinc-400">Market Data (Massive.com)</span>
+                  <Badge className={settings.massive_api_key ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' : 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30'}>
+                    {settings.massive_api_key ? 'Ready' : 'Mock Data'}
+                  </Badge>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-zinc-400">News & Sentiment (MarketAux)</span>
+                  <Badge className={settings.marketaux_api_token ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' : 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30'}>
+                    {settings.marketaux_api_token ? 'Ready' : 'Mock Data'}
+                  </Badge>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-zinc-400">AI Analysis (OpenAI)</span>
+                  <Badge className="bg-emerald-500/20 text-emerald-400 border-emerald-500/30">
+                    {settings.openai_api_key ? 'Custom Key' : 'Fallback Active'}
+                  </Badge>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-zinc-400">Data Mode</span>
+                  <Badge className={settings.enable_live_data ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' : 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30'}>
+                    {settings.enable_live_data ? 'Live' : 'Mock Data'}
+                  </Badge>
+                </div>
               </div>
             </div>
           </CardContent>
@@ -257,7 +383,7 @@ const Admin = () => {
       <div className="flex justify-end">
         <Button
           onClick={saveSettings}
-          className="btn-primary"
+          className="bg-emerald-600 hover:bg-emerald-700 text-white"
           disabled={saving}
           data-testid="save-settings-btn"
         >
@@ -274,22 +400,26 @@ const Admin = () => {
       <Card className="glass-card" data-testid="help-section">
         <CardHeader>
           <CardTitle className="text-lg flex items-center gap-2">
-            <Activity className="w-5 h-5 text-violet-400" />
+            <Activity className="w-5 h-5 text-emerald-400" />
             Getting Started
           </CardTitle>
         </CardHeader>
         <CardContent className="text-sm text-zinc-400 space-y-4">
           <div>
-            <h4 className="font-medium text-white mb-2">1. Set up Polygon.io</h4>
-            <p>Create a free account at polygon.io and get your API key from the dashboard. Free tier includes 5 API calls/minute with delayed data.</p>
+            <h4 className="font-medium text-white mb-2">1. Set up Massive.com</h4>
+            <p>Create an account at <a href="https://www.massive.com" target="_blank" rel="noopener noreferrer" className="text-emerald-400 hover:underline">massive.com</a> and obtain your API Key, Access ID, and Secret Key. This provides real-time stock quotes and options chain data.</p>
           </div>
           <div>
-            <h4 className="font-medium text-white mb-2">2. Configure OpenAI (Optional)</h4>
+            <h4 className="font-medium text-white mb-2">2. Set up MarketAux</h4>
+            <p>Get your API token from <a href="https://www.marketaux.com" target="_blank" rel="noopener noreferrer" className="text-emerald-400 hover:underline">marketaux.com</a> for market news and sentiment analysis. This helps identify market conditions for better covered call timing.</p>
+          </div>
+          <div>
+            <h4 className="font-medium text-white mb-2">3. Configure OpenAI (Optional)</h4>
             <p>For enhanced AI insights, add your OpenAI API key. The platform uses a fallback key if not configured.</p>
           </div>
           <div>
-            <h4 className="font-medium text-white mb-2">3. Enable Live Data</h4>
-            <p>Once your Polygon API key is configured, enable live data to switch from mock data to real market data.</p>
+            <h4 className="font-medium text-white mb-2">4. Enable Live Data</h4>
+            <p>Once your Massive.com credentials are configured, enable live data to switch from mock data to real market data.</p>
           </div>
         </CardContent>
       </Card>
