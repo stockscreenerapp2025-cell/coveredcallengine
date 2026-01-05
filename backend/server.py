@@ -549,8 +549,75 @@ async def get_options_chain(
     user: dict = Depends(get_current_user)
 ):
     symbol = symbol.upper()
-    stock_price = MOCK_STOCKS.get(symbol, {}).get("price", 100)
     
+    # Try Massive.com Options API first
+    massive_creds = await get_massive_client()
+    if massive_creds:
+        try:
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                params = {
+                    "apiKey": massive_creds["api_key"],
+                    "limit": 250
+                }
+                
+                # Add expiration filter if provided
+                if expiry:
+                    params["expiration_date"] = expiry
+                
+                response = await client.get(
+                    f"https://api.massive.com/v3/snapshot/options/{symbol}",
+                    params=params
+                )
+                
+                if response.status_code == 200:
+                    data = response.json()
+                    results = data.get("results", [])
+                    
+                    if results:
+                        # Get underlying price from first result
+                        underlying_price = results[0].get("underlying_asset", {}).get("price", 0) if results else 0
+                        
+                        options = []
+                        for opt in results:
+                            details = opt.get("details", {})
+                            day = opt.get("day", {})
+                            greeks = opt.get("greeks", {})
+                            last_quote = opt.get("last_quote", {})
+                            
+                            options.append({
+                                "symbol": details.get("ticker", ""),
+                                "underlying": symbol,
+                                "strike": details.get("strike_price", 0),
+                                "expiry": details.get("expiration_date", ""),
+                                "dte": calculate_dte(details.get("expiration_date", "")),
+                                "type": details.get("contract_type", "call"),
+                                "bid": last_quote.get("bid", 0),
+                                "ask": last_quote.get("ask", 0),
+                                "last": day.get("close", 0) or last_quote.get("midpoint", 0),
+                                "delta": greeks.get("delta", 0),
+                                "gamma": greeks.get("gamma", 0),
+                                "theta": greeks.get("theta", 0),
+                                "vega": greeks.get("vega", 0),
+                                "iv": opt.get("implied_volatility", 0),
+                                "volume": day.get("volume", 0),
+                                "open_interest": opt.get("open_interest", 0),
+                                "break_even": opt.get("break_even_price", 0),
+                            })
+                        
+                        # Filter to calls only for covered call screener
+                        call_options = [o for o in options if o["type"] == "call"]
+                        
+                        return {
+                            "symbol": symbol,
+                            "stock_price": underlying_price,
+                            "options": call_options,
+                            "is_live": True
+                        }
+        except Exception as e:
+            logging.error(f"Massive.com Options API error: {e}")
+    
+    # Fallback to mock data
+    stock_price = MOCK_STOCKS.get(symbol, {}).get("price", 100)
     options = generate_mock_options(symbol, stock_price)
     
     if expiry:
@@ -562,6 +629,18 @@ async def get_options_chain(
         "options": options,
         "is_mock": True
     }
+
+def calculate_dte(expiry_date: str) -> int:
+    """Calculate days to expiration"""
+    if not expiry_date:
+        return 0
+    try:
+        from datetime import datetime
+        exp = datetime.strptime(expiry_date, "%Y-%m-%d")
+        today = datetime.now()
+        return max(0, (exp - today).days)
+    except:
+        return 0
 
 @options_router.get("/expirations/{symbol}")
 async def get_option_expirations(symbol: str, user: dict = Depends(get_current_user)):
