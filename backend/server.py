@@ -451,28 +451,43 @@ async def get_stock_quote(symbol: str, user: dict = Depends(get_current_user)):
     if massive_creds:
         try:
             async with httpx.AsyncClient() as client:
-                headers = {
-                    "X-API-Key": massive_creds["api_key"],
-                    "X-Access-ID": massive_creds["access_id"],
-                    "X-Secret-Key": massive_creds["secret_key"]
-                }
+                # Massive.com uses apiKey as query parameter (similar to Polygon)
+                # Get previous day aggregates for price data
                 response = await client.get(
-                    f"https://api.massive.com/v1/stocks/{symbol}/quote",
-                    headers=headers
+                    f"https://api.massive.com/v2/aggs/ticker/{symbol}/prev",
+                    params={"apiKey": massive_creds["api_key"]}
                 )
                 if response.status_code == 200:
                     data = response.json()
-                    return {
-                        "symbol": symbol,
-                        "price": data.get("price") or data.get("last"),
-                        "open": data.get("open"),
-                        "high": data.get("high"),
-                        "low": data.get("low"),
-                        "volume": data.get("volume"),
-                        "change": data.get("change"),
-                        "change_pct": data.get("change_percent") or data.get("changePercent"),
-                        "is_live": True
-                    }
+                    if data.get("results") and len(data["results"]) > 0:
+                        result = data["results"][0]
+                        return {
+                            "symbol": symbol,
+                            "price": result.get("c"),  # close price
+                            "open": result.get("o"),
+                            "high": result.get("h"),
+                            "low": result.get("l"),
+                            "volume": result.get("v"),
+                            "change": round(result.get("c", 0) - result.get("o", 0), 2),
+                            "change_pct": round((result.get("c", 0) - result.get("o", 0)) / result.get("o", 1) * 100, 2) if result.get("o") else 0,
+                            "is_live": True
+                        }
+                
+                # Fallback: try last trade endpoint
+                response = await client.get(
+                    f"https://api.massive.com/v2/last/trade/{symbol}",
+                    params={"apiKey": massive_creds["api_key"]}
+                )
+                if response.status_code == 200:
+                    data = response.json()
+                    if data.get("results"):
+                        result = data["results"]
+                        return {
+                            "symbol": symbol,
+                            "price": result.get("p"),  # price
+                            "volume": result.get("s"),  # size
+                            "is_live": True
+                        }
         except Exception as e:
             logging.error(f"Massive.com API error: {e}")
     
