@@ -282,7 +282,7 @@ const Dashboard = () => {
               Top 10 Covered Call Opportunities
             </CardTitle>
             <p className="text-xs text-zinc-500 mt-1">
-              $30-$90 stocks • Up trending • Above SMA 200 • Weekly ≥1% ROI, Monthly ≥4% ROI
+              $25-$100 stocks • Positive trends • Above SMA 200 • Weekly ≥0.8% ROI, Monthly ≥2.5% ROI
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -312,7 +312,7 @@ const Dashboard = () => {
           ) : opportunities.length === 0 ? (
             <div className="text-center py-8 text-zinc-500">
               <AlertCircle className="w-12 h-12 mx-auto mb-4 opacity-50" />
-              <p>No opportunities match the strict criteria.</p>
+              <p>No opportunities match the criteria.</p>
               <p className="text-sm mt-2">Try the full screener for more results.</p>
             </div>
           ) : (
@@ -328,15 +328,19 @@ const Dashboard = () => {
                     <th>Premium</th>
                     <th>ROI</th>
                     <th>Delta</th>
-                    <th>6M Trend</th>
-                    <th>12M Trend</th>
+                    <th>IV</th>
+                    <th>6M</th>
+                    <th>12M</th>
                     <th>Score</th>
                   </tr>
                 </thead>
                 <tbody>
                   {opportunities.map((opp, index) => (
                     <tr key={index} className="cursor-pointer hover:bg-zinc-800/50" data-testid={`opportunity-${opp.symbol}`}>
-                      <td className="font-semibold text-white">{opp.symbol}</td>
+                      <td className="font-semibold text-white">
+                        {opp.symbol}
+                        {opp.has_dividend && <span className="ml-1 text-yellow-400 text-xs">💰</span>}
+                      </td>
                       <td>${opp.stock_price?.toFixed(2)}</td>
                       <td>${opp.strike?.toFixed(2)}</td>
                       <td>
@@ -348,14 +352,15 @@ const Dashboard = () => {
                       <td className="text-emerald-400">${opp.premium?.toFixed(2)}</td>
                       <td className="text-cyan-400 font-medium">{opp.roi_pct?.toFixed(2)}%</td>
                       <td>{opp.delta?.toFixed(2)}</td>
+                      <td>{opp.iv?.toFixed(0)}%</td>
                       <td className={opp.trend_6m >= 0 ? 'text-emerald-400' : 'text-red-400'}>
-                        {opp.trend_6m ? `${opp.trend_6m >= 0 ? '+' : ''}${opp.trend_6m?.toFixed(1)}%` : '-'}
+                        {opp.trend_6m !== undefined ? `${opp.trend_6m >= 0 ? '+' : ''}${opp.trend_6m?.toFixed(0)}%` : '-'}
                       </td>
                       <td className={opp.trend_12m >= 0 ? 'text-emerald-400' : 'text-red-400'}>
-                        {opp.trend_12m ? `${opp.trend_12m >= 0 ? '+' : ''}${opp.trend_12m?.toFixed(1)}%` : '-'}
+                        {opp.trend_12m !== undefined ? `${opp.trend_12m >= 0 ? '+' : ''}${opp.trend_12m?.toFixed(0)}%` : '-'}
                       </td>
                       <td>
-                        <Badge className={`${opp.score >= 80 ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' : opp.score >= 60 ? 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30' : 'bg-cyan-500/20 text-cyan-400 border-cyan-500/30'}`}>
+                        <Badge className={`${opp.score >= 70 ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' : opp.score >= 50 ? 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30' : 'bg-cyan-500/20 text-cyan-400 border-cyan-500/30'}`}>
                           {opp.score?.toFixed(0)}
                         </Badge>
                       </td>
@@ -383,7 +388,7 @@ const Dashboard = () => {
               </div>
               <div className="text-xs text-zinc-500">
                 {opportunitiesInfo.is_live 
-                  ? 'Data from Massive.com API with advanced filtering criteria'
+                  ? 'Data from Massive.com API • Includes SMA, trend analysis, and dividend data'
                   : 'Configure your API key in Admin settings for live market data'}
               </div>
             </div>
