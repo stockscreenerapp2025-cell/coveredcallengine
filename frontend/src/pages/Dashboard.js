@@ -26,8 +26,10 @@ const Dashboard = () => {
   const [indices, setIndices] = useState({});
   const [news, setNews] = useState([]);
   const [opportunities, setOpportunities] = useState([]);
+  const [opportunitiesInfo, setOpportunitiesInfo] = useState(null);
   const [portfolio, setPortfolio] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [oppsLoading, setOppsLoading] = useState(false);
 
   useEffect(() => {
     fetchDashboardData();
@@ -35,23 +37,36 @@ const Dashboard = () => {
 
   const fetchDashboardData = async () => {
     setLoading(true);
+    setOppsLoading(true);
     try {
-      const [indicesRes, newsRes, oppsRes, portfolioRes] = await Promise.all([
+      const [indicesRes, newsRes, portfolioRes] = await Promise.all([
         stocksApi.getIndices(),
         newsApi.getNews({ limit: 6 }),
-        screenerApi.getCoveredCalls({ min_roi: 1.5 }),
         portfolioApi.getSummary()
       ]);
 
       setIndices(indicesRes.data);
       setNews(newsRes.data);
-      setOpportunities(oppsRes.data.opportunities?.slice(0, 5) || []);
       setPortfolio(portfolioRes.data);
+      
+      // Fetch dashboard opportunities separately (may take longer)
+      try {
+        const oppsRes = await screenerApi.getDashboardOpportunities();
+        setOpportunities(oppsRes.data.opportunities || []);
+        setOpportunitiesInfo(oppsRes.data);
+      } catch (oppsError) {
+        console.error('Dashboard opportunities error:', oppsError);
+        // Fallback to regular screener
+        const fallbackRes = await screenerApi.getCoveredCalls({ min_roi: 1.5, min_price: 30, max_price: 90 });
+        setOpportunities(fallbackRes.data.opportunities?.slice(0, 10) || []);
+        setOpportunitiesInfo({ is_live: fallbackRes.data.is_live, fallback: true });
+      }
     } catch (error) {
       console.error('Dashboard fetch error:', error);
       toast.error('Failed to load dashboard data');
     } finally {
       setLoading(false);
+      setOppsLoading(false);
     }
   };
 
