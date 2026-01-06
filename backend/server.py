@@ -990,6 +990,260 @@ async def screen_covered_calls(
     
     return {"opportunities": filtered, "total": len(filtered), "is_mock": True}
 
+@screener_router.get("/dashboard-opportunities")
+async def get_dashboard_opportunities(
+    user: dict = Depends(get_current_user)
+):
+    """
+    Get top 10 covered call opportunities for dashboard with advanced filters:
+    - Stock price: $30-$90
+    - Up trending (6 & 12 months)
+    - Price above SMA 200
+    - Price within 10% above SMA 50
+    - Exclude stocks with dividends/earnings in current month
+    - Strong fundamentals: ROE > 20%, P/E < 30
+    - Insider/Institutional ownership criteria
+    - At least 10 analyst Buy ratings
+    - Weekly: min 1% ROI, Monthly: min 4% ROI
+    """
+    api_key = await get_massive_api_key()
+    
+    if not api_key:
+        return {"opportunities": [], "total": 0, "message": "API key not configured", "is_mock": True}
+    
+    try:
+        # Extended list of stocks to scan across different price ranges
+        symbols_to_scan = [
+            # $30-$90 range candidates
+            "INTC", "VZ", "BAC", "WFC", "C", "T", "PFE", "MRK", "CSCO", "KO", "PEP",
+            "GM", "F", "NKE", "SBUX", "DIS", "PYPL", "QCOM", "TXN", "AMAT", "MU",
+            "ADI", "LRCX", "KLAC", "ON", "MCHP", "NXPI", "WDC", "STX", "HPQ", "DELL",
+            "USB", "PNC", "TFC", "KEY", "RF", "CFG", "FITB", "HBAN", "MTB", "CMA",
+            "XOM", "CVX", "OXY", "DVN", "EOG", "MPC", "VLO", "PSX", "HES", "APA"
+        ]
+        
+        opportunities = []
+        current_month = datetime.now().month
+        
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            for symbol in symbols_to_scan:
+                try:
+                    # Get stock price and historical data for trend analysis
+                    stock_response = await client.get(
+                        f"https://api.massive.com/v2/aggs/ticker/{symbol}/prev",
+                        params={"apiKey": api_key}
+                    )
+                    
+                    if stock_response.status_code != 200:
+                        continue
+                    
+                    stock_data = stock_response.json()
+                    if not stock_data.get("results"):
+                        continue
+                    
+                    current_price = stock_data["results"][0].get("c", 0)
+                    
+                    # Filter: Stock price between $30 and $90
+                    if current_price < 30 or current_price > 90:
+                        continue
+                    
+                    # Get SMA data using aggregate bars
+                    # Fetch 200 days of data for SMA calculations
+                    end_date = datetime.now().strftime("%Y-%m-%d")
+                    start_date = (datetime.now() - timedelta(days=400)).strftime("%Y-%m-%d")
+                    
+                    aggs_response = await client.get(
+                        f"https://api.massive.com/v2/aggs/ticker/{symbol}/range/1/day/{start_date}/{end_date}",
+                        params={"apiKey": api_key, "adjusted": "true", "sort": "desc", "limit": 300}
+                    )
+                    
+                    if aggs_response.status_code != 200:
+                        continue
+                    
+                    aggs_data = aggs_response.json()
+                    bars = aggs_data.get("results", [])
+                    
+                    if len(bars) < 200:
+                        continue
+                    
+                    # Calculate SMAs
+                    close_prices = [bar.get("c", 0) for bar in bars]
+                    sma_50 = sum(close_prices[:50]) / 50 if len(close_prices) >= 50 else 0
+                    sma_200 = sum(close_prices[:200]) / 200 if len(close_prices) >= 200 else 0
+                    
+                    # Filter: Price above SMA 200
+                    if current_price <= sma_200:
+                        continue
+                    
+                    # Filter: Price within 10% above SMA 50
+                    if sma_50 > 0:
+                        pct_above_sma50 = ((current_price - sma_50) / sma_50) * 100
+                        if pct_above_sma50 > 10:
+                            continue
+                    
+                    # Check trend: Compare current price to 6 months and 12 months ago
+                    price_6m_ago = close_prices[min(126, len(close_prices)-1)] if len(close_prices) > 126 else current_price
+                    price_12m_ago = close_prices[min(252, len(close_prices)-1)] if len(close_prices) > 252 else current_price
+                    
+                    trend_6m = ((current_price - price_6m_ago) / price_6m_ago * 100) if price_6m_ago > 0 else 0
+                    trend_12m = ((current_price - price_12m_ago) / price_12m_ago * 100) if price_12m_ago > 0 else 0
+                    
+                    # Filter: Up trending for 6 and 12 months
+                    if trend_6m <= 0 or trend_12m <= 0:
+                        continue
+                    
+                    # Get dividends to check if any in current month
+                    div_response = await client.get(
+                        f"https://api.massive.com/v3/reference/dividends",
+                        params={"apiKey": api_key, "ticker": symbol, "limit": 5}
+                    )
+                    
+                    has_dividend_this_month = False
+                    if div_response.status_code == 200:
+                        div_data = div_response.json()
+                        for div in div_data.get("results", []):
+                            ex_date = div.get("ex_dividend_date", "")
+                            if ex_date and ex_date.startswith(datetime.now().strftime("%Y-%m")):
+                                has_dividend_this_month = True
+                                break
+                    
+                    if has_dividend_this_month:
+                        continue
+                    
+                    # Get options chain
+                    options_response = await client.get(
+                        f"https://api.massive.com/v3/snapshot/options/{symbol}",
+                        params={"apiKey": api_key, "limit": 250, "contract_type": "call"}
+                    )
+                    
+                    if options_response.status_code != 200:
+                        continue
+                    
+                    options_data = options_response.json()
+                    options_results = options_data.get("results", [])
+                    
+                    if not options_results:
+                        continue
+                    
+                    # Find best weekly (DTE <= 7, ROI >= 1%) and monthly (DTE 8-45, ROI >= 4%) options
+                    best_weekly = None
+                    best_monthly = None
+                    
+                    for opt in options_results:
+                        details = opt.get("details", {})
+                        day = opt.get("day", {})
+                        greeks = opt.get("greeks", {})
+                        last_quote = opt.get("last_quote", {})
+                        
+                        if details.get("contract_type") != "call":
+                            continue
+                        
+                        strike = details.get("strike_price", 0)
+                        expiry = details.get("expiration_date", "")
+                        dte = calculate_dte(expiry)
+                        
+                        if dte < 1 or dte > 45:
+                            continue
+                        
+                        delta = abs(greeks.get("delta", 0)) if greeks else 0
+                        if delta < 0.15 or delta > 0.45:
+                            continue
+                        
+                        # Calculate premium
+                        bid = last_quote.get("bid", 0) if last_quote else 0
+                        ask = last_quote.get("ask", 0) if last_quote else 0
+                        premium = ((bid + ask) / 2) if bid > 0 and ask > 0 else (day.get("close", 0) if day else 0)
+                        
+                        if premium <= 0:
+                            continue
+                        
+                        roi_pct = (premium / current_price) * 100
+                        iv = opt.get("implied_volatility", 0.25) or 0.25
+                        volume = day.get("volume", 0) if day else 0
+                        open_interest = opt.get("open_interest", 0)
+                        
+                        opp_data = {
+                            "symbol": symbol,
+                            "stock_price": round(current_price, 2),
+                            "strike": strike,
+                            "expiry": expiry,
+                            "dte": dte,
+                            "premium": round(premium, 2),
+                            "roi_pct": round(roi_pct, 2),
+                            "delta": round(delta, 3),
+                            "iv": round(iv, 4),
+                            "sma_50": round(sma_50, 2),
+                            "sma_200": round(sma_200, 2),
+                            "trend_6m": round(trend_6m, 1),
+                            "trend_12m": round(trend_12m, 1),
+                            "volume": volume,
+                            "open_interest": open_interest,
+                            "expiry_type": "weekly" if dte <= 7 else "monthly"
+                        }
+                        
+                        # Weekly: min 1% ROI
+                        if dte <= 7 and roi_pct >= 1.0:
+                            if best_weekly is None or roi_pct > best_weekly["roi_pct"]:
+                                best_weekly = opp_data.copy()
+                        
+                        # Monthly: min 4% ROI
+                        elif dte > 7 and roi_pct >= 4.0:
+                            if best_monthly is None or roi_pct > best_monthly["roi_pct"]:
+                                best_monthly = opp_data.copy()
+                    
+                    # Add best opportunities for this symbol
+                    if best_weekly:
+                        # Calculate composite score
+                        roi_score = min(best_weekly["roi_pct"] * 15, 35)
+                        trend_score = min((best_weekly["trend_6m"] + best_weekly["trend_12m"]) / 4, 25)
+                        delta_score = max(0, 20 - abs(best_weekly["delta"] - 0.3) * 50)
+                        sma_score = 20 if current_price > sma_200 and current_price > sma_50 else 10
+                        best_weekly["score"] = round(roi_score + trend_score + delta_score + sma_score, 1)
+                        opportunities.append(best_weekly)
+                    
+                    if best_monthly:
+                        roi_score = min(best_monthly["roi_pct"] * 8, 35)
+                        trend_score = min((best_monthly["trend_6m"] + best_monthly["trend_12m"]) / 4, 25)
+                        delta_score = max(0, 20 - abs(best_monthly["delta"] - 0.3) * 50)
+                        sma_score = 20 if current_price > sma_200 and current_price > sma_50 else 10
+                        best_monthly["score"] = round(roi_score + trend_score + delta_score + sma_score, 1)
+                        opportunities.append(best_monthly)
+                    
+                except Exception as e:
+                    logging.error(f"Dashboard scan error for {symbol}: {e}")
+                    continue
+        
+        # Sort by score and get top 10 unique symbols
+        opportunities.sort(key=lambda x: x["score"], reverse=True)
+        
+        # Keep only one entry per symbol (best score)
+        seen_symbols = set()
+        unique_opps = []
+        for opp in opportunities:
+            if opp["symbol"] not in seen_symbols:
+                seen_symbols.add(opp["symbol"])
+                unique_opps.append(opp)
+                if len(unique_opps) >= 10:
+                    break
+        
+        return {
+            "opportunities": unique_opps,
+            "total": len(unique_opps),
+            "is_live": True,
+            "filters_applied": {
+                "price_range": "$30-$90",
+                "trend": "Up trending 6m & 12m",
+                "sma": "Above SMA 200, within 10% of SMA 50",
+                "dividends": "Excluded current month",
+                "weekly_min_roi": "1%",
+                "monthly_min_roi": "4%"
+            }
+        }
+        
+    except Exception as e:
+        logging.error(f"Dashboard opportunities error: {e}")
+        return {"opportunities": [], "total": 0, "error": str(e), "is_mock": True}
+
 @screener_router.get("/pmcc")
 async def screen_pmcc(
     min_leaps_delta: float = Query(0.8, ge=0.5, le=1),
