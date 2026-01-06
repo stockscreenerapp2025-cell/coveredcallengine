@@ -983,7 +983,16 @@ async def screen_pmcc(
     if api_key:
         try:
             opportunities = []
-            symbols_to_scan = ["AAPL", "MSFT", "GOOGL", "AMZN", "NVDA", "META", "TSLA", "SPY", "QQQ"]
+            symbols_to_scan = [
+                # Large Cap Tech
+                "AAPL", "MSFT", "GOOGL", "AMZN", "NVDA", "META", "TSLA",
+                # ETFs
+                "SPY", "QQQ", "IWM",
+                # Mid-range stocks
+                "INTC", "AMD", "CSCO", "PYPL", "DIS", "NKE", "KO",
+                # Lower-priced stocks
+                "BAC", "F", "T", "PFE", "PLTR", "SOFI", "RIVN"
+            ]
             
             async with httpx.AsyncClient(timeout=30.0) as client:
                 for symbol in symbols_to_scan:
