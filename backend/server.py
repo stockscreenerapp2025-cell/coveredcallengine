@@ -186,20 +186,16 @@ async def get_admin_settings() -> AdminSettings:
     return AdminSettings()
 
 async def get_massive_client():
-    """Get Massive.com API credentials"""
+    """Get Massive.com API key"""
     settings = await get_admin_settings()
-    if settings.massive_api_key and settings.massive_access_id and settings.massive_secret_key:
-        return {
-            "api_key": settings.massive_api_key,
-            "access_id": settings.massive_access_id,
-            "secret_key": settings.massive_secret_key
-        }
+    if settings.massive_api_key and "..." not in settings.massive_api_key:
+        return settings.massive_api_key
     return None
 
 async def get_marketaux_client():
     """Get MarketAux API token"""
     settings = await get_admin_settings()
-    if settings.marketaux_api_token:
+    if settings.marketaux_api_token and "..." not in settings.marketaux_api_token:
         return settings.marketaux_api_token
     return None
 
