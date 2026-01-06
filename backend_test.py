@@ -159,16 +159,25 @@ class PremiumHunterAPITester:
                        f"Status: {status}, Data points: {len(data) if isinstance(data, list) else 0}")
 
     def test_options_endpoints(self):
-        """Test options-related endpoints"""
+        """Test options-related endpoints with focus on live data"""
         if not self.token:
             self.log_result("Options Test", False, "No user token available")
             return
         
-        # Test options chain
+        # Test options chain for AAPL (specific requirement from review)
         success, data, status = self.make_request('GET', 'options/chain/AAPL', token=self.token)
-        self.log_result("Options Chain", 
-                       success and status == 200 and data.get("symbol") == "AAPL",
+        basic_success = success and status == 200 and data.get("symbol") == "AAPL"
+        self.log_result("Options Chain (AAPL) - Basic", 
+                       basic_success,
                        f"Status: {status}, Options count: {len(data.get('options', []))}")
+        
+        # Critical test: Check for live data vs mock data
+        if basic_success:
+            is_live = data.get("is_live", False)
+            is_mock = data.get("is_mock", False)
+            self.log_result("Options Chain (AAPL) - Live Data Integration", 
+                           is_live and not is_mock,
+                           f"is_live: {is_live}, is_mock: {is_mock} - Expected: is_live=True")
         
         # Test option expirations
         success, data, status = self.make_request('GET', 'options/expirations/AAPL', token=self.token)
