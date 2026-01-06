@@ -616,6 +616,18 @@ async def get_options_chain(
     if api_key:
         try:
             async with httpx.AsyncClient(timeout=30.0) as client:
+                # First get the stock price
+                stock_response = await client.get(
+                    f"https://api.massive.com/v2/aggs/ticker/{symbol}/prev",
+                    params={"apiKey": api_key}
+                )
+                underlying_price = 0
+                if stock_response.status_code == 200:
+                    stock_data = stock_response.json()
+                    if stock_data.get("results"):
+                        underlying_price = stock_data["results"][0].get("c", 0)
+                
+                # Then get options chain
                 params = {
                     "apiKey": api_key,
                     "limit": 250
@@ -639,9 +651,6 @@ async def get_options_chain(
                     logging.info(f"Options chain returned {len(results)} results for {symbol}")
                     
                     if results:
-                        # Get underlying price from first result
-                        underlying_price = results[0].get("underlying_asset", {}).get("price", 0) if results else 0
-                        
                         options = []
                         for opt in results:
                             details = opt.get("details", {})
@@ -656,15 +665,15 @@ async def get_options_chain(
                                 "expiry": details.get("expiration_date", ""),
                                 "dte": calculate_dte(details.get("expiration_date", "")),
                                 "type": details.get("contract_type", "call"),
-                                "bid": last_quote.get("bid", 0),
-                                "ask": last_quote.get("ask", 0),
-                                "last": day.get("close", 0) or last_quote.get("midpoint", 0),
-                                "delta": greeks.get("delta", 0),
-                                "gamma": greeks.get("gamma", 0),
-                                "theta": greeks.get("theta", 0),
-                                "vega": greeks.get("vega", 0),
+                                "bid": last_quote.get("bid", 0) if last_quote else 0,
+                                "ask": last_quote.get("ask", 0) if last_quote else 0,
+                                "last": (day.get("close", 0) if day else 0) or (last_quote.get("midpoint", 0) if last_quote else 0),
+                                "delta": greeks.get("delta", 0) if greeks else 0,
+                                "gamma": greeks.get("gamma", 0) if greeks else 0,
+                                "theta": greeks.get("theta", 0) if greeks else 0,
+                                "vega": greeks.get("vega", 0) if greeks else 0,
                                 "iv": opt.get("implied_volatility", 0),
-                                "volume": day.get("volume", 0),
+                                "volume": day.get("volume", 0) if day else 0,
                                 "open_interest": opt.get("open_interest", 0),
                                 "break_even": opt.get("break_even_price", 0),
                             })
