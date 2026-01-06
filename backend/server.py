@@ -1514,6 +1514,10 @@ async def startup():
     await db.watchlist.create_index([("user_id", 1), ("symbol", 1)])
     await db.screener_filters.create_index("user_id")
     
+    # Create cache index with TTL (auto-expire after 1 hour)
+    await db.api_cache.create_index("cache_key", unique=True)
+    await db.api_cache.create_index("cached_at", expireAfterSeconds=3600)  # Auto-delete after 1 hour
+    
     # Create default admin if not exists
     admin = await db.users.find_one({"email": "admin@premiumhunter.com"})
     if not admin:
