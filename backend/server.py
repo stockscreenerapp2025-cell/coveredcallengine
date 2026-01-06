@@ -1287,51 +1287,6 @@ async def get_dashboard_opportunities(
     except Exception as e:
         logging.error(f"Dashboard opportunities error: {e}")
         return {"opportunities": [], "total": 0, "error": str(e), "is_mock": True}
-                        best_weekly["score"] = round(roi_score + trend_score + delta_score + sma_score, 1)
-                        opportunities.append(best_weekly)
-                    
-                    if best_monthly:
-                        roi_score = min(best_monthly["roi_pct"] * 8, 35)
-                        trend_score = min((best_monthly["trend_6m"] + best_monthly["trend_12m"]) / 4, 25)
-                        delta_score = max(0, 20 - abs(best_monthly["delta"] - 0.3) * 50)
-                        sma_score = 20 if current_price > sma_200 and current_price > sma_50 else 10
-                        best_monthly["score"] = round(roi_score + trend_score + delta_score + sma_score, 1)
-                        opportunities.append(best_monthly)
-                    
-                except Exception as e:
-                    logging.error(f"Dashboard scan error for {symbol}: {e}")
-                    continue
-        
-        # Sort by score and get top 10 unique symbols
-        opportunities.sort(key=lambda x: x["score"], reverse=True)
-        
-        # Keep only one entry per symbol (best score)
-        seen_symbols = set()
-        unique_opps = []
-        for opp in opportunities:
-            if opp["symbol"] not in seen_symbols:
-                seen_symbols.add(opp["symbol"])
-                unique_opps.append(opp)
-                if len(unique_opps) >= 10:
-                    break
-        
-        return {
-            "opportunities": unique_opps,
-            "total": len(unique_opps),
-            "is_live": True,
-            "filters_applied": {
-                "price_range": "$30-$90",
-                "trend": "Up trending 6m & 12m",
-                "sma": "Above SMA 200, within 10% of SMA 50",
-                "dividends": "Excluded current month",
-                "weekly_min_roi": "1%",
-                "monthly_min_roi": "4%"
-            }
-        }
-        
-    except Exception as e:
-        logging.error(f"Dashboard opportunities error: {e}")
-        return {"opportunities": [], "total": 0, "error": str(e), "is_mock": True}
 
 @screener_router.get("/pmcc")
 async def screen_pmcc(
