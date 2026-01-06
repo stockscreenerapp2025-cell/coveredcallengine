@@ -979,6 +979,15 @@ async def screen_covered_calls(
     elif monthly_only:
         filtered = [o for o in filtered if o["dte"] > 7]
     
+    # Keep only the best opportunity per symbol (highest score)
+    best_by_symbol = {}
+    for opp in filtered:
+        sym = opp["symbol"]
+        if sym not in best_by_symbol or opp["score"] > best_by_symbol[sym]["score"]:
+            best_by_symbol[sym] = opp
+    
+    filtered = sorted(best_by_symbol.values(), key=lambda x: x["score"], reverse=True)
+    
     return {"opportunities": filtered, "total": len(filtered), "is_mock": True}
 
 @screener_router.get("/pmcc")
