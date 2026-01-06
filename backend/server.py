@@ -185,8 +185,8 @@ async def get_admin_settings() -> AdminSettings:
         return AdminSettings(**settings)
     return AdminSettings()
 
-async def get_massive_client():
-    """Get Massive.com API key"""
+async def get_massive_api_key():
+    """Get Massive.com API key string"""
     settings = await get_admin_settings()
     if settings.massive_api_key and "..." not in settings.massive_api_key:
         return settings.massive_api_key
@@ -443,16 +443,17 @@ async def get_stock_quote(symbol: str, user: dict = Depends(get_current_user)):
     symbol = symbol.upper()
     
     # Try Massive.com API first
-    massive_creds = await get_massive_client()
-    if massive_creds:
+    api_key = await get_massive_api_key()
+    if api_key:
         try:
-            async with httpx.AsyncClient() as client:
+            async with httpx.AsyncClient(timeout=30.0) as client:
                 # Massive.com uses apiKey as query parameter (similar to Polygon)
                 # Get previous day aggregates for price data
                 response = await client.get(
                     f"https://api.massive.com/v2/aggs/ticker/{symbol}/prev",
-                    params={"apiKey": massive_creds["api_key"]}
+                    params={"apiKey": api_key}
                 )
+                logging.info(f"Stock quote API response for {symbol}: status={response.status_code}")
                 if response.status_code == 200:
                     data = response.json()
                     if data.get("results") and len(data["results"]) > 0:
@@ -472,7 +473,7 @@ async def get_stock_quote(symbol: str, user: dict = Depends(get_current_user)):
                 # Fallback: try last trade endpoint
                 response = await client.get(
                     f"https://api.massive.com/v2/last/trade/{symbol}",
-                    params={"apiKey": massive_creds["api_key"]}
+                    params={"apiKey": api_key}
                 )
                 if response.status_code == 200:
                     data = response.json()
