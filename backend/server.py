@@ -917,7 +917,11 @@ async def screen_covered_calls(
             opportunities.sort(key=lambda x: x["score"], reverse=True)
             
             logging.info(f"Found {len(opportunities)} live opportunities")
-            return {"opportunities": opportunities[:100], "total": len(opportunities), "is_live": True}
+            
+            # Cache the live data
+            result = {"opportunities": opportunities[:100], "total": len(opportunities), "is_live": True, "from_cache": False}
+            await set_cached_data(cache_key, result)
+            return result
             
         except Exception as e:
             logging.error(f"Screener error with Massive.com: {e}")
