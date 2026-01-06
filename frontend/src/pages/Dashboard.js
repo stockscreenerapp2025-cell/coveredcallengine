@@ -276,29 +276,44 @@ const Dashboard = () => {
       {/* Top Opportunities */}
       <Card className="glass-card" data-testid="opportunities-card">
         <CardHeader className="flex flex-row items-center justify-between">
-          <CardTitle className="text-lg flex items-center gap-2">
-            <Target className="w-5 h-5 text-emerald-400" />
-            Top Covered Call Opportunities
-          </CardTitle>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => navigate('/screener')}
-            className="text-emerald-400 hover:text-emerald-300"
-          >
-            View All <ArrowRight className="w-4 h-4 ml-1" />
-          </Button>
+          <div>
+            <CardTitle className="text-lg flex items-center gap-2">
+              <Target className="w-5 h-5 text-emerald-400" />
+              Top 10 Covered Call Opportunities
+            </CardTitle>
+            <p className="text-xs text-zinc-500 mt-1">
+              $30-$90 stocks • Up trending • Above SMA 200 • Weekly ≥1% ROI, Monthly ≥4% ROI
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            {opportunitiesInfo?.is_live && (
+              <Badge className="bg-emerald-500/20 text-emerald-400 border-emerald-500/30">
+                <CheckCircle className="w-3 h-3 mr-1" />
+                Live Data
+              </Badge>
+            )}
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => navigate('/screener')}
+              className="text-emerald-400 hover:text-emerald-300"
+            >
+              View All <ArrowRight className="w-4 h-4 ml-1" />
+            </Button>
+          </div>
         </CardHeader>
         <CardContent>
-          {loading ? (
+          {loading || oppsLoading ? (
             <div className="space-y-3">
-              {Array(5).fill(0).map((_, i) => (
-                <Skeleton key={i} className="h-16" />
+              {Array(10).fill(0).map((_, i) => (
+                <Skeleton key={i} className="h-12" />
               ))}
             </div>
           ) : opportunities.length === 0 ? (
             <div className="text-center py-8 text-zinc-500">
-              No opportunities found. Try adjusting your filters.
+              <AlertCircle className="w-12 h-12 mx-auto mb-4 opacity-50" />
+              <p>No opportunities match the strict criteria.</p>
+              <p className="text-sm mt-2">Try the full screener for more results.</p>
             </div>
           ) : (
             <div className="overflow-x-auto">
@@ -308,11 +323,13 @@ const Dashboard = () => {
                     <th>Symbol</th>
                     <th>Price</th>
                     <th>Strike</th>
-                    <th>Expiry</th>
+                    <th>Type</th>
+                    <th>DTE</th>
                     <th>Premium</th>
                     <th>ROI</th>
                     <th>Delta</th>
-                    <th>IV Rank</th>
+                    <th>6M Trend</th>
+                    <th>12M Trend</th>
                     <th>Score</th>
                   </tr>
                 </thead>
@@ -322,11 +339,21 @@ const Dashboard = () => {
                       <td className="font-semibold text-white">{opp.symbol}</td>
                       <td>${opp.stock_price?.toFixed(2)}</td>
                       <td>${opp.strike?.toFixed(2)}</td>
-                      <td>{opp.expiry}</td>
+                      <td>
+                        <Badge className={opp.expiry_type === 'weekly' ? 'bg-cyan-500/20 text-cyan-400 border-cyan-500/30' : 'bg-violet-500/20 text-violet-400 border-violet-500/30'}>
+                          {opp.expiry_type || (opp.dte <= 7 ? 'Weekly' : 'Monthly')}
+                        </Badge>
+                      </td>
+                      <td>{opp.dte}d</td>
                       <td className="text-emerald-400">${opp.premium?.toFixed(2)}</td>
-                      <td className="text-cyan-400">{opp.roi_pct?.toFixed(2)}%</td>
+                      <td className="text-cyan-400 font-medium">{opp.roi_pct?.toFixed(2)}%</td>
                       <td>{opp.delta?.toFixed(2)}</td>
-                      <td>{opp.iv_rank?.toFixed(0)}%</td>
+                      <td className={opp.trend_6m >= 0 ? 'text-emerald-400' : 'text-red-400'}>
+                        {opp.trend_6m ? `${opp.trend_6m >= 0 ? '+' : ''}${opp.trend_6m?.toFixed(1)}%` : '-'}
+                      </td>
+                      <td className={opp.trend_12m >= 0 ? 'text-emerald-400' : 'text-red-400'}>
+                        {opp.trend_12m ? `${opp.trend_12m >= 0 ? '+' : ''}${opp.trend_12m?.toFixed(1)}%` : '-'}
+                      </td>
                       <td>
                         <Badge className={`${opp.score >= 80 ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' : opp.score >= 60 ? 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30' : 'bg-cyan-500/20 text-cyan-400 border-cyan-500/30'}`}>
                           {opp.score?.toFixed(0)}
@@ -341,18 +368,28 @@ const Dashboard = () => {
         </CardContent>
       </Card>
 
-      {/* Mock Data Notice */}
-      <div className="glass-card p-4 border-l-4 border-yellow-500">
-        <div className="flex items-center gap-3">
-          <Activity className="w-5 h-5 text-yellow-400" />
-          <div>
-            <div className="text-sm font-medium text-yellow-400">Using Mock Data</div>
-            <div className="text-xs text-zinc-500">
-              Configure your Polygon.io API key in Admin settings for live market data
+      {/* Data Source Notice */}
+      {opportunitiesInfo && (
+        <div className={`glass-card p-4 border-l-4 ${opportunitiesInfo.is_live ? 'border-emerald-500' : 'border-yellow-500'}`}>
+          <div className="flex items-center gap-3">
+            {opportunitiesInfo.is_live ? (
+              <CheckCircle className="w-5 h-5 text-emerald-400" />
+            ) : (
+              <Activity className="w-5 h-5 text-yellow-400" />
+            )}
+            <div>
+              <div className={`text-sm font-medium ${opportunitiesInfo.is_live ? 'text-emerald-400' : 'text-yellow-400'}`}>
+                {opportunitiesInfo.is_live ? 'Live Market Data' : 'Using Mock Data'}
+              </div>
+              <div className="text-xs text-zinc-500">
+                {opportunitiesInfo.is_live 
+                  ? 'Data from Massive.com API with advanced filtering criteria'
+                  : 'Configure your API key in Admin settings for live market data'}
+              </div>
             </div>
           </div>
         </div>
-      </div>
+      )}
     </div>
   );
 };
