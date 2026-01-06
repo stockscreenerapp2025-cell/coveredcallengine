@@ -548,12 +548,12 @@ async def get_options_chain(
     symbol = symbol.upper()
     
     # Try Massive.com Options API first
-    massive_creds = await get_massive_client()
-    if massive_creds:
+    api_key = await get_massive_api_key()
+    if api_key:
         try:
             async with httpx.AsyncClient(timeout=30.0) as client:
                 params = {
-                    "apiKey": massive_creds["api_key"],
+                    "apiKey": api_key,
                     "limit": 250
                 }
                 
@@ -561,14 +561,18 @@ async def get_options_chain(
                 if expiry:
                     params["expiration_date"] = expiry
                 
-                response = await client.get(
-                    f"https://api.massive.com/v3/snapshot/options/{symbol}",
-                    params=params
-                )
+                url = f"https://api.massive.com/v3/snapshot/options/{symbol}"
+                logging.info(f"Options chain API request: {url} with params (excluding key): expiry={expiry}")
+                
+                response = await client.get(url, params=params)
+                
+                logging.info(f"Options chain API response: status={response.status_code}")
                 
                 if response.status_code == 200:
                     data = response.json()
                     results = data.get("results", [])
+                    
+                    logging.info(f"Options chain returned {len(results)} results for {symbol}")
                     
                     if results:
                         # Get underlying price from first result
@@ -610,6 +614,10 @@ async def get_options_chain(
                             "options": call_options,
                             "is_live": True
                         }
+                elif response.status_code == 403:
+                    logging.error(f"Massive.com API 403 Forbidden - check API plan for options access")
+                else:
+                    logging.error(f"Massive.com API error: {response.status_code} - {response.text[:200]}")
         except Exception as e:
             logging.error(f"Massive.com Options API error: {e}")
     
