@@ -126,7 +126,7 @@ class PremiumHunterAPITester:
                        f"Status: {status}, Response: {data}")
 
     def test_stocks_endpoints(self):
-        """Test stock-related endpoints"""
+        """Test stock-related endpoints with focus on live data"""
         if not self.token:
             self.log_result("Stocks Test", False, "No user token available")
             return
@@ -137,11 +137,20 @@ class PremiumHunterAPITester:
                        success and status == 200 and isinstance(data, dict),
                        f"Status: {status}, Indices count: {len(data) if isinstance(data, dict) else 0}")
         
-        # Test stock quote
+        # Test stock quote for AAPL (specific requirement from review)
         success, data, status = self.make_request('GET', 'stocks/quote/AAPL', token=self.token)
-        self.log_result("Stock Quote (AAPL)", 
-                       success and status == 200 and data.get("symbol") == "AAPL",
+        basic_success = success and status == 200 and data.get("symbol") == "AAPL"
+        self.log_result("Stock Quote (AAPL) - Basic", 
+                       basic_success,
                        f"Status: {status}, Price: {data.get('price', 'N/A')}")
+        
+        # Critical test: Check for live data vs mock data
+        if basic_success:
+            is_live = data.get("is_live", False)
+            is_mock = data.get("is_mock", False)
+            self.log_result("Stock Quote (AAPL) - Live Data Integration", 
+                           is_live and not is_mock,
+                           f"is_live: {is_live}, is_mock: {is_mock} - Expected: is_live=True")
         
         # Test historical data
         success, data, status = self.make_request('GET', 'stocks/historical/AAPL?days=7', token=self.token)
