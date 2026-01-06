@@ -688,10 +688,30 @@ async def screen_covered_calls(
             async with httpx.AsyncClient(timeout=30.0) as client:
                 for symbol in symbols_to_scan:
                     try:
+                        # First get the current stock price
+                        stock_response = await client.get(
+                            f"https://api.massive.com/v2/aggs/ticker/{symbol}/prev",
+                            params={"apiKey": massive_creds["api_key"]}
+                        )
+                        
+                        underlying_price = 0
+                        if stock_response.status_code == 200:
+                            stock_data = stock_response.json()
+                            if stock_data.get("results"):
+                                underlying_price = stock_data["results"][0].get("c", 0)  # close price
+                        
+                        if underlying_price == 0:
+                            logging.warning(f"Could not get price for {symbol}")
+                            continue
+                            
+                        # Skip if price out of range
+                        if underlying_price < min_price or underlying_price > max_price:
+                            continue
+                        
                         # Get options chain snapshot
                         params = {
                             "apiKey": massive_creds["api_key"],
-                            "limit": 100,
+                            "limit": 250,
                             "contract_type": "call"
                         }
                         
@@ -704,90 +724,101 @@ async def screen_covered_calls(
                             data = response.json()
                             results = data.get("results", [])
                             
-                            if results:
-                                underlying_price = results[0].get("underlying_asset", {}).get("price", 0)
+                            for opt in results:
+                                details = opt.get("details", {})
+                                day = opt.get("day", {})
+                                greeks = opt.get("greeks", {})
+                                last_quote = opt.get("last_quote", {})
                                 
-                                # Skip if price out of range
-                                if underlying_price < min_price or underlying_price > max_price:
+                                # Only process calls
+                                if details.get("contract_type") != "call":
                                     continue
                                 
-                                for opt in results:
-                                    details = opt.get("details", {})
-                                    day = opt.get("day", {})
-                                    greeks = opt.get("greeks", {})
-                                    last_quote = opt.get("last_quote", {})
-                                    
-                                    # Only process calls
-                                    if details.get("contract_type") != "call":
-                                        continue
-                                    
-                                    strike = details.get("strike_price", 0)
-                                    expiry = details.get("expiration_date", "")
-                                    dte = calculate_dte(expiry)
-                                    
-                                    # Apply DTE filters
-                                    if dte > max_dte or dte < 1:
-                                        continue
-                                    if weekly_only and dte > 7:
-                                        continue
-                                    if monthly_only and dte <= 7:
-                                        continue
-                                    
-                                    delta = abs(greeks.get("delta", 0))
-                                    if delta < min_delta or delta > max_delta:
-                                        continue
-                                    
-                                    # Calculate premium and ROI
-                                    bid = last_quote.get("bid", 0)
-                                    ask = last_quote.get("ask", 0)
-                                    premium = (bid + ask) / 2 if bid and ask else day.get("close", 0)
-                                    
-                                    if underlying_price > 0 and premium > 0:
-                                        roi_pct = (premium / underlying_price) * 100
-                                    else:
-                                        roi_pct = 0
-                                    
-                                    if roi_pct < min_roi:
-                                        continue
-                                    
-                                    volume = day.get("volume", 0)
-                                    open_interest = opt.get("open_interest", 0)
-                                    
-                                    if volume < min_volume or open_interest < min_open_interest:
-                                        continue
-                                    
-                                    iv = opt.get("implied_volatility", 0.25)
-                                    iv_rank = min(100, iv * 200)  # Estimate IV rank
-                                    
-                                    if iv_rank < min_iv_rank:
-                                        continue
-                                    
-                                    # Calculate score
-                                    roi_score = min(roi_pct * 15, 40)
-                                    iv_score = iv_rank / 100 * 20
-                                    delta_score = 20 - abs(delta - 0.3) * 50
-                                    protection = ((strike - underlying_price + premium) / underlying_price * 100) if strike > underlying_price else (premium / underlying_price * 100)
-                                    protection_score = min(protection, 10) * 2
-                                    
-                                    score = round(roi_score + iv_score + delta_score + protection_score, 1)
-                                    
-                                    opportunities.append({
-                                        "symbol": symbol,
-                                        "stock_price": round(underlying_price, 2),
-                                        "strike": strike,
-                                        "expiry": expiry,
-                                        "dte": dte,
-                                        "premium": round(premium, 2),
-                                        "roi_pct": round(roi_pct, 2),
-                                        "delta": round(delta, 3),
-                                        "theta": round(greeks.get("theta", 0), 4),
-                                        "iv": round(iv, 4),
-                                        "iv_rank": round(iv_rank, 1),
-                                        "downside_protection": round(protection, 2),
-                                        "volume": volume,
-                                        "open_interest": open_interest,
-                                        "score": score
-                                    })
+                                strike = details.get("strike_price", 0)
+                                expiry = details.get("expiration_date", "")
+                                dte = calculate_dte(expiry)
+                                
+                                # Apply DTE filters
+                                if dte > max_dte or dte < 1:
+                                    continue
+                                if weekly_only and dte > 7:
+                                    continue
+                                if monthly_only and dte <= 7:
+                                    continue
+                                
+                                delta = abs(greeks.get("delta", 0))
+                                if delta < min_delta or delta > max_delta:
+                                    continue
+                                
+                                # Calculate premium - use day close, last_quote, or estimate
+                                bid = last_quote.get("bid", 0) or 0
+                                ask = last_quote.get("ask", 0) or 0
+                                day_close = day.get("close", 0) or 0
+                                
+                                if bid > 0 and ask > 0:
+                                    premium = (bid + ask) / 2
+                                elif day_close > 0:
+                                    premium = day_close
+                                else:
+                                    # Estimate premium based on intrinsic + time value
+                                    intrinsic = max(0, underlying_price - strike)
+                                    time_value = underlying_price * 0.02 * (dte / 30)  # rough estimate
+                                    premium = intrinsic + time_value
+                                
+                                if premium <= 0:
+                                    continue
+                                
+                                # Calculate ROI
+                                roi_pct = (premium / underlying_price) * 100
+                                
+                                if roi_pct < min_roi:
+                                    continue
+                                
+                                volume = day.get("volume", 0) or 0
+                                open_interest = opt.get("open_interest", 0) or 0
+                                
+                                if volume < min_volume or open_interest < min_open_interest:
+                                    continue
+                                
+                                iv = opt.get("implied_volatility", 0.25) or 0.25
+                                iv_rank = min(100, iv * 100)  # Convert to percentage
+                                
+                                if iv_rank < min_iv_rank:
+                                    continue
+                                
+                                # Calculate downside protection
+                                if strike > underlying_price:
+                                    protection = (premium / underlying_price) * 100
+                                else:
+                                    protection = ((strike - underlying_price + premium) / underlying_price * 100)
+                                
+                                # Calculate score
+                                roi_score = min(roi_pct * 15, 40)
+                                iv_score = min(iv_rank / 100 * 20, 20)
+                                delta_score = max(0, 20 - abs(delta - 0.3) * 50)
+                                protection_score = min(abs(protection), 10) * 2
+                                
+                                score = round(roi_score + iv_score + delta_score + protection_score, 1)
+                                
+                                opportunities.append({
+                                    "symbol": symbol,
+                                    "stock_price": round(underlying_price, 2),
+                                    "strike": strike,
+                                    "expiry": expiry,
+                                    "dte": dte,
+                                    "premium": round(premium, 2),
+                                    "roi_pct": round(roi_pct, 2),
+                                    "delta": round(delta, 3),
+                                    "theta": round(greeks.get("theta", 0) or 0, 4),
+                                    "iv": round(iv, 4),
+                                    "iv_rank": round(iv_rank, 1),
+                                    "downside_protection": round(protection, 2),
+                                    "volume": volume,
+                                    "open_interest": open_interest,
+                                    "score": score
+                                })
+                        else:
+                            logging.warning(f"Options API returned {response.status_code} for {symbol}")
                     except Exception as e:
                         logging.error(f"Error scanning {symbol}: {e}")
                         continue
@@ -795,6 +826,7 @@ async def screen_covered_calls(
             # Sort by score
             opportunities.sort(key=lambda x: x["score"], reverse=True)
             
+            logging.info(f"Found {len(opportunities)} live opportunities")
             return {"opportunities": opportunities[:100], "total": len(opportunities), "is_live": True}
             
         except Exception as e:
