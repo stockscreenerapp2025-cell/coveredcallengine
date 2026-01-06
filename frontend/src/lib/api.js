@@ -53,6 +53,7 @@ export const optionsApi = {
 
 export const screenerApi = {
   getCoveredCalls: (params) => api.get('/screener/covered-calls', { params }),
+  getDashboardOpportunities: () => api.get('/screener/dashboard-opportunities'),
   getPMCC: (params) => api.get('/screener/pmcc', { params }),
   getFilters: () => api.get('/screener/filters'),
   saveFilter: (data) => api.post('/screener/filters', data),
