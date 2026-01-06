@@ -679,7 +679,7 @@ async def get_options_chain(
                             "is_live": True
                         }
                 elif response.status_code == 403:
-                    logging.error(f"Massive.com API 403 Forbidden - check API plan for options access")
+                    logging.error("Massive.com API 403 Forbidden - check API plan for options access")
                 else:
                     logging.error(f"Massive.com API error: {response.status_code} - {response.text[:200]}")
         except Exception as e:
