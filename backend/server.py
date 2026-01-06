@@ -1191,9 +1191,18 @@ async def get_dashboard_opportunities(
                         if dte < 1 or dte > 45:
                             continue
                         
-                        delta = abs(greeks.get("delta", 0)) if greeks else 0.3
-                        # RELAXED delta range
-                        if delta < 0.10 or delta > 0.50:
+                        # Filter for ATM or slightly OTM strikes only
+                        # ATM = within 2% of current price
+                        # Slightly OTM = 0% to 10% above current price
+                        strike_pct_diff = ((strike - current_price) / current_price) * 100
+                        
+                        # Accept strikes from -2% (slightly ITM) to +10% (OTM)
+                        if strike_pct_diff < -2 or strike_pct_diff > 10:
+                            continue
+                        
+                        delta = abs(greeks.get("delta", 0)) if greeks else 0
+                        # For covered calls, delta typically 0.25-0.45 for OTM calls
+                        if delta < 0.20 or delta > 0.55:
                             continue
                         
                         bid = last_quote.get("bid", 0) if last_quote else 0
@@ -1208,10 +1217,18 @@ async def get_dashboard_opportunities(
                         volume = day.get("volume", 0) if day else 0
                         open_interest = opt.get("open_interest", 0)
                         
+                        # Determine if ATM or OTM
+                        if strike_pct_diff >= -2 and strike_pct_diff <= 2:
+                            moneyness = "ATM"
+                        else:
+                            moneyness = "OTM"
+                        
                         opp_data = {
                             "symbol": symbol,
                             "stock_price": round(current_price, 2),
                             "strike": strike,
+                            "strike_pct": round(strike_pct_diff, 1),
+                            "moneyness": moneyness,
                             "expiry": expiry,
                             "dte": dte,
                             "premium": round(premium, 2),
