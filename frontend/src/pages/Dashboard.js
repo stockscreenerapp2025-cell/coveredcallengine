@@ -282,7 +282,7 @@ const Dashboard = () => {
               Top 10 Covered Call Opportunities
             </CardTitle>
             <p className="text-xs text-zinc-500 mt-1">
-              $25-$100 stocks • Positive trends • Above SMA 200 • Weekly ≥0.8% ROI, Monthly ≥2.5% ROI
+              $25-$100 stocks • ATM/OTM strikes • Positive trends • Weekly ≥0.8% ROI, Monthly ≥2.5% ROI
             </p>
           </div>
           <div className="flex items-center gap-2">
