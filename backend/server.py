@@ -871,9 +871,9 @@ async def screen_pmcc(
     user: dict = Depends(get_current_user)
 ):
     # Check if we have Massive.com credentials for live data
-    massive_creds = await get_massive_client()
+    api_key = await get_massive_api_key()
     
-    if massive_creds:
+    if api_key:
         try:
             opportunities = []
             symbols_to_scan = ["AAPL", "MSFT", "GOOGL", "AMZN", "NVDA", "META", "TSLA", "SPY", "QQQ"]
@@ -883,7 +883,7 @@ async def screen_pmcc(
                     try:
                         # Get options chain
                         params = {
-                            "apiKey": massive_creds["api_key"],
+                            "apiKey": api_key,
                             "limit": 250,
                             "contract_type": "call"
                         }
