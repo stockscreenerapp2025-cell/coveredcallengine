@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { stocksApi, newsApi, screenerApi, aiApi, portfolioApi } from '../lib/api';
+import { stocksApi, newsApi, screenerApi, portfolioApi } from '../lib/api';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Skeleton } from '../components/ui/skeleton';
@@ -9,14 +9,14 @@ import {
   TrendingUp,
   TrendingDown,
   Activity,
-  Brain,
   Newspaper,
   Target,
   ArrowRight,
   RefreshCw,
   DollarSign,
-  BarChart3,
-  Search
+  Search,
+  CheckCircle,
+  AlertCircle
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
