@@ -17,6 +17,8 @@ import csv
 import io
 import httpx
 from openai import OpenAI
+import hashlib
+import json
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -25,6 +27,9 @@ load_dotenv(ROOT_DIR / '.env')
 mongo_url = os.environ['MONGO_URL']
 client = AsyncIOMotorClient(mongo_url)
 db = client[os.environ['DB_NAME']]
+
+# Cache configuration - default cache duration in seconds (5 minutes for real-time data)
+CACHE_DURATION_SECONDS = 300
 
 # Security
 security = HTTPBearer()
@@ -45,6 +50,65 @@ screener_router = APIRouter(prefix="/screener", tags=["Screener"])
 admin_router = APIRouter(prefix="/admin", tags=["Admin"])
 ai_router = APIRouter(prefix="/ai", tags=["AI Insights"])
 news_router = APIRouter(prefix="/news", tags=["News"])
+
+# ==================== CACHE HELPERS ====================
+
+def generate_cache_key(prefix: str, params: Dict[str, Any]) -> str:
+    """Generate a unique cache key based on prefix and parameters"""
+    params_str = json.dumps(params, sort_keys=True)
+    hash_str = hashlib.md5(params_str.encode()).hexdigest()
+    return f"{prefix}_{hash_str}"
+
+async def get_cached_data(cache_key: str, max_age_seconds: int = CACHE_DURATION_SECONDS) -> Optional[Dict]:
+    """Retrieve cached data if it exists and is not expired"""
+    try:
+        cached = await db.api_cache.find_one({"cache_key": cache_key}, {"_id": 0})
+        if cached:
+            cached_at = cached.get("cached_at")
+            if isinstance(cached_at, str):
+                cached_at = datetime.fromisoformat(cached_at.replace('Z', '+00:00'))
+            
+            age = (datetime.now(timezone.utc) - cached_at).total_seconds()
+            if age < max_age_seconds:
+                logging.info(f"Cache hit for {cache_key}, age: {age:.1f}s")
+                return cached.get("data")
+            else:
+                logging.info(f"Cache expired for {cache_key}, age: {age:.1f}s > {max_age_seconds}s")
+    except Exception as e:
+        logging.error(f"Cache retrieval error: {e}")
+    return None
+
+async def set_cached_data(cache_key: str, data: Dict) -> bool:
+    """Store data in cache"""
+    try:
+        cache_doc = {
+            "cache_key": cache_key,
+            "data": data,
+            "cached_at": datetime.now(timezone.utc).isoformat()
+        }
+        await db.api_cache.update_one(
+            {"cache_key": cache_key},
+            {"$set": cache_doc},
+            upsert=True
+        )
+        logging.info(f"Cache set for {cache_key}")
+        return True
+    except Exception as e:
+        logging.error(f"Cache storage error: {e}")
+        return False
+
+async def clear_cache(prefix: str = None) -> int:
+    """Clear cache entries. If prefix provided, only clear matching entries."""
+    try:
+        if prefix:
+            result = await db.api_cache.delete_many({"cache_key": {"$regex": f"^{prefix}"}})
+        else:
+            result = await db.api_cache.delete_many({})
+        logging.info(f"Cleared {result.deleted_count} cache entries")
+        return result.deleted_count
+    except Exception as e:
+        logging.error(f"Cache clear error: {e}")
+        return 0
 
 # ==================== MODELS ====================
 
