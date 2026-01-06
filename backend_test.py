@@ -168,22 +168,53 @@ class PremiumHunterAPITester:
                        f"Status: {status}, Expirations: {len(data) if isinstance(data, list) else 0}")
 
     def test_screener_endpoints(self):
-        """Test screener functionality"""
+        """Test screener functionality with focus on live data integration"""
         if not self.token:
             self.log_result("Screener Test", False, "No user token available")
             return
         
-        # Test covered calls screener
-        success, data, status = self.make_request('GET', 'screener/covered-calls?min_roi=1.0', token=self.token)
-        self.log_result("Covered Calls Screener", 
-                       success and status == 200 and "opportunities" in data,
+        # Test covered calls screener with specific parameters from review request
+        success, data, status = self.make_request('GET', 'screener/covered-calls?min_roi=0.5&max_dte=45', token=self.token)
+        
+        # Check basic functionality
+        basic_success = success and status == 200 and "opportunities" in data
+        self.log_result("Covered Calls Screener - Basic", 
+                       basic_success,
                        f"Status: {status}, Opportunities: {len(data.get('opportunities', []))}")
+        
+        # Critical test: Check for live data vs mock data
+        if basic_success:
+            is_live = data.get("is_live", False)
+            is_mock = data.get("is_mock", False)
+            
+            # This is the main issue being tested - should be live data, not mock
+            self.log_result("Covered Calls Screener - Live Data Integration", 
+                           is_live and not is_mock,
+                           f"is_live: {is_live}, is_mock: {is_mock} - Expected: is_live=True, is_mock=False")
+            
+            # Verify opportunities structure for live data
+            opportunities = data.get("opportunities", [])
+            if opportunities:
+                sample_opp = opportunities[0]
+                required_fields = ["symbol", "stock_price", "strike", "expiry", "dte", "premium", "roi_pct", "delta", "iv", "volume", "open_interest", "score"]
+                has_all_fields = all(field in sample_opp for field in required_fields)
+                self.log_result("Covered Calls Screener - Data Structure", 
+                               has_all_fields,
+                               f"Sample opportunity fields: {list(sample_opp.keys())}")
         
         # Test PMCC screener
         success, data, status = self.make_request('GET', 'screener/pmcc', token=self.token)
-        self.log_result("PMCC Screener", 
-                       success and status == 200 and "opportunities" in data,
+        basic_success = success and status == 200 and "opportunities" in data
+        self.log_result("PMCC Screener - Basic", 
+                       basic_success,
                        f"Status: {status}, PMCC Opportunities: {len(data.get('opportunities', []))}")
+        
+        if basic_success:
+            is_live = data.get("is_live", False)
+            is_mock = data.get("is_mock", False)
+            self.log_result("PMCC Screener - Data Source", 
+                           True,  # PMCC can be live or mock based on API availability
+                           f"is_live: {is_live}, is_mock: {is_mock}")
         
         # Test save filter
         filter_data = {
