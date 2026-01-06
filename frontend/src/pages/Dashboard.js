@@ -342,7 +342,14 @@ const Dashboard = () => {
                         {opp.has_dividend && <span className="ml-1 text-yellow-400 text-xs">💰</span>}
                       </td>
                       <td>${opp.stock_price?.toFixed(2)}</td>
-                      <td>${opp.strike?.toFixed(2)}</td>
+                      <td>
+                        <div className="flex items-center gap-1">
+                          ${opp.strike?.toFixed(2)}
+                          <Badge className={opp.moneyness === 'ATM' ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30 text-xs' : 'bg-blue-500/20 text-blue-400 border-blue-500/30 text-xs'}>
+                            {opp.moneyness || (opp.strike_pct !== undefined ? (opp.strike_pct >= -2 && opp.strike_pct <= 2 ? 'ATM' : 'OTM') : '')}
+                          </Badge>
+                        </div>
+                      </td>
                       <td>
                         <Badge className={opp.expiry_type === 'weekly' ? 'bg-cyan-500/20 text-cyan-400 border-cyan-500/30' : 'bg-violet-500/20 text-violet-400 border-violet-500/30'}>
                           {opp.expiry_type || (opp.dte <= 7 ? 'Weekly' : 'Monthly')}
