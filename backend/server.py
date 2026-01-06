@@ -743,8 +743,25 @@ async def screen_covered_calls(
     min_open_interest: int = Query(0, ge=0),
     weekly_only: bool = Query(False),
     monthly_only: bool = Query(False),
+    bypass_cache: bool = Query(False),
     user: dict = Depends(get_current_user)
 ):
+    # Generate cache key based on all filter parameters
+    cache_params = {
+        "min_roi": min_roi, "max_dte": max_dte, "min_delta": min_delta, "max_delta": max_delta,
+        "min_iv_rank": min_iv_rank, "min_price": min_price, "max_price": max_price,
+        "min_volume": min_volume, "min_open_interest": min_open_interest,
+        "weekly_only": weekly_only, "monthly_only": monthly_only
+    }
+    cache_key = generate_cache_key("screener_covered_calls", cache_params)
+    
+    # Check cache first (unless bypassed)
+    if not bypass_cache:
+        cached_data = await get_cached_data(cache_key)
+        if cached_data:
+            cached_data["from_cache"] = True
+            return cached_data
+    
     # Check if we have Massive.com credentials for live data
     api_key = await get_massive_api_key()
     
