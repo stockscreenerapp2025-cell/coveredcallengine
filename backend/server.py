@@ -938,7 +938,17 @@ async def screen_covered_calls(
             # Sort by score
             opportunities.sort(key=lambda x: x["score"], reverse=True)
             
-            logging.info(f"Found {len(opportunities)} live opportunities")
+            # Keep only the best opportunity per symbol (highest score)
+            best_by_symbol = {}
+            for opp in opportunities:
+                sym = opp["symbol"]
+                if sym not in best_by_symbol or opp["score"] > best_by_symbol[sym]["score"]:
+                    best_by_symbol[sym] = opp
+            
+            # Convert back to list and sort by score
+            opportunities = sorted(best_by_symbol.values(), key=lambda x: x["score"], reverse=True)
+            
+            logging.info(f"Found {len(opportunities)} best opportunities (one per symbol)")
             
             # Cache the live data
             result = {"opportunities": opportunities[:100], "total": len(opportunities), "is_live": True, "from_cache": False}
