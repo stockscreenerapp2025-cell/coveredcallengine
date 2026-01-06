@@ -780,7 +780,20 @@ async def screen_covered_calls(
         try:
             opportunities = []
             # Scan popular stocks for options
-            symbols_to_scan = ["AAPL", "MSFT", "GOOGL", "AMZN", "NVDA", "META", "TSLA", "JPM", "SPY", "QQQ"]
+            symbols_to_scan = [
+                # Large Cap Tech ($100+)
+                "AAPL", "MSFT", "GOOGL", "AMZN", "NVDA", "META", "TSLA", 
+                # Major ETFs
+                "SPY", "QQQ", "IWM", "DIA",
+                # Financial ($100+)
+                "JPM", "GS", "V", "MA",
+                # Mid-range stocks ($50-$100)
+                "INTC", "AMD", "CSCO", "PYPL", "UBER", "DIS", "NKE", "SBUX", "KO", "PEP",
+                # Lower-priced stocks ($20-$50)
+                "BAC", "WFC", "C", "F", "GM", "T", "VZ", "PFE", "MRK", "ABBV",
+                # Additional popular options stocks
+                "PLTR", "SOFI", "RIVN", "LCID", "NIO", "SNAP", "HOOD", "COIN"
+            ]
             
             async with httpx.AsyncClient(timeout=30.0) as client:
                 for symbol in symbols_to_scan:
