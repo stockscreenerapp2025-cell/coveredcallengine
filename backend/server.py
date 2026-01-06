@@ -1427,6 +1427,39 @@ async def update_settings(settings: AdminSettings, user: dict = Depends(get_admi
     await db.admin_settings.update_one({}, {"$set": settings_dict}, upsert=True)
     return {"message": "Settings updated successfully"}
 
+@admin_router.post("/clear-cache")
+async def clear_api_cache(prefix: Optional[str] = None, admin: dict = Depends(get_admin_user)):
+    """Clear API response cache. Optionally filter by prefix."""
+    deleted_count = await clear_cache(prefix)
+    return {"message": f"Cleared {deleted_count} cache entries", "deleted_count": deleted_count}
+
+@admin_router.get("/cache-stats")
+async def get_cache_stats(admin: dict = Depends(get_admin_user)):
+    """Get cache statistics"""
+    try:
+        total_entries = await db.api_cache.count_documents({})
+        entries = await db.api_cache.find({}, {"cache_key": 1, "cached_at": 1, "_id": 0}).to_list(100)
+        
+        stats = {
+            "total_entries": total_entries,
+            "entries": []
+        }
+        
+        for entry in entries:
+            cached_at = entry.get("cached_at")
+            if isinstance(cached_at, str):
+                cached_at = datetime.fromisoformat(cached_at.replace('Z', '+00:00'))
+            age = (datetime.now(timezone.utc) - cached_at).total_seconds() if cached_at else 0
+            stats["entries"].append({
+                "cache_key": entry.get("cache_key"),
+                "age_seconds": round(age, 1)
+            })
+        
+        return stats
+    except Exception as e:
+        logging.error(f"Cache stats error: {e}")
+        return {"total_entries": 0, "error": str(e)}
+
 @admin_router.post("/make-admin/{user_id}")
 async def make_admin(user_id: str, admin: dict = Depends(get_admin_user)):
     result = await db.users.update_one({"id": user_id}, {"$set": {"is_admin": True}})
