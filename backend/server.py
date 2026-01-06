@@ -1294,6 +1294,7 @@ async def get_dashboard_opportunities(
             "is_live": True,
             "filters_applied": {
                 "price_range": "$25-$100",
+                "strike": "ATM or slightly OTM (-2% to +10%)",
                 "trend": "At least one positive trend (6M or 12M)",
                 "sma": "Above SMA 200 (or within 5%), within 15% of SMA 50",
                 "weekly_min_roi": "0.8%",
