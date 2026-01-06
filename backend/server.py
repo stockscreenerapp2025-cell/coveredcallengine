@@ -708,7 +708,7 @@ def calculate_dte(expiry_date: str) -> int:
         exp = datetime.strptime(expiry_date, "%Y-%m-%d")
         today = datetime.now()
         return max(0, (exp - today).days)
-    except:
+    except Exception:
         return 0
 
 @options_router.get("/expirations/{symbol}")
