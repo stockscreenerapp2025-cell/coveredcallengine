@@ -682,9 +682,11 @@ async def screen_covered_calls(
     user: dict = Depends(get_current_user)
 ):
     # Check if we have Massive.com credentials for live data
-    massive_creds = await get_massive_client()
+    api_key = await get_massive_api_key()
     
-    if massive_creds:
+    logging.info(f"Screener called: api_key={'present' if api_key else 'missing'}, min_roi={min_roi}, max_dte={max_dte}")
+    
+    if api_key:
         try:
             opportunities = []
             # Scan popular stocks for options
@@ -696,7 +698,7 @@ async def screen_covered_calls(
                         # First get the current stock price
                         stock_response = await client.get(
                             f"https://api.massive.com/v2/aggs/ticker/{symbol}/prev",
-                            params={"apiKey": massive_creds["api_key"]}
+                            params={"apiKey": api_key}
                         )
                         
                         underlying_price = 0
@@ -715,7 +717,7 @@ async def screen_covered_calls(
                         
                         # Get options chain snapshot
                         params = {
-                            "apiKey": massive_creds["api_key"],
+                            "apiKey": api_key,
                             "limit": 250,
                             "contract_type": "call"
                         }
@@ -724,6 +726,8 @@ async def screen_covered_calls(
                             f"https://api.massive.com/v3/snapshot/options/{symbol}",
                             params=params
                         )
+                        
+                        logging.info(f"Options API for {symbol}: status={response.status_code}")
                         
                         if response.status_code == 200:
                             data = response.json()
