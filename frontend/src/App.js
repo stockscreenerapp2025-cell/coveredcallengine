@@ -10,6 +10,7 @@ import PMCC from "./pages/PMCC";
 import Portfolio from "./pages/Portfolio";
 import Watchlist from "./pages/Watchlist";
 import Admin from "./pages/Admin";
+import Pricing from "./pages/Pricing";
 import Layout from "./components/Layout";
 import "@/App.css";
 
