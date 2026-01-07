@@ -157,8 +157,8 @@ const Admin = () => {
     setUsersLoading(true);
     try {
       const params = new URLSearchParams({ page: page.toString(), limit: '20' });
-      if (userFilters.status) params.append('status', userFilters.status);
-      if (userFilters.plan) params.append('plan', userFilters.plan);
+      if (userFilters.status && userFilters.status !== 'all') params.append('status', userFilters.status);
+      if (userFilters.plan && userFilters.plan !== 'all') params.append('plan', userFilters.plan);
       if (userFilters.search) params.append('search', userFilters.search);
       
       const response = await api.get(`/admin/users?${params.toString()}`);
