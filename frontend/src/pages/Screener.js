@@ -982,6 +982,16 @@ const Screener = () => {
           </CardContent>
         </Card>
       </div>
+
+      {/* Stock Detail Modal */}
+      <StockDetailModal 
+        symbol={selectedStock}
+        isOpen={isModalOpen}
+        onClose={() => {
+          setIsModalOpen(false);
+          setSelectedStock(null);
+        }}
+      />
     </div>
   );
 };
