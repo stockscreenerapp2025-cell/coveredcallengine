@@ -86,7 +86,30 @@ const StockDetailModal = ({ symbol, isOpen, onClose }) => {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 h-[calc(90vh-120px)] overflow-hidden">
           {/* TradingView Chart - 2/3 width */}
           <div className="lg:col-span-2 h-[500px] lg:h-full rounded-lg overflow-hidden border border-zinc-700">
-            <div ref={chartContainerRef} className="w-full h-full bg-zinc-900" />
+            {isOpen && symbol && (
+              <AdvancedRealTimeChart
+                symbol={symbol}
+                theme="dark"
+                autosize
+                interval="D"
+                timezone="Etc/UTC"
+                style="1"
+                locale="en"
+                toolbar_bg="#18181b"
+                enable_publishing={false}
+                hide_top_toolbar={false}
+                hide_legend={false}
+                save_image={false}
+                calendar={false}
+                hide_volume={false}
+                range="12M"
+                studies={[
+                  "STD;SMA",
+                  "STD;RSI",
+                  "STD;ADX"
+                ]}
+              />
+            )}
           </div>
 
           {/* Right Panel - 1/3 width */}
