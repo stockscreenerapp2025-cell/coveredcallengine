@@ -50,6 +50,7 @@ screener_router = APIRouter(prefix="/screener", tags=["Screener"])
 admin_router = APIRouter(prefix="/admin", tags=["Admin"])
 ai_router = APIRouter(prefix="/ai", tags=["AI Insights"])
 news_router = APIRouter(prefix="/news", tags=["News"])
+subscription_router = APIRouter(prefix="/subscription", tags=["Subscription"])
 
 # ==================== CACHE HELPERS ====================
 
