@@ -504,7 +504,7 @@ const Admin = () => {
                       <SelectValue placeholder="Status" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="">All Status</SelectItem>
+                      <SelectItem value="all">All Status</SelectItem>
                       <SelectItem value="active">Active</SelectItem>
                       <SelectItem value="trialing">Trial</SelectItem>
                       <SelectItem value="cancelled">Cancelled</SelectItem>
