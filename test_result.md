@@ -83,6 +83,9 @@ frontend:
       - working: true
         agent: "testing"
         comment: "COMPREHENSIVE TESTING COMPLETED: Stock Detail Modal functionality working correctly. ✅ Login successful with admin@premiumhunter.com/admin123. ✅ Dashboard loads with Live Data badge showing 10 opportunities from Massive.com API. ✅ Modal opens when clicking opportunity rows (tested with CFG). ✅ Modal header displays stock symbol, company name, current price, and percentage change badge. ✅ TradingView chart renders properly with 1-year candlestick data, SMA, RSI indicators. ✅ All three tabs functional: Technicals (SMA 50/200, RSI, Overall Trend, Chart Legend), Fundamentals (Company Info, Today's Stats with Open/Volume/High/Low), News (Latest News with 6 articles). ✅ Modal closes properly with Escape key. ✅ Dashboard remains functional after modal close. Minor: JavaScript runtime errors present but don't affect core functionality."
+      - working: true
+        agent: "testing"
+        comment: "RE-TESTED STOCK DETAIL MODAL: Comprehensive testing completed successfully. ✅ Login with admin@premiumhunter.com/admin123 working. ✅ Screener page loads with 34 live opportunities. ✅ Modal opens correctly when clicking stock rows (tested LCID and RIVN). ✅ Modal header shows stock symbol, company name, current price ($11.60 for LCID). ✅ TradingView chart renders with 1-year candlestick data and technical indicators. ✅ All three tabs functional: Technicals (SMA 50/200 values, RSI 48.0, Overall Trend BEARISH, Chart Legend), Fundamentals (Company Info, Today's Stats with Open/Volume/High/Low), News (Latest News with 6 articles including titles and sources). ✅ Modal closes with Escape key. ✅ Modal updates correctly when clicking different stocks. ✅ Screener remains functional after modal operations. All core functionality working perfectly."
 
 metadata:
   created_by: "testing_agent"
