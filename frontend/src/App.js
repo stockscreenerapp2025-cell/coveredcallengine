@@ -105,6 +105,13 @@ function App() {
               </Layout>
             </AdminRoute>
           } />
+          <Route path="/pricing" element={
+            <ProtectedRoute>
+              <Layout>
+                <Pricing />
+              </Layout>
+            </ProtectedRoute>
+          } />
           
           {/* Fallback */}
           <Route path="*" element={<Navigate to="/" replace />} />
