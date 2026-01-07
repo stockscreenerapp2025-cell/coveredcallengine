@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { stocksApi } from '../lib/api';
 import {
   Dialog,
@@ -22,6 +22,7 @@ import {
   Globe,
   Calendar
 } from 'lucide-react';
+import { AdvancedRealTimeChart } from 'react-ts-tradingview-widgets';
 
 const StockDetailModal = ({ symbol, isOpen, onClose }) => {
   const [stockData, setStockData] = useState(null);
