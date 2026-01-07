@@ -42,8 +42,10 @@ export default api;
 // API helper functions
 export const stocksApi = {
   getQuote: (symbol) => api.get(`/stocks/quote/${symbol}`),
+  getDetails: (symbol) => api.get(`/stocks/details/${symbol}`),
   getIndices: () => api.get('/stocks/indices'),
   getHistorical: (symbol, params) => api.get(`/stocks/historical/${symbol}`, { params }),
+  search: (query) => api.get('/stocks/search', { params: { query } }),
 };
 
 export const optionsApi = {
