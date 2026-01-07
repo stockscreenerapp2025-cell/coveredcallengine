@@ -107,7 +107,7 @@ metadata:
 
 test_plan:
   current_focus:
-    - "Stock Detail Modal"
+    - "Subscription/Pricing Feature"
   stuck_tasks: []
   test_all: false
   test_priority: "high_first"
@@ -119,4 +119,6 @@ agent_communication:
     message: "STOCK DETAIL MODAL TESTING COMPLETED SUCCESSFULLY: Comprehensive UI testing performed on Stock Detail Modal feature. All core functionality working correctly including login, dashboard loading with live data, modal opening from opportunities table, TradingView chart rendering, and all three tabs (Technicals, Fundamentals, News). Modal displays proper stock information and closes correctly. Dashboard remains functional after modal operations. Minor JavaScript runtime errors present but don't impact functionality. Feature is ready for production use."
   - agent: "testing"
     message: "STOCK DETAIL MODAL RE-TESTING COMPLETED: Performed comprehensive re-testing of Stock Detail Modal as requested. ✅ All functionality working perfectly: Login successful, screener loads 34 live opportunities, modal opens/closes correctly, TradingView chart renders, all tabs (Technicals/Fundamentals/News) display proper data, modal updates correctly for different stocks (LCID/RIVN tested). No critical issues found. Feature is fully functional and ready for production use."
+  - agent: "testing"
+    message: "SUBSCRIPTION/PRICING FEATURE TESTING COMPLETED: ✅ Successfully verified new subscription feature implementation. Subscribe link with PRO badge (amber color) working in sidebar. Pricing page shows 3 subscription tiers correctly: FREE Trial ($0/7 days), Monthly ($49/month with Most Popular badge), Yearly ($499/year with Save 15% badge). Backend subscription API functional - returns test Stripe payment links. Admin page includes subscription management section with test/live mode controls. Authentication working with admin credentials. All core subscription functionality implemented and working correctly. Ready for production use."
 
