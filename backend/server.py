@@ -1311,13 +1311,13 @@ async def get_dashboard_pmcc_opportunities(
     user: dict = Depends(get_current_user)
 ):
     """
-    Get top 10 PMCC (Poor Man's Covered Call) opportunities for dashboard.
+    Get top 10 PMCC-style diagonal spread opportunities for dashboard.
     
-    Note: Due to API limitations, we simulate PMCC by finding:
-    1. Longer-dated ITM calls (highest DTE available, delta 0.70+)
-    2. Short-term OTM calls (7-30 days, delta 0.20-0.30)
+    Due to API snapshot limitations (short-dated options only), this shows:
+    - Long leg: Longest available DTE, deep ITM (high delta)
+    - Short leg: Shorter DTE, OTM (low delta)
     
-    For true LEAPS (12-24 months), check your broker's options chain.
+    For true LEAPS (12-24mo), consult your broker's full options chain.
     Price range: $30-$500
     """
     api_key = await get_massive_api_key()
@@ -1326,24 +1326,20 @@ async def get_dashboard_pmcc_opportunities(
         return {"opportunities": [], "total": 0, "message": "API key not configured", "is_mock": True}
     
     try:
-        # Stocks suitable for PMCC - wider price range $30-$500
         symbols_to_scan = [
-            # Large Cap Tech (higher priced)
-            "AAPL", "MSFT", "GOOGL", "AMZN", "NVDA", "META", "TSLA", "NFLX", "CRM", "ADBE",
-            # Mid Cap Tech
-            "AMD", "INTC", "MU", "QCOM", "TXN", "AMAT", "LRCX", "MRVL",
+            # Tech stocks with good options liquidity
+            "AAPL", "MSFT", "GOOGL", "AMZN", "NVDA", "META", "TSLA", "AMD", "INTC", "MU",
+            "QCOM", "TXN", "NFLX", "CRM", "ADBE",
             # ETFs
             "SPY", "QQQ", "IWM", "DIA",
             # Financial
-            "JPM", "BAC", "WFC", "GS", "MS", "C",
-            # Consumer/Retail
-            "COST", "WMT", "HD", "NKE", "SBUX", "MCD",
+            "JPM", "BAC", "WFC", "GS", "C",
+            # Consumer
+            "COST", "WMT", "HD", "NKE", "SBUX", "MCD", "DIS",
             # Healthcare
             "UNH", "JNJ", "PFE", "MRK", "LLY",
-            # Industrial
-            "CAT", "DE", "HON", "BA",
-            # Energy
-            "XOM", "CVX", "COP"
+            # Industrial/Energy
+            "CAT", "DE", "BA", "XOM", "CVX"
         ]
         
         opportunities = []
@@ -1351,7 +1347,7 @@ async def get_dashboard_pmcc_opportunities(
         async with httpx.AsyncClient(timeout=120.0) as client:
             for symbol in symbols_to_scan:
                 try:
-                    # Get current stock price first
+                    # Get current stock price
                     stock_response = await client.get(
                         f"https://api.massive.com/v2/aggs/ticker/{symbol}/prev",
                         params={"apiKey": api_key}
@@ -1385,112 +1381,161 @@ async def get_dashboard_pmcc_opportunities(
                     if not options_results:
                         continue
                     
-                    # Find longest-dated ITM calls and short-term OTM calls
-                    long_dated_itm = []
-                    short_term_otm = []
-                    
+                    # Organize options by expiration
+                    by_expiry = {}
                     for opt in options_results:
+                        details = opt.get("details", {})
+                        if details.get("contract_type") != "call":
+                            continue
+                        
+                        expiry = details.get("expiration_date", "")
+                        dte = calculate_dte(expiry)
+                        
+                        if dte < 1:
+                            continue
+                        
+                        if expiry not in by_expiry:
+                            by_expiry[expiry] = {"dte": dte, "options": []}
+                        by_expiry[expiry]["options"].append(opt)
+                    
+                    # Need at least 2 different expirations for a diagonal spread
+                    if len(by_expiry) < 2:
+                        continue
+                    
+                    # Sort expirations by DTE
+                    sorted_expiries = sorted(by_expiry.items(), key=lambda x: x[1]["dte"])
+                    
+                    # Short leg: earliest expiration with OTM options
+                    # Long leg: later expiration with ITM options
+                    short_expiry_data = sorted_expiries[0]
+                    long_expiry_data = sorted_expiries[-1]  # Latest available
+                    
+                    short_dte = short_expiry_data[1]["dte"]
+                    long_dte = long_expiry_data[1]["dte"]
+                    
+                    # Need different DTEs for diagonal
+                    if long_dte <= short_dte:
+                        continue
+                    
+                    # Find best short leg: OTM, delta 0.20-0.35
+                    best_short = None
+                    for opt in short_expiry_data[1]["options"]:
                         details = opt.get("details", {})
                         greeks = opt.get("greeks", {})
                         day = opt.get("day", {})
                         last_quote = opt.get("last_quote", {})
                         
-                        if details.get("contract_type") != "call":
-                            continue
-                        
                         strike = details.get("strike_price", 0)
-                        expiry = details.get("expiration_date", "")
-                        dte = calculate_dte(expiry)
                         delta = abs(greeks.get("delta", 0)) if greeks else 0
                         
-                        # Get price
+                        # OTM strike
+                        if strike <= current_price:
+                            continue
+                        
+                        # Target delta range
+                        if delta < 0.15 or delta > 0.40:
+                            continue
+                        
                         bid = last_quote.get("bid", 0) if last_quote else 0
                         ask = last_quote.get("ask", 0) if last_quote else 0
                         price = ((bid + ask) / 2) if bid > 0 and ask > 0 else (day.get("close", 0) if day else 0)
                         
+                        if price <= 0:
+                            continue
+                        
                         iv = opt.get("implied_volatility", 0.25) or 0.25
                         
-                        # Long-dated ITM calls (for PMCC long leg)
-                        # Use the longest available DTE with high delta (deep ITM)
-                        if dte >= 30 and delta >= 0.70 and strike < current_price and price > 0:
-                            long_dated_itm.append({
+                        if best_short is None or abs(delta - 0.25) < abs(best_short["delta"] - 0.25):
+                            best_short = {
                                 "strike": strike,
-                                "expiry": expiry,
-                                "dte": dte,
-                                "delta": round(delta, 3),
-                                "cost": round(price * 100, 2),
-                                "iv": round(iv * 100, 1),
-                                "intrinsic": round(max(0, current_price - strike), 2)
-                            })
-                        
-                        # Short-term OTM calls (for PMCC short leg)
-                        elif 3 <= dte <= 30 and 0.15 <= delta <= 0.35 and strike > current_price and price > 0:
-                            short_term_otm.append({
-                                "strike": strike,
-                                "expiry": expiry,
-                                "dte": dte,
+                                "expiry": short_expiry_data[0],
+                                "dte": short_dte,
                                 "delta": round(delta, 3),
                                 "premium": round(price * 100, 2),
                                 "iv": round(iv * 100, 1)
-                            })
+                            }
                     
-                    # Find best PMCC combination
-                    if long_dated_itm and short_term_otm:
-                        # Best long leg: highest DTE with good delta
-                        best_long = max(long_dated_itm, key=lambda x: (x["dte"], x["delta"]))
+                    # Find best long leg: ITM, high delta (0.70+)
+                    best_long = None
+                    for opt in long_expiry_data[1]["options"]:
+                        details = opt.get("details", {})
+                        greeks = opt.get("greeks", {})
+                        day = opt.get("day", {})
+                        last_quote = opt.get("last_quote", {})
                         
-                        # Best short leg: closest to delta 0.25
-                        best_short = min(short_term_otm, key=lambda x: abs(x["delta"] - 0.25))
+                        strike = details.get("strike_price", 0)
+                        delta = abs(greeks.get("delta", 0)) if greeks else 0
                         
-                        if best_long["cost"] > 0 and best_short["premium"] > 0:
-                            # Calculate PMCC metrics
-                            net_debit = best_long["cost"] - best_short["premium"]
-                            strike_width = best_short["strike"] - best_long["strike"]
-                            max_profit = (strike_width * 100) - net_debit
-                            breakeven = best_long["strike"] + (net_debit / 100)
-                            
-                            # ROI on capital per cycle
-                            roi_per_cycle = (best_short["premium"] / best_long["cost"]) * 100
-                            
-                            # Estimate annualized ROI (cycles per year based on short DTE)
-                            cycles_per_year = 365 / max(best_short["dte"], 7)
-                            annualized_roi = roi_per_cycle * min(cycles_per_year, 52)  # Cap at weekly cycles
-                            
-                            # Calculate score
-                            roi_score = min(roi_per_cycle * 8, 30)
-                            delta_long_score = 15 if best_long["delta"] >= 0.75 else 10
-                            delta_short_score = 15 if 0.20 <= best_short["delta"] <= 0.30 else 10
-                            dte_score = min(best_long["dte"] / 10, 15)
-                            width_score = min(strike_width / current_price * 50, 15)
-                            
-                            total_score = roi_score + delta_long_score + delta_short_score + dte_score + width_score
-                            
-                            opportunities.append({
-                                "symbol": symbol,
-                                "stock_price": round(current_price, 2),
-                                # Long leg (Buy)
-                                "leaps_strike": best_long["strike"],
-                                "leaps_expiry": best_long["expiry"],
-                                "leaps_dte": best_long["dte"],
-                                "leaps_delta": best_long["delta"],
-                                "leaps_cost": best_long["cost"],
-                                "leaps_iv": best_long["iv"],
-                                # Short leg (Sell)
-                                "short_strike": best_short["strike"],
-                                "short_expiry": best_short["expiry"],
-                                "short_dte": best_short["dte"],
-                                "short_delta": best_short["delta"],
-                                "short_premium": best_short["premium"],
-                                "short_iv": best_short["iv"],
-                                # PMCC metrics
-                                "net_debit": round(net_debit, 2),
-                                "max_profit": round(max_profit, 2),
-                                "breakeven": round(breakeven, 2),
-                                "strike_width": round(strike_width, 2),
-                                "roi_per_cycle": round(roi_per_cycle, 2),
-                                "annualized_roi": round(annualized_roi, 1),
-                                "score": round(total_score, 1)
-                            })
+                        # ITM strike
+                        if strike >= current_price:
+                            continue
+                        
+                        # High delta (deep ITM)
+                        if delta < 0.65:
+                            continue
+                        
+                        bid = last_quote.get("bid", 0) if last_quote else 0
+                        ask = last_quote.get("ask", 0) if last_quote else 0
+                        price = ((bid + ask) / 2) if bid > 0 and ask > 0 else (day.get("close", 0) if day else 0)
+                        
+                        if price <= 0:
+                            continue
+                        
+                        iv = opt.get("implied_volatility", 0.25) or 0.25
+                        
+                        if best_long is None or delta > best_long["delta"]:
+                            best_long = {
+                                "strike": strike,
+                                "expiry": long_expiry_data[0],
+                                "dte": long_dte,
+                                "delta": round(delta, 3),
+                                "cost": round(price * 100, 2),
+                                "iv": round(iv * 100, 1)
+                            }
+                    
+                    # Build PMCC opportunity if both legs found
+                    if best_long and best_short and best_long["cost"] > 0:
+                        net_debit = best_long["cost"] - best_short["premium"]
+                        strike_width = best_short["strike"] - best_long["strike"]
+                        max_profit = (strike_width * 100) - net_debit
+                        breakeven = best_long["strike"] + (net_debit / 100)
+                        
+                        roi_per_cycle = (best_short["premium"] / best_long["cost"]) * 100
+                        cycles_per_year = 365 / max(best_short["dte"], 7)
+                        annualized_roi = roi_per_cycle * min(cycles_per_year, 52)
+                        
+                        # Score calculation
+                        roi_score = min(roi_per_cycle * 10, 35)
+                        delta_long_score = 15 if best_long["delta"] >= 0.75 else 10
+                        delta_short_score = 15 if 0.20 <= best_short["delta"] <= 0.30 else 10
+                        dte_diff_score = min((long_dte - short_dte) / 5, 15)
+                        width_score = min(strike_width / current_price * 100, 10)
+                        
+                        total_score = roi_score + delta_long_score + delta_short_score + dte_diff_score + width_score
+                        
+                        opportunities.append({
+                            "symbol": symbol,
+                            "stock_price": round(current_price, 2),
+                            "leaps_strike": best_long["strike"],
+                            "leaps_expiry": best_long["expiry"],
+                            "leaps_dte": best_long["dte"],
+                            "leaps_delta": best_long["delta"],
+                            "leaps_cost": best_long["cost"],
+                            "leaps_iv": best_long["iv"],
+                            "short_strike": best_short["strike"],
+                            "short_expiry": best_short["expiry"],
+                            "short_dte": best_short["dte"],
+                            "short_delta": best_short["delta"],
+                            "short_premium": best_short["premium"],
+                            "short_iv": best_short["iv"],
+                            "net_debit": round(net_debit, 2),
+                            "max_profit": round(max_profit, 2),
+                            "breakeven": round(breakeven, 2),
+                            "strike_width": round(strike_width, 2),
+                            "roi_per_cycle": round(roi_per_cycle, 2),
+                            "annualized_roi": round(annualized_roi, 1),
+                            "score": round(total_score, 1)
+                        })
                     
                 except Exception as e:
                     logging.error(f"PMCC scan error for {symbol}: {e}")
@@ -1504,11 +1549,11 @@ async def get_dashboard_pmcc_opportunities(
             "opportunities": top_10,
             "total": len(top_10),
             "is_live": True,
-            "note": "Using longest available dated options. For true LEAPS (12-24mo), check your broker.",
+            "note": "Shows diagonal spreads using available options. For true LEAPS (12-24mo), check your broker.",
             "filters_applied": {
                 "price_range": "$30-$500",
-                "long_leg": "Longest DTE available, deep ITM (δ≥0.70)",
-                "short_leg": "7-30 days, OTM (δ 0.20-0.30)"
+                "long_leg": "Longer DTE, deep ITM (δ≥0.65)",
+                "short_leg": "Shorter DTE, OTM (δ 0.15-0.40)"
             }
         }
         
