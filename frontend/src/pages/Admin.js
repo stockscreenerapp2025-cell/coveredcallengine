@@ -46,6 +46,14 @@ const Admin = () => {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   
+  // Subscription settings
+  const [subscriptionSettings, setSubscriptionSettings] = useState({
+    active_mode: 'test',
+    test_links: { trial: '', monthly: '', yearly: '' },
+    live_links: { trial: '', monthly: '', yearly: '' }
+  });
+  const [savingSubscription, setSavingSubscription] = useState(false);
+  
   // Visibility toggles
   const [showMassiveApiKey, setShowMassiveApiKey] = useState(false);
   const [showMassiveAccessId, setShowMassiveAccessId] = useState(false);
@@ -55,6 +63,7 @@ const Admin = () => {
 
   useEffect(() => {
     fetchSettings();
+    fetchSubscriptionSettings();
   }, []);
 
   const fetchSettings = async () => {
@@ -72,6 +81,15 @@ const Admin = () => {
       setLoading(false);
     }
   };
+  
+  const fetchSubscriptionSettings = async () => {
+    try {
+      const response = await api.get('/subscription/admin/settings');
+      setSubscriptionSettings(response.data);
+    } catch (error) {
+      console.error('Subscription settings fetch error:', error);
+    }
+  };
 
   const saveSettings = async () => {
     setSaving(true);
@@ -82,6 +100,37 @@ const Admin = () => {
       toast.error('Failed to save settings');
     } finally {
       setSaving(false);
+    }
+  };
+  
+  const saveSubscriptionSettings = async () => {
+    setSavingSubscription(true);
+    try {
+      const params = new URLSearchParams({
+        active_mode: subscriptionSettings.active_mode,
+        test_trial: subscriptionSettings.test_links.trial || '',
+        test_monthly: subscriptionSettings.test_links.monthly || '',
+        test_yearly: subscriptionSettings.test_links.yearly || '',
+        live_trial: subscriptionSettings.live_links.trial || '',
+        live_monthly: subscriptionSettings.live_links.monthly || '',
+        live_yearly: subscriptionSettings.live_links.yearly || ''
+      });
+      await api.post(`/subscription/admin/settings?${params.toString()}`);
+      toast.success('Subscription settings saved successfully');
+    } catch (error) {
+      toast.error('Failed to save subscription settings');
+    } finally {
+      setSavingSubscription(false);
+    }
+  };
+  
+  const switchSubscriptionMode = async (mode) => {
+    try {
+      await api.post(`/subscription/admin/switch-mode?mode=${mode}`);
+      setSubscriptionSettings(prev => ({ ...prev, active_mode: mode }));
+      toast.success(`Switched to ${mode} mode`);
+    } catch (error) {
+      toast.error('Failed to switch mode');
     }
   };
 
