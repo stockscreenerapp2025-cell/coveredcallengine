@@ -2723,6 +2723,63 @@ async def cancel_user_subscription(
     
     return {"message": "Subscription cancelled"}
 
+@admin_router.post("/users/{user_id}/set-subscription")
+async def set_user_subscription(
+    user_id: str,
+    status: str = Query(..., description="active, trialing, cancelled, past_due"),
+    plan: str = Query("monthly", description="trial, monthly, yearly"),
+    admin: dict = Depends(get_admin_user)
+):
+    """Manually set user's subscription status and plan (admin action)"""
+    valid_statuses = ["active", "trialing", "cancelled", "past_due", "expired"]
+    valid_plans = ["trial", "monthly", "yearly"]
+    
+    if status not in valid_statuses:
+        raise HTTPException(status_code=400, detail=f"Invalid status. Must be one of: {valid_statuses}")
+    if plan not in valid_plans:
+        raise HTTPException(status_code=400, detail=f"Invalid plan. Must be one of: {valid_plans}")
+    
+    user = await db.users.find_one({"id": user_id}, {"_id": 0})
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    now = datetime.now(timezone.utc)
+    
+    subscription_data = {
+        "subscription.status": status,
+        "subscription.plan": plan,
+        "updated_at": now.isoformat()
+    }
+    
+    # Set trial dates if trialing
+    if status == "trialing":
+        subscription_data["subscription.trial_start"] = now.isoformat()
+        subscription_data["subscription.trial_end"] = (now + timedelta(days=7)).isoformat()
+    
+    # Set subscription start if active
+    if status == "active":
+        subscription_data["subscription.subscription_start"] = now.isoformat()
+        if plan == "monthly":
+            subscription_data["subscription.next_billing_date"] = (now + timedelta(days=30)).isoformat()
+        elif plan == "yearly":
+            subscription_data["subscription.next_billing_date"] = (now + timedelta(days=365)).isoformat()
+    
+    await db.users.update_one(
+        {"id": user_id},
+        {"$set": subscription_data}
+    )
+    
+    # Log action
+    await db.audit_logs.insert_one({
+        "action": "admin_set_subscription",
+        "admin_id": admin["id"],
+        "user_id": user_id,
+        "details": {"status": status, "plan": plan},
+        "timestamp": now.isoformat()
+    })
+    
+    return {"message": f"User subscription set to {status} ({plan})"}
+
 @admin_router.get("/integration-settings")
 async def get_integration_settings(admin: dict = Depends(get_admin_user)):
     """Get all integration settings (Stripe, Resend, etc.)"""
