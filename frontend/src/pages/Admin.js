@@ -243,6 +243,17 @@ const Admin = () => {
       toast.error('Failed to extend trial');
     }
   };
+  
+  const setUserSubscription = async (userId, status, plan = 'monthly') => {
+    try {
+      await api.post(`/admin/users/${userId}/set-subscription?status=${status}&plan=${plan}`);
+      toast.success(`Subscription set to ${status}`);
+      fetchUsers(usersPagination.page);
+      fetchDashboardStats();
+    } catch (error) {
+      toast.error('Failed to set subscription');
+    }
+  };
 
   const PasswordInput = ({ value, onChange, show, onToggle, placeholder, label }) => (
     <div className="space-y-2">
