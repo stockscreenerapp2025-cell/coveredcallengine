@@ -75,13 +75,16 @@ const Layout = ({ children }) => {
                 key={item.path}
                 to={item.path}
                 className={({ isActive }) =>
-                  `sidebar-nav-item ${isActive ? 'active' : ''}`
+                  `sidebar-nav-item ${isActive ? 'active' : ''} ${item.highlight ? 'text-amber-400 hover:text-amber-300' : ''}`
                 }
                 onClick={() => setSidebarOpen(false)}
                 data-testid={`nav-${item.label.toLowerCase()}`}
               >
-                {item.icon}
+                <span className={item.highlight ? 'text-amber-400' : ''}>{item.icon}</span>
                 <span>{item.label}</span>
+                {item.highlight && (
+                  <span className="ml-auto text-[10px] bg-amber-500/20 text-amber-400 px-1.5 py-0.5 rounded-full">PRO</span>
+                )}
               </NavLink>
             ))}
           </nav>
