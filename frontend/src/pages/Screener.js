@@ -58,6 +58,8 @@ const Screener = () => {
   const [savedFilters, setSavedFilters] = useState([]);
   const [filterName, setFilterName] = useState('');
   const [saveDialogOpen, setSaveDialogOpen] = useState(false);
+  const [selectedStock, setSelectedStock] = useState(null);
+  const [isModalOpen, setIsModalOpen] = useState(false);
 
   // Expiration Filters
   const [expirationFilters, setExpirationFilters] = useState({
