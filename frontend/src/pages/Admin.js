@@ -478,6 +478,187 @@ const Admin = () => {
           </div>
         </CardContent>
       </Card>
+
+      {/* Subscription Management */}
+      <Card className="glass-card" data-testid="subscription-settings">
+        <CardHeader>
+          <CardTitle className="text-lg flex items-center gap-2">
+            <CreditCard className="w-5 h-5 text-emerald-400" />
+            Subscription Management
+          </CardTitle>
+          <CardDescription>
+            Manage Stripe payment links for subscription plans
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          {/* Mode Toggle */}
+          <div className="flex items-center justify-between p-4 rounded-lg bg-zinc-800/50 border border-zinc-700">
+            <div className="flex items-center gap-3">
+              <div className={`p-2 rounded-lg ${subscriptionSettings.active_mode === 'live' ? 'bg-emerald-500/20' : 'bg-yellow-500/20'}`}>
+                {subscriptionSettings.active_mode === 'live' ? (
+                  <Zap className="w-5 h-5 text-emerald-400" />
+                ) : (
+                  <TestTube className="w-5 h-5 text-yellow-400" />
+                )}
+              </div>
+              <div>
+                <div className="font-medium text-white">
+                  Current Mode: <span className={subscriptionSettings.active_mode === 'live' ? 'text-emerald-400' : 'text-yellow-400'}>
+                    {subscriptionSettings.active_mode?.toUpperCase()}
+                  </span>
+                </div>
+                <p className="text-xs text-zinc-500">
+                  {subscriptionSettings.active_mode === 'live' 
+                    ? 'Production payment links are active' 
+                    : 'Test payment links are active (no real charges)'}
+                </p>
+              </div>
+            </div>
+            <div className="flex gap-2">
+              <Button
+                variant={subscriptionSettings.active_mode === 'test' ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => switchSubscriptionMode('test')}
+                className={subscriptionSettings.active_mode === 'test' ? 'bg-yellow-600 hover:bg-yellow-700' : ''}
+              >
+                <TestTube className="w-4 h-4 mr-1" />
+                Test
+              </Button>
+              <Button
+                variant={subscriptionSettings.active_mode === 'live' ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => switchSubscriptionMode('live')}
+                className={subscriptionSettings.active_mode === 'live' ? 'bg-emerald-600 hover:bg-emerald-700' : ''}
+              >
+                <Zap className="w-4 h-4 mr-1" />
+                Live
+              </Button>
+            </div>
+          </div>
+
+          {/* Payment Links Tabs */}
+          <Tabs defaultValue="test" className="w-full">
+            <TabsList className="grid w-full grid-cols-2 bg-zinc-800/50">
+              <TabsTrigger value="test" className="flex items-center gap-2">
+                <TestTube className="w-4 h-4" />
+                Test Links
+              </TabsTrigger>
+              <TabsTrigger value="live" className="flex items-center gap-2">
+                <Zap className="w-4 h-4" />
+                Live Links
+              </TabsTrigger>
+            </TabsList>
+            
+            <TabsContent value="test" className="space-y-4 mt-4">
+              <div className="p-3 rounded-lg bg-yellow-500/10 border border-yellow-500/30">
+                <p className="text-xs text-yellow-400">
+                  Test links are used for development and testing. No real payments are processed.
+                </p>
+              </div>
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label className="text-zinc-400">7-Day FREE Trial Link</Label>
+                  <Input
+                    value={subscriptionSettings.test_links?.trial || ''}
+                    onChange={(e) => setSubscriptionSettings(prev => ({
+                      ...prev,
+                      test_links: { ...prev.test_links, trial: e.target.value }
+                    }))}
+                    placeholder="https://buy.stripe.com/test_..."
+                    className="input-dark font-mono text-sm"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-zinc-400">Monthly Subscription Link ($49)</Label>
+                  <Input
+                    value={subscriptionSettings.test_links?.monthly || ''}
+                    onChange={(e) => setSubscriptionSettings(prev => ({
+                      ...prev,
+                      test_links: { ...prev.test_links, monthly: e.target.value }
+                    }))}
+                    placeholder="https://buy.stripe.com/test_..."
+                    className="input-dark font-mono text-sm"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-zinc-400">Yearly Subscription Link ($499)</Label>
+                  <Input
+                    value={subscriptionSettings.test_links?.yearly || ''}
+                    onChange={(e) => setSubscriptionSettings(prev => ({
+                      ...prev,
+                      test_links: { ...prev.test_links, yearly: e.target.value }
+                    }))}
+                    placeholder="https://buy.stripe.com/test_..."
+                    className="input-dark font-mono text-sm"
+                  />
+                </div>
+              </div>
+            </TabsContent>
+            
+            <TabsContent value="live" className="space-y-4 mt-4">
+              <div className="p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/30">
+                <p className="text-xs text-emerald-400">
+                  Live links process real payments. Make sure to test thoroughly before switching to live mode.
+                </p>
+              </div>
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label className="text-zinc-400">7-Day FREE Trial Link</Label>
+                  <Input
+                    value={subscriptionSettings.live_links?.trial || ''}
+                    onChange={(e) => setSubscriptionSettings(prev => ({
+                      ...prev,
+                      live_links: { ...prev.live_links, trial: e.target.value }
+                    }))}
+                    placeholder="https://buy.stripe.com/live_..."
+                    className="input-dark font-mono text-sm"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-zinc-400">Monthly Subscription Link ($49)</Label>
+                  <Input
+                    value={subscriptionSettings.live_links?.monthly || ''}
+                    onChange={(e) => setSubscriptionSettings(prev => ({
+                      ...prev,
+                      live_links: { ...prev.live_links, monthly: e.target.value }
+                    }))}
+                    placeholder="https://buy.stripe.com/live_..."
+                    className="input-dark font-mono text-sm"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-zinc-400">Yearly Subscription Link ($499)</Label>
+                  <Input
+                    value={subscriptionSettings.live_links?.yearly || ''}
+                    onChange={(e) => setSubscriptionSettings(prev => ({
+                      ...prev,
+                      live_links: { ...prev.live_links, yearly: e.target.value }
+                    }))}
+                    placeholder="https://buy.stripe.com/live_..."
+                    className="input-dark font-mono text-sm"
+                  />
+                </div>
+              </div>
+            </TabsContent>
+          </Tabs>
+
+          {/* Save Subscription Settings */}
+          <div className="flex justify-end pt-4 border-t border-zinc-800">
+            <Button
+              onClick={saveSubscriptionSettings}
+              className="bg-emerald-600 hover:bg-emerald-700 text-white"
+              disabled={savingSubscription}
+            >
+              {savingSubscription ? (
+                <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+              ) : (
+                <Save className="w-4 h-4 mr-2" />
+              )}
+              Save Subscription Settings
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 };
