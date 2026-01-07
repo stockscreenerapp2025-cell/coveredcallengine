@@ -47,6 +47,7 @@ import {
   Gauge
 } from 'lucide-react';
 import { toast } from 'sonner';
+import StockDetailModal from '../components/StockDetailModal';
 
 const Screener = () => {
   const [opportunities, setOpportunities] = useState([]);
