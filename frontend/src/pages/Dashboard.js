@@ -340,7 +340,16 @@ const Dashboard = () => {
                 </thead>
                 <tbody>
                   {opportunities.map((opp, index) => (
-                    <tr key={index} className="cursor-pointer hover:bg-zinc-800/50" data-testid={`opportunity-${opp.symbol}`}>
+                    <tr 
+                      key={index} 
+                      className="cursor-pointer hover:bg-zinc-800/50 transition-colors" 
+                      data-testid={`opportunity-${opp.symbol}`}
+                      onClick={() => {
+                        setSelectedStock(opp.symbol);
+                        setIsModalOpen(true);
+                      }}
+                      title={`Click to view ${opp.symbol} details`}
+                    >
                       <td className="font-semibold text-white">
                         {opp.symbol}
                         {opp.has_dividend && <span className="ml-1 text-yellow-400 text-xs">💰</span>}
@@ -383,6 +392,16 @@ const Dashboard = () => {
           )}
         </CardContent>
       </Card>
+
+      {/* Stock Detail Modal */}
+      <StockDetailModal 
+        symbol={selectedStock}
+        isOpen={isModalOpen}
+        onClose={() => {
+          setIsModalOpen(false);
+          setSelectedStock(null);
+        }}
+      />
 
       {/* Data Source Notice */}
       {opportunitiesInfo && (
