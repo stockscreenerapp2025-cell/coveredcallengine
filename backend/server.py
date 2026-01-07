@@ -2505,6 +2505,346 @@ async def switch_subscription_mode(
     
     return {"message": f"Switched to {mode} mode", "active_mode": mode}
 
+# ==================== STRIPE WEBHOOK ROUTES ====================
+
+@api_router.post("/webhooks/stripe")
+async def stripe_webhook(request: Request):
+    """Handle Stripe webhook events"""
+    from services.stripe_webhook import StripeWebhookHandler
+    from services.email_service import EmailService
+    
+    email_service = EmailService(db)
+    webhook_handler = StripeWebhookHandler(db, email_service)
+    
+    try:
+        event = await webhook_handler.verify_webhook(request)
+        result = await webhook_handler.handle_event(event)
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        logging.error(f"Webhook error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+# ==================== ENHANCED ADMIN ROUTES ====================
+
+@admin_router.get("/dashboard-stats")
+async def get_admin_dashboard_stats(admin: dict = Depends(get_admin_user)):
+    """Get admin dashboard KPIs"""
+    now = datetime.now(timezone.utc)
+    thirty_days_ago = (now - timedelta(days=30)).isoformat()
+    seven_days_ago = (now - timedelta(days=7)).isoformat()
+    
+    # Get user counts
+    total_users = await db.users.count_documents({})
+    active_users = await db.users.count_documents({"last_login": {"$gte": seven_days_ago}})
+    
+    # Subscription stats
+    trial_users = await db.users.count_documents({"subscription.status": "trialing"})
+    active_subs = await db.users.count_documents({"subscription.status": "active"})
+    monthly_subs = await db.users.count_documents({"subscription.plan": "monthly", "subscription.status": "active"})
+    yearly_subs = await db.users.count_documents({"subscription.plan": "yearly", "subscription.status": "active"})
+    cancelled_users = await db.users.count_documents({"subscription.status": "cancelled"})
+    past_due_users = await db.users.count_documents({"subscription.status": "past_due"})
+    
+    # Calculate MRR
+    mrr = (monthly_subs * 49) + (yearly_subs * 499 / 12)
+    arr = mrr * 12
+    
+    # Trial conversion rate
+    converted_trials = await db.users.count_documents({"subscription.converted_at": {"$exists": True}})
+    total_trials = await db.users.count_documents({"subscription.trial_start": {"$exists": True}})
+    conversion_rate = (converted_trials / total_trials * 100) if total_trials > 0 else 0
+    
+    # Churn (cancelled in last 30 days)
+    recent_cancellations = await db.users.count_documents({
+        "subscription.cancelled_at": {"$gte": thirty_days_ago}
+    })
+    churn_rate = (recent_cancellations / (active_subs + recent_cancellations) * 100) if (active_subs + recent_cancellations) > 0 else 0
+    
+    # Support tickets
+    open_tickets = await db.support_tickets.count_documents({"status": {"$in": ["open", "in_progress"]}})
+    
+    # Trials ending soon (next 3 days)
+    three_days_later = (now + timedelta(days=3)).isoformat()
+    trials_ending_soon = await db.users.count_documents({
+        "subscription.status": "trialing",
+        "subscription.trial_end": {"$lte": three_days_later, "$gte": now.isoformat()}
+    })
+    
+    return {
+        "users": {
+            "total": total_users,
+            "active_7d": active_users,
+            "trial": trial_users,
+            "cancelled": cancelled_users,
+            "past_due": past_due_users
+        },
+        "subscriptions": {
+            "active": active_subs,
+            "monthly": monthly_subs,
+            "yearly": yearly_subs,
+            "conversion_rate": round(conversion_rate, 1),
+            "churn_rate": round(churn_rate, 1)
+        },
+        "revenue": {
+            "mrr": round(mrr, 2),
+            "arr": round(arr, 2)
+        },
+        "alerts": {
+            "trials_ending_soon": trials_ending_soon,
+            "payment_failures": past_due_users,
+            "open_tickets": open_tickets
+        }
+    }
+
+@admin_router.get("/users")
+async def get_admin_users(
+    page: int = Query(1, ge=1),
+    limit: int = Query(20, ge=1, le=100),
+    status: Optional[str] = Query(None),
+    plan: Optional[str] = Query(None),
+    search: Optional[str] = Query(None),
+    admin: dict = Depends(get_admin_user)
+):
+    """Get paginated list of users with filters"""
+    query = {}
+    
+    if status:
+        query["subscription.status"] = status
+    if plan:
+        query["subscription.plan"] = plan
+    if search:
+        query["$or"] = [
+            {"email": {"$regex": search, "$options": "i"}},
+            {"name": {"$regex": search, "$options": "i"}}
+        ]
+    
+    skip = (page - 1) * limit
+    
+    users = await db.users.find(query, {"_id": 0, "hashed_password": 0}).sort("created_at", -1).skip(skip).limit(limit).to_list(limit)
+    total = await db.users.count_documents(query)
+    
+    return {
+        "users": users,
+        "total": total,
+        "page": page,
+        "pages": (total + limit - 1) // limit
+    }
+
+@admin_router.get("/users/{user_id}")
+async def get_admin_user_detail(user_id: str, admin: dict = Depends(get_admin_user)):
+    """Get detailed user information"""
+    user = await db.users.find_one({"id": user_id}, {"_id": 0, "hashed_password": 0})
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    # Get user activity
+    activity = await db.user_activity.find({"user_id": user_id}, {"_id": 0}).sort("timestamp", -1).limit(50).to_list(50)
+    
+    # Get email history
+    emails = await db.email_logs.find({"to": user.get("email")}, {"_id": 0}).sort("sent_at", -1).limit(20).to_list(20)
+    
+    return {
+        "user": user,
+        "activity": activity,
+        "emails": emails
+    }
+
+@admin_router.post("/users/{user_id}/extend-trial")
+async def extend_user_trial(
+    user_id: str,
+    days: int = Query(..., ge=1, le=30),
+    admin: dict = Depends(get_admin_user)
+):
+    """Extend user's trial period"""
+    user = await db.users.find_one({"id": user_id}, {"_id": 0})
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    current_trial_end = user.get("subscription", {}).get("trial_end")
+    if current_trial_end:
+        new_end = datetime.fromisoformat(current_trial_end.replace("Z", "+00:00")) + timedelta(days=days)
+    else:
+        new_end = datetime.now(timezone.utc) + timedelta(days=days)
+    
+    await db.users.update_one(
+        {"id": user_id},
+        {"$set": {
+            "subscription.trial_end": new_end.isoformat(),
+            "subscription.status": "trialing",
+            "updated_at": datetime.now(timezone.utc).isoformat()
+        }}
+    )
+    
+    # Log action
+    await db.audit_logs.insert_one({
+        "action": "extend_trial",
+        "admin_id": admin["id"],
+        "user_id": user_id,
+        "details": {"days_added": days, "new_end": new_end.isoformat()},
+        "timestamp": datetime.now(timezone.utc).isoformat()
+    })
+    
+    return {"message": f"Trial extended by {days} days", "new_trial_end": new_end.isoformat()}
+
+@admin_router.post("/users/{user_id}/cancel-subscription")
+async def cancel_user_subscription(
+    user_id: str,
+    reason: Optional[str] = Query(None),
+    admin: dict = Depends(get_admin_user)
+):
+    """Cancel user's subscription (admin action)"""
+    user = await db.users.find_one({"id": user_id}, {"_id": 0})
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    now = datetime.now(timezone.utc)
+    
+    await db.users.update_one(
+        {"id": user_id},
+        {"$set": {
+            "subscription.status": "cancelled",
+            "subscription.cancelled_at": now.isoformat(),
+            "subscription.cancellation_reason": reason or "Admin cancelled",
+            "updated_at": now.isoformat()
+        }}
+    )
+    
+    # Log action
+    await db.audit_logs.insert_one({
+        "action": "admin_cancel_subscription",
+        "admin_id": admin["id"],
+        "user_id": user_id,
+        "details": {"reason": reason},
+        "timestamp": now.isoformat()
+    })
+    
+    return {"message": "Subscription cancelled"}
+
+@admin_router.get("/integration-settings")
+async def get_integration_settings(admin: dict = Depends(get_admin_user)):
+    """Get all integration settings (Stripe, Resend, etc.)"""
+    stripe_settings = await db.admin_settings.find_one({"type": "stripe_settings"}, {"_id": 0})
+    email_settings = await db.admin_settings.find_one({"type": "email_settings"}, {"_id": 0})
+    
+    return {
+        "stripe": {
+            "webhook_secret_configured": bool(stripe_settings and stripe_settings.get("webhook_secret")),
+            "secret_key_configured": bool(stripe_settings and stripe_settings.get("stripe_secret_key"))
+        },
+        "email": {
+            "resend_api_key_configured": bool(email_settings and email_settings.get("resend_api_key")),
+            "sender_email": email_settings.get("sender_email", "") if email_settings else ""
+        }
+    }
+
+@admin_router.post("/integration-settings")
+async def update_integration_settings(
+    stripe_webhook_secret: Optional[str] = Query(None),
+    stripe_secret_key: Optional[str] = Query(None),
+    resend_api_key: Optional[str] = Query(None),
+    sender_email: Optional[str] = Query(None),
+    admin: dict = Depends(get_admin_user)
+):
+    """Update integration settings"""
+    now = datetime.now(timezone.utc).isoformat()
+    
+    # Update Stripe settings
+    if stripe_webhook_secret is not None or stripe_secret_key is not None:
+        stripe_update = {"type": "stripe_settings", "updated_at": now}
+        if stripe_webhook_secret:
+            stripe_update["webhook_secret"] = stripe_webhook_secret
+        if stripe_secret_key:
+            stripe_update["stripe_secret_key"] = stripe_secret_key
+        
+        await db.admin_settings.update_one(
+            {"type": "stripe_settings"},
+            {"$set": stripe_update},
+            upsert=True
+        )
+    
+    # Update Email settings
+    if resend_api_key is not None or sender_email is not None:
+        email_update = {"type": "email_settings", "updated_at": now}
+        if resend_api_key:
+            email_update["resend_api_key"] = resend_api_key
+        if sender_email:
+            email_update["sender_email"] = sender_email
+        
+        await db.admin_settings.update_one(
+            {"type": "email_settings"},
+            {"$set": email_update},
+            upsert=True
+        )
+    
+    # Log action
+    await db.audit_logs.insert_one({
+        "action": "update_integration_settings",
+        "admin_id": admin["id"],
+        "details": {
+            "stripe_updated": stripe_webhook_secret is not None or stripe_secret_key is not None,
+            "email_updated": resend_api_key is not None or sender_email is not None
+        },
+        "timestamp": now
+    })
+    
+    return {"message": "Integration settings updated"}
+
+@admin_router.get("/email-templates")
+async def get_email_templates(admin: dict = Depends(get_admin_user)):
+    """Get all email templates"""
+    from services.email_service import EMAIL_TEMPLATES
+    
+    # Get custom templates from DB (if any overrides)
+    custom_templates = await db.email_templates.find({}, {"_id": 0}).to_list(100)
+    custom_dict = {t["name"]: t for t in custom_templates}
+    
+    templates = []
+    for name, template in EMAIL_TEMPLATES.items():
+        custom = custom_dict.get(name, {})
+        templates.append({
+            "name": name,
+            "subject": custom.get("subject", template["subject"]),
+            "enabled": custom.get("enabled", template.get("enabled", True)),
+            "is_custom": name in custom_dict
+        })
+    
+    return {"templates": templates}
+
+@admin_router.post("/email-templates/{template_name}/toggle")
+async def toggle_email_template(
+    template_name: str,
+    enabled: bool = Query(...),
+    admin: dict = Depends(get_admin_user)
+):
+    """Enable or disable an email template"""
+    await db.email_templates.update_one(
+        {"name": template_name},
+        {"$set": {"name": template_name, "enabled": enabled, "updated_at": datetime.now(timezone.utc).isoformat()}},
+        upsert=True
+    )
+    
+    return {"message": f"Template '{template_name}' {'enabled' if enabled else 'disabled'}"}
+
+@admin_router.get("/audit-logs")
+async def get_audit_logs(
+    page: int = Query(1, ge=1),
+    limit: int = Query(50, ge=1, le=100),
+    admin: dict = Depends(get_admin_user)
+):
+    """Get audit logs"""
+    skip = (page - 1) * limit
+    logs = await db.audit_logs.find({}, {"_id": 0}).sort("timestamp", -1).skip(skip).limit(limit).to_list(limit)
+    total = await db.audit_logs.count_documents({})
+    
+    return {
+        "logs": logs,
+        "total": total,
+        "page": page,
+        "pages": (total + limit - 1) // limit
+    }
+
 # ==================== ROOT ROUTES ====================
 
 @api_router.get("/")
