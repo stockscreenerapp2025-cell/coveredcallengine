@@ -941,7 +941,16 @@ const Screener = () => {
                   </thead>
                   <tbody>
                     {sortedOpportunities.map((opp, index) => (
-                      <tr key={index} data-testid={`screener-row-${opp.symbol}`}>
+                      <tr 
+                        key={index} 
+                        data-testid={`screener-row-${opp.symbol}`}
+                        className="cursor-pointer hover:bg-zinc-800/50 transition-colors"
+                        onClick={() => {
+                          setSelectedStock(opp.symbol);
+                          setIsModalOpen(true);
+                        }}
+                        title={`Click to view ${opp.symbol} details`}
+                      >
                         <td className="font-semibold text-white">{opp.symbol}</td>
                         <td>${opp.stock_price?.toFixed(2)}</td>
                         <td>${opp.strike?.toFixed(2)}</td>
