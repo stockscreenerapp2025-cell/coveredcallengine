@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
+import StockDetailModal from '../components/StockDetailModal';
 
 const Dashboard = () => {
   const navigate = useNavigate();
@@ -28,6 +29,8 @@ const Dashboard = () => {
   const [opportunities, setOpportunities] = useState([]);
   const [opportunitiesInfo, setOpportunitiesInfo] = useState(null);
   const [portfolio, setPortfolio] = useState(null);
+  const [selectedStock, setSelectedStock] = useState(null);
+  const [isModalOpen, setIsModalOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [oppsLoading, setOppsLoading] = useState(false);
 
