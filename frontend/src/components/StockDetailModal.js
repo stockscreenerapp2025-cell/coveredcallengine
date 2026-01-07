@@ -104,8 +104,8 @@ const StockDetailModal = ({ symbol, isOpen, onClose }) => {
                 hide_volume={false}
                 range="12M"
                 studies={[
-                  "MASimple@tv-basicstudies",
-                  "MASimple@tv-basicstudies"
+                  "STD;SMA;50",
+                  "STD;SMA;200"
                 ]}
               />
             )}
