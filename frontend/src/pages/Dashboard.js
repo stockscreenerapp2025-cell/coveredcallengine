@@ -27,12 +27,9 @@ const Dashboard = () => {
   const [news, setNews] = useState([]);
   const [opportunities, setOpportunities] = useState([]);
   const [opportunitiesInfo, setOpportunitiesInfo] = useState(null);
-  const [pmccOpportunities, setPmccOpportunities] = useState([]);
-  const [pmccInfo, setPmccInfo] = useState(null);
   const [portfolio, setPortfolio] = useState(null);
   const [loading, setLoading] = useState(true);
   const [oppsLoading, setOppsLoading] = useState(false);
-  const [pmccLoading, setPmccLoading] = useState(false);
 
   useEffect(() => {
     fetchDashboardData();
@@ -41,7 +38,6 @@ const Dashboard = () => {
   const fetchDashboardData = async () => {
     setLoading(true);
     setOppsLoading(true);
-    setPmccLoading(true);
     try {
       const [indicesRes, newsRes, portfolioRes] = await Promise.all([
         stocksApi.getIndices(),
@@ -66,25 +62,12 @@ const Dashboard = () => {
       }
       setOppsLoading(false);
       
-      // Fetch PMCC opportunities
-      try {
-        const pmccRes = await screenerApi.getDashboardPMCC();
-        setPmccOpportunities(pmccRes.data.opportunities || []);
-        setPmccInfo(pmccRes.data);
-      } catch (pmccError) {
-        console.error('Dashboard PMCC error:', pmccError);
-        setPmccOpportunities([]);
-        setPmccInfo({ is_live: false, error: true });
-      }
-      setPmccLoading(false);
-      
     } catch (error) {
       console.error('Dashboard fetch error:', error);
       toast.error('Failed to load dashboard data');
     } finally {
       setLoading(false);
       setOppsLoading(false);
-      setPmccLoading(false);
     }
   };
 
