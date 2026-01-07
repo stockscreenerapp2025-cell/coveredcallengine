@@ -269,18 +269,6 @@ const StockDetailModal = ({ symbol, isOpen, onClose }) => {
                             <div className="w-4 h-0.5 bg-orange-500"></div>
                             <span className="text-zinc-400">SMA 200 (Orange)</span>
                           </div>
-                          <div className="flex items-center gap-2">
-                            <div className="w-4 h-0.5 bg-violet-500"></div>
-                            <span className="text-zinc-400">RSI (Purple)</span>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <div className="w-4 h-0.5 bg-cyan-500"></div>
-                            <span className="text-zinc-400">Stochastic Oscillator</span>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <div className="w-4 h-0.5 bg-yellow-500"></div>
-                            <span className="text-zinc-400">ADX (Yellow)</span>
-                          </div>
                         </div>
                       </div>
                     </CardContent>
