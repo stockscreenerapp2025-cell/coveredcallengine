@@ -104,10 +104,17 @@ const StockDetailModal = ({ symbol, isOpen, onClose }) => {
                 hide_volume={false}
                 range="12M"
                 studies={[
-                  "STD;SMA",
-                  "STD;RSI",
-                  "STD;ADX"
+                  "MASimple@tv-basicstudies",
+                  "MASimple@tv-basicstudies"
                 ]}
+                studies_overrides={{
+                  "moving average.length": 50,
+                  "moving average.plot.color": "#2962FF",
+                  "moving average.plot.linewidth": 2,
+                  "moving average#1.length": 200,
+                  "moving average#1.plot.color": "#FF6D00",
+                  "moving average#1.plot.linewidth": 2
+                }}
               />
             )}
           </div>
