@@ -398,22 +398,117 @@ const Dashboard = () => {
         </CardContent>
       </Card>
 
+      {/* PMCC Opportunities */}
+      <Card className="glass-card" data-testid="pmcc-card">
+        <CardHeader className="flex flex-row items-center justify-between">
+          <div>
+            <CardTitle className="text-lg flex items-center gap-2">
+              <TrendingUp className="w-5 h-5 text-violet-400" />
+              Top 10 PMCC Opportunities
+            </CardTitle>
+            <p className="text-xs text-zinc-500 mt-1">
+              Buy LEAPS (12-24mo, δ0.80-0.90) • Sell Short Calls (7-30d, δ0.20-0.30) • $30-$500 stocks
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            {pmccInfo?.is_live && (
+              <Badge className="bg-violet-500/20 text-violet-400 border-violet-500/30">
+                <CheckCircle className="w-3 h-3 mr-1" />
+                Live Data
+              </Badge>
+            )}
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => navigate('/pmcc')}
+              className="text-violet-400 hover:text-violet-300"
+            >
+              View All <ArrowRight className="w-4 h-4 ml-1" />
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {loading || pmccLoading ? (
+            <div className="space-y-3">
+              {Array(5).fill(0).map((_, i) => (
+                <Skeleton key={i} className="h-12" />
+              ))}
+            </div>
+          ) : pmccOpportunities.length === 0 ? (
+            <div className="text-center py-8 text-zinc-500">
+              <AlertCircle className="w-12 h-12 mx-auto mb-4 opacity-50" />
+              <p>No PMCC opportunities found.</p>
+              <p className="text-sm mt-2">LEAPS options may not be available for all stocks.</p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="data-table text-sm">
+                <thead>
+                  <tr>
+                    <th>Symbol</th>
+                    <th>Price</th>
+                    <th>LEAPS Strike</th>
+                    <th>LEAPS Cost</th>
+                    <th>Short Strike</th>
+                    <th>Premium</th>
+                    <th>Net Debit</th>
+                    <th>ROI/Cycle</th>
+                    <th>Ann. ROI</th>
+                    <th>Score</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {pmccOpportunities.map((opp, index) => (
+                    <tr key={index} className="cursor-pointer hover:bg-zinc-800/50" data-testid={`pmcc-${opp.symbol}`}>
+                      <td className="font-semibold text-white">{opp.symbol}</td>
+                      <td>${opp.stock_price?.toFixed(2)}</td>
+                      <td>
+                        <div className="flex flex-col">
+                          <span>${opp.leaps_strike?.toFixed(0)}</span>
+                          <span className="text-xs text-zinc-500">{opp.leaps_dte}d • δ{opp.leaps_delta?.toFixed(2)}</span>
+                        </div>
+                      </td>
+                      <td className="text-red-400">${opp.leaps_cost?.toLocaleString()}</td>
+                      <td>
+                        <div className="flex flex-col">
+                          <span>${opp.short_strike?.toFixed(0)}</span>
+                          <span className="text-xs text-zinc-500">{opp.short_dte}d • δ{opp.short_delta?.toFixed(2)}</span>
+                        </div>
+                      </td>
+                      <td className="text-emerald-400">${opp.short_premium?.toFixed(0)}</td>
+                      <td className="text-cyan-400">${opp.net_debit?.toLocaleString()}</td>
+                      <td className="text-yellow-400 font-medium">{opp.roi_per_cycle?.toFixed(1)}%</td>
+                      <td className="text-emerald-400 font-medium">{opp.annualized_roi?.toFixed(0)}%</td>
+                      <td>
+                        <Badge className={`${opp.score >= 70 ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' : opp.score >= 50 ? 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30' : 'bg-violet-500/20 text-violet-400 border-violet-500/30'}`}>
+                          {opp.score?.toFixed(0)}
+                        </Badge>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
       {/* Data Source Notice */}
-      {opportunitiesInfo && (
-        <div className={`glass-card p-4 border-l-4 ${opportunitiesInfo.is_live ? 'border-emerald-500' : 'border-yellow-500'}`}>
+      {(opportunitiesInfo || pmccInfo) && (
+        <div className={`glass-card p-4 border-l-4 ${(opportunitiesInfo?.is_live || pmccInfo?.is_live) ? 'border-emerald-500' : 'border-yellow-500'}`}>
           <div className="flex items-center gap-3">
-            {opportunitiesInfo.is_live ? (
+            {(opportunitiesInfo?.is_live || pmccInfo?.is_live) ? (
               <CheckCircle className="w-5 h-5 text-emerald-400" />
             ) : (
               <Activity className="w-5 h-5 text-yellow-400" />
             )}
             <div>
-              <div className={`text-sm font-medium ${opportunitiesInfo.is_live ? 'text-emerald-400' : 'text-yellow-400'}`}>
-                {opportunitiesInfo.is_live ? 'Live Market Data' : 'Using Mock Data'}
+              <div className={`text-sm font-medium ${(opportunitiesInfo?.is_live || pmccInfo?.is_live) ? 'text-emerald-400' : 'text-yellow-400'}`}>
+                {(opportunitiesInfo?.is_live || pmccInfo?.is_live) ? 'Live Market Data' : 'Using Mock Data'}
               </div>
               <div className="text-xs text-zinc-500">
-                {opportunitiesInfo.is_live 
-                  ? 'Data from Massive.com API • Includes SMA, trend analysis, and dividend data'
+                {(opportunitiesInfo?.is_live || pmccInfo?.is_live)
+                  ? 'Data from Massive.com API • Covered Calls & PMCC strategies'
                   : 'Configure your API key in Admin settings for live market data'}
               </div>
             </div>
