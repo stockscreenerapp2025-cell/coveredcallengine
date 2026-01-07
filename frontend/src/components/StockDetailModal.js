@@ -27,86 +27,11 @@ import { AdvancedRealTimeChart } from 'react-ts-tradingview-widgets';
 const StockDetailModal = ({ symbol, isOpen, onClose }) => {
   const [stockData, setStockData] = useState(null);
   const [loading, setLoading] = useState(true);
-  const chartContainerRef = useRef(null);
-  const widgetRef = useRef(null);
 
   useEffect(() => {
     if (isOpen && symbol) {
       fetchStockData();
     }
-  }, [isOpen, symbol]);
-
-  useEffect(() => {
-    // Load TradingView widget when modal opens
-    if (isOpen && symbol && chartContainerRef.current) {
-      // Clean up existing widget
-      if (widgetRef.current) {
-        chartContainerRef.current.innerHTML = '';
-      }
-
-      // Create TradingView widget
-      const script = document.createElement('script');
-      script.src = 'https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js';
-      script.type = 'text/javascript';
-      script.async = true;
-      script.innerHTML = JSON.stringify({
-        "autosize": true,
-        "symbol": symbol,
-        "interval": "D",
-        "timezone": "Etc/UTC",
-        "theme": "dark",
-        "style": "1",
-        "locale": "en",
-        "enable_publishing": false,
-        "backgroundColor": "rgba(19, 23, 34, 1)",
-        "gridColor": "rgba(42, 46, 57, 0.3)",
-        "hide_top_toolbar": false,
-        "hide_legend": false,
-        "save_image": false,
-        "calendar": false,
-        "hide_volume": false,
-        "support_host": "https://www.tradingview.com",
-        "studies": [
-          "STD;SMA",
-          "STD;SMA",
-          "STD;RSI",
-          "STD;Stochastic",
-          "STD;ADX"
-        ],
-        "studies_overrides": {
-          "moving average.length": 50,
-          "moving average.plot.color": "#2962FF",
-          "moving average.plot.linewidth": 2,
-          "moving average#1.length": 200,
-          "moving average#1.plot.color": "#FF6D00",
-          "moving average#1.plot.linewidth": 2
-        },
-        "range": "12M"
-      });
-
-      const container = document.createElement('div');
-      container.className = 'tradingview-widget-container';
-      container.style.height = '100%';
-      container.style.width = '100%';
-      
-      const widgetContainer = document.createElement('div');
-      widgetContainer.className = 'tradingview-widget-container__widget';
-      widgetContainer.style.height = 'calc(100% - 32px)';
-      widgetContainer.style.width = '100%';
-      
-      container.appendChild(widgetContainer);
-      container.appendChild(script);
-      
-      chartContainerRef.current.innerHTML = '';
-      chartContainerRef.current.appendChild(container);
-      widgetRef.current = container;
-    }
-
-    return () => {
-      if (chartContainerRef.current) {
-        chartContainerRef.current.innerHTML = '';
-      }
-    };
   }, [isOpen, symbol]);
 
   const fetchStockData = async () => {
