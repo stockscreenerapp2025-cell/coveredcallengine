@@ -87,6 +87,18 @@ frontend:
         agent: "testing"
         comment: "RE-TESTED STOCK DETAIL MODAL: Comprehensive testing completed successfully. ✅ Login with admin@premiumhunter.com/admin123 working. ✅ Screener page loads with 34 live opportunities. ✅ Modal opens correctly when clicking stock rows (tested LCID and RIVN). ✅ Modal header shows stock symbol, company name, current price ($11.60 for LCID). ✅ TradingView chart renders with 1-year candlestick data and technical indicators. ✅ All three tabs functional: Technicals (SMA 50/200 values, RSI 48.0, Overall Trend BEARISH, Chart Legend), Fundamentals (Company Info, Today's Stats with Open/Volume/High/Low), News (Latest News with 6 articles including titles and sources). ✅ Modal closes with Escape key. ✅ Modal updates correctly when clicking different stocks. ✅ Screener remains functional after modal operations. All core functionality working perfectly."
 
+  - task: "Subscription/Pricing Feature"
+    implemented: true
+    working: true
+    file: "frontend/src/pages/Pricing.js"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "SUBSCRIPTION/PRICING FEATURE TESTING COMPLETED: ✅ Subscribe link with PRO badge (amber color) successfully implemented in sidebar navigation. ✅ Pricing page accessible at /pricing route with professional layout. ✅ Three subscription tiers properly displayed: 7-Day FREE Trial ($0), Monthly Plan ($49/month) with 'Most Popular' badge, Yearly Plan ($499/year) with 'Save 15%' badge. ✅ All pricing cards show correct features, pricing, and subscribe buttons. ✅ Backend subscription API working correctly - returns test Stripe payment links (trial_link, monthly_link, yearly_link) with mode='test'. ✅ Admin page contains subscription management section with test/live mode toggle, tabs for test/live links, and input fields for payment URLs. ✅ Authentication working with admin@premiumhunter.com/admin123. Minor: Some browser session timeouts during extended testing but core functionality verified through API testing and initial UI verification."
+
 metadata:
   created_by: "testing_agent"
   version: "1.0"
