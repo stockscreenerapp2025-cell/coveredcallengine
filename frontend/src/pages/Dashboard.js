@@ -27,9 +27,12 @@ const Dashboard = () => {
   const [news, setNews] = useState([]);
   const [opportunities, setOpportunities] = useState([]);
   const [opportunitiesInfo, setOpportunitiesInfo] = useState(null);
+  const [pmccOpportunities, setPmccOpportunities] = useState([]);
+  const [pmccInfo, setPmccInfo] = useState(null);
   const [portfolio, setPortfolio] = useState(null);
   const [loading, setLoading] = useState(true);
   const [oppsLoading, setOppsLoading] = useState(false);
+  const [pmccLoading, setPmccLoading] = useState(false);
 
   useEffect(() => {
     fetchDashboardData();
@@ -38,6 +41,7 @@ const Dashboard = () => {
   const fetchDashboardData = async () => {
     setLoading(true);
     setOppsLoading(true);
+    setPmccLoading(true);
     try {
       const [indicesRes, newsRes, portfolioRes] = await Promise.all([
         stocksApi.getIndices(),
@@ -56,17 +60,31 @@ const Dashboard = () => {
         setOpportunitiesInfo(oppsRes.data);
       } catch (oppsError) {
         console.error('Dashboard opportunities error:', oppsError);
-        // Fallback to regular screener
         const fallbackRes = await screenerApi.getCoveredCalls({ min_roi: 1.5, min_price: 30, max_price: 90 });
         setOpportunities(fallbackRes.data.opportunities?.slice(0, 10) || []);
         setOpportunitiesInfo({ is_live: fallbackRes.data.is_live, fallback: true });
       }
+      setOppsLoading(false);
+      
+      // Fetch PMCC opportunities
+      try {
+        const pmccRes = await screenerApi.getDashboardPMCC();
+        setPmccOpportunities(pmccRes.data.opportunities || []);
+        setPmccInfo(pmccRes.data);
+      } catch (pmccError) {
+        console.error('Dashboard PMCC error:', pmccError);
+        setPmccOpportunities([]);
+        setPmccInfo({ is_live: false, error: true });
+      }
+      setPmccLoading(false);
+      
     } catch (error) {
       console.error('Dashboard fetch error:', error);
       toast.error('Failed to load dashboard data');
     } finally {
       setLoading(false);
       setOppsLoading(false);
+      setPmccLoading(false);
     }
   };
 
