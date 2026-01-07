@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, memo } from 'react';
 import { stocksApi } from '../lib/api';
 import {
   Dialog,
@@ -22,7 +22,76 @@ import {
   Globe,
   Calendar
 } from 'lucide-react';
-import { AdvancedRealTimeChart } from 'react-ts-tradingview-widgets';
+
+// Custom TradingView Chart component with SMA 50 and 200
+const TradingViewChart = memo(({ symbol }) => {
+  const containerRef = useRef(null);
+  
+  useEffect(() => {
+    if (!containerRef.current || !symbol) return;
+    
+    // Clear previous widget
+    containerRef.current.innerHTML = '';
+    
+    // Create widget container
+    const widgetContainer = document.createElement('div');
+    widgetContainer.className = 'tradingview-widget-container';
+    widgetContainer.style.height = '100%';
+    widgetContainer.style.width = '100%';
+    
+    const innerContainer = document.createElement('div');
+    innerContainer.className = 'tradingview-widget-container__widget';
+    innerContainer.style.height = '100%';
+    innerContainer.style.width = '100%';
+    widgetContainer.appendChild(innerContainer);
+    
+    // Create and configure script
+    const script = document.createElement('script');
+    script.src = 'https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js';
+    script.type = 'text/javascript';
+    script.async = true;
+    script.innerHTML = JSON.stringify({
+      autosize: true,
+      symbol: symbol,
+      interval: "D",
+      timezone: "Etc/UTC",
+      theme: "dark",
+      style: "1",
+      locale: "en",
+      enable_publishing: false,
+      backgroundColor: "rgba(24, 24, 27, 1)",
+      gridColor: "rgba(42, 46, 57, 0.3)",
+      hide_top_toolbar: false,
+      hide_legend: false,
+      save_image: false,
+      calendar: false,
+      hide_volume: false,
+      support_host: "https://www.tradingview.com",
+      range: "12M",
+      studies: [
+        {
+          id: "MASimple@tv-basicstudies",
+          inputs: { length: 50 }
+        },
+        {
+          id: "MASimple@tv-basicstudies", 
+          inputs: { length: 200 }
+        }
+      ]
+    });
+    
+    widgetContainer.appendChild(script);
+    containerRef.current.appendChild(widgetContainer);
+    
+    return () => {
+      if (containerRef.current) {
+        containerRef.current.innerHTML = '';
+      }
+    };
+  }, [symbol]);
+  
+  return <div ref={containerRef} style={{ height: '100%', width: '100%' }} />;
+});
 
 const StockDetailModal = ({ symbol, isOpen, onClose }) => {
   const [stockData, setStockData] = useState(null);
