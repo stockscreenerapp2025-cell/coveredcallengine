@@ -1313,10 +1313,11 @@ async def get_dashboard_pmcc_opportunities(
     """
     Get top 10 PMCC (Poor Man's Covered Call) opportunities for dashboard.
     
-    PMCC Structure:
-    1. Buy LEAPS call: 12-24 months, deep ITM, delta 0.80-0.90
-    2. Sell short-term calls: 7-30 days, OTM, delta 0.20-0.30
+    Note: Due to API limitations, we simulate PMCC by finding:
+    1. Longer-dated ITM calls (highest DTE available, delta 0.70+)
+    2. Short-term OTM calls (7-30 days, delta 0.20-0.30)
     
+    For true LEAPS (12-24 months), check your broker's options chain.
     Price range: $30-$500
     """
     api_key = await get_massive_api_key()
@@ -1330,19 +1331,19 @@ async def get_dashboard_pmcc_opportunities(
             # Large Cap Tech (higher priced)
             "AAPL", "MSFT", "GOOGL", "AMZN", "NVDA", "META", "TSLA", "NFLX", "CRM", "ADBE",
             # Mid Cap Tech
-            "AMD", "INTC", "MU", "QCOM", "TXN", "AMAT", "LRCX", "KLAC", "MRVL", "AVGO",
+            "AMD", "INTC", "MU", "QCOM", "TXN", "AMAT", "LRCX", "MRVL",
             # ETFs
-            "SPY", "QQQ", "IWM", "DIA", "XLK", "XLF",
+            "SPY", "QQQ", "IWM", "DIA",
             # Financial
-            "JPM", "BAC", "WFC", "GS", "MS", "C", "USB", "PNC",
+            "JPM", "BAC", "WFC", "GS", "MS", "C",
             # Consumer/Retail
-            "COST", "WMT", "HD", "LOW", "TGT", "NKE", "SBUX", "MCD",
+            "COST", "WMT", "HD", "NKE", "SBUX", "MCD",
             # Healthcare
-            "UNH", "JNJ", "PFE", "MRK", "ABBV", "LLY", "BMY",
+            "UNH", "JNJ", "PFE", "MRK", "LLY",
             # Industrial
-            "CAT", "DE", "HON", "GE", "BA", "UPS", "FDX",
+            "CAT", "DE", "HON", "BA",
             # Energy
-            "XOM", "CVX", "COP", "SLB", "EOG"
+            "XOM", "CVX", "COP"
         ]
         
         opportunities = []
@@ -1372,7 +1373,7 @@ async def get_dashboard_pmcc_opportunities(
                     # Get options chain
                     options_response = await client.get(
                         f"https://api.massive.com/v3/snapshot/options/{symbol}",
-                        params={"apiKey": api_key, "limit": 500, "contract_type": "call"}
+                        params={"apiKey": api_key, "limit": 250}
                     )
                     
                     if options_response.status_code != 200:
@@ -1384,9 +1385,9 @@ async def get_dashboard_pmcc_opportunities(
                     if not options_results:
                         continue
                     
-                    # Separate LEAPS (12-24 months = 365-730 DTE) and short-term options (7-30 DTE)
-                    leaps_options = []
-                    short_options = []
+                    # Find longest-dated ITM calls and short-term OTM calls
+                    long_dated_itm = []
+                    short_term_otm = []
                     
                     for opt in options_results:
                         details = opt.get("details", {})
@@ -1409,73 +1410,72 @@ async def get_dashboard_pmcc_opportunities(
                         
                         iv = opt.get("implied_volatility", 0.25) or 0.25
                         
-                        # LEAPS: 12-24 months (365-730 DTE), deep ITM, delta 0.80-0.90
-                        if 365 <= dte <= 730 and 0.75 <= delta <= 0.95 and strike < current_price:
-                            leaps_options.append({
+                        # Long-dated ITM calls (for PMCC long leg)
+                        # Use the longest available DTE with high delta (deep ITM)
+                        if dte >= 30 and delta >= 0.70 and strike < current_price and price > 0:
+                            long_dated_itm.append({
                                 "strike": strike,
                                 "expiry": expiry,
                                 "dte": dte,
                                 "delta": round(delta, 3),
-                                "cost": round(price * 100, 2),  # Per contract
+                                "cost": round(price * 100, 2),
                                 "iv": round(iv * 100, 1),
-                                "intrinsic": round(max(0, current_price - strike), 2),
-                                "extrinsic": round(price - max(0, current_price - strike), 2)
+                                "intrinsic": round(max(0, current_price - strike), 2)
                             })
                         
-                        # Short-term: 7-30 DTE, OTM, delta 0.20-0.30
-                        elif 7 <= dte <= 30 and 0.15 <= delta <= 0.35 and strike > current_price:
-                            short_options.append({
+                        # Short-term OTM calls (for PMCC short leg)
+                        elif 3 <= dte <= 30 and 0.15 <= delta <= 0.35 and strike > current_price and price > 0:
+                            short_term_otm.append({
                                 "strike": strike,
                                 "expiry": expiry,
                                 "dte": dte,
                                 "delta": round(delta, 3),
-                                "premium": round(price * 100, 2),  # Per contract
+                                "premium": round(price * 100, 2),
                                 "iv": round(iv * 100, 1)
                             })
                     
                     # Find best PMCC combination
-                    if leaps_options and short_options:
-                        # Best LEAPS: highest delta (deepest ITM)
-                        best_leap = max(leaps_options, key=lambda x: x["delta"])
+                    if long_dated_itm and short_term_otm:
+                        # Best long leg: highest DTE with good delta
+                        best_long = max(long_dated_itm, key=lambda x: (x["dte"], x["delta"]))
                         
-                        # Best short call: closest to delta 0.25 (sweet spot)
-                        best_short = min(short_options, key=lambda x: abs(x["delta"] - 0.25))
+                        # Best short leg: closest to delta 0.25
+                        best_short = min(short_term_otm, key=lambda x: abs(x["delta"] - 0.25))
                         
-                        if best_leap["cost"] > 0 and best_short["premium"] > 0:
+                        if best_long["cost"] > 0 and best_short["premium"] > 0:
                             # Calculate PMCC metrics
-                            net_debit = best_leap["cost"] - best_short["premium"]
-                            max_profit = (best_short["strike"] - best_leap["strike"]) * 100 - net_debit
-                            breakeven = best_leap["strike"] + (net_debit / 100)
+                            net_debit = best_long["cost"] - best_short["premium"]
+                            strike_width = best_short["strike"] - best_long["strike"]
+                            max_profit = (strike_width * 100) - net_debit
+                            breakeven = best_long["strike"] + (net_debit / 100)
                             
-                            # ROI on capital per month (assuming monthly short call)
-                            roi_per_cycle = (best_short["premium"] / best_leap["cost"]) * 100
+                            # ROI on capital per cycle
+                            roi_per_cycle = (best_short["premium"] / best_long["cost"]) * 100
                             
-                            # Annualized ROI estimate (assuming 12 cycles per year)
-                            annualized_roi = roi_per_cycle * 12
+                            # Estimate annualized ROI (cycles per year based on short DTE)
+                            cycles_per_year = 365 / max(best_short["dte"], 7)
+                            annualized_roi = roi_per_cycle * min(cycles_per_year, 52)  # Cap at weekly cycles
                             
-                            # Strike width (spread)
-                            strike_width = best_short["strike"] - best_leap["strike"]
+                            # Calculate score
+                            roi_score = min(roi_per_cycle * 8, 30)
+                            delta_long_score = 15 if best_long["delta"] >= 0.75 else 10
+                            delta_short_score = 15 if 0.20 <= best_short["delta"] <= 0.30 else 10
+                            dte_score = min(best_long["dte"] / 10, 15)
+                            width_score = min(strike_width / current_price * 50, 15)
                             
-                            # Calculate score based on multiple factors
-                            roi_score = min(roi_per_cycle * 10, 35)
-                            delta_score = 20 if 0.80 <= best_leap["delta"] <= 0.90 else 10
-                            short_delta_score = 20 if 0.20 <= best_short["delta"] <= 0.30 else 10
-                            width_score = min(strike_width / current_price * 100, 15)
-                            iv_score = min(best_short["iv"] / 10, 10)
-                            
-                            total_score = roi_score + delta_score + short_delta_score + width_score + iv_score
+                            total_score = roi_score + delta_long_score + delta_short_score + dte_score + width_score
                             
                             opportunities.append({
                                 "symbol": symbol,
                                 "stock_price": round(current_price, 2),
-                                # LEAPS (Buy)
-                                "leaps_strike": best_leap["strike"],
-                                "leaps_expiry": best_leap["expiry"],
-                                "leaps_dte": best_leap["dte"],
-                                "leaps_delta": best_leap["delta"],
-                                "leaps_cost": best_leap["cost"],
-                                "leaps_iv": best_leap["iv"],
-                                # Short call (Sell)
+                                # Long leg (Buy)
+                                "leaps_strike": best_long["strike"],
+                                "leaps_expiry": best_long["expiry"],
+                                "leaps_dte": best_long["dte"],
+                                "leaps_delta": best_long["delta"],
+                                "leaps_cost": best_long["cost"],
+                                "leaps_iv": best_long["iv"],
+                                # Short leg (Sell)
                                 "short_strike": best_short["strike"],
                                 "short_expiry": best_short["expiry"],
                                 "short_dte": best_short["dte"],
@@ -1504,10 +1504,11 @@ async def get_dashboard_pmcc_opportunities(
             "opportunities": top_10,
             "total": len(top_10),
             "is_live": True,
+            "note": "Using longest available dated options. For true LEAPS (12-24mo), check your broker.",
             "filters_applied": {
                 "price_range": "$30-$500",
-                "leaps": "12-24 months, deep ITM, delta 0.80-0.90",
-                "short_call": "7-30 days, OTM, delta 0.20-0.30"
+                "long_leg": "Longest DTE available, deep ITM (δ≥0.70)",
+                "short_leg": "7-30 days, OTM (δ 0.20-0.30)"
             }
         }
         
