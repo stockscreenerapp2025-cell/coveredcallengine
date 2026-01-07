@@ -13,7 +13,8 @@ import {
   LogOut,
   Menu,
   X,
-  ChevronDown
+  ChevronDown,
+  Crown
 } from 'lucide-react';
 import {
   DropdownMenu,
@@ -36,6 +37,7 @@ const Layout = ({ children }) => {
     { path: '/pmcc', icon: <LineChart className="w-5 h-5" />, label: 'PMCC' },
     { path: '/portfolio', icon: <Wallet className="w-5 h-5" />, label: 'Portfolio' },
     { path: '/watchlist', icon: <BookmarkPlus className="w-5 h-5" />, label: 'Watchlist' },
+    { path: '/pricing', icon: <Crown className="w-5 h-5" />, label: 'Subscribe', highlight: true },
   ];
 
   if (isAdmin) {
