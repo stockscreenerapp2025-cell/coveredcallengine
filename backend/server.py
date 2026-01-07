@@ -1473,13 +1473,12 @@ async def get_dashboard_pmcc_opportunities(
     user: dict = Depends(get_current_user)
 ):
     """
-    Get top 10 PMCC-style diagonal spread opportunities for dashboard.
+    Get top 10 PMCC (Poor Man's Covered Call) opportunities for dashboard.
     
-    Due to API snapshot limitations (short-dated options only), this shows:
-    - Long leg: Longest available DTE, deep ITM (high delta)
-    - Short leg: Shorter DTE, OTM (low delta)
+    Uses true LEAPS options (12-24 months out) for the long leg.
+    - Long leg: LEAPS call, deep ITM (high delta ~0.80-0.90), 12-24 months
+    - Short leg: Short-term call, OTM (low delta ~0.20-0.30), 7-45 days
     
-    For true LEAPS (12-24mo), consult your broker's full options chain.
     Price range: $30-$500
     """
     api_key = await get_massive_api_key()
@@ -1506,6 +1505,17 @@ async def get_dashboard_pmcc_opportunities(
         
         opportunities = []
         
+        # Calculate date ranges for LEAPS (12-24 months out) and short-term (7-45 days)
+        today = datetime.now()
+        
+        # LEAPS date range: 12-24 months from today
+        leaps_start = (today + timedelta(days=365)).strftime("%Y-%m-%d")  # 12 months out
+        leaps_end = (today + timedelta(days=730)).strftime("%Y-%m-%d")    # 24 months out
+        
+        # Short-term date range: 7-45 days from today
+        short_start = (today + timedelta(days=7)).strftime("%Y-%m-%d")
+        short_end = (today + timedelta(days=45)).strftime("%Y-%m-%d")
+        
         async with httpx.AsyncClient(timeout=120.0) as client:
             for symbol in symbols_to_scan:
                 try:
@@ -1528,176 +1538,161 @@ async def get_dashboard_pmcc_opportunities(
                     if current_price < 30 or current_price > 500:
                         continue
                     
-                    # Get options chain
-                    options_response = await client.get(
+                    # Fetch LEAPS options (12-24 months out)
+                    leaps_response = await client.get(
                         f"https://api.massive.com/v3/snapshot/options/{symbol}",
-                        params={"apiKey": api_key, "limit": 250}
+                        params={
+                            "apiKey": api_key,
+                            "limit": 250,
+                            "contract_type": "call",
+                            "expiration_date.gte": leaps_start,
+                            "expiration_date.lte": leaps_end
+                        }
                     )
                     
-                    if options_response.status_code != 200:
-                        continue
+                    # Fetch short-term options (7-45 days)
+                    short_response = await client.get(
+                        f"https://api.massive.com/v3/snapshot/options/{symbol}",
+                        params={
+                            "apiKey": api_key,
+                            "limit": 250,
+                            "contract_type": "call",
+                            "expiration_date.gte": short_start,
+                            "expiration_date.lte": short_end
+                        }
+                    )
                     
-                    options_data = options_response.json()
-                    options_results = options_data.get("results", [])
+                    leaps_options = []
+                    short_options = []
                     
-                    if not options_results:
-                        continue
-                    
-                    # Organize options by expiration
-                    by_expiry = {}
-                    for opt in options_results:
-                        details = opt.get("details", {})
-                        if details.get("contract_type") != "call":
-                            continue
-                        
-                        expiry = details.get("expiration_date", "")
-                        dte = calculate_dte(expiry)
-                        
-                        if dte < 1:
-                            continue
-                        
-                        if expiry not in by_expiry:
-                            by_expiry[expiry] = {"dte": dte, "options": []}
-                        by_expiry[expiry]["options"].append(opt)
-                    
-                    # Need at least 2 different expirations for a diagonal spread
-                    if len(by_expiry) < 2:
-                        continue
-                    
-                    # Sort expirations by DTE
-                    sorted_expiries = sorted(by_expiry.items(), key=lambda x: x[1]["dte"])
-                    
-                    # Short leg: earliest expiration with OTM options
-                    # Long leg: later expiration with ITM options
-                    short_expiry_data = sorted_expiries[0]
-                    long_expiry_data = sorted_expiries[-1]  # Latest available
-                    
-                    short_dte = short_expiry_data[1]["dte"]
-                    long_dte = long_expiry_data[1]["dte"]
-                    
-                    # Need different DTEs for diagonal
-                    if long_dte <= short_dte:
-                        continue
-                    
-                    # Find best short leg: OTM, delta 0.20-0.35
-                    best_short = None
-                    for opt in short_expiry_data[1]["options"]:
-                        details = opt.get("details", {})
-                        greeks = opt.get("greeks", {})
-                        day = opt.get("day", {})
-                        last_quote = opt.get("last_quote", {})
-                        
-                        strike = details.get("strike_price", 0)
-                        delta = abs(greeks.get("delta", 0)) if greeks else 0
-                        
-                        # OTM strike
-                        if strike <= current_price:
-                            continue
-                        
-                        # Target delta range
-                        if delta < 0.15 or delta > 0.40:
-                            continue
-                        
-                        bid = last_quote.get("bid", 0) if last_quote else 0
-                        ask = last_quote.get("ask", 0) if last_quote else 0
-                        price = ((bid + ask) / 2) if bid > 0 and ask > 0 else (day.get("close", 0) if day else 0)
-                        
-                        if price <= 0:
-                            continue
-                        
-                        iv = opt.get("implied_volatility", 0.25) or 0.25
-                        
-                        if best_short is None or abs(delta - 0.25) < abs(best_short["delta"] - 0.25):
-                            best_short = {
+                    # Process LEAPS options
+                    if leaps_response.status_code == 200:
+                        leaps_data = leaps_response.json()
+                        for opt in leaps_data.get("results", []):
+                            details = opt.get("details", {})
+                            greeks = opt.get("greeks", {})
+                            day = opt.get("day", {})
+                            last_quote = opt.get("last_quote", {})
+                            
+                            if details.get("contract_type") != "call":
+                                continue
+                            
+                            strike = details.get("strike_price", 0)
+                            delta = abs(greeks.get("delta", 0)) if greeks else 0
+                            expiry = details.get("expiration_date", "")
+                            dte = calculate_dte(expiry)
+                            
+                            # LEAPS should be ITM with high delta (0.70+)
+                            if strike >= current_price or delta < 0.70:
+                                continue
+                            
+                            bid = last_quote.get("bid", 0) if last_quote else 0
+                            ask = last_quote.get("ask", 0) if last_quote else 0
+                            price = ((bid + ask) / 2) if bid > 0 and ask > 0 else (day.get("close", 0) if day else 0)
+                            
+                            if price <= 0:
+                                continue
+                            
+                            iv = opt.get("implied_volatility", 0.25) or 0.25
+                            
+                            leaps_options.append({
                                 "strike": strike,
-                                "expiry": short_expiry_data[0],
-                                "dte": short_dte,
-                                "delta": round(delta, 3),
-                                "premium": round(price * 100, 2),
-                                "iv": round(iv * 100, 1)
-                            }
-                    
-                    # Find best long leg: ITM, high delta (0.70+)
-                    best_long = None
-                    for opt in long_expiry_data[1]["options"]:
-                        details = opt.get("details", {})
-                        greeks = opt.get("greeks", {})
-                        day = opt.get("day", {})
-                        last_quote = opt.get("last_quote", {})
-                        
-                        strike = details.get("strike_price", 0)
-                        delta = abs(greeks.get("delta", 0)) if greeks else 0
-                        
-                        # ITM strike
-                        if strike >= current_price:
-                            continue
-                        
-                        # High delta (deep ITM)
-                        if delta < 0.65:
-                            continue
-                        
-                        bid = last_quote.get("bid", 0) if last_quote else 0
-                        ask = last_quote.get("ask", 0) if last_quote else 0
-                        price = ((bid + ask) / 2) if bid > 0 and ask > 0 else (day.get("close", 0) if day else 0)
-                        
-                        if price <= 0:
-                            continue
-                        
-                        iv = opt.get("implied_volatility", 0.25) or 0.25
-                        
-                        if best_long is None or delta > best_long["delta"]:
-                            best_long = {
-                                "strike": strike,
-                                "expiry": long_expiry_data[0],
-                                "dte": long_dte,
+                                "expiry": expiry,
+                                "dte": dte,
                                 "delta": round(delta, 3),
                                 "cost": round(price * 100, 2),
                                 "iv": round(iv * 100, 1)
-                            }
+                            })
                     
-                    # Build PMCC opportunity if both legs found
-                    if best_long and best_short and best_long["cost"] > 0:
-                        net_debit = best_long["cost"] - best_short["premium"]
-                        strike_width = best_short["strike"] - best_long["strike"]
-                        max_profit = (strike_width * 100) - net_debit
-                        breakeven = best_long["strike"] + (net_debit / 100)
+                    # Process short-term options
+                    if short_response.status_code == 200:
+                        short_data = short_response.json()
+                        for opt in short_data.get("results", []):
+                            details = opt.get("details", {})
+                            greeks = opt.get("greeks", {})
+                            day = opt.get("day", {})
+                            last_quote = opt.get("last_quote", {})
+                            
+                            if details.get("contract_type") != "call":
+                                continue
+                            
+                            strike = details.get("strike_price", 0)
+                            delta = abs(greeks.get("delta", 0)) if greeks else 0
+                            expiry = details.get("expiration_date", "")
+                            dte = calculate_dte(expiry)
+                            
+                            # Short leg should be OTM with delta 0.15-0.40
+                            if strike <= current_price or delta < 0.15 or delta > 0.40:
+                                continue
+                            
+                            bid = last_quote.get("bid", 0) if last_quote else 0
+                            ask = last_quote.get("ask", 0) if last_quote else 0
+                            price = ((bid + ask) / 2) if bid > 0 and ask > 0 else (day.get("close", 0) if day else 0)
+                            
+                            if price <= 0:
+                                continue
+                            
+                            iv = opt.get("implied_volatility", 0.25) or 0.25
+                            
+                            short_options.append({
+                                "strike": strike,
+                                "expiry": expiry,
+                                "dte": dte,
+                                "delta": round(delta, 3),
+                                "premium": round(price * 100, 2),
+                                "iv": round(iv * 100, 1)
+                            })
+                    
+                    # Build PMCC if both legs available
+                    if leaps_options and short_options:
+                        # Best LEAPS: highest delta (deepest ITM)
+                        best_leaps = max(leaps_options, key=lambda x: x["delta"])
                         
-                        roi_per_cycle = (best_short["premium"] / best_long["cost"]) * 100
-                        cycles_per_year = 365 / max(best_short["dte"], 7)
-                        annualized_roi = roi_per_cycle * min(cycles_per_year, 52)
+                        # Best short: closest to delta 0.25
+                        best_short = min(short_options, key=lambda x: abs(x["delta"] - 0.25))
                         
-                        # Score calculation
-                        roi_score = min(roi_per_cycle * 10, 35)
-                        delta_long_score = 15 if best_long["delta"] >= 0.75 else 10
-                        delta_short_score = 15 if 0.20 <= best_short["delta"] <= 0.30 else 10
-                        dte_diff_score = min((long_dte - short_dte) / 5, 15)
-                        width_score = min(strike_width / current_price * 100, 10)
-                        
-                        total_score = roi_score + delta_long_score + delta_short_score + dte_diff_score + width_score
-                        
-                        opportunities.append({
-                            "symbol": symbol,
-                            "stock_price": round(current_price, 2),
-                            "leaps_strike": best_long["strike"],
-                            "leaps_expiry": best_long["expiry"],
-                            "leaps_dte": best_long["dte"],
-                            "leaps_delta": best_long["delta"],
-                            "leaps_cost": best_long["cost"],
-                            "leaps_iv": best_long["iv"],
-                            "short_strike": best_short["strike"],
-                            "short_expiry": best_short["expiry"],
-                            "short_dte": best_short["dte"],
-                            "short_delta": best_short["delta"],
-                            "short_premium": best_short["premium"],
-                            "short_iv": best_short["iv"],
-                            "net_debit": round(net_debit, 2),
-                            "max_profit": round(max_profit, 2),
-                            "breakeven": round(breakeven, 2),
-                            "strike_width": round(strike_width, 2),
-                            "roi_per_cycle": round(roi_per_cycle, 2),
-                            "annualized_roi": round(annualized_roi, 1),
-                            "score": round(total_score, 1)
-                        })
+                        if best_leaps["cost"] > 0:
+                            net_debit = best_leaps["cost"] - best_short["premium"]
+                            strike_width = best_short["strike"] - best_leaps["strike"]
+                            max_profit = (strike_width * 100) - net_debit
+                            breakeven = best_leaps["strike"] + (net_debit / 100)
+                            
+                            roi_per_cycle = (best_short["premium"] / best_leaps["cost"]) * 100
+                            cycles_per_year = 365 / max(best_short["dte"], 7)
+                            annualized_roi = roi_per_cycle * min(cycles_per_year, 52)
+                            
+                            # Score calculation
+                            roi_score = min(roi_per_cycle * 10, 35)
+                            delta_long_score = 20 if best_leaps["delta"] >= 0.80 else 15 if best_leaps["delta"] >= 0.75 else 10
+                            delta_short_score = 15 if 0.20 <= best_short["delta"] <= 0.30 else 10
+                            dte_leaps_score = 15 if best_leaps["dte"] >= 365 else 10
+                            width_score = min(strike_width / current_price * 100, 10)
+                            
+                            total_score = roi_score + delta_long_score + delta_short_score + dte_leaps_score + width_score
+                            
+                            opportunities.append({
+                                "symbol": symbol,
+                                "stock_price": round(current_price, 2),
+                                "leaps_strike": best_leaps["strike"],
+                                "leaps_expiry": best_leaps["expiry"],
+                                "leaps_dte": best_leaps["dte"],
+                                "leaps_delta": best_leaps["delta"],
+                                "leaps_cost": best_leaps["cost"],
+                                "leaps_iv": best_leaps["iv"],
+                                "short_strike": best_short["strike"],
+                                "short_expiry": best_short["expiry"],
+                                "short_dte": best_short["dte"],
+                                "short_delta": best_short["delta"],
+                                "short_premium": best_short["premium"],
+                                "short_iv": best_short["iv"],
+                                "net_debit": round(net_debit, 2),
+                                "max_profit": round(max_profit, 2),
+                                "breakeven": round(breakeven, 2),
+                                "strike_width": round(strike_width, 2),
+                                "roi_per_cycle": round(roi_per_cycle, 2),
+                                "annualized_roi": round(annualized_roi, 1),
+                                "score": round(total_score, 1)
+                            })
                     
                 except Exception as e:
                     logging.error(f"PMCC scan error for {symbol}: {e}")
@@ -1711,11 +1706,12 @@ async def get_dashboard_pmcc_opportunities(
             "opportunities": top_10,
             "total": len(top_10),
             "is_live": True,
-            "note": "Shows diagonal spreads using available options. For true LEAPS (12-24mo), check your broker.",
+            "has_leaps": len(top_10) > 0,
+            "note": "True LEAPS (12-24 months) with short-term covered calls" if top_10 else "No LEAPS options available for scanned symbols",
             "filters_applied": {
                 "price_range": "$30-$500",
-                "long_leg": "Longer DTE, deep ITM (δ≥0.65)",
-                "short_leg": "Shorter DTE, OTM (δ 0.15-0.40)"
+                "leaps_leg": f"12-24 months out ({leaps_start} to {leaps_end}), deep ITM (δ≥0.70)",
+                "short_leg": f"7-45 days out ({short_start} to {short_end}), OTM (δ 0.15-0.40)"
             }
         }
         
