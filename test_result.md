@@ -122,7 +122,7 @@ metadata:
 
 test_plan:
   current_focus:
-    - "Subscription/Pricing Feature"
+    - "Enhanced Admin Panel"
   stuck_tasks: []
   test_all: false
   test_priority: "high_first"
