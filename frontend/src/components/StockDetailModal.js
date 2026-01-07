@@ -270,12 +270,12 @@ const StockDetailModal = ({ symbol, isOpen, onClose }) => {
                         <div className="text-xs text-zinc-500 mb-2">Chart Indicators Legend</div>
                         <div className="space-y-1 text-xs">
                           <div className="flex items-center gap-2">
-                            <div className="w-4 h-0.5 bg-blue-500"></div>
-                            <span className="text-zinc-400">SMA 50 (Blue)</span>
+                            <div className="w-4 h-0.5 bg-pink-400"></div>
+                            <span className="text-zinc-400">SMA 50</span>
                           </div>
                           <div className="flex items-center gap-2">
-                            <div className="w-4 h-0.5 bg-orange-500"></div>
-                            <span className="text-zinc-400">SMA 200 (Orange)</span>
+                            <div className="w-4 h-0.5 bg-teal-400"></div>
+                            <span className="text-zinc-400">SMA 200</span>
                           </div>
                         </div>
                       </div>
