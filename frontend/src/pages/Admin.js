@@ -295,6 +295,11 @@ const Admin = () => {
       past_due: 'bg-red-500/20 text-red-400 border-red-500/30',
       expired: 'bg-orange-500/20 text-orange-400 border-orange-500/30'
     };
+    
+    if (!status) {
+      return <Badge className="bg-zinc-700/50 text-zinc-500 border-zinc-600/30">No Sub</Badge>;
+    }
+    
     return <Badge className={styles[status] || styles.expired}>{status}</Badge>;
   };
 
