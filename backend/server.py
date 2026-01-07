@@ -572,6 +572,168 @@ async def get_stock_quote(symbol: str, user: dict = Depends(get_current_user)):
 async def get_market_indices(user: dict = Depends(get_current_user)):
     return MOCK_INDICES
 
+@stocks_router.get("/details/{symbol}")
+async def get_stock_details(symbol: str, user: dict = Depends(get_current_user)):
+    """Get comprehensive stock details including news, fundamentals, and ratings"""
+    symbol = symbol.upper()
+    api_key = await get_massive_api_key()
+    
+    result = {
+        "symbol": symbol,
+        "price": 0,
+        "change": 0,
+        "change_pct": 0,
+        "news": [],
+        "fundamentals": {},
+        "analyst_ratings": {},
+        "technicals": {},
+        "is_live": False
+    }
+    
+    if api_key:
+        try:
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                # Get current price
+                price_response = await client.get(
+                    f"https://api.massive.com/v2/aggs/ticker/{symbol}/prev",
+                    params={"apiKey": api_key}
+                )
+                if price_response.status_code == 200:
+                    price_data = price_response.json()
+                    if price_data.get("results"):
+                        r = price_data["results"][0]
+                        result["price"] = r.get("c", 0)
+                        result["open"] = r.get("o", 0)
+                        result["high"] = r.get("h", 0)
+                        result["low"] = r.get("l", 0)
+                        result["volume"] = r.get("v", 0)
+                        result["change"] = round(r.get("c", 0) - r.get("o", 0), 2)
+                        result["change_pct"] = round((r.get("c", 0) - r.get("o", 0)) / r.get("o", 1) * 100, 2) if r.get("o") else 0
+                        result["is_live"] = True
+                
+                # Get ticker details/fundamentals
+                ticker_response = await client.get(
+                    f"https://api.massive.com/v3/reference/tickers/{symbol}",
+                    params={"apiKey": api_key}
+                )
+                if ticker_response.status_code == 200:
+                    ticker_data = ticker_response.json()
+                    details = ticker_data.get("results", {})
+                    result["fundamentals"] = {
+                        "name": details.get("name", symbol),
+                        "market_cap": details.get("market_cap"),
+                        "description": details.get("description", ""),
+                        "homepage": details.get("homepage_url", ""),
+                        "employees": details.get("total_employees"),
+                        "list_date": details.get("list_date"),
+                        "sic_description": details.get("sic_description", ""),
+                        "locale": details.get("locale", "us"),
+                        "primary_exchange": details.get("primary_exchange", "")
+                    }
+                
+                # Get news from Massive.com
+                news_response = await client.get(
+                    f"https://api.massive.com/v2/reference/news",
+                    params={"apiKey": api_key, "ticker": symbol, "limit": 5}
+                )
+                if news_response.status_code == 200:
+                    news_data = news_response.json()
+                    for article in news_data.get("results", [])[:5]:
+                        result["news"].append({
+                            "title": article.get("title", ""),
+                            "description": article.get("description", ""),
+                            "published": article.get("published_utc", ""),
+                            "source": article.get("publisher", {}).get("name", ""),
+                            "url": article.get("article_url", ""),
+                            "image": article.get("image_url", "")
+                        })
+                
+                # Calculate technical indicators from historical data
+                end_date = datetime.now().strftime("%Y-%m-%d")
+                start_date = (datetime.now() - timedelta(days=250)).strftime("%Y-%m-%d")
+                
+                hist_response = await client.get(
+                    f"https://api.massive.com/v2/aggs/ticker/{symbol}/range/1/day/{start_date}/{end_date}",
+                    params={"apiKey": api_key, "adjusted": "true", "sort": "desc", "limit": 250}
+                )
+                
+                if hist_response.status_code == 200:
+                    hist_data = hist_response.json()
+                    bars = hist_data.get("results", [])
+                    
+                    if len(bars) >= 50:
+                        closes = [b.get("c", 0) for b in bars]
+                        
+                        # SMA 50 and SMA 200
+                        sma_50 = sum(closes[:50]) / 50
+                        sma_200 = sum(closes[:200]) / 200 if len(closes) >= 200 else sum(closes) / len(closes)
+                        
+                        current = closes[0] if closes else 0
+                        
+                        # Simple RSI calculation (14 period)
+                        gains = []
+                        losses = []
+                        for i in range(min(14, len(closes) - 1)):
+                            change = closes[i] - closes[i + 1]
+                            if change > 0:
+                                gains.append(change)
+                                losses.append(0)
+                            else:
+                                gains.append(0)
+                                losses.append(abs(change))
+                        
+                        avg_gain = sum(gains) / 14 if gains else 0
+                        avg_loss = sum(losses) / 14 if losses else 0.001
+                        rs = avg_gain / avg_loss if avg_loss > 0 else 100
+                        rsi = 100 - (100 / (1 + rs))
+                        
+                        # Trend analysis
+                        trend = "bullish" if current > sma_50 > sma_200 else "bearish" if current < sma_50 < sma_200 else "neutral"
+                        
+                        result["technicals"] = {
+                            "sma_50": round(sma_50, 2),
+                            "sma_200": round(sma_200, 2),
+                            "rsi": round(rsi, 1),
+                            "trend": trend,
+                            "above_sma_50": current > sma_50,
+                            "above_sma_200": current > sma_200,
+                            "sma_50_above_200": sma_50 > sma_200
+                        }
+                
+        except Exception as e:
+            logging.error(f"Stock details error for {symbol}: {e}")
+    
+    # Get MarketAux news as supplement
+    settings = await get_admin_settings()
+    if settings.marketaux_api_token and "..." not in settings.marketaux_api_token and len(result["news"]) < 5:
+        try:
+            async with httpx.AsyncClient(timeout=15.0) as client:
+                response = await client.get(
+                    "https://api.marketaux.com/v1/news/all",
+                    params={
+                        "api_token": settings.marketaux_api_token,
+                        "symbols": symbol,
+                        "filter_entities": "true",
+                        "limit": 5
+                    }
+                )
+                if response.status_code == 200:
+                    data = response.json()
+                    for article in data.get("data", []):
+                        if len(result["news"]) < 8:
+                            result["news"].append({
+                                "title": article.get("title", ""),
+                                "description": article.get("description", ""),
+                                "published": article.get("published_at", ""),
+                                "source": article.get("source", ""),
+                                "url": article.get("url", ""),
+                                "sentiment": article.get("sentiment", 0)
+                            })
+        except Exception as e:
+            logging.error(f"MarketAux news error: {e}")
+    
+    return result
+
 @stocks_router.get("/historical/{symbol}")
 async def get_historical_data(
     symbol: str,
