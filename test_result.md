@@ -92,10 +92,7 @@ metadata:
 
 test_plan:
   current_focus:
-    - "Screener Covered Calls API"
-    - "Stock Quote API"
-    - "Options Chain API"
-    - "PMCC Screener API"
+    - "Stock Detail Modal"
   stuck_tasks: []
   test_all: false
   test_priority: "high_first"
