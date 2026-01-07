@@ -90,7 +90,7 @@ frontend:
   - task: "Subscription/Pricing Feature"
     implemented: true
     working: true
-    file: "frontend/src/pages/Pricing.js"
+    file: "frontend/src/pages/Landing.js"
     stuck_count: 0
     priority: "high"
     needs_retesting: false
@@ -98,6 +98,9 @@ frontend:
       - working: true
         agent: "testing"
         comment: "SUBSCRIPTION/PRICING FEATURE TESTING COMPLETED: ✅ Subscribe link with PRO badge (amber color) successfully implemented in sidebar navigation. ✅ Pricing page accessible at /pricing route with professional layout. ✅ Three subscription tiers properly displayed: 7-Day FREE Trial ($0), Monthly Plan ($49/month) with 'Most Popular' badge, Yearly Plan ($499/year) with 'Save 15%' badge. ✅ All pricing cards show correct features, pricing, and subscribe buttons. ✅ Backend subscription API working correctly - returns test Stripe payment links (trial_link, monthly_link, yearly_link) with mode='test'. ✅ Admin page contains subscription management section with test/live mode toggle, tabs for test/live links, and input fields for payment URLs. ✅ Authentication working with admin@premiumhunter.com/admin123. Minor: Some browser session timeouts during extended testing but core functionality verified through API testing and initial UI verification."
+      - working: true
+        agent: "testing"
+        comment: "COMPREHENSIVE LANDING PAGE WITH SUBSCRIPTION SECTION TESTING COMPLETED: ✅ Hero section displays 'Find the Best Covered Call Opportunities' headline correctly. ✅ Hero section contains 'Start Free Trial' and 'Sign In' buttons that function properly. ✅ Navigation 'Get Started' button successfully scrolls to pricing section. ✅ Pricing section shows 'Choose Your Plan' heading and all 3 subscription cards are perfectly displayed and aligned: 7-Day FREE Trial ($0/7 days) with green 'FREE TRIAL' button, Monthly Plan ($49/month) with purple 'SUBSCRIBE' button and 'Most Popular' badge, Yearly Plan ($499/year) with amber/orange 'SUBSCRIBE' button and 'Save 15%' badge. ✅ ALL subscription buttons successfully open Stripe payment links in new tabs (verified URLs: buy.stripe.com/test_*). ✅ Trust badges display correctly: 'Secure Payment via Stripe', 'Cancel Anytime', 'Instant Access'. ✅ CTA section 'Get Started Now' button scrolls to pricing section. ✅ All CTA buttons throughout the page correctly point to pricing section. ✅ Subscription links API working correctly (returns valid test Stripe URLs). Landing page subscription functionality is fully operational and ready for production use."
 
 metadata:
   created_by: "testing_agent"
