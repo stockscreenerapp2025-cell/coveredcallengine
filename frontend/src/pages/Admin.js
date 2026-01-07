@@ -568,12 +568,13 @@ const Admin = () => {
                               <Badge className={
                                 user.subscription?.plan === 'yearly' ? 'bg-amber-500/20 text-amber-400' :
                                 user.subscription?.plan === 'monthly' ? 'bg-violet-500/20 text-violet-400' :
-                                'bg-blue-500/20 text-blue-400'
+                                user.subscription?.plan === 'trial' ? 'bg-blue-500/20 text-blue-400' :
+                                'bg-zinc-700/50 text-zinc-500'
                               }>
-                                {user.subscription?.plan || 'trial'}
+                                {user.subscription?.plan || 'none'}
                               </Badge>
                             </td>
-                            <td>{getStatusBadge(user.subscription?.status || 'unknown')}</td>
+                            <td>{getStatusBadge(user.subscription?.status)}</td>
                             <td className="text-xs text-zinc-500">
                               {user.created_at ? new Date(user.created_at).toLocaleDateString() : '-'}
                             </td>
@@ -581,10 +582,30 @@ const Admin = () => {
                               {user.last_login ? new Date(user.last_login).toLocaleDateString() : 'Never'}
                             </td>
                             <td>
-                              <div className="flex gap-2">
+                              <div className="flex gap-1 flex-wrap">
+                                {!user.subscription?.status && (
+                                  <>
+                                    <Button size="sm" variant="outline" className="text-xs px-2 py-1 h-7" onClick={() => setUserSubscription(user.id, 'trialing', 'trial')}>
+                                      Start Trial
+                                    </Button>
+                                    <Button size="sm" variant="outline" className="text-xs px-2 py-1 h-7 text-emerald-400" onClick={() => setUserSubscription(user.id, 'active', 'monthly')}>
+                                      Activate
+                                    </Button>
+                                  </>
+                                )}
                                 {user.subscription?.status === 'trialing' && (
-                                  <Button size="sm" variant="outline" onClick={() => extendUserTrial(user.id, 7)}>
+                                  <Button size="sm" variant="outline" className="text-xs px-2 py-1 h-7" onClick={() => extendUserTrial(user.id, 7)}>
                                     +7 days
+                                  </Button>
+                                )}
+                                {user.subscription?.status === 'active' && (
+                                  <Button size="sm" variant="outline" className="text-xs px-2 py-1 h-7 text-red-400" onClick={() => setUserSubscription(user.id, 'cancelled', user.subscription?.plan)}>
+                                    Cancel
+                                  </Button>
+                                )}
+                                {user.subscription?.status === 'cancelled' && (
+                                  <Button size="sm" variant="outline" className="text-xs px-2 py-1 h-7 text-emerald-400" onClick={() => setUserSubscription(user.id, 'active', user.subscription?.plan || 'monthly')}>
+                                    Reactivate
                                   </Button>
                                 )}
                               </div>
