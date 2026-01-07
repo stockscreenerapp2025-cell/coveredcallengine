@@ -2,365 +2,146 @@
 The user wants to build a web-based application named Covered Call Engine to identify, analyze, and manage Covered Call and Poor Man’s Covered Call (PMCC) strategies.
 
 **PRODUCT REQUIREMENTS:**
-- **Dashboard:** Display new opportunities, market indices, stock data, and a live news feed.
-- **Covered Call Screener:** A powerful screening engine with extensive filters for stock fundamentals, technicals, and options-specific metrics (DTE, Delta, IV, ROI, etc.).
-- **PMCC Support:** Functionality to identify suitable LEAPS and short calls for PMCC strategies.
+- **Dashboard:** Display new opportunities, market indices, stock data, and a live news feed. It should show the Top 10 opportunities based on a complex set of user-defined criteria.
+- **Clickable Detail View:** Every trade result in the dashboard should be clickable, opening a pop-up with a 1-year TradingView candlestick chart (with SMA 50/200, RSI, Oscillator, ADX), relevant news, fundamental data, and analyst ratings.
+- **Covered Call Screener:** A powerful screening engine with extensive filters. The result should show only one entry per stock symbol (the one with the best composite score).
+- **PMCC Support:** Functionality to identify suitable LEAPS and short calls for PMCC strategies, located on a dedicated page.
 - **Portfolio Tracking:** Allow users to upload Interactive Brokers CSV history or enter trades manually to track P/L, ROI, and break-even.
 - **Watchlist:** A feature to monitor specific stocks for opportunities.
-- **Admin Dashboard:** A panel for managing API credentials (for market data and news), data sources, and feature flags.
+- **Admin Dashboard:** A panel for managing API credentials.
 - **Data Integration:** Use Massive.com for stock/options data and MarketAux.com for news.
-- **AI-Assisted Insights:** Integrate OpenAI GPT-5.2 for trade sourcing, ranking, and risk analysis.
-- **Authentication:** A custom JWT-based authentication system.
 
 **User's preferred language**: English
 
 **what currently exists?**
-A full-stack application has been built with a FastAPI backend and a React/Shadcn UI frontend. The application has been rebranded from Premium Hunter to Covered Call Engine.
-
-- **Completed Pages:** Landing, Login/Register, Dashboard, a comprehensive Screener UI, PMCC, Portfolio, Watchlist, and Admin panel.
-- **Authentication:** JWT-based authentication is functional. The default admin credentials are  / .
-- **API Integrations:**
-    - The Admin panel is set up to receive API keys for Massive.com and MarketAux.com.
-    - **MarketAux (News):** Successfully integrated and fetching live news.
-    - **Massive.com (Market Data):** Stock quotes are fetching live data. **Options chain data is NOT working.**
-    - **OpenAI:** Configured to use the Emergent Universal Key as a fallback.
-- **UI:** A dark-themed UI with emerald green branding is in place. The Screener page has user-friendly controls like dropdowns, radio buttons, and accordions for its extensive filters.
+A full-stack FastAPI/React application. The core functionality is largely complete.
+- **Live Data:** The options screener, dashboard, and all related features are fully integrated with live data from the Massive.com and MarketAux.com APIs. The initial critical issue of the screener not showing data has been resolved.
+- **Screener:** The screener page fetches and displays live options data, correctly showing only the single best opportunity per stock symbol based on a composite score. It can be filtered by stock price.
+- **Dashboard:** The dashboard has two main features implemented:
+    1.  **Top 10 Covered Call Opportunities:** Displays a filtered list of the top 10 trades based on complex, user-defined criteria (price range, trends, SMA, ROI, ATM/OTM strikes).
+    2.  **Stock Detail Modal:** Rows in the opportunities table are clickable, opening a modal with tabs for Technicals (SMA, RSI), Fundamentals (company info), and News.
+- **PMCC Page:** A dedicated page explains the PMCC strategy and shows potential diagonal spread opportunities based on the limited data available from the API (true LEAPS are not available).
+- **Caching:** A MongoDB-based caching layer has been implemented for all major API calls, significantly improving performance. An admin endpoint exists to clear the cache.
 
 **Last working item**:
-- **Last item agent was working:** The agent was attempting to fix the core issue where the Screener page does not display any live options data from the Massive.com API, even though the Scan button is pressed. The user reported that the application might still be showing mock data and that API calls are not being triggered correctly. The agent's last action was to edit  to simplify the API connection logic to use only the , as per the user's instruction.
+- **Last item agent was working:** The agent implemented a clickable stock detail modal that shows Technicals, Fundamentals, and News. However, the TradingView candlestick chart inside the modal's Technicals tab is not rendering; it appears as a blank black box.
 - **Status:** IN PROGRESS
-- **Agent Testing Done:** N (The last action was a code edit, not a verification test.)
-- **Which testing method agent to use?** Backend testing agent. The next agent must verify if the Scan button on the frontend triggers an API call to  which in turn makes a request to the Massive.com API. This should be checked by:
-    1. Tailing the backend logs: ==> /var/log/supervisor/backend.err.log <==
-2026-01-06 02:52:40,310 - root - ERROR - Error scanning QQQ: string indices must be integers, not 'str'
-2026-01-06 02:52:40,310 - root - INFO - Found 0 live opportunities
-2026-01-06 02:52:46,123 - root - ERROR - Error scanning AAPL: string indices must be integers, not 'str'
-2026-01-06 02:52:46,123 - root - ERROR - Error scanning MSFT: string indices must be integers, not 'str'
-2026-01-06 02:52:46,123 - root - ERROR - Error scanning GOOGL: string indices must be integers, not 'str'
-2026-01-06 02:52:46,123 - root - ERROR - Error scanning AMZN: string indices must be integers, not 'str'
-2026-01-06 02:52:46,123 - root - ERROR - Error scanning NVDA: string indices must be integers, not 'str'
-2026-01-06 02:52:46,123 - root - ERROR - Error scanning META: string indices must be integers, not 'str'
-2026-01-06 02:52:46,123 - root - ERROR - Error scanning TSLA: string indices must be integers, not 'str'
-2026-01-06 02:52:46,123 - root - ERROR - Error scanning JPM: string indices must be integers, not 'str'
-2026-01-06 02:52:46,123 - root - ERROR - Error scanning SPY: string indices must be integers, not 'str'
-2026-01-06 02:52:46,123 - root - ERROR - Error scanning QQQ: string indices must be integers, not 'str'
-2026-01-06 02:52:46,123 - root - INFO - Found 0 live opportunities
-2026-01-06 02:52:46,346 - root - ERROR - Error scanning AAPL: string indices must be integers, not 'str'
-2026-01-06 02:52:46,347 - root - ERROR - Error scanning MSFT: string indices must be integers, not 'str'
-2026-01-06 02:52:46,347 - root - ERROR - Error scanning GOOGL: string indices must be integers, not 'str'
-2026-01-06 02:52:46,347 - root - ERROR - Error scanning AMZN: string indices must be integers, not 'str'
-2026-01-06 02:52:46,347 - root - ERROR - Error scanning NVDA: string indices must be integers, not 'str'
-2026-01-06 02:52:46,347 - root - ERROR - Error scanning META: string indices must be integers, not 'str'
-2026-01-06 02:52:46,347 - root - ERROR - Error scanning TSLA: string indices must be integers, not 'str'
-2026-01-06 02:52:46,347 - root - ERROR - Error scanning JPM: string indices must be integers, not 'str'
-2026-01-06 02:52:46,347 - root - ERROR - Error scanning SPY: string indices must be integers, not 'str'
-2026-01-06 02:52:46,347 - root - ERROR - Error scanning QQQ: string indices must be integers, not 'str'
-2026-01-06 02:52:46,347 - root - INFO - Found 0 live opportunities
-2026-01-06 02:52:47,892 - httpx - INFO - HTTP Request: GET https://api.marketaux.com/v1/news/all?api_token=6NsueOs7LekG9jomsB5hYMAtFUKLsj3kyqoivLSr&limit=6&language=en "HTTP/1.1 200 OK"
-2026-01-06 02:52:49,653 - httpx - INFO - HTTP Request: GET https://api.marketaux.com/v1/news/all?api_token=6NsueOs7LekG9jomsB5hYMAtFUKLsj3kyqoivLSr&limit=6&language=en "HTTP/1.1 200 OK"
-2026-01-06 02:53:51,434 - root - ERROR - Error scanning AAPL: string indices must be integers, not 'str'
-2026-01-06 02:53:51,434 - root - ERROR - Error scanning MSFT: string indices must be integers, not 'str'
-2026-01-06 02:53:51,434 - root - ERROR - Error scanning GOOGL: string indices must be integers, not 'str'
-2026-01-06 02:53:51,434 - root - ERROR - Error scanning AMZN: string indices must be integers, not 'str'
-2026-01-06 02:53:51,434 - root - ERROR - Error scanning NVDA: string indices must be integers, not 'str'
-2026-01-06 02:53:51,434 - root - ERROR - Error scanning META: string indices must be integers, not 'str'
-2026-01-06 02:53:51,434 - root - ERROR - Error scanning TSLA: string indices must be integers, not 'str'
-2026-01-06 02:53:51,434 - root - ERROR - Error scanning JPM: string indices must be integers, not 'str'
-2026-01-06 02:53:51,434 - root - ERROR - Error scanning SPY: string indices must be integers, not 'str'
-2026-01-06 02:53:51,434 - root - ERROR - Error scanning QQQ: string indices must be integers, not 'str'
-2026-01-06 02:53:51,434 - root - INFO - Found 0 live opportunities
-2026-01-06 02:53:51,666 - root - ERROR - Error scanning AAPL: string indices must be integers, not 'str'
-2026-01-06 02:53:51,666 - root - ERROR - Error scanning MSFT: string indices must be integers, not 'str'
-2026-01-06 02:53:51,666 - root - ERROR - Error scanning GOOGL: string indices must be integers, not 'str'
-2026-01-06 02:53:51,666 - root - ERROR - Error scanning AMZN: string indices must be integers, not 'str'
-2026-01-06 02:53:51,666 - root - ERROR - Error scanning NVDA: string indices must be integers, not 'str'
-2026-01-06 02:53:51,666 - root - ERROR - Error scanning META: string indices must be integers, not 'str'
-2026-01-06 02:53:51,666 - root - ERROR - Error scanning TSLA: string indices must be integers, not 'str'
-2026-01-06 02:53:51,666 - root - ERROR - Error scanning JPM: string indices must be integers, not 'str'
-2026-01-06 02:53:51,666 - root - ERROR - Error scanning SPY: string indices must be integers, not 'str'
-2026-01-06 02:53:51,666 - root - ERROR - Error scanning QQQ: string indices must be integers, not 'str'
-2026-01-06 02:53:51,666 - root - INFO - Found 0 live opportunities
-2026-01-06 02:53:53,990 - root - ERROR - Error scanning AAPL: string indices must be integers, not 'str'
-2026-01-06 02:53:53,990 - root - ERROR - Error scanning MSFT: string indices must be integers, not 'str'
-2026-01-06 02:53:53,990 - root - ERROR - Error scanning GOOGL: string indices must be integers, not 'str'
-2026-01-06 02:53:53,990 - root - ERROR - Error scanning AMZN: string indices must be integers, not 'str'
-2026-01-06 02:53:53,990 - root - ERROR - Error scanning NVDA: string indices must be integers, not 'str'
-2026-01-06 02:53:53,990 - root - ERROR - Error scanning META: string indices must be integers, not 'str'
-2026-01-06 02:53:53,990 - root - ERROR - Error scanning TSLA: string indices must be integers, not 'str'
-2026-01-06 02:53:53,990 - root - ERROR - Error scanning JPM: string indices must be integers, not 'str'
-2026-01-06 02:53:53,990 - root - ERROR - Error scanning SPY: string indices must be integers, not 'str'
-2026-01-06 02:53:53,990 - root - ERROR - Error scanning QQQ: string indices must be integers, not 'str'
-2026-01-06 02:53:53,990 - root - INFO - Found 0 live opportunities
-2026-01-06 02:54:02,009 - root - ERROR - Error scanning AAPL: string indices must be integers, not 'str'
-2026-01-06 02:54:02,009 - root - ERROR - Error scanning MSFT: string indices must be integers, not 'str'
-2026-01-06 02:54:02,009 - root - ERROR - Error scanning GOOGL: string indices must be integers, not 'str'
-2026-01-06 02:54:02,009 - root - ERROR - Error scanning AMZN: string indices must be integers, not 'str'
-2026-01-06 02:54:02,009 - root - ERROR - Error scanning NVDA: string indices must be integers, not 'str'
-2026-01-06 02:54:02,009 - root - ERROR - Error scanning META: string indices must be integers, not 'str'
-2026-01-06 02:54:02,009 - root - ERROR - Error scanning TSLA: string indices must be integers, not 'str'
-2026-01-06 02:54:02,009 - root - ERROR - Error scanning JPM: string indices must be integers, not 'str'
-2026-01-06 02:54:02,009 - root - ERROR - Error scanning SPY: string indices must be integers, not 'str'
-2026-01-06 02:54:02,009 - root - ERROR - Error scanning QQQ: string indices must be integers, not 'str'
-2026-01-06 02:54:02,009 - root - INFO - Found 0 live opportunities
-2026-01-06 02:56:14,531 - root - ERROR - Error scanning AAPL: string indices must be integers, not 'str'
-2026-01-06 02:56:14,531 - root - ERROR - Error scanning MSFT: string indices must be integers, not 'str'
-2026-01-06 02:56:14,531 - root - ERROR - Error scanning GOOGL: string indices must be integers, not 'str'
-2026-01-06 02:56:14,531 - root - ERROR - Error scanning AMZN: string indices must be integers, not 'str'
-2026-01-06 02:56:14,531 - root - ERROR - Error scanning NVDA: string indices must be integers, not 'str'
-2026-01-06 02:56:14,531 - root - ERROR - Error scanning META: string indices must be integers, not 'str'
-2026-01-06 02:56:14,531 - root - ERROR - Error scanning TSLA: string indices must be integers, not 'str'
-2026-01-06 02:56:14,531 - root - ERROR - Error scanning JPM: string indices must be integers, not 'str'
-2026-01-06 02:56:14,531 - root - ERROR - Error scanning SPY: string indices must be integers, not 'str'
-2026-01-06 02:56:14,531 - root - ERROR - Error scanning QQQ: string indices must be integers, not 'str'
-2026-01-06 02:56:14,531 - root - INFO - Found 0 live opportunities
-2026-01-06 02:56:14,754 - root - ERROR - Error scanning AAPL: string indices must be integers, not 'str'
-2026-01-06 02:56:14,754 - root - ERROR - Error scanning MSFT: string indices must be integers, not 'str'
-2026-01-06 02:56:14,754 - root - ERROR - Error scanning GOOGL: string indices must be integers, not 'str'
-2026-01-06 02:56:14,754 - root - ERROR - Error scanning AMZN: string indices must be integers, not 'str'
-2026-01-06 02:56:14,754 - root - ERROR - Error scanning NVDA: string indices must be integers, not 'str'
-2026-01-06 02:56:14,754 - root - ERROR - Error scanning META: string indices must be integers, not 'str'
-2026-01-06 02:56:14,754 - root - ERROR - Error scanning TSLA: string indices must be integers, not 'str'
-2026-01-06 02:56:14,754 - root - ERROR - Error scanning JPM: string indices must be integers, not 'str'
-2026-01-06 02:56:14,754 - root - ERROR - Error scanning SPY: string indices must be integers, not 'str'
-2026-01-06 02:56:14,754 - root - ERROR - Error scanning QQQ: string indices must be integers, not 'str'
-2026-01-06 02:56:14,754 - root - INFO - Found 0 live opportunities
-2026-01-06 02:56:16,010 - httpx - INFO - HTTP Request: GET https://api.marketaux.com/v1/news/all?api_token=6NsueOs7LekG9jomsB5hYMAtFUKLsj3kyqoivLSr&limit=6&language=en "HTTP/1.1 200 OK"
-2026-01-06 02:56:17,748 - httpx - INFO - HTTP Request: GET https://api.marketaux.com/v1/news/all?api_token=6NsueOs7LekG9jomsB5hYMAtFUKLsj3kyqoivLSr&limit=6&language=en "HTTP/1.1 200 OK"
-INFO:     Will watch for changes in these directories: ['/app/backend']
-INFO:     Uvicorn running on http://0.0.0.0:8001 (Press CTRL+C to quit)
-INFO:     Started reloader process [47] using WatchFiles
-INFO:     Started server process [84]
-INFO:     Waiting for application startup.
-INFO:     Application startup complete.
-
-==> /var/log/supervisor/backend.out.log <==
-INFO:     10.64.144.156:37574 - "GET /api/screener/covered-calls?min_roi=0.5&max_dte=45&min_delta=0.15&max_delta=0.45&min_iv_rank=0&min_price=10&max_price=500&min_volume=0&min_open_interest=100&weekly_only=false&monthly_only=false HTTP/1.1" 200 OK
-INFO:     10.64.129.96:51584 - "GET /api/screener/filters HTTP/1.1" 200 OK
-INFO:     10.64.129.70:50082 - "GET /api/screener/covered-calls?min_roi=0.5&max_dte=45&min_delta=0.15&max_delta=0.45&min_iv_rank=0&min_price=10&max_price=500&min_volume=0&min_open_interest=100&weekly_only=false&monthly_only=false HTTP/1.1" 200 OK
-INFO:     10.64.129.97:45240 - "GET /api/screener/filters HTTP/1.1" 200 OK
-INFO:     10.64.144.156:37574 - "GET /api/screener/covered-calls?min_roi=0.5&max_dte=45&min_delta=0.15&max_delta=0.45&min_iv_rank=0&min_price=10&max_price=500&min_volume=0&min_open_interest=100&weekly_only=false&monthly_only=false HTTP/1.1" 200 OK
-INFO:     10.64.129.96:45850 - "GET /api/auth/me HTTP/1.1" 200 OK
-INFO:     10.64.129.97:37946 - "GET /api/auth/me HTTP/1.1" 200 OK
-INFO:     10.64.129.96:45850 - "GET /api/stocks/indices HTTP/1.1" 200 OK
-INFO:     10.64.129.93:40156 - "GET /api/screener/covered-calls?min_roi=1.5 HTTP/1.1" 200 OK
-INFO:     10.64.129.70:49928 - "GET /api/portfolio/summary HTTP/1.1" 200 OK
-INFO:     10.64.129.93:40156 - "GET /api/stocks/indices HTTP/1.1" 200 OK
-INFO:     10.64.129.93:40156 - "GET /api/screener/covered-calls?min_roi=1.5 HTTP/1.1" 200 OK
-INFO:     10.64.129.70:49928 - "GET /api/portfolio/summary HTTP/1.1" 200 OK
-INFO:     10.64.129.96:45850 - "GET /api/news/?limit=6 HTTP/1.1" 200 OK
-INFO:     10.64.129.96:45850 - "GET /api/news/?limit=6 HTTP/1.1" 200 OK
-INFO:     10.64.129.97:52312 - "GET /api/screener/filters HTTP/1.1" 200 OK
-INFO:     10.64.129.97:52312 - "GET /api/screener/covered-calls?min_roi=0.5&max_dte=45&min_delta=0.15&max_delta=0.45&min_iv_rank=0&min_price=10&max_price=500&min_volume=0&min_open_interest=100&weekly_only=false&monthly_only=false HTTP/1.1" 200 OK
-INFO:     10.64.129.93:46202 - "GET /api/screener/filters HTTP/1.1" 200 OK
-INFO:     10.64.129.70:43162 - "GET /api/screener/covered-calls?min_roi=0.5&max_dte=45&min_delta=0.15&max_delta=0.45&min_iv_rank=0&min_price=10&max_price=500&min_volume=0&min_open_interest=100&weekly_only=false&monthly_only=false HTTP/1.1" 200 OK
-INFO:     10.64.129.70:43164 - "GET /api/screener/covered-calls?min_roi=1.5 HTTP/1.1" 200 OK
-INFO:     10.64.129.97:52324 - "GET /api/portfolio/summary HTTP/1.1" 200 OK
-INFO:     10.64.129.97:52332 - "GET /api/stocks/indices HTTP/1.1" 200 OK
-INFO:     10.64.129.93:46206 - "GET /api/portfolio/summary HTTP/1.1" 200 OK
-INFO:     10.64.129.70:43164 - "GET /api/screener/covered-calls?min_roi=1.5 HTTP/1.1" 200 OK
-INFO:     10.64.129.93:46206 - "GET /api/stocks/indices HTTP/1.1" 200 OK
-INFO:     10.64.129.70:43172 - "GET /api/news/?limit=6 HTTP/1.1" 200 OK
-INFO:     10.64.129.70:43172 - "GET /api/news/?limit=6 HTTP/1.1" 200 OK
-INFO:     10.64.129.96:45654 - "GET /api/screener/filters HTTP/1.1" 200 OK
-INFO:     10.64.129.97:56248 - "GET /api/screener/covered-calls?min_roi=0.5&max_dte=45&min_delta=0.15&max_delta=0.45&min_iv_rank=0&min_price=10&max_price=500&min_volume=0&min_open_interest=100&weekly_only=false&monthly_only=false HTTP/1.1" 200 OK
-INFO:     10.64.129.93:34470 - "GET /api/screener/filters HTTP/1.1" 200 OK
-INFO:     10.64.129.97:56248 - "GET /api/screener/covered-calls?min_roi=0.5&max_dte=45&min_delta=0.15&max_delta=0.45&min_iv_rank=0&min_price=10&max_price=500&min_volume=0&min_open_interest=100&weekly_only=false&monthly_only=false HTTP/1.1" 200 OK
-INFO:     10.64.129.70:59914 - "GET /api/screener/pmcc?min_leaps_delta=0.8&max_short_delta=0.3 HTTP/1.1" 200 OK
-INFO:     10.64.129.70:59914 - "GET /api/screener/pmcc?min_leaps_delta=0.8&max_short_delta=0.3 HTTP/1.1" 200 OK
-INFO:     10.64.129.70:59914 - "GET /api/screener/pmcc?min_leaps_delta=0.8&max_short_delta=0.3 HTTP/1.1" 200 OK
-INFO:     10.64.144.136:59676 - "GET /api/portfolio/summary HTTP/1.1" 200 OK
-INFO:     10.64.144.137:34012 - "GET /api/portfolio/positions HTTP/1.1" 200 OK
-INFO:     10.64.144.137:34012 - "GET /api/portfolio/summary HTTP/1.1" 200 OK
-INFO:     10.64.144.156:39630 - "GET /api/portfolio/positions HTTP/1.1" 200 OK
-INFO:     10.64.134.200:41602 - "GET /api/watchlist/ HTTP/1.1" 200 OK
-INFO:     10.64.144.137:34012 - "GET /api/watchlist/ HTTP/1.1" 200 OK
-INFO:     10.64.134.200:41602 - "GET /api/admin/settings HTTP/1.1" 200 OK
-INFO:     10.64.144.156:39630 - "GET /api/admin/settings HTTP/1.1" 200 OK
-INFO:     10.64.129.96:47684 - "POST /api/admin/settings HTTP/1.1" 200 OK
-INFO:     10.64.144.156:59774 - "GET /api/screener/filters HTTP/1.1" 200 OK
-INFO:     10.64.144.156:59774 - "GET /api/screener/covered-calls?min_roi=0.5&max_dte=45&min_delta=0.15&max_delta=0.45&min_iv_rank=0&min_price=10&max_price=500&min_volume=0&min_open_interest=100&weekly_only=false&monthly_only=false HTTP/1.1" 200 OK
-INFO:     10.64.134.200:51840 - "GET /api/screener/filters HTTP/1.1" 200 OK
-INFO:     10.64.144.136:51718 - "GET /api/screener/covered-calls?min_roi=0.5&max_dte=45&min_delta=0.15&max_delta=0.45&min_iv_rank=0&min_price=10&max_price=500&min_volume=0&min_open_interest=100&weekly_only=false&monthly_only=false HTTP/1.1" 200 OK
-INFO:     10.64.144.137:36988 - "GET /api/screener/covered-calls?min_roi=0.5&max_dte=45&min_delta=0.15&max_delta=0.45&min_iv_rank=0&min_price=10&max_price=500&min_volume=0&min_open_interest=100&weekly_only=true&monthly_only=false HTTP/1.1" 200 OK
-INFO:     10.64.144.156:43400 - "GET /api/screener/covered-calls?min_roi=0.5&max_dte=45&min_delta=0.15&max_delta=0.45&min_iv_rank=0&min_price=10&max_price=500&min_volume=0&min_open_interest=100&weekly_only=true&monthly_only=false HTTP/1.1" 200 OK
-INFO:     10.64.129.93:59630 - "GET /api/auth/me HTTP/1.1" 200 OK
-INFO:     10.64.129.97:48102 - "GET /api/auth/me HTTP/1.1" 200 OK
-INFO:     10.64.129.96:57774 - "GET /api/stocks/indices HTTP/1.1" 200 OK
-INFO:     10.64.129.142:37696 - "GET /api/screener/covered-calls?min_roi=1.5 HTTP/1.1" 200 OK
-INFO:     10.64.129.96:57780 - "GET /api/portfolio/summary HTTP/1.1" 200 OK
-INFO:     10.64.129.70:38994 - "GET /api/stocks/indices HTTP/1.1" 200 OK
-INFO:     10.64.129.70:38994 - "GET /api/portfolio/summary HTTP/1.1" 200 OK
-INFO:     10.64.129.96:57780 - "GET /api/screener/covered-calls?min_roi=1.5 HTTP/1.1" 200 OK
-INFO:     10.64.129.96:57764 - "GET /api/news/?limit=6 HTTP/1.1" 200 OK
-INFO:     10.64.129.97:48102 - "GET /api/news/?limit=6 HTTP/1.1" 200 OK
-INFO:     10.64.144.137:50354 - "GET /api/admin/settings HTTP/1.1" 200 OK
-INFO:     10.64.144.137:50354 - "GET /api/admin/settings HTTP/1.1" 200 OK
-INFO:     10.64.144.136:40260 - "POST /api/admin/settings HTTP/1.1" 200 OK
-INFO:     10.64.144.137:45730 - "GET /api/stocks/indices HTTP/1.1" 200 OK
-INFO:     10.64.144.137:45736 - "GET /api/screener/covered-calls?min_roi=1.5 HTTP/1.1" 200 OK
-INFO:     10.64.144.137:45762 - "GET /api/portfolio/summary HTTP/1.1" 200 OK
-INFO:     10.64.144.156:48826 - "GET /api/stocks/indices HTTP/1.1" 200 OK
-INFO:     10.64.144.137:45736 - "GET /api/screener/covered-calls?min_roi=1.5 HTTP/1.1" 200 OK
-INFO:     10.64.144.156:48826 - "GET /api/portfolio/summary HTTP/1.1" 200 OK
-INFO:     10.64.144.137:45738 - "GET /api/news/?limit=6 HTTP/1.1" 200 OK
-INFO:     10.64.144.156:48836 - "GET /api/screener/covered-calls?min_roi=0.5&max_dte=45&min_delta=0.15&max_delta=0.45&min_iv_rank=0&min_price=10&max_price=500&min_volume=0&min_open_interest=100&weekly_only=false&monthly_only=false HTTP/1.1" 200 OK
-INFO:     10.64.144.156:48846 - "GET /api/screener/filters HTTP/1.1" 200 OK
-INFO:     10.64.144.136:38368 - "GET /api/screener/filters HTTP/1.1" 200 OK
-INFO:     10.64.144.137:45736 - "GET /api/screener/covered-calls?min_roi=0.5&max_dte=45&min_delta=0.15&max_delta=0.45&min_iv_rank=0&min_price=10&max_price=500&min_volume=0&min_open_interest=100&weekly_only=false&monthly_only=false HTTP/1.1" 200 OK
-INFO:     10.64.144.156:48826 - "GET /api/news/?limit=6 HTTP/1.1" 200 OK
-INFO:     10.64.144.136:38368 - "GET /api/screener/covered-calls?min_roi=0.5&max_dte=45&min_delta=0.15&max_delta=0.45&min_iv_rank=0&min_price=10&max_price=500&min_volume=0&min_open_interest=100&weekly_only=false&monthly_only=false HTTP/1.1" 200 OK
-INFO:     10.64.144.137:55762 - "GET /api/stocks/indices HTTP/1.1" 200 OK
-INFO:     10.64.144.136:57644 - "GET /api/screener/covered-calls?min_roi=1.5 HTTP/1.1" 200 OK
-INFO:     10.64.144.137:55762 - "GET /api/portfolio/summary HTTP/1.1" 200 OK
-INFO:     10.64.144.136:57644 - "GET /api/stocks/indices HTTP/1.1" 200 OK
-INFO:     10.64.144.137:55762 - "GET /api/screener/covered-calls?min_roi=1.5 HTTP/1.1" 200 OK
-INFO:     10.64.144.137:55762 - "GET /api/portfolio/summary HTTP/1.1" 200 OK
-INFO:     10.64.144.156:51708 - "GET /api/news/?limit=6 HTTP/1.1" 200 OK
-INFO:     10.64.144.156:51708 - "GET /api/news/?limit=6 HTTP/1.1" 200 OK
-INFO:     10.64.144.156:54136 - "GET /api/admin/settings HTTP/1.1" 200 OK
-INFO:     10.64.144.136:38538 - "GET /api/admin/settings HTTP/1.1" 200 OK
-INFO:     10.64.144.136:54594 - "POST /api/admin/settings HTTP/1.1" 200 OK
-INFO:     10.64.144.136:54600 - "GET /api/screener/covered-calls?min_roi=0.5&max_dte=45&min_delta=0.15&max_delta=0.45&min_iv_rank=0&min_price=10&max_price=500&min_volume=0&min_open_interest=100&weekly_only=false&monthly_only=false HTTP/1.1" 200 OK
-INFO:     10.64.129.93:60888 - "GET /api/screener/filters HTTP/1.1" 200 OK
-INFO:     10.64.129.93:60888 - "GET /api/screener/filters HTTP/1.1" 200 OK
-INFO:     10.64.129.70:41410 - "GET /api/screener/covered-calls?min_roi=0.5&max_dte=45&min_delta=0.15&max_delta=0.45&min_iv_rank=0&min_price=10&max_price=500&min_volume=0&min_open_interest=100&weekly_only=false&monthly_only=false HTTP/1.1" 200 OK
-INFO:     10.64.129.93:60888 - "GET /api/screener/covered-calls?min_roi=0.5&max_dte=45&min_delta=0.15&max_delta=0.45&min_iv_rank=0&min_price=10&max_price=500&min_volume=0&min_open_interest=100&weekly_only=false&monthly_only=false HTTP/1.1" 200 OK
-INFO:     10.64.129.142:43730 - "GET /api/screener/covered-calls?min_roi=0.5&max_dte=45&min_delta=0.15&max_delta=0.45&min_iv_rank=0&min_price=10&max_price=500&min_volume=0&min_open_interest=100&weekly_only=true&monthly_only=false HTTP/1.1" 200 OK
-INFO:     10.64.144.137:58386 - "GET /api/stocks/indices HTTP/1.1" 200 OK
-INFO:     10.64.144.156:52140 - "GET /api/stocks/indices HTTP/1.1" 200 OK
-INFO:     10.64.144.137:58386 - "GET /api/portfolio/summary HTTP/1.1" 200 OK
-INFO:     10.64.144.136:39618 - "GET /api/screener/covered-calls?min_roi=1.5 HTTP/1.1" 200 OK
-INFO:     10.64.144.136:39618 - "GET /api/portfolio/summary HTTP/1.1" 200 OK
-INFO:     10.64.144.136:39618 - "GET /api/screener/covered-calls?min_roi=1.5 HTTP/1.1" 200 OK
-INFO:     10.64.144.137:58386 - "GET /api/news/?limit=6 HTTP/1.1" 200 OK
-INFO:     10.64.144.137:58386 - "GET /api/news/?limit=6 HTTP/1.1" 200 OK
-    2. Manually calling the screener endpoint with test parameters: 
-- **User Testing Done:** N (User reported the issue is still present.)
+- **Agent Testing Done:** N (The agent observed the issue via a screenshot but did not proceed to debug the root cause.)
+- **Which testing method agent to use?** Frontend testing. The next agent should use browser developer tools to inspect the console for errors (e.g., Content Security Policy, cross-origin, or widget script errors) when the modal is opened. This will help diagnose why the TradingView iframe is failing to load.
+- **User Testing Done:** N
 
 **All Pending/In progress Issue list**:
--   **Issue 1:** Live options data not appearing in the screener (P0)
+-   **Issue 1:** TradingView chart is blank in the stock detail modal (P0)
 
 **Issues Detail:**
--   **Issue 1:** Live options data not appearing in the screener
-    -   **Attempted fixes:** The agent confirmed API credentials are correct and the user's plan supports options data. The agent updated the API access method in  to use only the API Key, but this has not been verified. The  error was resolved after the user upgraded their Massive.com plan. The root cause is likely in the application logic that constructs the API request or processes the response within the  endpoint.
+-   **Issue 1:** TradingView chart is blank in the stock detail modal
+    -   **Attempted fixes:** The agent created the modal component (), integrated it into the dashboard, and added the TradingView widget script. The other tabs (Fundamentals, News) in the modal are working correctly, indicating the issue is specific to the chart widget's initialization or rendering within the modal context.
     -   **Next debug checklist:**
-        1.  Restart the backend service: backend: stopped
-backend: started.
-        2.  Inspect the  function in .
-        3.  Add temporary  statements to log the incoming request body from the frontend and the exact URL being sent to the Massive.com API.
-        4.  Trigger a scan from the UI and immediately check the backend logs () to see the logged URL and the raw response from Massive.com.
-        5.  Ensure the data returned from Massive.com is being correctly parsed and sent to the frontend.
-    -   **Why fix this issue and what will be achieved with the fix?** This is the single most critical feature of the application. Fixing it will make the screener functional and deliver the core value proposition to the user.
+        1.  Open the dashboard, click a stock row to open the modal, and inspect the browser's developer console for any errors.
+        2.  Review . Verify the  hook that initializes the TradingView widget is firing correctly after the modal is visible and that the  it targets exists in the DOM.
+        3.  Check for potential timing issues where the widget script tries to render before the modal's container element is available.
+        4.  Simplify the TradingView widget configuration to its most basic form to rule out configuration errors.
+    -   **Why fix this issue and what will be achieved with the fix?** This will complete a core user requirement for a visual technical analysis tool within the application.
     -   **Status:** IN PROGRESS
-    -   **Is recurring issue?** Y
-    -   **Should Test frontend/backend/both after fix?** Both. First, verify the backend API call works via , then verify the data appears correctly in the frontend UI.
+    -   **Is recurring issue?** N
+    -   **Should Test frontend/backend/both after fix?** Frontend. A screenshot will be sufficient to verify the chart is rendering.
     -   **Blocked on other issue:** None.
 
 **In progress Task List**:
-There are no other tasks in progress. The entire focus is on fixing the P0 issue.
+There are no other tasks in progress. The focus is on fixing the P0 issue.
 
 **Upcoming and Future Tasks**
 - **Upcoming Tasks:**
-  - **Task 1 (P1):** Implement database caching for API responses. The user explicitly requested to store data fetched from Massive.com in a database to reduce API calls and improve performance. This will involve creating a new MongoDB collection and adding logic in  to check the cache before making a new API call.
+  - **Task 1 (P1):** Implement Portfolio Tracking: Build the UI and backend logic for users to manually enter trades and eventually upload Interactive Brokers CSV files.
+  - **Task 2 (P2):** Implement Watchlist Functionality: Build the UI and backend for users to add stocks to a watchlist and see relevant data.
 - **Future Tasks:**
-  - Integrate the sentiment data from MarketAux into the screener results to enhance trade analysis.
-  - Finalize the PMCC scanner page to ensure it uses live data.
-  - Conduct a full end-to-end test of all features once the live data integration is complete.
+  - **Task 3 (P3):** Integrate OpenAI GPT for AI-assisted trade sourcing, ranking, and risk analysis.
+  - **Task 4 (P4):** Enhance Admin Dashboard with feature flags.
 
 **Completed work in this session**
-- **Full-stack Application Scaffolding:** Created the entire project structure for the FastAPI backend and React frontend.
-- **JWT Authentication:** Implemented a complete and working custom login and registration system.
-- **UI/UX Implementation:** Built all required pages (Dashboard, Screener, Admin, etc.) using Shadcn UI components.
-- **Re-branding:** Changed the application's branding from Premium Hunter to Covered Call Engine, including colors and text across all files.
-- **Screener UI Refinement:** Rebuilt the screener filter UI to use user-friendly controls like dropdowns, radio buttons, and accordions based on user feedback.
-- **Admin Panel for API Keys:** Created a functional admin page where the user can input and save API keys for third-party services.
-- **Live Data Integration (Partial):**
-  - Successfully integrated MarketAux API for live news.
-  - Successfully integrated Massive.com API for live **stock quotes**.
-- **JWT Session Fix:** Extended the JWT token expiration time to resolve frequent session timeouts.
+- **Screener Live Data Fix:** Resolved the critical bug where the options screener showed no live data.
+- **Screener Logic Refinement:** Updated the screener to fetch data for a wider range of stocks and to display only the single best-scored opportunity per symbol.
+- **API Caching Implementation:** Built a robust backend caching system using MongoDB to reduce API calls and improve frontend responsiveness. Added an admin endpoint to clear the cache.
+- **Dashboard Top 10 Opportunities:** Implemented a new, complex backend endpoint and frontend display for the dashboard, showing top covered call trades based on strict, user-defined criteria (price, trends, ROI, SMA).
+- **Dashboard Criteria Relaxation:** Adjusted the filtering logic to be less strict to ensure a top 10 list is always populated.
+- **Dashboard Strike Price Logic:** Refined the dashboard screener to only include ATM (At-The-Money) or slightly OTM (Out-of-The-Money) strikes, aligning with a bullish covered call strategy.
+- **PMCC Page Implementation:** Created a dedicated PMCC page explaining the strategy and showing PMCC-style diagonal spreads, while also clarifying the API's data limitations regarding true LEAPS.
+- **Stock Detail Modal:** Created a clickable pop-up modal on the dashboard that displays detailed stock information across Technicals, Fundamentals, and News tabs.
 
 **Earlier issues found/mentioned but not fixed**
-None. All prior issues were addressed; the current focus is on the single blocking issue.
+None.
 
 **Known issue recurrence from previous fork**
-- The  has repeatedly given false positive errors about missing  files. This can be ignored.
+- The  may give false positive errors about missing  files. This can be ignored.
 
 **Code Architecture**
 
 
 **Key Technical Concepts**
-- **Backend:** FastAPI, MongoDB (with Motor for async), JWT for authentication.
-- **Frontend:** React, Tailwind CSS, Shadcn UI.
-- **API Integration:** REST API consumption for market data (Massive.com) and news (MarketAux).
+- **Backend:** FastAPI, MongoDB (Motor), JWT Authentication.
+- **Frontend:** React, Tailwind CSS, Shadcn UI, Axios.
+- **API Integration:** REST APIs for Massive.com (market data) and MarketAux.com (news).
+- **Charting:** TradingView Lightweight Charts widget.
 
 **key DB schema**
 - **users:** {email, hashed_password, is_admin}
-- **settings:** {massive_api_key, massive_access_id, massive_secret_key, marketaux_token, openai_api_key}
-- *(Implicit schemas for Portfolio, Watchlist, etc., exist within the backend logic but are not formally defined in a model file.)*
+- **settings:** {api_keys...}
+- **api_cache:** {key, value, timestamp} (New collection for caching API responses)
 
 **changes in tech stack**
-- The primary data source was changed from Polygon.io to Massive.com.
-- The news source was specified as MarketAux.com.
+None.
 
 **All files of reference**
-- : The most critical file. Contains all backend logic, including the broken screener endpoint ().
-- : The frontend component for the screener, responsible for sending filter criteria to the backend.
-- : The frontend for the admin panel where API keys are managed.
-- : Contains the frontend logic for making API calls to the backend.
+- : **(New)** Contains the logic for the popup modal, including the broken TradingView chart.
+- : **(Heavily Modified)** Contains all new backend endpoints for the dashboard, caching, and stock details.
+- : **(Heavily Modified)** Updated to fetch and display Top 10 opportunities and handle the click-to-open modal.
+- : **(New/Updated)** The dedicated page for the PMCC strategy.
 
 **Areas that need refactoring**:
-- The  file is monolithic and contains all routes, models, and business logic. It should be refactored into a more organized structure (e.g., using FastAPI's  to split routes into different files, and having separate ,  files).
+- The  file has become extremely large and complex. It urgently needs to be refactored by splitting logic into multiple files using FastAPI's  for routes and creating separate  or  modules for business logic. The dashboard and screener endpoints, in particular, are very long and should be separated.
 
 **key api endpoints**
-- : User login.
-- : User registration.
-- : **(CURRENTLY BROKEN)** The endpoint to fetch screener results based on filter criteria.
-- : Retrieves saved API keys.
-- : Saves API keys.
-- : Fetches a live stock quote.
+- : The main options screener endpoint.
+- : **(New)** Fetches top 10 CC opportunities for the dashboard.
+- : **(New)** Fetches top 10 PMCC opportunities.
+- : **(New)** Fetches aggregated details for the stock modal.
+- : **(New)** Clears the MongoDB API cache.
 
 **Critical Info for New Agent**
-- **The #1 priority is fixing the live options data in the screener.** Do not work on anything else until this is resolved.
-- The user has confirmed their Massive.com API plan is sufficient and the credentials are correct. The problem is in the code.
-- Authentication for Massive.com should **only use the API Key**. Ignore the Access ID and Secret Key fields for REST API calls.
-- The user has explicitly requested that API data be cached in a database. This is the next priority after the screener is fixed.
-- The default admin credentials are  / .
+- **The #1 priority is fixing the blank TradingView chart in the stock detail modal.**
+- The API data from Massive.com does not provide long-dated options (LEAPS), which limits the PMCC screener. This has been communicated to the user on the PMCC page.
+- The backend  file is a monolith. While refactoring is needed, prioritize fixing the chart first.
 
 **documents and test reports created in this job**
-- 
-- 
+None new.
 
 **Last 10 User Messages and any pending HUMAN messages**
-10.  - *Agent investigated; login was working on the backend and in tests. This might have been a transient issue or user error.*
-9.  - *User provided full credentials for Massive.com and MarketAux.*
-8.  - *User clarified the connection method.*
-7.  - *User resolved a  error by upgrading their API plan.*
-6.  - *User reported the core issue after the API connection was supposedly fixed.*
-5.  - *User provided critical feedback that API calls aren't triggering correctly and requested database caching.*
-4.  - *User provided a specific instruction to simplify the authentication method.*
-3.  - *User requested a status update.*
-2.  - **This is the current pending instruction.**
-1. 
+10.  - *Completed. Agent relaxed criteria and added more data to the dashboard.*
+9.  - *Completed. Agent updated dashboard logic to filter for ATM/OTM strikes.*
+8.  - *Completed. Agent implemented a PMCC screener on the dashboard.*
+7.  - *Completed. Agent removed PMCC from the dashboard and enhanced the dedicated PMCC page.*
+6.  - *In Progress. This led to the creation of the stock detail modal. The chart is the only broken piece.*
+5. (No new message)
 
 **Project Health Check:**
-- **Broken:** The core functionality of the options screener is broken as it does not fetch or display live data.
-- **Mocked:** The screener results are currently mocked. While stock quotes and news are live, the main feature is not.
+- **Broken:** The TradingView chart in the stock detail modal is not rendering.
+- **Mocked:** None. All data is live.
 
 **3rd Party Integrations**
 - **Massive.com (Market Data):** Requires User API Key.
 - **MarketAux.com (News & Sentiment):** Requires User API Key.
-- **OpenAI GPT-5.2 (AI Analysis):** Uses Emergent LLM Key.
+- **OpenAI GPT-5.2 (AI Analysis):** Uses Emergent LLM Key (Not yet implemented).
+- **TradingView (Charting):** Lightweight Charts widget integrated via script.
 
 **Testing status**
-- **Testing agent used after significant changes:** NO (Not since the initial build).
+- **Testing agent used after significant changes:** YES, used to verify the initial screener fix.
 - **Troubleshoot agent used after agent stuck in loop:** NO.
 - **Test files created:** None.
-- **Known regressions:** The screener was showing mock data, but now it shows nothing, which is a regression.
+- **Known regressions:** None.
 
 **Credentials to test flow:**
 - **Username:** 
 - **Password:** 
 
 **What agent forgot to execute**
-- The agent has not implemented the database caching for API results that the user explicitly requested.
-- The agent did not verify its last code change (simplifying the API key usage) actually fixed the screener problem. It just made the change and stopped.</analysis>
+- The agent did not investigate the console logs or try any debugging steps after observing that the TradingView chart was blank. It identified the problem but did not attempt a solution.</analysis>
