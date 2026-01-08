@@ -323,26 +323,25 @@ class IBKRParser:
         
         total_contracts = sum(abs(t.get('quantity', 0)) for t in option_txs)
         
-        # Entry price (average cost of buys)
-        buy_txs = [t for t in stock_txs if t.get('transaction_type') == 'Buy']
-        entry_price = 0
-        total_cost = 0
-        if buy_txs:
-            total_cost = sum(abs(t.get('gross_amount', 0)) for t in buy_txs)
-            total_qty = sum(t.get('quantity', 0) for t in buy_txs)
-            if total_qty > 0:
-                entry_price = total_cost / total_qty
+        # Calculate entry price (average cost basis per share)
+        entry_price = None
+        if total_shares > 0 and total_cost > 0:
+            # Count shares that contributed to cost (buys + put assignments)
+            cost_shares = sum(t.get('quantity', 0) for t in stock_txs 
+                            if t.get('transaction_type') == 'Buy' or 
+                            (t.get('transaction_type') == 'Assignment' and t.get('quantity', 0) > 0))
+            if cost_shares > 0:
+                entry_price = total_cost / cost_shares
         
-        # Premium received (from selling options)
-        sell_options = [t for t in option_txs if t.get('transaction_type') == 'Sell']
-        premium_received = sum(abs(t.get('gross_amount', 0)) for t in sell_options)
+        # Premium calculation - net premium (received - paid)
+        option_premium_received = sum(abs(t.get('net_amount', 0)) for t in option_txs 
+                                     if t.get('transaction_type') == 'Sell')
+        option_premium_paid = sum(abs(t.get('net_amount', 0)) for t in option_txs 
+                                 if t.get('transaction_type') == 'Buy')
+        premium_received = option_premium_received - option_premium_paid
         
         # Total fees
         total_fees = sum(t.get('commission', 0) for t in transactions)
-        
-        # Proceeds from selling stock or assignment
-        sell_proceeds = sum(abs(t.get('gross_amount', 0)) for t in stock_txs 
-                          if t.get('transaction_type') in ['Sell', 'Assignment'])
         
         # Dates
         first_date = transactions[0].get('date')
