@@ -102,6 +102,7 @@ export const portfolioApi = {
     return api.get(`/portfolio/ibkr/summary${params}`);
   },
   getAISuggestion: (tradeId) => api.post(`/portfolio/ibkr/trades/${tradeId}/ai-suggestion`),
+  generateAllSuggestions: () => api.post('/portfolio/ibkr/generate-suggestions'),
   clearIBKRData: () => api.delete('/portfolio/ibkr/clear'),
 };
 
