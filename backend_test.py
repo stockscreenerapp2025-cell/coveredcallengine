@@ -493,9 +493,9 @@ class PremiumHunterAPITester:
                            f"Status: {status}, Response: {data}")
             return
         
-        # Test 2: Test the webhook endpoint POST /api/stripe/webhook
+        # Test 2: Test the webhook endpoint POST /api/webhooks/stripe
         # Note: This should return 400 (invalid signature) NOT 500 (server error) when called without proper Stripe signature
-        webhook_url = f"{self.base_url}/api/stripe/webhook"
+        webhook_url = f"{self.base_url}/api/webhooks/stripe"
         
         try:
             # Make a direct request to the webhook endpoint without proper Stripe signature
