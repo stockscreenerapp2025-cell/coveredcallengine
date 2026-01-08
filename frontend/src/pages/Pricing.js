@@ -171,7 +171,7 @@ const Pricing = () => {
           return (
             <Card 
               key={plan.id}
-              className={`glass-card relative overflow-hidden transition-all duration-300 hover:scale-[1.02] ${
+              className={`glass-card relative overflow-hidden transition-all duration-300 hover:scale-[1.02] h-full flex flex-col ${
                 plan.popular ? `border-2 ${colors.border} shadow-lg shadow-violet-500/10` : ''
               }`}
               data-testid={`pricing-card-${plan.id}`}
@@ -205,7 +205,7 @@ const Pricing = () => {
                 <CardDescription>{plan.description}</CardDescription>
               </CardHeader>
               
-              <CardContent className="space-y-6 relative">
+              <CardContent className="space-y-6 relative flex-grow flex flex-col">
                 {/* Price */}
                 <div className="text-center">
                   <span className="text-4xl font-bold text-white">{plan.price}</span>
@@ -213,7 +213,7 @@ const Pricing = () => {
                 </div>
                 
                 {/* Features */}
-                <ul className="space-y-3">
+                <ul className="space-y-3 flex-grow">
                   {plan.features.map((feature, idx) => (
                     <li key={idx} className="flex items-start gap-2 text-sm">
                       <Check className={`w-4 h-4 ${colors.text} flex-shrink-0 mt-0.5`} />
@@ -231,7 +231,7 @@ const Pricing = () => {
                 <Button
                   onClick={() => handleSubscribe(link)}
                   disabled={loading || !link}
-                  className={`w-full ${colors.button} text-white font-medium py-6`}
+                  className={`w-full ${colors.button} text-white font-medium py-6 mt-auto`}
                   data-testid={`subscribe-btn-${plan.id}`}
                 >
                   {plan.buttonText}
