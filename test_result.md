@@ -97,7 +97,7 @@ metadata:
 
 test_plan:
   current_focus:
-    - "Pricing Section Updates"
+    - "IBKR Portfolio Import"
   stuck_tasks: []
   test_all: false
   test_priority: "high_first"
