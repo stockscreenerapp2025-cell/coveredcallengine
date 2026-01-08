@@ -332,12 +332,40 @@ class IBKRParser:
         first_date = transactions[0].get('date')
         last_date = transactions[-1].get('date')
         
-        # Determine status
+        # Determine status - improved logic
         status = 'Open'
+        
+        # Check for assignment first
         if any(t.get('transaction_type') == 'Assignment' for t in transactions):
             status = 'Assigned'
-        elif total_shares == 0 and strategy != 'PMCC':
-            status = 'Closed'
+        else:
+            # Calculate net position from all stock transactions
+            total_bought = sum(t.get('quantity', 0) for t in stock_txs if t.get('transaction_type') == 'Buy')
+            total_sold = sum(abs(t.get('quantity', 0)) for t in stock_txs if t.get('transaction_type') == 'Sell')
+            
+            # For stocks: closed if sold all shares
+            if total_bought > 0 and total_sold >= total_bought:
+                status = 'Closed'
+            # For pure options trades without stock
+            elif not stock_txs and option_txs:
+                # Check if all options have been bought back or expired
+                calls_sold = sum(abs(t.get('quantity', 0)) for t in option_txs 
+                               if t.get('transaction_type') == 'Sell' and t.get('option_details', {}).get('option_type') == 'Call')
+                calls_bought = sum(t.get('quantity', 0) for t in option_txs 
+                                 if t.get('transaction_type') == 'Buy' and t.get('option_details', {}).get('option_type') == 'Call')
+                puts_sold = sum(abs(t.get('quantity', 0)) for t in option_txs 
+                              if t.get('transaction_type') == 'Sell' and t.get('option_details', {}).get('option_type') == 'Put')
+                puts_bought = sum(t.get('quantity', 0) for t in option_txs 
+                                if t.get('transaction_type') == 'Buy' and t.get('option_details', {}).get('option_type') == 'Put')
+                
+                net_calls = calls_sold - calls_bought
+                net_puts = puts_sold - puts_bought
+                
+                if net_calls == 0 and net_puts == 0:
+                    status = 'Closed'
+            # For covered calls/PMCC: check if shares are gone
+            elif total_shares <= 0 and total_bought > 0:
+                status = 'Closed'
         
         # Calculate days in trade
         days_in_trade = 0
