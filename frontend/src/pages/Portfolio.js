@@ -504,6 +504,7 @@ const Portfolio = () => {
                       <TableHead className="text-zinc-400">Symbol</TableHead>
                       <TableHead className="text-zinc-400">Strategy</TableHead>
                       <TableHead className="text-zinc-400">Status</TableHead>
+                      <TableHead className="text-zinc-400">AI Action</TableHead>
                       <TableHead className="text-zinc-400">Opened</TableHead>
                       <TableHead className="text-zinc-400">Days</TableHead>
                       <TableHead className="text-zinc-400">DTE</TableHead>
@@ -546,6 +547,19 @@ const Portfolio = () => {
                           <Badge className={STATUS_COLORS[trade.status] || STATUS_COLORS.Open}>
                             {trade.status}
                           </Badge>
+                        </TableCell>
+                        <TableCell>
+                          {trade.status === 'Open' ? (
+                            trade.ai_action ? (
+                              <Badge className={ACTION_COLORS[trade.ai_action] || ACTION_COLORS['N/A']}>
+                                {trade.ai_action.replace('_', ' ')}
+                              </Badge>
+                            ) : (
+                              <span className="text-zinc-500 text-xs">-</span>
+                            )
+                          ) : (
+                            <span className="text-zinc-600 text-xs">-</span>
+                          )}
                         </TableCell>
                         <TableCell className="text-zinc-300">{formatDate(trade.date_opened)}</TableCell>
                         <TableCell className="text-zinc-400">{trade.days_in_trade || '-'}</TableCell>
