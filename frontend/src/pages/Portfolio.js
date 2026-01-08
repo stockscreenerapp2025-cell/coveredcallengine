@@ -70,6 +70,16 @@ const STATUS_COLORS = {
   'Assigned': 'bg-amber-500/20 text-amber-400'
 };
 
+// AI Action colors
+const ACTION_COLORS = {
+  'HOLD': 'bg-blue-500/20 text-blue-400 border-blue-500/30',
+  'CLOSE': 'bg-red-500/20 text-red-400 border-red-500/30',
+  'ROLL_UP': 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30',
+  'ROLL_DOWN': 'bg-amber-500/20 text-amber-400 border-amber-500/30',
+  'ROLL_OUT': 'bg-violet-500/20 text-violet-400 border-violet-500/30',
+  'N/A': 'bg-zinc-500/20 text-zinc-400 border-zinc-500/30'
+};
+
 const Portfolio = () => {
   // State
   const [trades, setTrades] = useState([]);
