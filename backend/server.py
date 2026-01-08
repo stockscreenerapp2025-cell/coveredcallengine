@@ -2286,23 +2286,26 @@ async def get_ibkr_trade_detail(trade_id: str, user: dict = Depends(get_current_
     
     trade['transactions'] = transactions
     
-    # Fetch current price
-    settings = await db.admin_settings.find_one({"type": "api_keys"}, {"_id": 0})
-    massive_key = settings.get("massive_api_key") if settings else os.environ.get("MASSIVE_API_KEY")
-    
-    if massive_key and trade.get('symbol'):
+    # Fetch current price for open trades (always try - uses Yahoo Finance fallback if no Massive key)
+    if trade.get('symbol') and trade.get('status') == 'Open':
         try:
-            quote = await fetch_stock_quote(trade['symbol'], massive_key)
-            if quote:
+            quote = await fetch_stock_quote(trade['symbol'])
+            if quote and quote.get('price'):
                 trade['current_price'] = quote.get('price', 0)
-                shares = trade.get('shares', 0)
-                break_even = trade.get('break_even', 0)
-                if shares > 0 and break_even > 0:
-                    trade['unrealized_pnl'] = round((trade['current_price'] - break_even) * shares, 2)
-                    if trade.get('entry_price', 0) > 0:
-                        trade['roi'] = round(((trade['current_price'] - break_even) / trade['entry_price']) * 100, 2)
+                shares = trade.get('shares', 0) or 0
+                break_even = trade.get('break_even', 0) or 0
+                entry_price = trade.get('entry_price', 0) or 0
+                
+                if shares > 0:
+                    if break_even > 0:
+                        trade['unrealized_pnl'] = round((trade['current_price'] - break_even) * shares, 2)
+                    elif entry_price > 0:
+                        trade['unrealized_pnl'] = round((trade['current_price'] - entry_price) * shares, 2)
+                    
+                    if entry_price > 0:
+                        trade['roi'] = round(((trade['current_price'] - (break_even or entry_price)) / entry_price) * 100, 2)
         except Exception as e:
-            logging.warning(f"Error fetching quote: {e}")
+            logging.warning(f"Error fetching quote for {trade['symbol']}: {e}")
     
     return trade
 
@@ -2332,15 +2335,15 @@ async def get_ibkr_summary(
         if strategy not in by_strategy:
             by_strategy[strategy] = {'count': 0, 'premium': 0, 'invested': 0}
         by_strategy[strategy]['count'] += 1
-        by_strategy[strategy]['premium'] += trade.get('premium_received', 0)
+        by_strategy[strategy]['premium'] += trade.get('premium_received', 0) or 0
         
-        shares = trade.get('shares', 0)
-        entry = trade.get('entry_price', 0)
+        shares = trade.get('shares', 0) or 0
+        entry = trade.get('entry_price', 0) or 0
         by_strategy[strategy]['invested'] += shares * entry
         
         total_invested += shares * entry
-        total_premium += trade.get('premium_received', 0)
-        total_fees += trade.get('total_fees', 0)
+        total_premium += trade.get('premium_received', 0) or 0
+        total_fees += trade.get('total_fees', 0) or 0
         
         if trade.get('status') == 'Open':
             open_trades += 1
