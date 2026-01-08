@@ -2237,27 +2237,27 @@ async def get_ibkr_trades(
     trades = await db.ibkr_trades.find(query, {"_id": 0}).sort("date_opened", -1).skip(skip).limit(limit).to_list(limit)
     total = await db.ibkr_trades.count_documents(query)
     
-    # Fetch current prices for open trades
-    settings = await db.admin_settings.find_one({"type": "api_keys"}, {"_id": 0})
-    massive_key = settings.get("massive_api_key") if settings else os.environ.get("MASSIVE_API_KEY")
-    
-    if massive_key:
-        symbols_to_fetch = list(set(t.get('symbol') for t in trades if t.get('status') == 'Open' and t.get('symbol')))
-        if symbols_to_fetch:
-            try:
-                # Fetch quotes for all symbols
-                for trade in trades:
-                    if trade.get('status') == 'Open' and trade.get('symbol'):
-                        quote = await fetch_stock_quote(trade['symbol'], massive_key)
-                        if quote:
-                            trade['current_price'] = quote.get('price', 0)
-                            # Calculate unrealized P/L
-                            shares = trade.get('shares', 0)
-                            break_even = trade.get('break_even', 0)
-                            if shares > 0 and break_even > 0:
+    # Fetch current prices for open trades (uses Yahoo Finance fallback if no Massive key)
+    symbols_to_fetch = list(set(t.get('symbol') for t in trades if t.get('status') == 'Open' and t.get('symbol')))
+    if symbols_to_fetch:
+        try:
+            for trade in trades:
+                if trade.get('status') == 'Open' and trade.get('symbol'):
+                    quote = await fetch_stock_quote(trade['symbol'])
+                    if quote and quote.get('price'):
+                        trade['current_price'] = quote.get('price', 0)
+                        # Calculate unrealized P/L
+                        shares = trade.get('shares', 0)
+                        entry_price = trade.get('entry_price', 0)
+                        break_even = trade.get('break_even')
+                        
+                        if shares > 0:
+                            if break_even:
                                 trade['unrealized_pnl'] = round((trade['current_price'] - break_even) * shares, 2)
-            except Exception as e:
-                logging.warning(f"Error fetching quotes: {e}")
+                            elif entry_price:
+                                trade['unrealized_pnl'] = round((trade['current_price'] - entry_price) * shares, 2)
+        except Exception as e:
+            logging.warning(f"Error fetching quotes: {e}")
     
     return {
         "trades": trades,
