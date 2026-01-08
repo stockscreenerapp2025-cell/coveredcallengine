@@ -76,6 +76,33 @@ export const portfolioApi = {
     });
   },
   getSummary: () => api.get('/portfolio/summary'),
+  
+  // IBKR Import APIs
+  importIBKR: (file) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    return api.post('/portfolio/import-ibkr', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    });
+  },
+  getIBKRAccounts: () => api.get('/portfolio/ibkr/accounts'),
+  getIBKRTrades: (params = {}) => {
+    const queryParams = new URLSearchParams();
+    if (params.account) queryParams.append('account', params.account);
+    if (params.strategy) queryParams.append('strategy', params.strategy);
+    if (params.status) queryParams.append('status', params.status);
+    if (params.symbol) queryParams.append('symbol', params.symbol);
+    if (params.page) queryParams.append('page', params.page);
+    if (params.limit) queryParams.append('limit', params.limit);
+    return api.get(`/portfolio/ibkr/trades?${queryParams.toString()}`);
+  },
+  getIBKRTradeDetail: (tradeId) => api.get(`/portfolio/ibkr/trades/${tradeId}`),
+  getIBKRSummary: (account = null) => {
+    const params = account ? `?account=${account}` : '';
+    return api.get(`/portfolio/ibkr/summary${params}`);
+  },
+  getAISuggestion: (tradeId) => api.post(`/portfolio/ibkr/trades/${tradeId}/ai-suggestion`),
+  clearIBKRData: () => api.delete('/portfolio/ibkr/clear'),
 };
 
 export const watchlistApi = {
