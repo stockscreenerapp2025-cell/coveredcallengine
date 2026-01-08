@@ -2394,16 +2394,15 @@ async def generate_ai_suggestion_for_trade(trade: dict) -> dict:
     
     # Use Emergent LLM key for AI suggestion
     try:
-        from emergentintegrations.llm.chat import chat, LlmModel
+        from emergentintegrations.llm.chat import LlmChat
         
-        response = await chat(
-            api_key=os.environ.get("EMERGENT_LLM_KEY"),
-            model=LlmModel.CLAUDE_SONNET,
+        llm = LlmChat(api_key=os.environ.get("EMERGENT_LLM_KEY"))
+        response = llm.chat(
             system_prompt="You are a professional options trading advisor. Always start your response with exactly one action word (HOLD, CLOSE, ROLL_UP, ROLL_DOWN, or ROLL_OUT) on its own line, then provide brief reasoning.",
             user_prompt=context
         )
         
-        full_suggestion = response.message if hasattr(response, 'message') else str(response)
+        full_suggestion = response if isinstance(response, str) else str(response)
         
         # Extract the action from the response
         action = "HOLD"  # Default
