@@ -372,7 +372,7 @@ const Landing = () => {
                   {/* Gradient Background */}
                   <div className={`absolute inset-0 bg-gradient-to-b ${colors.gradient} pointer-events-none`} />
                   
-                  <CardContent className="p-6 relative">
+                  <CardContent className="p-6 relative h-full flex flex-col">
                     {/* Icon & Title */}
                     <div className="text-center mb-6">
                       <div className={`w-14 h-14 mx-auto mb-4 rounded-xl ${colors.bg} border ${colors.border} flex items-center justify-center`}>
@@ -389,7 +389,7 @@ const Landing = () => {
                     </div>
                     
                     {/* Features */}
-                    <ul className="space-y-3 mb-8">
+                    <ul className="space-y-3 mb-8 flex-grow">
                       {plan.features.map((feature, idx) => (
                         <li key={idx} className="flex items-start gap-2 text-sm">
                           <Check className={`w-4 h-4 ${colors.text} flex-shrink-0 mt-0.5`} />
@@ -401,7 +401,7 @@ const Landing = () => {
                     {/* CTA Button */}
                     <Button
                       onClick={() => handleSubscribe(link)}
-                      className={`w-full ${colors.button} text-white font-bold py-6 text-base tracking-wide`}
+                      className={`w-full ${colors.button} text-white font-bold py-6 text-base tracking-wide mt-auto`}
                       data-testid={`subscribe-btn-${plan.id}`}
                     >
                       {plan.buttonText}
