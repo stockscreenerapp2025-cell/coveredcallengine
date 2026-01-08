@@ -367,7 +367,26 @@ class IBKRParser:
                 net_calls = calls_sold - calls_bought
                 net_puts = puts_sold - puts_bought
                 
-                if net_calls == 0 and net_puts == 0:
+                # Check if options have expired (past expiry date)
+                latest_expiry = None
+                for opt in option_txs:
+                    opt_details = opt.get('option_details', {})
+                    if opt_details and opt_details.get('expiry'):
+                        exp_date = opt_details.get('expiry')
+                        if latest_expiry is None or exp_date > latest_expiry:
+                            latest_expiry = exp_date
+                
+                # If all options expired (expiry date is in the past)
+                if latest_expiry:
+                    try:
+                        exp_datetime = datetime.strptime(latest_expiry, '%Y-%m-%d')
+                        if exp_datetime < datetime.now():
+                            status = 'Closed'  # Options have expired
+                    except:
+                        pass
+                
+                # If not expired, check if bought back
+                if status == 'Open' and net_calls == 0 and net_puts == 0:
                     status = 'Closed'
             # For covered calls/PMCC: check if shares are gone
             elif total_shares <= 0 and total_bought > 0:
