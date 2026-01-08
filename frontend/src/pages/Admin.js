@@ -226,6 +226,26 @@ const Admin = () => {
     }
   };
   
+  const sendTestEmail = async () => {
+    if (!testEmailAddress) {
+      toast.error('Please enter an email address');
+      return;
+    }
+    setSendingTestEmail(true);
+    try {
+      const response = await api.post(`/admin/test-email?recipient_email=${encodeURIComponent(testEmailAddress)}&template_name=welcome`);
+      if (response.data.status === 'success') {
+        toast.success(`Test email sent to ${testEmailAddress}`);
+      } else {
+        toast.error(response.data.message || 'Failed to send test email');
+      }
+    } catch (error) {
+      toast.error(error.response?.data?.detail || 'Failed to send test email');
+    } finally {
+      setSendingTestEmail(false);
+    }
+  };
+  
   const switchSubscriptionMode = async (mode) => {
     try {
       await api.post(`/subscription/admin/switch-mode?mode=${mode}`);
