@@ -31,10 +31,10 @@ EMAIL_TEMPLATES = {
                     You now have access to our powerful options screening tools:
                 </p>
                 <ul style="color: #a1a1aa; line-height: 1.8;">
-                    <li>📊 Covered Call Screener with advanced filters</li>
-                    <li>📈 PMCC Strategy Scanner with real LEAPS data</li>
-                    <li>📉 TradingView charts with SMA 50/200</li>
-                    <li>💼 Portfolio tracking and management</li>
+                    <li>📊 Access to Covered Call Dashboard</li>
+                    <li>📈 Near real-time options data</li>
+                    <li>📉 TradingView chart integration</li>
+                    <li>💹 Key Technical indicators</li>
                 </ul>
                 <div style="text-align: center; margin: 30px 0;">
                     <a href="{{login_url}}" style="display: inline-block; padding: 15px 30px; background-color: #10b981; color: #ffffff; text-decoration: none; border-radius: 8px; font-weight: bold;">
