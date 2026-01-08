@@ -686,6 +686,12 @@ const Portfolio = () => {
                   <span className="text-zinc-500">Date Closed:</span>
                   <span className="ml-2 text-white">{formatDate(selectedTrade.date_closed) || '-'}</span>
                 </div>
+                {selectedTrade.close_reason && (
+                  <div>
+                    <span className="text-zinc-500">Close Reason:</span>
+                    <span className="ml-2 text-amber-400">{selectedTrade.close_reason}</span>
+                  </div>
+                )}
                 <div>
                   <span className="text-zinc-500">Days in Trade:</span>
                   <span className="ml-2 text-white">{selectedTrade.days_in_trade || '-'}</span>
