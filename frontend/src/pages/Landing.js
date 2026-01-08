@@ -349,7 +349,7 @@ const Landing = () => {
               return (
                 <Card 
                   key={plan.id}
-                  className={`glass-card relative overflow-hidden transition-all duration-300 hover:scale-[1.02] ${
+                  className={`glass-card relative overflow-hidden transition-all duration-300 hover:scale-[1.02] h-full flex flex-col ${
                     plan.popular ? `border-2 ${colors.border} shadow-lg ${colors.glow}` : 'border-zinc-800'
                   }`}
                   data-testid={`pricing-card-${plan.id}`}
