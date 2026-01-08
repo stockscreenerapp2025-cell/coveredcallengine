@@ -260,36 +260,11 @@ async def get_massive_api_key():
     return None
 
 async def fetch_stock_quote(symbol: str, api_key: str = None) -> Optional[dict]:
-    """Fetch current stock quote - tries Massive.com first, then Yahoo Finance fallback"""
-    if not api_key:
-        api_key = await get_massive_api_key()
-    
+    """Fetch current stock quote - tries Yahoo Finance first for real-time prices, then Massive.com fallback"""
     # Normalize symbol for different APIs
     yahoo_symbol = symbol.replace(' ', '-').replace('.', '-')  # BRK B -> BRK-B
     
-    # Try Massive.com API first if key available
-    if api_key:
-        try:
-            async with aiohttp.ClientSession() as session:
-                url = f"https://api.massive.com/v2/aggs/ticker/{symbol}/prev"
-                headers = {"Authorization": f"Bearer {api_key}"}
-                async with session.get(url, headers=headers, timeout=10) as response:
-                    if response.status == 200:
-                        data = await response.json()
-                        results = data.get("results", [])
-                        if results:
-                            return {
-                                "symbol": symbol.upper(),
-                                "price": results[0].get("c", 0),
-                                "open": results[0].get("o", 0),
-                                "high": results[0].get("h", 0),
-                                "low": results[0].get("l", 0),
-                                "volume": results[0].get("v", 0)
-                            }
-        except Exception as e:
-            logging.warning(f"Massive API error for {symbol}: {e}")
-    
-    # Fallback to Yahoo Finance public endpoint
+    # Try Yahoo Finance first for real-time market prices
     try:
         async with aiohttp.ClientSession() as session:
             url = f"https://query1.finance.yahoo.com/v8/finance/chart/{yahoo_symbol}?interval=1d&range=1d"
@@ -311,7 +286,32 @@ async def fetch_stock_quote(symbol: str, api_key: str = None) -> Optional[dict]:
                                 "volume": meta.get("regularMarketVolume", 0)
                             }
     except Exception as e:
-        logging.warning(f"Yahoo Finance fallback error for {symbol}: {e}")
+        logging.warning(f"Yahoo Finance error for {symbol}: {e}")
+    
+    # Fallback to Massive.com API (previous day close)
+    if not api_key:
+        api_key = await get_massive_api_key()
+    
+    if api_key:
+        try:
+            async with aiohttp.ClientSession() as session:
+                url = f"https://api.massive.com/v2/aggs/ticker/{symbol}/prev"
+                headers = {"Authorization": f"Bearer {api_key}"}
+                async with session.get(url, headers=headers, timeout=10) as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        results = data.get("results", [])
+                        if results:
+                            return {
+                                "symbol": symbol.upper(),
+                                "price": results[0].get("c", 0),
+                                "open": results[0].get("o", 0),
+                                "high": results[0].get("h", 0),
+                                "low": results[0].get("l", 0),
+                                "volume": results[0].get("v", 0)
+                            }
+        except Exception as e:
+            logging.warning(f"Massive API error for {symbol}: {e}")
     
     # Last resort: check mock data
     mock = MOCK_STOCKS.get(symbol.upper())
