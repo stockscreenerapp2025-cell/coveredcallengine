@@ -293,13 +293,34 @@ class IBKRParser:
         # Determine strategy type
         strategy = self._determine_strategy(stock_txs, option_txs)
         
-        # Calculate stock positions
-        total_bought = sum(t.get('quantity', 0) for t in stock_txs if t.get('transaction_type') == 'Buy')
-        total_sold = sum(abs(t.get('quantity', 0)) for t in stock_txs if t.get('transaction_type') == 'Sell')
-        total_assigned = sum(abs(t.get('quantity', 0)) for t in stock_txs if t.get('transaction_type') == 'Assignment')
+        # Calculate stock positions correctly
+        # Positive quantity = adding to position (buy, put assignment)
+        # Negative quantity = reducing position (sell, call assignment)
+        total_shares = 0
+        total_cost = 0  # Track cost basis for buys and put assignments
+        total_proceeds = 0  # Track proceeds from sells and call assignments
         
-        # Current net shares position
-        total_shares = total_bought - total_sold - total_assigned
+        for tx in stock_txs:
+            qty = tx.get('quantity', 0)
+            net_amount = tx.get('net_amount', 0)
+            tx_type = tx.get('transaction_type', '')
+            
+            if tx_type == 'Buy':
+                total_shares += qty
+                total_cost += abs(net_amount)
+            elif tx_type == 'Sell':
+                total_shares += qty  # qty is negative for sells
+                total_proceeds += abs(net_amount)
+            elif tx_type == 'Assignment':
+                # Assignment qty: positive = put assigned (you buy), negative = call assigned (you sell)
+                total_shares += qty
+                if qty > 0:
+                    # Put assignment - you bought stock
+                    total_cost += abs(net_amount)
+                else:
+                    # Call assignment - your stock was called away
+                    total_proceeds += abs(net_amount)
+        
         total_contracts = sum(abs(t.get('quantity', 0)) for t in option_txs)
         
         # Entry price (average cost of buys)
