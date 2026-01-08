@@ -2405,7 +2405,7 @@ async def generate_ai_suggestion_for_trade(trade: dict) -> dict:
             session_id=session_id,
             system_message=system_message
         )
-        response = llm.send_message(context)
+        response = await llm.send_message(context)
         
         full_suggestion = response if isinstance(response, str) else str(response)
         
