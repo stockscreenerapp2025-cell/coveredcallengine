@@ -481,6 +481,11 @@ class IBKRParser:
         """Determine the trading strategy from transactions"""
         has_stock_buy = any(t.get('transaction_type') == 'Buy' for t in stock_txs)
         has_stock_sell = any(t.get('transaction_type') == 'Sell' for t in stock_txs)
+        has_put_assignment = any(t.get('transaction_type') == 'Assignment' and t.get('quantity', 0) > 0 for t in stock_txs)
+        has_call_assignment = any(t.get('transaction_type') == 'Assignment' and t.get('quantity', 0) < 0 for t in stock_txs)
+        
+        # Check if user owns stock (bought or got assigned via put)
+        has_stock = has_stock_buy or has_put_assignment
         
         # Categorize options
         call_sells = [t for t in option_txs 
@@ -493,7 +498,7 @@ class IBKRParser:
                    if t.get('transaction_type') == 'Buy' and t.get('option_details', {}).get('option_type') == 'Put']
         
         # Determine strategy
-        if has_stock_buy:
+        if has_stock:
             if call_sells and put_buys:
                 return 'COLLAR'
             elif call_sells:
