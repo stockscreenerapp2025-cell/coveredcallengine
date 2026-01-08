@@ -421,23 +421,26 @@ class IBKRParser:
             except:
                 pass
         
-        # Calculate break-even (only for option strategies)
+        # Calculate break-even (for positions with stock)
         break_even = None
-        if strategy in ['COVERED_CALL', 'PMCC', 'NAKED_PUT', 'COLLAR'] and premium_received > 0:
-            if total_bought > 0:
-                break_even = entry_price - (premium_received / total_bought) + (total_fees / total_bought)
-            elif strategy == 'NAKED_PUT' and option_strike:
-                break_even = option_strike - (premium_received / 100) + (total_fees / 100)
+        if total_shares > 0 and entry_price and entry_price > 0:
+            premium_per_share = premium_received / total_shares if total_shares > 0 else 0
+            fees_per_share = total_fees / total_shares if total_shares > 0 else 0
+            break_even = entry_price - premium_per_share + fees_per_share
         
-        # Calculate realized P/L and ROI for closed positions
+        # Calculate realized P/L for closed positions
         realized_pnl = None
         roi = None
         
-        if status == 'Closed':
-            # Realized P/L = Proceeds + Premium - Cost - Fees
-            realized_pnl = sell_proceeds + premium_received - total_cost - total_fees
-            if total_cost > 0:
-                roi = (realized_pnl / total_cost) * 100
+        if status == 'Closed' and total_cost > 0:
+            # Realized P/L = Proceeds from selling stock + Net option premium - Cost - Fees
+            realized_pnl = total_proceeds + premium_received - total_cost - total_fees
+            roi = (realized_pnl / total_cost) * 100
+        elif status == 'Closed' and total_cost == 0 and premium_received > 0:
+            # Pure option play (e.g., naked put that expired worthless)
+            realized_pnl = premium_received - total_fees
+            # ROI on naked put is based on capital at risk (strike * 100 * contracts)
+            # For simplicity, just show P/L without ROI
         
         # Create deterministic trade ID
         trade_unique_key = f"{account}-{symbol}"
@@ -452,7 +455,7 @@ class IBKRParser:
             'strategy_label': STRATEGY_TYPES.get(strategy, strategy),
             'date_opened': first_date,
             'date_closed': date_closed,
-            'close_reason': close_reason,  # Sold, Assigned, Exercised, Expired
+            'close_reason': close_reason,
             'days_in_trade': days_in_trade,
             'dte': dte,
             'status': status,
@@ -464,7 +467,7 @@ class IBKRParser:
             'break_even': round(break_even, 4) if break_even else None,
             'option_strike': option_strike,
             'option_expiry': option_expiry,
-            'sell_proceeds': round(sell_proceeds, 2),
+            'total_proceeds': round(total_proceeds, 2),
             'total_cost': round(total_cost, 2),
             'realized_pnl': round(realized_pnl, 2) if realized_pnl is not None else None,
             'roi': round(roi, 2) if roi is not None else None,
