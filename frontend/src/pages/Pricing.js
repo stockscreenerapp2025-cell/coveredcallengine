@@ -176,17 +176,17 @@ const Pricing = () => {
               }`}
               data-testid={`pricing-card-${plan.id}`}
             >
-              {/* Popular Badge */}
+              {/* Popular Badge - Left Side */}
               {plan.popular && (
-                <div className="absolute top-0 right-0 px-3 py-1 bg-violet-600 text-white text-xs font-medium rounded-bl-lg">
+                <div className="absolute top-0 left-0 px-3 py-1 bg-violet-600 text-white text-xs font-medium rounded-br-lg">
                   <Star className="w-3 h-3 inline mr-1" />
                   Most Popular
                 </div>
               )}
               
-              {/* Savings Badge */}
+              {/* Savings Badge - Right Side */}
               {plan.savings && (
-                <div className="absolute top-0 left-0 px-3 py-1 bg-amber-600 text-white text-xs font-medium rounded-br-lg">
+                <div className="absolute top-0 right-0 px-3 py-1 bg-amber-600 text-white text-xs font-medium rounded-bl-lg">
                   {plan.savings}
                 </div>
               )}
