@@ -70,13 +70,13 @@ EMAIL_TEMPLATES = {
                     ({{days_left}} days left).
                 </p>
                 <p style="color: #a1a1aa; line-height: 1.6;">
-                    Don't lose access to:
+                    Upgrade to keep access to:
                 </p>
                 <ul style="color: #a1a1aa; line-height: 1.8;">
-                    <li>✅ Real-time options screening</li>
-                    <li>✅ PMCC opportunities with LEAPS</li>
-                    <li>✅ TradingView chart analysis</li>
-                    <li>✅ Your saved watchlist and portfolio</li>
+                    <li>✅ Unlimited Covered Call Scans</li>
+                    <li>✅ PMCC Strategy Scanner</li>
+                    <li>✅ Advanced filtering options</li>
+                    <li>✅ Portfolio Tracker</li>
                 </ul>
                 <div style="text-align: center; margin: 30px 0;">
                     <a href="{{subscribe_url}}" style="display: inline-block; padding: 15px 30px; background-color: #8b5cf6; color: #ffffff; text-decoration: none; border-radius: 8px; font-weight: bold;">
