@@ -264,6 +264,9 @@ async def fetch_stock_quote(symbol: str, api_key: str = None) -> Optional[dict]:
     if not api_key:
         api_key = await get_massive_api_key()
     
+    # Normalize symbol for different APIs
+    yahoo_symbol = symbol.replace(' ', '-').replace('.', '-')  # BRK B -> BRK-B
+    
     # Try Massive.com API first if key available
     if api_key:
         try:
@@ -289,7 +292,7 @@ async def fetch_stock_quote(symbol: str, api_key: str = None) -> Optional[dict]:
     # Fallback to Yahoo Finance public endpoint
     try:
         async with aiohttp.ClientSession() as session:
-            url = f"https://query1.finance.yahoo.com/v8/finance/chart/{symbol}?interval=1d&range=1d"
+            url = f"https://query1.finance.yahoo.com/v8/finance/chart/{yahoo_symbol}?interval=1d&range=1d"
             headers = {"User-Agent": "Mozilla/5.0"}
             async with session.get(url, headers=headers, timeout=10) as response:
                 if response.status == 200:
