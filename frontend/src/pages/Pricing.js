@@ -54,18 +54,16 @@ const Pricing = () => {
       name: '7-Day FREE Trial',
       price: '$0',
       period: '7 days',
-      description: 'Try all premium features risk-free',
+      description: 'Try premium features risk-free',
       linkKey: 'trial_link',
       popular: false,
       highlight: 'Start Free',
       features: [
-        'Full access to Covered Call Screener',
-        'PMCC Strategy Scanner',
-        'Real-time options data',
+        'Access to Covered Call Dashboard',
+        'Limited Covered Call Scans',
+        'Near real-time options data',
         'TradingView chart integration',
-        'Technical indicators (SMA 50/200)',
-        'Portfolio tracking',
-        'No credit card required*'
+        'Key Technical indicators'
       ],
       icon: Clock,
       color: 'emerald',
@@ -80,15 +78,14 @@ const Pricing = () => {
       description: 'Perfect for active traders',
       linkKey: 'monthly_link',
       popular: true,
-      highlight: 'Most Flexible',
+      highlight: 'Most Popular',
       features: [
         'Everything in Free Trial',
-        'Unlimited screener scans',
+        'Unlimited Covered Call Scans',
+        'PMCC Strategy Scanner',
         'Advanced filtering options',
-        'Priority data refresh',
-        'Email alerts (coming soon)',
-        'Cancel anytime',
-        'Priority support'
+        'Portfolio Tracker',
+        'Cancel anytime'
       ],
       icon: Zap,
       color: 'violet',
@@ -96,26 +93,24 @@ const Pricing = () => {
     },
     {
       id: 'yearly',
-      name: 'Yearly Plan',
+      name: 'Annual Plan',
       price: '$499',
       period: '/year',
-      description: 'Best value - Save $89/year!',
+      description: 'Best value for serious traders',
       linkKey: 'yearly_link',
       popular: false,
-      highlight: 'Best Value',
-      savings: 'Save 15%',
+      highlight: 'Save 15%+',
+      savings: 'Save 15%+',
       features: [
         'Everything in Monthly Plan',
-        '2 months FREE',
-        'Exclusive yearly features',
-        'Early access to new tools',
+        'Special Discount',
+        'Early access to new features',
         'Dedicated support channel',
-        'Annual strategy review',
         'Locked-in pricing'
       ],
       icon: Crown,
       color: 'amber',
-      buttonText: 'Subscribe Yearly'
+      buttonText: 'Subscribe Annual'
     }
   ];
 
