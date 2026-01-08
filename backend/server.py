@@ -259,36 +259,60 @@ async def get_massive_api_key():
     return None
 
 async def fetch_stock_quote(symbol: str, api_key: str = None) -> Optional[dict]:
-    """Fetch current stock quote from Massive.com API"""
+    """Fetch current stock quote - tries Massive.com first, then Yahoo Finance fallback"""
     if not api_key:
         api_key = await get_massive_api_key()
     
-    if not api_key:
-        # Return mock data if no API key
-        mock = MOCK_STOCKS.get(symbol.upper())
-        if mock:
-            return {"symbol": symbol.upper(), "price": mock["price"]}
-        return None
+    # Try Massive.com API first if key available
+    if api_key:
+        try:
+            async with aiohttp.ClientSession() as session:
+                url = f"https://api.massive.com/v2/aggs/ticker/{symbol}/prev"
+                headers = {"Authorization": f"Bearer {api_key}"}
+                async with session.get(url, headers=headers, timeout=10) as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        results = data.get("results", [])
+                        if results:
+                            return {
+                                "symbol": symbol.upper(),
+                                "price": results[0].get("c", 0),
+                                "open": results[0].get("o", 0),
+                                "high": results[0].get("h", 0),
+                                "low": results[0].get("l", 0),
+                                "volume": results[0].get("v", 0)
+                            }
+        except Exception as e:
+            logging.warning(f"Massive API error for {symbol}: {e}")
     
+    # Fallback to Yahoo Finance public endpoint
     try:
         async with aiohttp.ClientSession() as session:
-            url = f"https://api.massive.com/v2/aggs/ticker/{symbol}/prev"
-            headers = {"Authorization": f"Bearer {api_key}"}
+            url = f"https://query1.finance.yahoo.com/v8/finance/chart/{symbol}?interval=1d&range=1d"
+            headers = {"User-Agent": "Mozilla/5.0"}
             async with session.get(url, headers=headers, timeout=10) as response:
                 if response.status == 200:
                     data = await response.json()
-                    results = data.get("results", [])
-                    if results:
-                        return {
-                            "symbol": symbol.upper(),
-                            "price": results[0].get("c", 0),
-                            "open": results[0].get("o", 0),
-                            "high": results[0].get("h", 0),
-                            "low": results[0].get("l", 0),
-                            "volume": results[0].get("v", 0)
-                        }
+                    result = data.get("chart", {}).get("result", [])
+                    if result:
+                        meta = result[0].get("meta", {})
+                        price = meta.get("regularMarketPrice", 0)
+                        if price:
+                            return {
+                                "symbol": symbol.upper(),
+                                "price": price,
+                                "open": meta.get("regularMarketOpen", 0),
+                                "high": meta.get("regularMarketDayHigh", 0),
+                                "low": meta.get("regularMarketDayLow", 0),
+                                "volume": meta.get("regularMarketVolume", 0)
+                            }
     except Exception as e:
-        logging.warning(f"Error fetching quote for {symbol}: {e}")
+        logging.warning(f"Yahoo Finance fallback error for {symbol}: {e}")
+    
+    # Last resort: check mock data
+    mock = MOCK_STOCKS.get(symbol.upper())
+    if mock:
+        return {"symbol": symbol.upper(), "price": mock["price"]}
     
     return None
 
