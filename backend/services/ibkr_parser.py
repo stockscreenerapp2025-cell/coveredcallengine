@@ -321,21 +321,25 @@ class IBKRParser:
             except:
                 pass
         
-        # Determine status
+        # Determine status - HIGH LEVEL: Only Open or Closed
+        # Details like Assigned/Exercised go in close_reason
         status = 'Open'
         date_closed = None
+        close_reason = None  # Will be: Sold, Assigned, Exercised, Expired, or None
         
         # Check if there was an assignment
         has_assignment = any(t.get('transaction_type') == 'Assignment' for t in transactions)
         
         if total_shares <= 0:
-            if has_assignment and total_sold == 0:
-                # Stock was assigned away
-                status = 'Assigned'
-                date_closed = last_date
-            elif total_bought > 0:
-                # Stock was sold
+            if has_assignment:
+                # Stock was assigned away - position is CLOSED
                 status = 'Closed'
+                close_reason = 'Assigned'
+                date_closed = last_date
+            elif total_sold > 0 and total_bought > 0:
+                # Stock was sold manually
+                status = 'Closed'
+                close_reason = 'Sold'
                 date_closed = last_date
             elif not stock_txs and option_txs:
                 # Pure options trade - check if expired
@@ -344,9 +348,16 @@ class IBKRParser:
                         exp_date = datetime.strptime(option_expiry, '%Y-%m-%d')
                         if exp_date < datetime.now():
                             status = 'Closed'
+                            close_reason = 'Expired'
                             date_closed = option_expiry
                     except:
                         pass
+        
+        # For Naked Puts that got assigned - position is closed
+        if strategy == 'NAKED_PUT' and has_assignment:
+            status = 'Closed'
+            close_reason = 'Assigned'
+            date_closed = last_date
         
         # Calculate days in trade
         days_in_trade = 0
