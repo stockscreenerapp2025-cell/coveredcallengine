@@ -90,6 +90,7 @@ const Portfolio = () => {
   const [selectedTrade, setSelectedTrade] = useState(null);
   const [tradeDetailOpen, setTradeDetailOpen] = useState(false);
   const [loadingAI, setLoadingAI] = useState(false);
+  const [generatingSuggestions, setGeneratingSuggestions] = useState(false);
   const fileInputRef = useRef(null);
 
   // Filters
