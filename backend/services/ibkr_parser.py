@@ -381,7 +381,7 @@ class IBKRParser:
         realized_pnl = None
         roi = None
         
-        if status in ['Closed', 'Assigned']:
+        if status == 'Closed':
             # Realized P/L = Proceeds + Premium - Cost - Fees
             realized_pnl = sell_proceeds + premium_received - total_cost - total_fees
             if total_cost > 0:
@@ -400,6 +400,7 @@ class IBKRParser:
             'strategy_label': STRATEGY_TYPES.get(strategy, strategy),
             'date_opened': first_date,
             'date_closed': date_closed,
+            'close_reason': close_reason,  # Sold, Assigned, Exercised, Expired
             'days_in_trade': days_in_trade,
             'dte': dte,
             'status': status,
