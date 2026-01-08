@@ -109,7 +109,7 @@ metadata:
 
 test_plan:
   current_focus:
-    - "IBKR Portfolio Import Frontend UI"
+    - "Portfolio Tracker - Real-time Current Prices and Dashboard Integration"
   stuck_tasks: []
   test_all: false
   test_priority: "high_first"
