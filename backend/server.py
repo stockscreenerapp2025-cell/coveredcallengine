@@ -2333,6 +2333,22 @@ async def get_trade_ai_suggestion(trade_id: str, user: dict = Depends(get_curren
     if not trade:
         raise HTTPException(status_code=404, detail="Trade not found")
     
+    suggestion = await generate_ai_suggestion_for_trade(trade)
+    
+    # Store suggestion
+    await db.ibkr_trades.update_one(
+        {"user_id": user["id"], "id": trade_id},
+        {"$set": {
+            "ai_suggestion": suggestion.get("full_suggestion"),
+            "ai_action": suggestion.get("action"),
+            "suggestion_updated": datetime.now(timezone.utc).isoformat()
+        }}
+    )
+    
+    return {"suggestion": suggestion.get("full_suggestion"), "action": suggestion.get("action"), "trade_id": trade_id}
+
+async def generate_ai_suggestion_for_trade(trade: dict) -> dict:
+    """Generate AI suggestion for a single trade"""
     # Fetch current market data
     settings = await db.admin_settings.find_one({"type": "api_keys"}, {"_id": 0})
     massive_key = settings.get("massive_api_key") if settings else os.environ.get("MASSIVE_API_KEY")
@@ -2348,7 +2364,7 @@ async def get_trade_ai_suggestion(trade_id: str, user: dict = Depends(get_curren
     
     # Build context for AI
     context = f"""
-    Analyze this options trade and provide a recommendation:
+    Analyze this options trade and provide a ONE-WORD action recommendation followed by brief reasoning.
     
     Symbol: {trade.get('symbol')}
     Strategy: {trade.get('strategy_label', trade.get('strategy_type'))}
@@ -2362,14 +2378,14 @@ async def get_trade_ai_suggestion(trade_id: str, user: dict = Depends(get_curren
     Premium Received: ${trade.get('premium_received', 0):.2f}
     Shares: {trade.get('shares', 0)}
     
-    Based on this information, should the trader:
-    1. HOLD - Keep the current position
-    2. CLOSE - Close the position now
-    3. ROLL UP - Roll the option to a higher strike
-    4. ROLL DOWN - Roll the option to a lower strike
-    5. ROLL OUT - Roll the option to a later expiry
+    Your response MUST start with exactly one of these actions on its own line:
+    HOLD
+    CLOSE
+    ROLL_UP
+    ROLL_DOWN
+    ROLL_OUT
     
-    Provide a brief recommendation with reasoning (max 100 words).
+    Then provide 1-2 sentences of reasoning.
     """
     
     # Use Emergent LLM key for AI suggestion
@@ -2379,26 +2395,63 @@ async def get_trade_ai_suggestion(trade_id: str, user: dict = Depends(get_curren
         response = await chat(
             api_key=os.environ.get("EMERGENT_LLM_KEY"),
             model=LlmModel.CLAUDE_SONNET,
-            system_prompt="You are a professional options trading advisor. Provide concise, actionable recommendations.",
+            system_prompt="You are a professional options trading advisor. Always start your response with exactly one action word (HOLD, CLOSE, ROLL_UP, ROLL_DOWN, or ROLL_OUT) on its own line, then provide brief reasoning.",
             user_prompt=context
         )
         
-        suggestion = response.message if hasattr(response, 'message') else str(response)
+        full_suggestion = response.message if hasattr(response, 'message') else str(response)
         
-        # Store suggestion
-        await db.ibkr_trades.update_one(
-            {"user_id": user["id"], "id": trade_id},
-            {"$set": {
-                "ai_suggestion": suggestion,
-                "suggestion_updated": datetime.now(timezone.utc).isoformat()
-            }}
-        )
+        # Extract the action from the response
+        action = "HOLD"  # Default
+        first_line = full_suggestion.strip().split('\n')[0].strip().upper()
+        for possible_action in ["HOLD", "CLOSE", "ROLL_UP", "ROLL_DOWN", "ROLL_OUT"]:
+            if possible_action in first_line:
+                action = possible_action
+                break
         
-        return {"suggestion": suggestion, "trade_id": trade_id}
+        return {
+            "action": action,
+            "full_suggestion": full_suggestion
+        }
         
     except Exception as e:
         logging.error(f"AI suggestion error: {e}")
-        return {"suggestion": "Unable to generate AI suggestion at this time. Please try again later.", "error": str(e)}
+        return {
+            "action": "N/A",
+            "full_suggestion": f"Unable to generate AI suggestion: {str(e)}"
+        }
+
+@portfolio_router.post("/ibkr/generate-suggestions")
+async def generate_all_suggestions(user: dict = Depends(get_current_user)):
+    """Generate AI suggestions for all open trades"""
+    # Get all open trades
+    open_trades = await db.ibkr_trades.find(
+        {"user_id": user["id"], "status": "Open"},
+        {"_id": 0}
+    ).to_list(100)
+    
+    if not open_trades:
+        return {"message": "No open trades found", "updated": 0}
+    
+    updated = 0
+    for trade in open_trades:
+        try:
+            suggestion = await generate_ai_suggestion_for_trade(trade)
+            
+            await db.ibkr_trades.update_one(
+                {"user_id": user["id"], "id": trade["id"]},
+                {"$set": {
+                    "ai_suggestion": suggestion.get("full_suggestion"),
+                    "ai_action": suggestion.get("action"),
+                    "suggestion_updated": datetime.now(timezone.utc).isoformat()
+                }}
+            )
+            updated += 1
+        except Exception as e:
+            logging.error(f"Error generating suggestion for {trade.get('symbol')}: {e}")
+            continue
+    
+    return {"message": f"Generated suggestions for {updated} open trades", "updated": updated}
 
 @portfolio_router.delete("/ibkr/clear")
 async def clear_ibkr_data(user: dict = Depends(get_current_user)):
