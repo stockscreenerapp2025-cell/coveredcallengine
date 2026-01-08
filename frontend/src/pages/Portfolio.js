@@ -504,7 +504,7 @@ const Portfolio = () => {
                       <TableHead className="text-zinc-400">Symbol</TableHead>
                       <TableHead className="text-zinc-400">Strategy</TableHead>
                       <TableHead className="text-zinc-400">Status</TableHead>
-                      <TableHead className="text-zinc-400">AI Action</TableHead>
+                      <TableHead className="text-zinc-400">AI Suggestion</TableHead>
                       <TableHead className="text-zinc-400">Opened</TableHead>
                       <TableHead className="text-zinc-400">Closed</TableHead>
                       <TableHead className="text-zinc-400">DTE</TableHead>
