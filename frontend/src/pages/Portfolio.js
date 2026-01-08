@@ -564,18 +564,34 @@ const Portfolio = () => {
                           )}
                         </TableCell>
                         <TableCell className="text-zinc-300">{formatDate(trade.date_opened)}</TableCell>
-                        <TableCell className="text-zinc-400">{trade.days_in_trade || '-'}</TableCell>
+                        <TableCell className="text-zinc-300">{formatDate(trade.date_closed) || '-'}</TableCell>
                         <TableCell className="text-zinc-400">{trade.dte ?? '-'}</TableCell>
                         <TableCell className="text-right text-zinc-300">{trade.shares || '-'}</TableCell>
-                        <TableCell className="text-right text-zinc-300">{formatCurrency(trade.entry_price)}</TableCell>
-                        <TableCell className="text-right text-emerald-400">{formatCurrency(trade.premium_received)}</TableCell>
-                        <TableCell className="text-right text-amber-400">{formatCurrency(trade.total_fees)}</TableCell>
-                        <TableCell className="text-right text-zinc-300">{formatCurrency(trade.break_even)}</TableCell>
-                        <TableCell className="text-right text-zinc-300">{formatCurrency(trade.current_price)}</TableCell>
+                        <TableCell className="text-right text-zinc-300">{trade.entry_price ? formatCurrency(trade.entry_price) : '-'}</TableCell>
+                        <TableCell className="text-right text-zinc-300">{trade.option_strike ? `$${trade.option_strike}` : '-'}</TableCell>
+                        <TableCell className="text-right text-emerald-400">{trade.premium_received ? formatCurrency(trade.premium_received) : '-'}</TableCell>
+                        <TableCell className="text-right text-zinc-300">{trade.break_even ? formatCurrency(trade.break_even) : '-'}</TableCell>
+                        <TableCell className="text-right text-zinc-300">{trade.current_price ? formatCurrency(trade.current_price) : '-'}</TableCell>
                         <TableCell className="text-right">
-                          {trade.unrealized_pnl !== null && trade.unrealized_pnl !== undefined ? (
-                            <span className={trade.unrealized_pnl >= 0 ? 'text-emerald-400' : 'text-red-400'}>
-                              {formatCurrency(trade.unrealized_pnl)}
+                          {/* Show realized P/L for closed, unrealized for open */}
+                          {trade.status === 'Open' ? (
+                            trade.unrealized_pnl !== null && trade.unrealized_pnl !== undefined ? (
+                              <span className={trade.unrealized_pnl >= 0 ? 'text-emerald-400' : 'text-red-400'}>
+                                {formatCurrency(trade.unrealized_pnl)}
+                              </span>
+                            ) : '-'
+                          ) : (
+                            trade.realized_pnl !== null && trade.realized_pnl !== undefined ? (
+                              <span className={trade.realized_pnl >= 0 ? 'text-emerald-400' : 'text-red-400'}>
+                                {formatCurrency(trade.realized_pnl)}
+                              </span>
+                            ) : '-'
+                          )}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          {trade.roi !== null && trade.roi !== undefined ? (
+                            <span className={trade.roi >= 0 ? 'text-emerald-400' : 'text-red-400'}>
+                              {formatPercent(trade.roi)}
                             </span>
                           ) : '-'}
                         </TableCell>
