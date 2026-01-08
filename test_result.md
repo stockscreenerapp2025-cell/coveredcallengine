@@ -107,9 +107,20 @@ metadata:
   test_sequence: 3
   run_ui: false
 
+  - task: "Portfolio Tracker - Real-time Current Prices and Dashboard Integration"
+    implemented: true
+    working: true
+    file: "frontend/src/pages/Portfolio.js, frontend/src/pages/Dashboard.js"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        - working: true
+          agent: "testing"
+          comment: "✅ PORTFOLIO TRACKER & DASHBOARD TESTING COMPLETE: Comprehensive testing verified all critical requirements. Portfolio page shows correct 'AI Suggestion' header (not 'AI Action'), summary cards display expected values (Total: 38, Open: 21, Closed: 17, Invested: $28,238.70, Premium: $12,644.28), all OPEN trades show current prices and unrealized P/L values (APLD ~$31.94, SMCI ~$29.90, IREN ~$45.68, METC ~$20.25), all filter dropdowns functional (Account, Strategy, Status, Search). Dashboard Portfolio Overview section working with View All navigation to /portfolio. Minor: Dashboard shows sample data when no IBKR import detected, but actual portfolio page shows real imported data correctly."
+
 test_plan:
-  current_focus:
-    - "Portfolio Tracker - Real-time Current Prices and Dashboard Integration"
+  current_focus: []
   stuck_tasks: []
   test_all: false
   test_priority: "high_first"
@@ -127,3 +138,5 @@ agent_communication:
       message: "✅ IBKR PORTFOLIO IMPORT TESTING COMPLETE: All requested IBKR import functionality tested successfully. Admin login with admin@premiumhunter.com/admin123 working. CSV upload from provided URL processes correctly, detecting 'Ray Family SMSF' account and parsing 38 trades with proper strategy categorization (Covered Call, Stock). Summary statistics accurate with meaningful data (total invested, premium received, fees). All filtering endpoints functional. Fixed IBKR parser to handle multi-section CSV format. All 13 IBKR-specific tests passed. Ready for production use."
     - agent: "testing"
       message: "✅ IBKR PORTFOLIO IMPORT FRONTEND UI TESTING COMPLETE: Comprehensive frontend testing completed successfully for Portfolio page. All UI components verified: Import IBKR CSV button prominently displayed, all 6 summary cards working correctly, filter dropdowns (Strategy/Status) and search input functional, trades table with proper empty state messaging, responsive design working across desktop/tablet/mobile, navigation between pages functional, all interactive elements working correctly. No critical errors found. Frontend is fully prepared for CSV import functionality with proper backend integration. Ready for production use."
+    - agent: "testing"
+      message: "✅ PORTFOLIO TRACKER & DASHBOARD INTEGRATION TESTING COMPLETE: All critical requirements verified successfully. Portfolio page correctly shows 'AI Suggestion' header, summary cards display accurate IBKR data (38 total trades, 21 open, 17 closed, $28,238.70 invested, $12,644.28 premium), all OPEN trades show real-time current prices and calculated unrealized P/L (APLD $31.94, SMCI $29.90, IREN $45.68, METC $20.25 - all in expected ranges), filter functionality working (Account/Strategy/Status dropdowns + search). Dashboard Portfolio Overview section functional with proper navigation to /portfolio via View All button. All specified symbols (APLD, SMCI, IREN, METC) found with correct data display. Ready for production use."
