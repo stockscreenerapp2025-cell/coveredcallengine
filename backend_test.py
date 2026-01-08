@@ -69,7 +69,7 @@ class PremiumHunterAPITester:
         """Test basic API health"""
         success, data, status = self.make_request('GET', '')
         self.log_result("API Health Check", 
-                       success and status == 200 and "Premium Hunter API" in data.get("message", ""),
+                       success and status == 200 and ("Premium Hunter API" in data.get("message", "") or "Covered Call Engine API" in data.get("message", "")),
                        f"Status: {status}, Response: {data}")
         
         success, data, status = self.make_request('GET', 'health')
