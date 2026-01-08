@@ -355,34 +355,65 @@ class IBKRParser:
         # Check if there was an assignment
         has_assignment = any(t.get('transaction_type') == 'Assignment' for t in transactions)
         
-        if total_shares <= 0:
+        # For Covered Calls: You start with stock, sell calls. Assignment = lose stock
+        # For Naked Puts: You sell puts. Assignment = gain stock
+        
+        if strategy == 'COVERED_CALL':
+            # Position is closed if shares are gone (sold or assigned)
+            if total_shares <= 0:
+                status = 'Closed'
+                if has_assignment:
+                    close_reason = 'Assigned'
+                else:
+                    close_reason = 'Sold'
+                date_closed = last_date
+        
+        elif strategy == 'NAKED_PUT':
+            # For naked put, assignment means you now own stock - trade is complete
             if has_assignment:
-                # Stock was assigned away - position is CLOSED
                 status = 'Closed'
                 close_reason = 'Assigned'
                 date_closed = last_date
-            elif total_sold > 0 and total_bought > 0:
-                # Stock was sold manually
+            # If put expired worthless (past expiry, no assignment)
+            elif option_expiry:
+                try:
+                    exp_date = datetime.strptime(option_expiry, '%Y-%m-%d')
+                    if exp_date < datetime.now():
+                        status = 'Closed'
+                        close_reason = 'Expired'
+                        date_closed = option_expiry
+                except:
+                    pass
+        
+        elif strategy in ['STOCK', 'ETF', 'INDEX']:
+            # Pure stock trade - closed if sold
+            if total_shares <= 0 and total_bought > 0:
                 status = 'Closed'
                 close_reason = 'Sold'
                 date_closed = last_date
-            elif not stock_txs and option_txs:
-                # Pure options trade - check if expired
-                if option_expiry:
-                    try:
-                        exp_date = datetime.strptime(option_expiry, '%Y-%m-%d')
-                        if exp_date < datetime.now():
-                            status = 'Closed'
-                            close_reason = 'Expired'
-                            date_closed = option_expiry
-                    except:
-                        pass
         
-        # For Naked Puts that got assigned - position is closed
-        if strategy == 'NAKED_PUT' and has_assignment:
-            status = 'Closed'
-            close_reason = 'Assigned'
-            date_closed = last_date
+        elif strategy == 'PMCC':
+            # PMCC is complex - check if all options closed
+            if not stock_txs and option_txs:
+                # Check net option positions
+                net_long = sum(t.get('quantity', 0) for t in option_txs if t.get('transaction_type') == 'Buy')
+                net_short = sum(abs(t.get('quantity', 0)) for t in option_txs if t.get('transaction_type') == 'Sell')
+                if net_long == net_short:
+                    status = 'Closed'
+                    close_reason = 'Sold'
+                    date_closed = last_date
+        
+        else:
+            # Default: check if options expired
+            if option_expiry:
+                try:
+                    exp_date = datetime.strptime(option_expiry, '%Y-%m-%d')
+                    if exp_date < datetime.now():
+                        status = 'Closed'
+                        close_reason = 'Expired'
+                        date_closed = option_expiry
+                except:
+                    pass
         
         # Calculate days in trade
         days_in_trade = 0
