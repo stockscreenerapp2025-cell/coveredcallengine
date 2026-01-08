@@ -254,11 +254,15 @@ class EmailService:
         settings = await self.db.admin_settings.find_one({"type": "email_settings"}, {"_id": 0})
         if settings:
             self.api_key = settings.get("resend_api_key")
-            self.sender_email = settings.get("sender_email", "noreply@coveredcallengine.com")
+            self.sender_email = settings.get("sender_email")
         
         # Fallback to env
         if not self.api_key:
             self.api_key = os.environ.get("RESEND_API_KEY")
+        
+        # Set default sender email if not configured
+        if not self.sender_email:
+            self.sender_email = os.environ.get("SENDER_EMAIL", "onboarding@resend.dev")
         
         if self.api_key:
             resend.api_key = self.api_key
