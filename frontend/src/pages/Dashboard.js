@@ -16,7 +16,9 @@ import {
   DollarSign,
   Search,
   CheckCircle,
-  AlertCircle
+  AlertCircle,
+  Upload,
+  Briefcase
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
@@ -29,6 +31,8 @@ const Dashboard = () => {
   const [opportunities, setOpportunities] = useState([]);
   const [opportunitiesInfo, setOpportunitiesInfo] = useState(null);
   const [portfolio, setPortfolio] = useState(null);
+  const [ibkrSummary, setIbkrSummary] = useState(null);
+  const [ibkrTrades, setIbkrTrades] = useState([]);
   const [selectedStock, setSelectedStock] = useState(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -51,6 +55,20 @@ const Dashboard = () => {
       setIndices(indicesRes.data);
       setNews(newsRes.data);
       setPortfolio(portfolioRes.data);
+      
+      // Fetch IBKR portfolio data
+      try {
+        const [ibkrSummaryRes, ibkrTradesRes] = await Promise.all([
+          portfolioApi.getIBKRSummary(),
+          portfolioApi.getIBKRTrades({ status: 'Open', limit: 5 })
+        ]);
+        setIbkrSummary(ibkrSummaryRes.data);
+        setIbkrTrades(ibkrTradesRes.data.trades || []);
+      } catch (ibkrError) {
+        console.log('No IBKR data loaded:', ibkrError);
+        setIbkrSummary(null);
+        setIbkrTrades([]);
+      }
       
       // Fetch dashboard opportunities separately (may take longer)
       try {
