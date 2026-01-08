@@ -2366,28 +2366,45 @@ async def generate_ai_suggestion_for_trade(trade: dict) -> dict:
         except:
             pass
     
-    # Build context for AI
+    # Calculate some metrics for better AI context
+    dte = trade.get('dte', 0) or 0
+    option_strike = trade.get('option_strike')
+    entry_price = trade.get('entry_price', 0) or 0
+    break_even = trade.get('break_even')
+    premium = trade.get('premium_received', 0) or 0
+    strategy = trade.get('strategy_type', '')
+    
+    # Build richer context for AI
     context = f"""
-    Analyze this options trade and provide a ONE-WORD action recommendation followed by brief reasoning.
+    Analyze this options trade and provide a recommendation.
     
     Symbol: {trade.get('symbol')}
-    Strategy: {trade.get('strategy_label', trade.get('strategy_type'))}
+    Strategy: {trade.get('strategy_label', strategy)}
     Status: {trade.get('status')}
-    Entry Price: ${trade.get('entry_price', 0):.2f}
-    Current Price: ${current_price if current_price else 'N/A'}
-    Break-Even: ${trade.get('break_even', 0):.2f}
-    Option Strike: ${trade.get('option_strike') if trade.get('option_strike') else 'N/A'}
+    Entry Price: ${entry_price:.2f}
+    Current Price: ${current_price:.2f if current_price else 'N/A'}
+    Break-Even: ${break_even:.2f if break_even else 'N/A'}
+    Option Strike: ${option_strike if option_strike else 'N/A'}
     Option Expiry: {trade.get('option_expiry', 'N/A')}
-    Days to Expiry: {trade.get('dte', 'N/A')}
-    Premium Received: ${trade.get('premium_received', 0):.2f}
+    Days to Expiry (DTE): {dte}
+    Premium Received: ${premium:.2f}
     Shares: {trade.get('shares', 0)}
     
+    IMPORTANT RULES:
+    1. For Covered Calls: If DTE <= 1 and Current Price > Strike Price, recommend "LET_EXPIRE" (let it exercise automatically to save transaction costs)
+    2. For Covered Calls: If DTE <= 1 and Current Price < Strike Price, recommend "LET_EXPIRE" (option will expire worthless, keep shares and premium)
+    3. If DTE > 7 and trade is profitable, consider HOLD
+    4. If DTE <= 3 and want to capture more premium, consider ROLL_OUT
+    5. If stock price moved significantly up, consider ROLL_UP
+    6. If stock price dropped below break-even, consider CLOSE or ROLL_DOWN
+    
     Your response MUST start with exactly one of these actions on its own line:
-    HOLD
-    CLOSE
-    ROLL_UP
-    ROLL_DOWN
-    ROLL_OUT
+    HOLD - Keep position, wait for better opportunity
+    CLOSE - Close position manually now
+    LET_EXPIRE - Let option expire/exercise automatically (saves transaction costs)
+    ROLL_UP - Roll to higher strike price
+    ROLL_DOWN - Roll to lower strike price  
+    ROLL_OUT - Roll to later expiration date
     
     Then provide 1-2 sentences of reasoning.
     """
@@ -2398,7 +2415,7 @@ async def generate_ai_suggestion_for_trade(trade: dict) -> dict:
         import uuid as uuid_module
         
         session_id = str(uuid_module.uuid4())
-        system_message = "You are a professional options trading advisor. Always start your response with exactly one action word (HOLD, CLOSE, ROLL_UP, ROLL_DOWN, or ROLL_OUT) on its own line, then provide brief reasoning."
+        system_message = "You are a professional options trading advisor. Consider transaction costs and DTE when making recommendations. Always start your response with exactly one action word, then provide brief reasoning."
         
         llm = LlmChat(
             api_key=os.environ.get("EMERGENT_LLM_KEY"),
@@ -2413,7 +2430,7 @@ async def generate_ai_suggestion_for_trade(trade: dict) -> dict:
         # Extract the action from the response
         action = "HOLD"  # Default
         first_line = full_suggestion.strip().split('\n')[0].strip().upper()
-        for possible_action in ["HOLD", "CLOSE", "ROLL_UP", "ROLL_DOWN", "ROLL_OUT"]:
+        for possible_action in ["LET_EXPIRE", "HOLD", "CLOSE", "ROLL_UP", "ROLL_DOWN", "ROLL_OUT"]:
             if possible_action in first_line:
                 action = possible_action
                 break
