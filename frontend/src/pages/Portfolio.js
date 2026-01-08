@@ -203,6 +203,20 @@ const Portfolio = () => {
     }
   };
 
+  const generateAllSuggestions = async () => {
+    setGeneratingSuggestions(true);
+    try {
+      const res = await portfolioApi.generateAllSuggestions();
+      toast.success(res.data.message || 'AI suggestions generated');
+      // Refresh trades to show new suggestions
+      fetchTrades();
+    } catch (error) {
+      toast.error('Failed to generate AI suggestions');
+    } finally {
+      setGeneratingSuggestions(false);
+    }
+  };
+
   const openTradeDetail = async (trade) => {
     try {
       const res = await portfolioApi.getIBKRTradeDetail(trade.id);
