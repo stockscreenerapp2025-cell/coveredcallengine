@@ -2243,25 +2243,38 @@ async def get_ibkr_trades(
     
     # Fetch current prices for open trades (uses Yahoo Finance fallback if no Massive key)
     symbols_to_fetch = list(set(t.get('symbol') for t in trades if t.get('status') == 'Open' and t.get('symbol')))
+    
+    # Build a price cache to avoid duplicate API calls
+    price_cache = {}
     if symbols_to_fetch:
-        try:
-            for trade in trades:
-                if trade.get('status') == 'Open' and trade.get('symbol'):
-                    quote = await fetch_stock_quote(trade['symbol'])
-                    if quote and quote.get('price'):
-                        trade['current_price'] = quote.get('price', 0)
-                        # Calculate unrealized P/L
-                        shares = trade.get('shares', 0)
-                        entry_price = trade.get('entry_price', 0)
-                        break_even = trade.get('break_even')
-                        
-                        if shares > 0:
-                            if break_even:
-                                trade['unrealized_pnl'] = round((trade['current_price'] - break_even) * shares, 2)
-                            elif entry_price:
-                                trade['unrealized_pnl'] = round((trade['current_price'] - entry_price) * shares, 2)
-        except Exception as e:
-            logging.warning(f"Error fetching quotes: {e}")
+        logging.info(f"Fetching prices for {len(symbols_to_fetch)} symbols: {symbols_to_fetch}")
+        for symbol in symbols_to_fetch:
+            try:
+                quote = await fetch_stock_quote(symbol)
+                if quote and quote.get('price'):
+                    price_cache[symbol] = quote.get('price')
+                    logging.info(f"Got price for {symbol}: {quote.get('price')}")
+                else:
+                    logging.warning(f"No price returned for {symbol}")
+            except Exception as e:
+                logging.warning(f"Error fetching price for {symbol}: {e}")
+    
+    # Apply prices and calculate P/L for open trades
+    for trade in trades:
+        if trade.get('status') == 'Open' and trade.get('symbol'):
+            symbol = trade.get('symbol')
+            if symbol in price_cache:
+                trade['current_price'] = price_cache[symbol]
+                # Calculate unrealized P/L
+                shares = trade.get('shares', 0) or 0
+                entry_price = trade.get('entry_price', 0) or 0
+                break_even = trade.get('break_even') or 0
+                
+                if shares > 0:
+                    if break_even and break_even > 0:
+                        trade['unrealized_pnl'] = round((trade['current_price'] - break_even) * shares, 2)
+                    elif entry_price and entry_price > 0:
+                        trade['unrealized_pnl'] = round((trade['current_price'] - entry_price) * shares, 2)
     
     return {
         "trades": trades,
