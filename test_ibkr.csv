@@ -1,0 +1,219 @@
+Statement,Header,Field Name,Field Value
+Statement,Data,Title,Transaction History
+Statement,Data,Period,"January 6, 2025 - January 6, 2026"
+Statement,Data,WhenGenerated,"2026-01-07, 22:50:29 EST"
+Summary,Header,Field Name,Field Value
+Summary,Data,Base Currency,AUD
+Summary,Data,Starting Cash,676.602145023
+Summary,Data,Change,26000.591667724846
+Summary,Data,Ending Cash,26677.193812747846
+Transaction History,Header,Date,Account,Description,Transaction Type,Symbol,Quantity,Price,Gross Amount ,Commission,Net Amount
+Transaction History,Data,2026-01-06,Ray Family SMSF,APPLIED DIGITAL CORP,Buy,APLD,200.0,29.8143,-8849.480526,-22.261499999999998,-8871.742026
+Transaction History,Data,2026-01-06,Ray Family SMSF,APPLIED DIGITAL CORP,Buy,APLD,100.0,29.8143,-4424.740263,-,-4424.740263
+Transaction History,Data,2026-01-06,Ray Family SMSF,IREN LTD,Buy,IREN,200.0,47.49,-14095.9818,-22.261499999999998,-14118.2433
+Transaction History,Data,2026-01-06,Ray Family SMSF,IREN LTD,Buy,IREN,100.0,47.49,-7047.9909,-,-7047.9909
+Transaction History,Data,2026-01-06,Ray Family SMSF,APLD 09JAN26 31 C,Sell,APLD  260109C00031000,-2.0,1.47,436.3254,-14.841,421.4844
+Transaction History,Data,2026-01-06,Ray Family SMSF,APLD 09JAN26 31 C,Sell,APLD  260109C00031000,-1.0,1.47,218.1627,-,218.1627
+Transaction History,Data,2026-01-06,Ray Family SMSF,IREN 09JAN26 49 C,Sell,IREN  260109C00049000,-2.0,1.03,305.7246,-14.841,290.8836
+Transaction History,Data,2026-01-06,Ray Family SMSF,IREN 09JAN26 49 C,Sell,IREN  260109C00049000,-1.0,1.03,152.8623,-,152.8623
+Transaction History,Data,2026-01-06,Ray Family SMSF,FX Translations P&L,Adjustment,-,-,-,-3807.882861875016,-,-3807.882861875016
+Transaction History,Data,2026-01-05,Ray Family SMSF,SUPER MICRO COMPUTER INC,Buy,SMCI,400.0,30.86,-18382.684800000003,-22.338,-18405.022800000002
+Transaction History,Data,2026-01-05,Ray Family SMSF,SMCI 09JAN26 31 C,Sell,SMCI  260109C00031000,-4.0,0.85,506.32800000000003,-14.892000000000001,491.43600000000004
+Transaction History,Data,2026-01-02,Ray Family SMSF,Sell -300 IREN LTD (Assignment),Assignment,IREN,-300.0,41.0,18373.74,-0.0873873,18373.6526127
+Transaction History,Data,2025-12-29,Ray Family SMSF,IREN 02JAN26 41 C,Sell,IREN  260102C00041000,-3.0,1.38,618.4746,-14.939,603.5356
+Transaction History,Data,2025-12-23,Ray Family SMSF,IREN 26DEC25 42.5 C,Sell,IREN  251226C00042500,-2.0,0.49,146.2258,-14.921,131.3048
+Transaction History,Data,2025-12-23,Ray Family SMSF,IREN 26DEC25 42.5 C,Sell,IREN  251226C00042500,-1.0,0.49,73.1129,-,73.1129
+Transaction History,Data,2025-12-23,Ray Family SMSF,IREN LTD,Buy,IREN,200.0,40.9914,-12232.653588000001,-22.3815,-12255.035088
+Transaction History,Data,2025-12-23,Ray Family SMSF,IREN LTD,Buy,IREN,100.0,40.9914,-6116.3267940000005,-,-6116.3267940000005
+Transaction History,Data,2025-12-22,Ray Family SMSF,METC 16JAN26 16 C,Sell,METC  260116C00016000,-4.0,1.15,690.92,-15.02,675.9
+Transaction History,Data,2025-12-05,Ray Family SMSF,Sell -200 AST SPACEMOBILE INC (Assignment),Assignment,ASTS,-200.0,65.0,19576.7,-0.04999588,19576.65000412
+Transaction History,Data,2025-12-04,Ray Family SMSF,RAMACO RESOURCES INC-A,Buy,METC,400.0,16.43,-9942.7788,-22.6935,-9965.4723
+Transaction History,Data,2025-12-04,Ray Family SMSF,METC 19DEC25 17 C,Sell,METC  251219C00017000,-4.0,1.22,738.2951999999999,-15.129,723.1662
+Transaction History,Data,2025-12-04,Ray Family SMSF,IREN 05DEC25 43 P,Sell,IREN  251205P00043000,-4.0,1.32,798.8112,-15.129,783.6822
+Transaction History,Data,2025-11-28,Ray Family SMSF,Sell -200 WILLIAMS COS INC (Assignment),Assignment,WMB,-200.0,59.0,18011.52,-0.05067648,18011.46932352
+Transaction History,Data,2025-11-24,Ray Family SMSF,ASTS 05DEC25 65 C,Sell,ASTS  251205C00065000,-2.0,0.84,259.896,-15.469999999999999,244.426
+Transaction History,Data,2025-11-10,Ray Family SMSF,WILLIAMS COS INC,Buy,WMB,200.0,59.55,-18221.109,-22.9485,-18244.0575
+Transaction History,Data,2025-11-10,Ray Family SMSF,WMB 28NOV25 59 C,Sell,WMB   251128C00059000,-2.0,1.7,520.166,-15.299,504.867
+Transaction History,Data,2025-11-10,Ray Family SMSF,AST SPACEMOBILE INC,Buy,ASTS,200.0,68.68,-21014.7064,-22.9485,-21037.6549
+Transaction History,Data,2025-11-10,Ray Family SMSF,ASTS 14NOV25 69 C,Sell,ASTS  251114C00069000,-2.0,4.59,1404.4482,-15.299,1389.1492
+Transaction History,Data,2025-11-07,Ray Family SMSF,DAL(US2473617023) Cash Dividend USD 0.1875 per Share (Ordinary Dividend),Dividend,DAL,-,-,57.873749999999994,-,57.873749999999994
+Transaction History,Data,2025-11-07,Ray Family SMSF,DAL(US2473617023) Cash Dividend USD 0.1875 per Share - US Tax,Foreign Tax Withholding,DAL,-,-,-17.362125,-,-17.362125
+Transaction History,Data,2025-11-03,Ray Family SMSF,RAMACO RESOURCES INC-A,Buy,METC,100.0,29.82,-4560.969,-22.942500000000003,-4583.9115
+Transaction History,Data,2025-11-03,Ray Family SMSF,RAMACO RESOURCES INC-A,Buy,METC,300.0,29.82,-13682.907000000001,-,-13682.907000000001
+Transaction History,Data,2025-11-03,Ray Family SMSF,METC 21NOV25 34 C,Sell,METC  251121C00034000,-1.0,1.9,290.605,-15.295000000000002,275.31
+Transaction History,Data,2025-11-03,Ray Family SMSF,METC 21NOV25 34 C,Sell,METC  251121C00034000,-3.0,1.9,871.815,-,871.815
+Transaction History,Data,2025-11-03,Ray Family SMSF,APPLE INC,Sell,AAPL,-20.0,270.45,8273.0655,-22.942500000000003,8250.123
+Transaction History,Data,2025-10-31,Ray Family SMSF,Sell -100 AMAZON.COM INC (Assignment),Assignment,AMZN,-100.0,230.0,35139.4,-0.025361480000000002,35139.37463852
+Transaction History,Data,2025-10-31,Ray Family SMSF,Sell -200 CISCO SYSTEMS INC (Assignment),Assignment,CSCO,-200.0,71.0,21694.760000000002,-0.050722960000000004,21694.70927704
+Transaction History,Data,2025-10-28,Ray Family SMSF,GOOG 31OCT25 255 P,Sell,GOOG  251031P00255000,-1.0,2.9,440.336,-15.184,425.152
+Transaction History,Data,2025-10-23,Ray Family SMSF,AMZN 31OCT25 230 C,Sell,AMZN  251031C00230000,-1.0,4.01,615.6553,-15.353000000000002,600.3023000000001
+Transaction History,Data,2025-10-22,Ray Family SMSF,MICROSOFT CORP,Sell,MSFT,-10.0,520.8,8026.0488,-23.1165,8002.9322999999995
+Transaction History,Data,2025-10-22,Ray Family SMSF,AMAZON.COM INC,Buy,AMZN,60.0,219.42,-20288.88972,-23.1165,-20312.00622
+Transaction History,Data,2025-10-22,Ray Family SMSF,CSCO 31OCT25 71 C,Sell,CSCO  251031C00071000,-2.0,1.0,308.21999999999997,-15.411,292.80899999999997
+Transaction History,Data,2025-10-22,Ray Family SMSF,CISCO SYSTEMS INC,Buy,CSCO,200.0,70.71,-21794.2362,-23.1165,-21817.3527
+Transaction History,Data,2025-10-17,Ray Family SMSF,Sell -200 DELTA AIR LINES INC. (Assignment),Assignment,DAL,-200.0,60.0,18472.800000000003,-0.05110808000000001,18472.74889192
+Transaction History,Data,2025-10-13,Ray Family SMSF,DAL 17OCT25 60 C,Sell,DAL   251017C00060000,-1.0,0.86,132.01,-15.35,116.66
+Transaction History,Data,2025-10-13,Ray Family SMSF,DAL 17OCT25 60 C,Sell,DAL   251017C00060000,-1.0,0.86,132.01,-,132.01
+Transaction History,Data,2025-10-10,Ray Family SMSF,Sell -200 ROCKET LAB CORP (Assignment),Assignment,RKLB,-200.0,49.0,15141.0,-0.051294,15140.948706
+Transaction History,Data,2025-09-29,Ray Family SMSF,RKLB 10OCT25 49 C,Sell,RKLB  251010C00049000,-2.0,2.31,702.471,-15.205,687.266
+Transaction History,Data,2025-09-29,Ray Family SMSF,DAL 10OCT25 58 C,Sell,DAL   251010C00058000,-2.0,2.3,699.43,-15.205,684.225
+Transaction History,Data,2025-09-29,Ray Family SMSF,NEXTERA ENERGY INC,Sell,NEE,-30.0,76.0,3466.74,-22.8075,3443.9325
+Transaction History,Data,2025-09-26,Ray Family SMSF,Sell -200 ON SEMICONDUCTOR (Assignment),Assignment,ON,-200.0,49.5,15122.25,-0.050713,15122.199287000001
+Transaction History,Data,2025-09-23,Ray Family SMSF,ROCKET LAB CORP,Buy,RKLB,200.0,48.99,-14847.889200000001,-22.731,-14870.620200000001
+Transaction History,Data,2025-09-23,Ray Family SMSF,RKLB 26SEP25 49.5 C,Sell,RKLB  250926C00049500,-2.0,1.18,357.6344,-15.154,342.48040000000003
+Transaction History,Data,2025-09-23,Ray Family SMSF,DAL 26SEP25 60 C,Sell,DAL   250926C00060000,-2.0,0.66,200.0328,-15.154,184.8788
+Transaction History,Data,2025-09-16,Ray Family SMSF,NEE(US65339F1012) Cash Dividend USD 0.5665 per Share (Ordinary Dividend),Dividend,NEE,-,-,25.486400000000003,-,25.486400000000003
+Transaction History,Data,2025-09-16,Ray Family SMSF,NEE(US65339F1012) Cash Dividend USD 0.5665 per Share - US Tax,Foreign Tax Withholding,NEE,-,-,-7.64592,-,-7.64592
+Transaction History,Data,2025-09-12,Ray Family SMSF,MSFT(US5949181045) Cash Dividend USD 0.83 per Share (Ordinary Dividend),Dividend,MSFT,-,-,12.460790000000001,-,12.460790000000001
+Transaction History,Data,2025-09-12,Ray Family SMSF,MSFT(US5949181045) Cash Dividend USD 0.83 per Share - US Tax,Foreign Tax Withholding,MSFT,-,-,-3.7382370000000007,-,-3.7382370000000007
+Transaction History,Data,2025-09-11,Ray Family SMSF,CVX(US1667641005) Cash Dividend USD 1.71 per Share (Ordinary Dividend),Dividend,CVX,-,-,25.856910000000003,-,25.856910000000003
+Transaction History,Data,2025-09-11,Ray Family SMSF,CVX(US1667641005) Cash Dividend USD 1.71 per Share - US Tax,Foreign Tax Withholding,CVX,-,-,-7.757073,-,-7.757073
+Transaction History,Data,2025-09-10,Ray Family SMSF,DAL 19SEP25 62 C,Sell,DAL   250919C00062000,-2.0,1.23,371.9766,-15.121,356.8556
+Transaction History,Data,2025-09-10,Ray Family SMSF,DELTA AIR LINES INC.,Buy,DAL,200.0,60.34,-18248.0228,-22.6815,-18270.7043
+Transaction History,Data,2025-09-08,Ray Family SMSF,ON 26SEP25 49.5 C,Sell,ON    250926C00049500,-1.0,2.15,326.155,-15.169999999999998,310.98499999999996
+Transaction History,Data,2025-09-08,Ray Family SMSF,ON 26SEP25 49.5 C,Sell,ON    250926C00049500,-1.0,2.15,326.155,-,326.155
+Transaction History,Data,2025-09-08,Ray Family SMSF,ON SEMICONDUCTOR,Buy,ON,100.0,49.48,-7506.115999999999,-22.755,-7528.870999999999
+Transaction History,Data,2025-09-08,Ray Family SMSF,ON SEMICONDUCTOR,Buy,ON,100.0,49.48,-7506.115999999999,-,-7506.115999999999
+Transaction History,Data,2025-09-04,Ray Family SMSF,USD Credit Interest for Aug-2025,Credit Interest,-,-,-,6.321316,-,6.321316
+Transaction History,Data,2025-08-27,Ray Family SMSF,CHEVRON CORP,Sell,CVX,-6.0,159.0,1466.3934,-1.5388338488,1464.8545661511998
+Transaction History,Data,2025-08-27,Ray Family SMSF,CHEVRON CORP,Sell,CVX,-4.0,159.0,977.5956,-0.0011558991999999998,977.5944441007999
+Transaction History,Data,2025-08-25,Ray Family SMSF,NVIDIA CORP,Sell,NVDA,-20.0,178.33,5501.83716,-1.548400176,5500.2887598239995
+Transaction History,Data,2025-08-25,Ray Family SMSF,META PLATFORMS INC-CLASS A,Sell,META,-10.0,755.11,11648.326860000001,-1.545500088,11646.781359912
+Transaction History,Data,2025-08-25,Ray Family SMSF,JOHNSON & JOHNSON,Sell,JNJ,-10.0,180.0,2776.68,-1.545500088,2775.1344999119997
+Transaction History,Data,2025-08-25,Ray Family SMSF,ALPHABET INC-CL A,Sell,GOOGL,-90.0,206.5,28669.220999999998,-1.568700792,28667.652299208003
+Transaction History,Data,2025-08-15,Ray Family SMSF,AAPL(US0378331005) Cash Dividend USD 0.26 per Share (Ordinary Dividend),Dividend,AAPL,-,-,8.005400000000002,-,8.005400000000002
+Transaction History,Data,2025-08-15,Ray Family SMSF,AAPL(US0378331005) Cash Dividend USD 0.26 per Share - US Tax,Foreign Tax Withholding,AAPL,-,-,-2.4016200000000003,-,-2.4016200000000003
+Transaction History,Data,2025-08-05,Ray Family SMSF,USD Credit Interest for Jul-2025,Credit Interest,-,-,-,2.781,-,2.781
+Transaction History,Data,2025-07-08,Ray Family SMSF,Withdrawal Fee,Other Fee,-,-,-,-15.0,-,-15.0
+Transaction History,Data,2025-07-08,Ray Family SMSF,Disbursement Initiated by Sanjoy Ray,Withdrawal,-,-,-,-4783.5,-,-4783.5
+Transaction History,Data,2025-07-08,Ray Family SMSF,GST Withdrawal Fee,Sales Tax,-,-,-,-1.5,-,-1.5
+Transaction History,Data,2025-07-04,Ray Family SMSF,NVDA(US67066G1040) Cash Dividend USD 0.01 per Share (Ordinary Dividend),Dividend,NVDA,-,-,0.30436,-,0.30436
+Transaction History,Data,2025-07-04,Ray Family SMSF,NVDA(US67066G1040) Cash Dividend USD 0.01 per Share - US Tax,Foreign Tax Withholding,NVDA,-,-,-0.091308,-,-0.091308
+Transaction History,Data,2025-07-03,Ray Family SMSF,JOHNSON & JOHNSON,Buy,JNJ,10.0,154.92,-2357.57256,-1.5221347960000002,-2359.094694796
+Transaction History,Data,2025-07-03,Ray Family SMSF,USD Credit Interest for Jun-2025,Credit Interest,-,-,-,10.606946,-,10.606946
+Transaction History,Data,2025-07-02,Ray Family SMSF,Disbursement Initiated by Sanjoy Ray,Withdrawal,-,-,-,-1000.0,-,-1000.0
+Transaction History,Data,2025-07-02,Ray Family SMSF,"Net Amount in Base from Forex Trade: 4,558.23 AUD.USD",Forex Trade Component,AUD.USD,4558.23,0.65815,-1.2075943505999605,-3.039,-1.2075943505999605
+Transaction History,Data,2025-07-01,Ray Family SMSF,APPLE INC,Buy,AAPL,20.0,206.72,-6280.567039999999,-1.519768404,-6282.0868084039985
+Transaction History,Data,2025-07-01,Ray Family SMSF,CHEVRON CORP,Buy,CVX,10.0,143.34,-2177.4779399999998,-1.519434202,-2178.9973742019997
+Transaction History,Data,2025-07-01,Ray Family SMSF,NEXTERA ENERGY INC,Buy,NEE,30.0,69.35,-3160.48755,-1.520102606,-3162.007652606
+Transaction History,Data,2025-07-01,Ray Family SMSF,CVS HEALTH CORP,Sell,CVS,-30.0,70.0,3190.1099999999997,-1.527667724,3188.582332276
+Transaction History,Data,2025-06-30,Ray Family SMSF,APPLE INC,Sell,AAPL,-30.0,202.0,9208.17,-1.528662585,9206.641337415002
+Transaction History,Data,2025-06-27,Ray Family SMSF,META(US30303M1027) Cash Dividend USD 0.525 per Share (Ordinary Dividend),Dividend,META,-,-,8.0199,-,8.0199
+Transaction History,Data,2025-06-27,Ray Family SMSF,META(US30303M1027) Cash Dividend USD 0.525 per Share - US Tax,Foreign Tax Withholding,META,-,-,-2.4136080000000004,-,-2.4136080000000004
+Transaction History,Data,2025-06-17,Ray Family SMSF,GOOGL(US02079K3059) Cash Dividend USD 0.21 per Share (Ordinary Dividend),Dividend,GOOGL,-,-,26.394816,-,26.394816
+Transaction History,Data,2025-06-17,Ray Family SMSF,GOOGL(US02079K3059) Cash Dividend USD 0.21 per Share - US Tax,Foreign Tax Withholding,GOOGL,-,-,-7.924575999999999,-,-7.924575999999999
+Transaction History,Data,2025-06-16,Ray Family SMSF,MICROSOFT CORP,Buy,MSFT,1.0,475.0,-728.0799999999999,-1.532853648,-729.612853648
+Transaction History,Data,2025-06-16,Ray Family SMSF,ALPHABET INC-CL A,Buy,GOOGL,8.0,174.67,-2141.873408,-1.533229184,-2143.406637184
+Transaction History,Data,2025-06-13,Ray Family SMSF,MSFT(US5949181045) Cash Dividend USD 0.83 per Share (Ordinary Dividend),Dividend,MSFT,-,-,11.51127,-,11.51127
+Transaction History,Data,2025-06-13,Ray Family SMSF,MSFT(US5949181045) Cash Dividend USD 0.83 per Share - US Tax,Foreign Tax Withholding,MSFT,-,-,-3.4518400000000002,-,-3.4518400000000002
+Transaction History,Data,2025-06-11,Ray Family SMSF,META PLATFORMS INC-CLASS A,Buy,META,1.0,699.56,-1076.0631919999998,-1.538253837,-1077.601445837
+Transaction History,Data,2025-06-11,Ray Family SMSF,META PLATFORMS INC-CLASS A,Buy,META,3.0,699.56,-3228.1895759999998,-1.61511E-4,-3228.1897375109997
+Transaction History,Data,2025-06-11,Ray Family SMSF,BERKSHIRE HATHAWAY INC-CL B,Sell,BRK B,-7.0,492.0,5297.5608,-1.5403642473999999,5296.0204357526
+Transaction History,Data,2025-06-11,Ray Family SMSF,TOTALENERGIES SE -SPON ADR,Sell,TTE,-12.0,61.8,1140.72912,-1.5419101384000002,1139.1872098616
+Transaction History,Data,2025-06-04,Ray Family SMSF,USD Credit Interest for May-2025,Credit Interest,-,-,-,3.4810779999999997,-,3.4810779999999997
+Transaction History,Data,2025-05-21,Ray Family SMSF,CVS HEALTH CORP,Buy,CVS,30.0,62.71,-2922.78768,-1.55523128,-2924.3429112800004
+Transaction History,Data,2025-05-21,Ray Family SMSF,MICROSTRATEGY INC-CL A,Sell,MSTR,-23.0,420.0,15007.776000000002,-1.5607822928000001,15006.2152177072
+Transaction History,Data,2025-05-19,Ray Family SMSF,VICTORY CAPITAL HOLDING - A,Sell,VCTR,-50.0,64.0,4955.5199999999995,-1.5641634299999998,4953.95583657
+Transaction History,Data,2025-05-19,Ray Family SMSF,COINBASE GLOBAL INC -CLASS A,Sell,COIN,-10.0,259.81,4023.4176599999996,-1.5517126860000001,4021.8659473139996
+Transaction History,Data,2025-05-16,Ray Family SMSF,AAPL(US0378331005) Cash Dividend USD 0.26 per Share (Ordinary Dividend),Dividend,AAPL,-,-,12.17424,-,12.17424
+Transaction History,Data,2025-05-16,Ray Family SMSF,AAPL(US0378331005) Cash Dividend USD 0.26 per Share - US Tax,Foreign Tax Withholding,AAPL,-,-,-3.6522719999999995,-,-3.6522719999999995
+Transaction History,Data,2025-04-17,Ray Family SMSF,TTE(US89151E1091) Cash Dividend USD 0.854167 per Share - FR Tax,Foreign Tax Withholding,TTE,-,-,-4.00512,-,-4.00512
+Transaction History,Data,2025-04-17,Ray Family SMSF,TTE(US89151E1091) Cash Dividend USD 0.854167 per Share - FEE,Other Fee,TTE,-,-,-0.18774,-,-0.18774
+Transaction History,Data,2025-04-17,Ray Family SMSF,TTE(US89151E1091) Cash Dividend USD 0.854167 per Share (Ordinary Dividend),Dividend,TTE,-,-,16.036125,-,16.036125
+Transaction History,Data,2025-04-08,Ray Family SMSF,Net Amount in Base from Forex Trade: 0.00302244 AUD.USD,Forex Trade Component,AUD.USD,0.00302244,0.59586871,-8.617686000000555E-7,-,-8.617686000000555E-7
+Transaction History,Data,2025-04-08,Ray Family SMSF,Net Amount in Base from Forex Trade: 320.88 AUD.USD,Forex Trade Component,AUD.USD,320.88,0.60595,-8.863188073200014,-3.3414,-8.863188073200014
+Transaction History,Data,2025-04-03,Ray Family SMSF,NVDA(US67066G1040) Cash Dividend USD 0.01 per Share - US Tax,Foreign Tax Withholding,NVDA,-,-,-0.09526199999999999,-,-0.09526199999999999
+Transaction History,Data,2025-04-03,Ray Family SMSF,NVDA(US67066G1040) Cash Dividend USD 0.01 per Share (Ordinary Dividend),Dividend,NVDA,-,-,0.31754,-,0.31754
+Transaction History,Data,2025-03-27,Ray Family SMSF,META(US30303M1027) Cash Dividend USD 0.525 per Share - US Tax,Foreign Tax Withholding,META,-,-,-1.50841,-,-1.50841
+Transaction History,Data,2025-03-27,Ray Family SMSF,META(US30303M1027) Cash Dividend USD 0.525 per Share (Ordinary Dividend),Dividend,META,-,-,5.00157,-,5.00157
+Transaction History,Data,2025-03-18,Ray Family SMSF,GOOGL(US02079K3059) Cash Dividend USD 0.20 per Share - US Tax,Foreign Tax Withholding,GOOGL,-,-,-7.706196,-,-7.706196
+Transaction History,Data,2025-03-18,Ray Family SMSF,GOOGL(US02079K3059) Cash Dividend USD 0.20 per Share (Ordinary Dividend),Dividend,GOOGL,-,-,25.68732,-,25.68732
+Transaction History,Data,2025-03-14,Ray Family SMSF,MSFT(US5949181045) Cash Dividend USD 0.83 per Share (Ordinary Dividend),Dividend,MSFT,-,-,11.887758,-,11.887758
+Transaction History,Data,2025-03-14,Ray Family SMSF,MSFT(US5949181045) Cash Dividend USD 0.83 per Share - US Tax,Foreign Tax Withholding,MSFT,-,-,-3.5647360000000003,-,-3.5647360000000003
+Transaction History,Data,2025-03-11,Ray Family SMSF,VCTR(US92645B1035) Cash Dividend USD 0.47 per Share (Ordinary Dividend),Dividend,VCTR,-,-,37.42845,-,37.42845
+Transaction History,Data,2025-03-11,Ray Family SMSF,VCTR(US92645B1035) Cash Dividend USD 0.47 per Share - US Tax,Foreign Tax Withholding,VCTR,-,-,-11.228534999999999,-,-11.228534999999999
+Transaction History,Data,2025-03-05,Ray Family SMSF,USD Credit Interest for Feb-2025,Credit Interest,-,-,-,78.751365,-,78.751365
+Transaction History,Data,2025-02-24,Ray Family SMSF,Disbursement Initiated by Sanjoy Ray,Withdrawal,-,-,-,-82000.0,-,-82000.0
+Transaction History,Data,2025-02-24,Ray Family SMSF,"Net Amount in Base from Forex Trade: 15,670.29 AUD.USD",Forex Trade Component,AUD.USD,15670.29,0.63815,-82.8492125125002,-3.1462,-82.8492125125002
+Transaction History,Data,2025-02-24,Ray Family SMSF,"Net Amount in Base from Forex Trade: 56,456.41 AUD.USD",Forex Trade Component,AUD.USD,56456.41,0.63766,-246.72738094499513,-3.1462,-246.72738094499513
+Transaction History,Data,2025-02-22,Ray Family SMSF,BNDD(US5007675870) Cash Dividend USD 0.042868 per Share - US Tax,Foreign Tax Withholding,BNDD,-,-,0.377544,-,0.377544
+Transaction History,Data,2025-02-14,Ray Family SMSF,AAPL(US0378331005) Cash Dividend USD 0.25 per Share - US Tax,Foreign Tax Withholding,AAPL,-,-,-3.5613,-,-3.5613
+Transaction History,Data,2025-02-14,Ray Family SMSF,AAPL(US0378331005) Cash Dividend USD 0.25 per Share (Ordinary Dividend),Dividend,AAPL,-,-,11.871,-,11.871
+Transaction History,Data,2025-02-13,Ray Family SMSF,SPROTT NICKEL MINERS ETF,Sell,NIKL,-91.0,10.08,1451.870784,-1.6521130025951998,1450.2186709974048
+Transaction History,Data,2025-02-13,Ray Family SMSF,SPROTT NICKEL MINERS ETF,Sell,NIKL,-13.0,10.08,207.410112,-0.0099018575136,207.40021014248637
+Transaction History,Data,2025-02-12,Ray Family SMSF,AMPLIFY TRANSFOR DATA SHARIN,Sell,BLOK,-28.0,47.65,2124.7135000000003,-1.6605296253000001,2123.0529703747
+Transaction History,Data,2025-02-12,Ray Family SMSF,GLOBAL X LITHIUM & BATTERY T,Sell,LIT,-37.0,40.52,2387.5397000000003,-1.67071702616,2385.86898297384
+Transaction History,Data,2025-02-12,Ray Family SMSF,ADVISORSHARES PURE US CANN,Sell,MSOS,-144.0,3.47,795.7404,-1.66071490312,794.07968509688
+Transaction History,Data,2025-02-12,Ray Family SMSF,BETASHARES GB ROBOT N AI,Sell,RBTZ,-110.0,15.71,1728.1,-6.0,1721.5
+Transaction History,Data,2025-02-11,Ray Family SMSF,VANECK SEMICONDUCTOR ETF,Sell,SMH,-17.0,248.63,6714.974177,-1.7808048700206,6713.19337212998
+Transaction History,Data,2025-02-11,Ray Family SMSF,ASTRAZENECA PLC-SPONS ADR,Sell,AZN,-20.0,72.7,2309.9698,-1.6593037344400001,2308.3104962655602
+Transaction History,Data,2025-02-11,Ray Family SMSF,VANGUARD GROWTH ETF,Sell,VUG,-13.0,422.41,8724.075971,-1.8353805850937999,8722.240590414905
+Transaction History,Data,2025-02-11,Ray Family SMSF,VANECK RAR EARTH ND STG-USDI,Sell,REMX,-38.0,41.09,2480.627954,-1.6697959477212,2478.958158052279
+Transaction History,Data,2025-02-11,Ray Family SMSF,VANGUARD INFO TECH ETF,Sell,VGT,-3.0,628.59,2995.922799,-1.6729446399122,2994.2498543600877
+Transaction History,Data,2025-02-11,Ray Family SMSF,VANGUARD INFO TECH ETF,Sell,VGT,-18.0,628.59,17975.536794,-0.5054678394732,17975.03132616053
+Transaction History,Data,2025-02-11,Ray Family SMSF,ISHARES RUSSELL 1000 GROWTH,Sell,IWF,-10.0,411.26,6533.687620000001,-1.773529802836,6531.914090197164
+Transaction History,Data,2025-02-11,Ray Family SMSF,INVESCO QQQ TRUST SERIES 1,Sell,QQQ,-22.0,527.55,18438.61107,-2.108318619146,18436.502751380853
+Transaction History,Data,2025-02-05,Ray Family SMSF,AUD Credit Interest for Jan-2025,Credit Interest,-,-,-,3.99,-,3.99
+Transaction History,Data,2025-01-28,Ray Family SMSF,NVIDIA CORP,Buy,NVDA,17.0,121.86,-3313.3490279999996,-1.6003516429999998,-3314.9493796429997
+Transaction History,Data,2025-01-28,Ray Family SMSF,"Net Amount in Base from Forex Trade: -3,292.75 AUD.USD",Forex Trade Component,AUD.USD,-3292.75,0.62464,-3.130694016000234,-,-3.130694016000234
+Transaction History,Data,2025-01-28,Ray Family SMSF,Net Amount in Base from Forex Trade: -0.52 AUD.USD,Forex Trade Component,AUD.USD,-0.52,0.62465,-4.860908000000608E-4,-,-4.860908000000608E-4
+Transaction History,Data,2025-01-28,Ray Family SMSF,Net Amount in Base from Forex Trade: -0.00386694 AUD.USD,Forex Trade Component,AUD.USD,-0.00386694,0.6250419,-1.1902000000003736E-6,-,-1.1902000000003736E-6
+Transaction History,Data,2025-01-25,Ray Family SMSF,PGRE(US69924R1086) Cash Dividend USD 0.035 per Share - US Tax,Foreign Tax Withholding,PGRE,-,-,3.4539920000000004,-,3.4539920000000004
+Transaction History,Data,2025-01-25,Ray Family SMSF,PGRE(US69924R1086) Cash Dividend USD 0.035 per Share - US Tax,Foreign Tax Withholding,PGRE,-,-,-1.932968,-,-1.932968
+Transaction History,Data,2025-01-23,Ray Family SMSF,Net Amount in Base from Forex Trade: 5.12177937 AUD.USD,Forex Trade Component,AUD.USD,5.12177937,0.62868776,-0.0015626300000004534,-,-0.0015626300000004534
+Transaction History,Data,2025-01-22,Ray Family SMSF,Net Amount in Base from Forex Trade: 0.41194601 AUD.USD,Forex Trade Component,AUD.USD,0.41194601,0.62754704,-1.276970000000377E-4,-,-1.276970000000377E-4
+Transaction History,Data,2025-01-22,Ray Family SMSF,Net Amount in Base from Forex Trade: -0.18 AUD.USD,Forex Trade Component,AUD.USD,-0.18,0.62754,5.3776800000016056E-5,-,5.3776800000016056E-5
+Transaction History,Data,2025-01-22,Ray Family SMSF,"Net Amount in Base from Forex Trade: -4,804.11 AUD.USD",Forex Trade Component,AUD.USD,-4804.11,0.62738,0.2100356892005948,-,0.2100356892005948
+Transaction History,Data,2025-01-22,Ray Family SMSF,TTE(US89151E1091) Cash Dividend USD 0.812389 per Share (Ordinary Dividend),Dividend,TTE,-,-,15.540525,-,15.540525
+Transaction History,Data,2025-01-22,Ray Family SMSF,TTE(US89151E1091) Cash Dividend USD 0.812389 per Share - FR Tax,Foreign Tax Withholding,TTE,-,-,-3.889116,-,-3.889116
+Transaction History,Data,2025-01-22,Ray Family SMSF,TTE(US89151E1091) Cash Dividend USD 0.812389 per Share - FEE,Other Fee,TTE,-,-,-0.191268,-,-0.191268
+Transaction History,Data,2025-01-22,Ray Family SMSF,APPLE INC,Buy,AAPL,10.0,219.82,-3503.9308,-1.5945579000000003,-3505.5253578999996
+Transaction History,Data,2025-01-22,Ray Family SMSF,AMAZON.COM INC,Buy,AMZN,13.0,231.75,-4802.3235,-1.5947252700000003,-4803.91822527
+Transaction History,Data,2025-01-22,Ray Family SMSF,"Net Amount in Base from Forex Trade: -3,195.13 AUD.USD",Forex Trade Component,AUD.USD,-3195.13,0.62755,1.0055074110000533,-,1.0055074110000533
+Transaction History,Data,2025-01-16,Ray Family SMSF,Electronic Fund Transfer,Deposit,-,-,-,20000.0,-,20000.0
+Transaction History,Data,2025-01-08,Ray Family SMSF,LIT(US37954Y8553) Cash Dividend USD 0.129736 per Share (Ordinary Dividend),Dividend,LIT,-,-,7.703519999999999,-,7.703519999999999
+Transaction History,Data,2025-01-08,Ray Family SMSF,LIT(US37954Y8553) Cash Dividend USD 0.129736 per Share - US Tax,Foreign Tax Withholding,LIT,-,-,-2.3110559999999998,-,-2.3110559999999998
+Transaction History,Data,2024-12-20,Ray Family SMSF,NIKL(US85208P6007) Cash Dividend USD 0.37168 per Share - US Tax,Foreign Tax Withholding,NIKL,-,-,-18.612381000000003,-,-18.612381000000003
+Transaction History,Data,2024-12-20,Ray Family SMSF,NIKL(US85208P6007) Cash Dividend USD 0.37168 per Share - US Tax,Foreign Tax Withholding,NIKL,-,-,18.62844,-,18.62844
+Transaction History,Data,2024-09-07,Ray Family SMSF,TLT(US4642874329) Cash Dividend USD 0.312782 per Share - US Tax,Foreign Tax Withholding,TLT,-,-,4.328608,-,4.328608
+Transaction History,Data,2024-09-07,Ray Family SMSF,LQD(US4642872422) Cash Dividend USD 0.405248 per Share - US Tax,Foreign Tax Withholding,LQD,-,-,4.8378559999999995,-,4.8378559999999995
+Transaction History,Data,2024-09-07,Ray Family SMSF,LQD(US4642872422) Cash Dividend USD 0.405248 per Share - US Tax,Foreign Tax Withholding,LQD,-,-,-0.7161299999999999,-,-0.7161299999999999
+Transaction History,Data,2024-09-07,Ray Family SMSF,IGLB(US4642895118) Cash Dividend USD 0.208343 per Share - US Tax,Foreign Tax Withholding,IGLB,-,-,3.1828,-,3.1828
+Transaction History,Data,2024-09-07,Ray Family SMSF,IGLB(US4642895118) Cash Dividend USD 0.208343 per Share - US Tax,Foreign Tax Withholding,IGLB,-,-,-0.509248,-,-0.509248
+Transaction History,Data,2024-08-31,Ray Family SMSF,IVOL(US5007677363) Cash Dividend USD 0.058347 per Share - US Tax,Foreign Tax Withholding,IVOL,-,-,3.8981950000000003,-,3.8981950000000003
+Transaction History,Data,2024-08-23,Ray Family SMSF,SPYI(US78433H3030) Cash Dividend USD 0.5564 per Share - US Tax,Foreign Tax Withholding,SPYI,-,-,0.644971,-,0.644971
+Transaction History,Data,2024-08-23,Ray Family SMSF,SPYI(US78433H3030) Cash Dividend USD 0.5564 per Share - US Tax,Foreign Tax Withholding,SPYI,-,-,-0.62924,-,-0.62924
+Transaction History,Data,2024-08-23,Ray Family SMSF,SPYI(US78433H3030) Cash Dividend USD 0.5564 per Share - US Tax,Foreign Tax Withholding,SPYI,-,-,11.106644,-,11.106644
+Transaction History,Data,2024-08-23,Ray Family SMSF,SPYI(US78433H3030) Cash Dividend USD 0.5564 per Share - US Tax,Foreign Tax Withholding,SPYI,-,-,-0.649604,-,-0.649604
+Transaction History,Data,2024-08-07,Ray Family SMSF,LQD(US4642872422) Cash Dividend USD 0.39244 per Share - US Tax,Foreign Tax Withholding,LQD,-,-,4.503662,-,4.503662
+Transaction History,Data,2024-08-07,Ray Family SMSF,LQD(US4642872422) Cash Dividend USD 0.39244 per Share - US Tax,Foreign Tax Withholding,LQD,-,-,-0.668388,-,-0.668388
+Transaction History,Data,2024-07-26,Ray Family SMSF,SPYI(US78433H3030) Cash Dividend USD 0.5088 per Share - US Tax,Foreign Tax Withholding,SPYI,-,-,-0.602072,-,-0.602072
+Transaction History,Data,2024-07-26,Ray Family SMSF,SPYI(US78433H3030) Cash Dividend USD 0.5088 per Share - US Tax,Foreign Tax Withholding,SPYI,-,-,10.156004000000001,-,10.156004000000001
+Transaction History,Data,2024-07-26,Ray Family SMSF,SPYI(US78433H3030) Cash Dividend USD 0.5088 per Share - US Tax,Foreign Tax Withholding,SPYI,-,-,0.597778,-,0.597778
+Transaction History,Data,2024-07-26,Ray Family SMSF,SPYI(US78433H3030) Cash Dividend USD 0.5088 per Share - US Tax,Foreign Tax Withholding,SPYI,-,-,-0.5663159999999999,-,-0.5663159999999999
+Transaction History,Data,2024-07-16,Ray Family SMSF,PGRE(US69924R1086) Cash Dividend USD 0.035 per Share - US Tax,Foreign Tax Withholding,PGRE,-,-,3.4539920000000004,-,3.4539920000000004
+Transaction History,Data,2024-07-16,Ray Family SMSF,PGRE(US69924R1086) Cash Dividend USD 0.035 per Share - US Tax,Foreign Tax Withholding,PGRE,-,-,-1.932968,-,-1.932968
+Transaction History,Data,2024-07-06,Ray Family SMSF,URA(US37954Y8710) Cash Dividend USD 0.02495 per Share - US Tax,Foreign Tax Withholding,URA,-,-,-1.11377,-,-1.11377
+Transaction History,Data,2024-07-06,Ray Family SMSF,URA(US37954Y8710) Cash Dividend USD 0.02495 per Share - US Tax,Foreign Tax Withholding,URA,-,-,1.129681,-,1.129681
+Transaction History,Data,2024-07-06,Ray Family SMSF,LQD(US4642872422) Cash Dividend USD 0.375754 per Share - US Tax,Foreign Tax Withholding,LQD,-,-,0.175054,-,0.175054
+Transaction History,Data,2024-07-06,Ray Family SMSF,LQD(US4642872422) Cash Dividend USD 0.375754 per Share - US Tax,Foreign Tax Withholding,LQD,-,-,-0.031828,-,-0.031828
+Transaction History,Data,2024-06-08,Ray Family SMSF,PFF(US4642886877) Cash Dividend USD 0.163415 per Share - US Tax,Foreign Tax Withholding,PFF,-,-,0.39785,-,0.39785
+Transaction History,Data,2024-06-08,Ray Family SMSF,PFF(US4642886877) Cash Dividend USD 0.163415 per Share - US Tax,Foreign Tax Withholding,PFF,-,-,-0.286452,-,-0.286452
+Transaction History,Data,2024-05-15,Ray Family SMSF,AMLP(US00162Q4525) Cash Dividend USD 0.94 per Share - US Tax,Foreign Tax Withholding,AMLP,-,-,23.612862,-,23.612862
+Transaction History,Data,2024-05-15,Ray Family SMSF,AMLP(US00162Q4525) Cash Dividend USD 0.94 per Share - US Tax,Foreign Tax Withholding,AMLP,-,-,-22.211553,-,-22.211553
+Transaction History,Data,2024-05-08,Ray Family SMSF,TLT(US4642874329) Cash Dividend USD 0.307743 per Share - US Tax,Foreign Tax Withholding,TLT,-,-,13.813351999999998,-,13.813351999999998
+Transaction History,Data,2024-05-08,Ray Family SMSF,PFF(US4642886877) Cash Dividend USD 0.159647 per Share - US Tax,Foreign Tax Withholding,PFF,-,-,-0.23870999999999998,-,-0.23870999999999998
+Transaction History,Data,2024-05-08,Ray Family SMSF,PFF(US4642886877) Cash Dividend USD 0.159647 per Share - US Tax,Foreign Tax Withholding,PFF,-,-,0.38193599999999994,-,0.38193599999999994
+Transaction History,Data,2024-04-16,Ray Family SMSF,PGRE(US69924R1086) Cash Dividend USD 0.035 per Share - US Tax,Foreign Tax Withholding,PGRE,-,-,-1.932968,-,-1.932968
+Transaction History,Data,2024-04-16,Ray Family SMSF,PGRE(US69924R1086) Cash Dividend USD 0.035 per Share - US Tax,Foreign Tax Withholding,PGRE,-,-,3.4539920000000004,-,3.4539920000000004
+Transaction History,Data,2024-04-06,Ray Family SMSF,TLT(US4642874329) Cash Dividend USD 0.312425 per Share - US Tax,Foreign Tax Withholding,TLT,-,-,14.020234,-,14.020234
+Transaction History,Data,2024-04-05,Ray Family SMSF,EDV(US9219107094) Cash Dividend USD 0.7685 per Share - US Tax,Foreign Tax Withholding,EDV,-,-,-0.032118,-,-0.032118
+Transaction History,Data,2024-04-05,Ray Family SMSF,EDV(US9219107094) Cash Dividend USD 0.7685 per Share - US Tax,Foreign Tax Withholding,EDV,-,-,37.401411,-,37.401411
+Transaction History,Data,2024-03-28,Ray Family SMSF,IWO(US4642876480) Cash Dividend USD 0.341694 per Share - US Tax,Foreign Tax Withholding,IWO,-,-,-0.97234,-,-0.97234
+Transaction History,Data,2024-03-28,Ray Family SMSF,IWO(US4642876480) Cash Dividend USD 0.341694 per Share - US Tax,Foreign Tax Withholding,IWO,-,-,0.98828,-,0.98828
+Transaction History,Data,2024-03-08,Ray Family SMSF,TLT(US4642874329) Cash Dividend USD 0.295234 per Share - US Tax,Foreign Tax Withholding,TLT,-,-,13.256362,-,13.256362
+Transaction History,Data,2024-03-08,Ray Family SMSF,IEF(US4642874402) Cash Dividend USD 0.249254 per Share - US Tax,Foreign Tax Withholding,IEF,-,-,11.060229999999999,-,11.060229999999999
+Transaction History,Data,2024-02-08,Ray Family SMSF,IEF(US4642874402) Cash Dividend USD 0.235883 per Share - US Tax,Foreign Tax Withholding,IEF,-,-,10.471411999999999,-,10.471411999999999
+Transaction History,Data,2024-02-08,Ray Family SMSF,TLT(US4642874329) Cash Dividend USD 0.310122 per Share - US Tax,Foreign Tax Withholding,TLT,-,-,13.92475,-,13.92475
+Transaction History,Data,2024-02-01,Ray Family SMSF,BNDD(US5007675870) Cash Dividend USD 0.042868 per Share - US Tax,Foreign Tax Withholding,BNDD,-,-,1.5911,-,1.5911
+Transaction History,Data,2024-02-01,Ray Family SMSF,BNDD(US5007675870) Cash Dividend USD 0.042868 per Share - US Tax,Foreign Tax Withholding,BNDD,-,-,-0.381864,-,-0.381864
