@@ -2394,7 +2394,7 @@ async def generate_ai_suggestion_for_trade(trade: dict) -> dict:
     
     # Use Emergent LLM key for AI suggestion
     try:
-        from emergentintegrations.llm.chat import LlmChat
+        from emergentintegrations.llm.chat import LlmChat, UserMessage
         import uuid as uuid_module
         
         session_id = str(uuid_module.uuid4())
@@ -2405,7 +2405,8 @@ async def generate_ai_suggestion_for_trade(trade: dict) -> dict:
             session_id=session_id,
             system_message=system_message
         )
-        response = await llm.send_message(context)
+        user_msg = UserMessage(text=context)
+        response = await llm.send_message(user_msg)
         
         full_suggestion = response if isinstance(response, str) else str(response)
         
