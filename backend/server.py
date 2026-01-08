@@ -2352,21 +2352,45 @@ async def get_trade_ai_suggestion(trade_id: str, user: dict = Depends(get_curren
     return {"suggestion": suggestion.get("full_suggestion"), "action": suggestion.get("action"), "trade_id": trade_id}
 
 async def generate_ai_suggestion_for_trade(trade: dict) -> dict:
-    """Generate AI suggestion for a single trade"""
-    # Fetch current market data
+    """Generate AI suggestion for a single trade with technicals, fundamentals, and news"""
     settings = await db.admin_settings.find_one({"type": "api_keys"}, {"_id": 0})
     massive_key = settings.get("massive_api_key") if settings else os.environ.get("MASSIVE_API_KEY")
+    marketaux_key = settings.get("marketaux_api_key") if settings else os.environ.get("MARKETAUX_API_KEY")
     
+    symbol = trade.get('symbol', '')
     current_price = None
-    if massive_key and trade.get('symbol'):
+    price_change_pct = None
+    volume = None
+    high_52w = None
+    low_52w = None
+    news_summary = "No recent news available"
+    
+    # Fetch current market data
+    if massive_key and symbol:
         try:
-            quote = await fetch_stock_quote(trade['symbol'], massive_key)
+            quote = await fetch_stock_quote(symbol, massive_key)
             if quote:
                 current_price = quote.get('price', 0)
+                volume = quote.get('volume', 0)
         except:
             pass
     
-    # Calculate some metrics for better AI context
+    # Fetch news from MarketAux if available
+    if marketaux_key and symbol:
+        try:
+            async with aiohttp.ClientSession() as session:
+                url = f"https://api.marketaux.com/v1/news/all?symbols={symbol}&filter_entities=true&language=en&api_token={marketaux_key}&limit=3"
+                async with session.get(url, timeout=10) as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        articles = data.get('data', [])
+                        if articles:
+                            headlines = [a.get('title', '')[:80] for a in articles[:3]]
+                            news_summary = " | ".join(headlines)
+        except:
+            pass
+    
+    # Calculate metrics
     dte = trade.get('dte', 0) or 0
     option_strike = trade.get('option_strike')
     entry_price = trade.get('entry_price', 0) or 0
@@ -2374,48 +2398,82 @@ async def generate_ai_suggestion_for_trade(trade: dict) -> dict:
     premium = trade.get('premium_received', 0) or 0
     strategy = trade.get('strategy_type', '')
     
-    # Build richer context for AI
-    context = f"""
-    Analyze this options trade and provide a recommendation.
+    # Calculate profit/loss status
+    profit_status = "N/A"
+    if current_price and entry_price:
+        if break_even:
+            profit_status = "Profitable" if current_price > break_even else "At Loss"
+        else:
+            profit_status = "Profitable" if current_price > entry_price else "At Loss"
     
-    Symbol: {trade.get('symbol')}
+    # Calculate intrinsic value for options
+    intrinsic_value = None
+    time_value = None
+    itm_status = "N/A"
+    if option_strike and current_price:
+        if 'CALL' in strategy.upper() or strategy in ['COVERED_CALL', 'PMCC']:
+            intrinsic_value = max(0, current_price - option_strike)
+            itm_status = "ITM" if current_price > option_strike else "OTM"
+        elif 'PUT' in strategy.upper() or strategy == 'NAKED_PUT':
+            intrinsic_value = max(0, option_strike - current_price)
+            itm_status = "ITM" if current_price < option_strike else "OTM"
+    
+    # Build comprehensive context for AI
+    context = f"""
+    Analyze this options trade and provide a recommendation based on technicals, fundamentals, and market news.
+    
+    === POSITION DETAILS ===
+    Symbol: {symbol}
     Strategy: {trade.get('strategy_label', strategy)}
     Status: {trade.get('status')}
     Entry Price: ${entry_price:.2f}
     Current Price: ${current_price:.2f if current_price else 'N/A'}
-    Break-Even: ${break_even:.2f if break_even else 'N/A'}
+    Break-Even: ${break_even:.2f if break_even else 'N/A (Stock only)'}
+    Profit Status: {profit_status}
+    
+    === OPTIONS DATA ===
     Option Strike: ${option_strike if option_strike else 'N/A'}
     Option Expiry: {trade.get('option_expiry', 'N/A')}
     Days to Expiry (DTE): {dte}
+    ITM/OTM Status: {itm_status}
     Premium Received: ${premium:.2f}
-    Shares: {trade.get('shares', 0)}
+    Shares Held: {trade.get('shares', 0)}
     
-    IMPORTANT RULES:
-    1. For Covered Calls: If DTE <= 1 and Current Price > Strike Price, recommend "LET_EXPIRE" (let it exercise automatically to save transaction costs)
-    2. For Covered Calls: If DTE <= 1 and Current Price < Strike Price, recommend "LET_EXPIRE" (option will expire worthless, keep shares and premium)
-    3. If DTE > 7 and trade is profitable, consider HOLD
-    4. If DTE <= 3 and want to capture more premium, consider ROLL_OUT
-    5. If stock price moved significantly up, consider ROLL_UP
-    6. If stock price dropped below break-even, consider CLOSE or ROLL_DOWN
+    === MARKET DATA ===
+    Recent News: {news_summary}
     
-    Your response MUST start with exactly one of these actions on its own line:
-    HOLD - Keep position, wait for better opportunity
-    CLOSE - Close position manually now
-    LET_EXPIRE - Let option expire/exercise automatically (saves transaction costs)
-    ROLL_UP - Roll to higher strike price
-    ROLL_DOWN - Roll to lower strike price  
-    ROLL_OUT - Roll to later expiration date
+    === DECISION RULES ===
+    1. DTE = 0-1: If ITM, recommend LET_EXPIRE (auto-exercise saves $15-30 in fees). If OTM, option expires worthless - keep premium.
+    2. DTE = 2-5 and ITM: Consider if rolling makes sense based on momentum
+    3. DTE > 7: More time to evaluate - consider fundamentals and news
+    4. Strong bullish news + ITM: Consider ROLL_UP to capture more upside
+    5. Bearish news + at risk: Consider CLOSE or ROLL_DOWN
+    6. Neutral market + profitable: HOLD and let theta decay work
     
-    Then provide 1-2 sentences of reasoning.
+    === RESPONSE FORMAT ===
+    Start with exactly ONE action on its own line:
+    - HOLD: Keep position, let time work for you
+    - LET_EXPIRE: Option near expiry, let it auto-exercise/expire (saves fees)
+    - ROLL_UP: Stock momentum strong, roll to higher strike for more premium
+    - ROLL_DOWN: Defensive move, roll to lower strike
+    - ROLL_OUT: Extend expiry date to collect more time premium
+    - CLOSE: Exit position immediately
+    
+    Then provide 2-3 sentences explaining your reasoning based on:
+    1. Technical setup (price vs strike, DTE, ITM/OTM)
+    2. News/sentiment impact
+    3. Risk/reward of the suggested action
     """
     
-    # Use Emergent LLM key for AI suggestion
     try:
         from emergentintegrations.llm.chat import LlmChat, UserMessage
         import uuid as uuid_module
         
         session_id = str(uuid_module.uuid4())
-        system_message = "You are a professional options trading advisor. Consider transaction costs and DTE when making recommendations. Always start your response with exactly one action word, then provide brief reasoning."
+        system_message = """You are a professional options trading advisor specializing in covered calls and cash-secured puts. 
+        Consider transaction costs ($1-2 per contract), theta decay, and market sentiment when making recommendations.
+        Be specific about WHY you're recommending an action based on the data provided.
+        Always start your response with exactly one action word on its own line."""
         
         llm = LlmChat(
             api_key=os.environ.get("EMERGENT_LLM_KEY"),
