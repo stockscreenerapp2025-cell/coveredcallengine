@@ -2419,6 +2419,12 @@ async def generate_ai_suggestion_for_trade(trade: dict) -> dict:
             itm_status = "ITM" if current_price < option_strike else "OTM"
     
     # Build comprehensive context for AI
+    current_price_str = f"${current_price:.2f}" if current_price else "N/A"
+    break_even_str = f"${break_even:.2f}" if break_even else "N/A (Stock only)"
+    entry_price_str = f"${entry_price:.2f}" if entry_price else "N/A"
+    option_strike_str = f"${option_strike}" if option_strike else "N/A"
+    premium_str = f"${premium:.2f}" if premium else "$0.00"
+    
     context = f"""
     Analyze this options trade and provide a recommendation based on technicals, fundamentals, and market news.
     
@@ -2426,17 +2432,17 @@ async def generate_ai_suggestion_for_trade(trade: dict) -> dict:
     Symbol: {symbol}
     Strategy: {trade.get('strategy_label', strategy)}
     Status: {trade.get('status')}
-    Entry Price: ${entry_price:.2f}
-    Current Price: ${current_price:.2f if current_price else 'N/A'}
-    Break-Even: ${break_even:.2f if break_even else 'N/A (Stock only)'}
+    Entry Price: {entry_price_str}
+    Current Price: {current_price_str}
+    Break-Even: {break_even_str}
     Profit Status: {profit_status}
     
     === OPTIONS DATA ===
-    Option Strike: ${option_strike if option_strike else 'N/A'}
+    Option Strike: {option_strike_str}
     Option Expiry: {trade.get('option_expiry', 'N/A')}
     Days to Expiry (DTE): {dte}
     ITM/OTM Status: {itm_status}
-    Premium Received: ${premium:.2f}
+    Premium Received: {premium_str}
     Shares Held: {trade.get('shares', 0)}
     
     === MARKET DATA ===
