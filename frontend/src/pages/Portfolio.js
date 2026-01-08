@@ -235,7 +235,8 @@ const Portfolio = () => {
       const res = await portfolioApi.getAISuggestion(selectedTrade.id);
       setSelectedTrade(prev => ({
         ...prev,
-        ai_suggestion: res.data.suggestion
+        ai_suggestion: res.data.suggestion,
+        ai_action: res.data.action
       }));
       toast.success('AI suggestion generated');
     } catch (error) {
