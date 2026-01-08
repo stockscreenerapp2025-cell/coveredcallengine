@@ -191,65 +191,106 @@ const Dashboard = () => {
                   <Skeleton className="h-20" />
                 </div>
               </div>
-            ) : (
+            ) : ibkrSummary && ibkrSummary.total_trades > 0 ? (
               <>
-                <div className="h-40 mb-6">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <AreaChart data={chartData}>
-                      <defs>
-                        <linearGradient id="colorValue" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor="#10b981" stopOpacity={0.3}/>
-                          <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
-                        </linearGradient>
-                      </defs>
-                      <XAxis dataKey="day" hide />
-                      <YAxis hide domain={['dataMin - 10', 'dataMax + 10']} />
-                      <Tooltip
-                        contentStyle={{
-                          background: '#18181b',
-                          border: '1px solid rgba(255,255,255,0.1)',
-                          borderRadius: '8px'
-                        }}
-                        labelStyle={{ color: '#71717a' }}
-                      />
-                      <Area
-                        type="monotone"
-                        dataKey="value"
-                        stroke="#10b981"
-                        strokeWidth={2}
-                        fillOpacity={1}
-                        fill="url(#colorValue)"
-                      />
-                    </AreaChart>
-                  </ResponsiveContainer>
-                </div>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                {/* IBKR Portfolio Stats */}
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
                   <div className="p-4 rounded-lg bg-zinc-800/30">
-                    <div className="text-xs text-zinc-500 mb-1">Total Value</div>
+                    <div className="text-xs text-zinc-500 mb-1">Total Invested</div>
                     <div className="text-xl font-bold font-mono text-white">
-                      {formatCurrency(portfolio?.total_value || 0)}
-                    </div>
-                  </div>
-                  <div className="p-4 rounded-lg bg-zinc-800/30">
-                    <div className="text-xs text-zinc-500 mb-1">Unrealized P/L</div>
-                    <div className={`text-xl font-bold font-mono ${(portfolio?.unrealized_pl || 0) >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                      {formatCurrency(portfolio?.unrealized_pl || 0)}
+                      {formatCurrency(ibkrSummary?.total_invested || 0)}
                     </div>
                   </div>
                   <div className="p-4 rounded-lg bg-zinc-800/30">
                     <div className="text-xs text-zinc-500 mb-1">Premium Collected</div>
                     <div className="text-xl font-bold font-mono text-cyan-400">
-                      {formatCurrency(portfolio?.total_premium_collected || 0)}
+                      {formatCurrency(ibkrSummary?.total_premium || 0)}
                     </div>
                   </div>
                   <div className="p-4 rounded-lg bg-zinc-800/30">
-                    <div className="text-xs text-zinc-500 mb-1">Positions</div>
-                    <div className="text-xl font-bold font-mono text-white">
-                      {portfolio?.positions_count || 0}
+                    <div className="text-xs text-zinc-500 mb-1">Open Trades</div>
+                    <div className="text-xl font-bold font-mono text-emerald-400">
+                      {ibkrSummary?.open_trades || 0}
+                    </div>
+                  </div>
+                  <div className="p-4 rounded-lg bg-zinc-800/30">
+                    <div className="text-xs text-zinc-500 mb-1">Closed Trades</div>
+                    <div className="text-xl font-bold font-mono text-zinc-400">
+                      {ibkrSummary?.closed_trades || 0}
                     </div>
                   </div>
                 </div>
+                
+                {/* Recent Open Trades */}
+                {ibkrTrades.length > 0 && (
+                  <div className="mt-4">
+                    <h4 className="text-sm text-zinc-500 mb-3 flex items-center gap-2">
+                      <Briefcase className="w-4 h-4" />
+                      Recent Open Positions
+                    </h4>
+                    <div className="space-y-2">
+                      {ibkrTrades.slice(0, 4).map((trade, idx) => (
+                        <div key={idx} className="flex items-center justify-between p-3 bg-zinc-800/30 rounded-lg hover:bg-zinc-800/50 transition-colors">
+                          <div className="flex items-center gap-3">
+                            <span className="font-semibold text-white">{trade.symbol}</span>
+                            <Badge className="bg-violet-500/20 text-violet-400 text-xs">
+                              {trade.strategy_label || trade.strategy_type}
+                            </Badge>
+                          </div>
+                          <div className="flex items-center gap-4 text-sm">
+                            <div className="text-right">
+                              <div className="text-zinc-400">{trade.shares} shares</div>
+                              <div className="text-zinc-500 text-xs">Entry: {formatCurrency(trade.entry_price || 0)}</div>
+                            </div>
+                            {trade.current_price && (
+                              <div className={`text-right ${(trade.unrealized_pnl || 0) >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                                <div>{formatCurrency(trade.unrealized_pnl || 0)}</div>
+                                <div className="text-xs text-zinc-500">@ {formatCurrency(trade.current_price)}</div>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </>
+            ) : (
+              // Mockup for users without IBKR data
+              <div className="text-center py-8">
+                <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-violet-500/20 flex items-center justify-center">
+                  <Upload className="w-8 h-8 text-violet-400" />
+                </div>
+                <h3 className="text-lg font-semibold text-white mb-2">Track Your Portfolio</h3>
+                <p className="text-zinc-400 text-sm mb-6 max-w-md mx-auto">
+                  Import your Interactive Brokers transaction history to see your trades, P/L, and AI-powered suggestions.
+                </p>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+                  <div className="p-4 rounded-lg bg-zinc-800/30">
+                    <div className="text-xs text-zinc-500 mb-1">Sample: Total Invested</div>
+                    <div className="text-xl font-bold font-mono text-zinc-600">$50,000</div>
+                  </div>
+                  <div className="p-4 rounded-lg bg-zinc-800/30">
+                    <div className="text-xs text-zinc-500 mb-1">Sample: Premium</div>
+                    <div className="text-xl font-bold font-mono text-zinc-600">$2,500</div>
+                  </div>
+                  <div className="p-4 rounded-lg bg-zinc-800/30">
+                    <div className="text-xs text-zinc-500 mb-1">Sample: Open Trades</div>
+                    <div className="text-xl font-bold font-mono text-zinc-600">12</div>
+                  </div>
+                  <div className="p-4 rounded-lg bg-zinc-800/30">
+                    <div className="text-xs text-zinc-500 mb-1">Sample: Closed</div>
+                    <div className="text-xl font-bold font-mono text-zinc-600">8</div>
+                  </div>
+                </div>
+                <Button
+                  onClick={() => navigate('/portfolio')}
+                  className="bg-violet-600 hover:bg-violet-700"
+                >
+                  <Upload className="w-4 h-4 mr-2" />
+                  Import IBKR Data
+                </Button>
+              </div>
             )}
           </CardContent>
         </Card>
