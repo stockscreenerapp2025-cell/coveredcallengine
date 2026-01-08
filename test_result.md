@@ -49,6 +49,18 @@ backend:
           agent: "testing"
           comment: "✅ Stripe webhook integration fully functional. Admin login with admin@premiumhunter.com/admin123 successful. GET /api/admin/integration-settings correctly shows stripe.webhook_secret_configured: true (STRIPE_WEBHOOK_SECRET from .env detected). POST /api/webhooks/stripe endpoint properly handles requests - returns 400 'Invalid signature' for requests without proper Stripe signature (expected behavior), NOT 500 server error. Webhook endpoint exists at correct URL and responds appropriately."
 
+  - task: "IBKR Portfolio Import"
+    implemented: true
+    working: true
+    file: "backend/server.py, backend/services/ibkr_parser.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        - working: true
+          agent: "testing"
+          comment: "✅ IBKR Portfolio Import functionality fully working. All endpoints tested successfully: 1) POST /api/portfolio/import-ibkr correctly uploads and parses CSV file from https://customer-assets.emergentagent.com/job_leapshunter/artifacts/xmrqufpe_U3587259.TRANSACTIONS.1Y%20%283%29.csv. 2) GET /api/portfolio/ibkr/accounts detects 'Ray Family SMSF' account correctly. 3) GET /api/portfolio/ibkr/trades returns 38 parsed trades with proper categorization (Covered Call, Stock strategies). 4) GET /api/portfolio/ibkr/summary provides accurate statistics (total invested, premium, fees). Fixed IBKR CSV parser to handle multi-section format with 'Transaction History,Data' prefix. All filtering by account and strategy working correctly. Data cleanup endpoint functional."
+
 frontend:
   - task: "Admin Panel UI Integration"
     implemented: true
