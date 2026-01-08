@@ -405,8 +405,13 @@ class IBKRParser:
         # Calculate break-even
         break_even = entry_price - (premium_received / max(total_shares, 100)) + (total_fees / max(total_shares, 100)) if total_shares > 0 else entry_price
         
+        # Create deterministic trade ID based on account and symbol
+        import hashlib
+        trade_unique_key = f"{account}-{symbol}"
+        trade_id = hashlib.md5(trade_unique_key.encode()).hexdigest()[:16]
+        
         return {
-            'id': str(uuid4()),
+            'id': trade_id,
             'trade_id': transactions[0].get('id'),  # Use first transaction ID as trade reference
             'account': account,
             'symbol': symbol,
