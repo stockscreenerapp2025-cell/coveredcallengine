@@ -2885,6 +2885,51 @@ async def toggle_email_template(
     
     return {"message": f"Template '{template_name}' {'enabled' if enabled else 'disabled'}"}
 
+@admin_router.post("/test-email")
+async def send_test_email(
+    recipient_email: str = Query(..., description="Email address to send test to"),
+    template_name: str = Query("welcome", description="Template to test"),
+    admin: dict = Depends(get_admin_user)
+):
+    """Send a test email to verify Resend integration"""
+    from services.email_service import EmailService
+    
+    email_service = EmailService(db)
+    
+    # Check if service is configured
+    if not await email_service.initialize():
+        return {"status": "error", "message": "Email service not configured. Please add your Resend API key in Integrations settings."}
+    
+    # Send test email with sample variables
+    test_variables = {
+        "name": "Test User",
+        "plan": "7-Day Free Trial",
+        "trial_end_date": "January 15, 2025",
+        "days_left": "3",
+        "next_billing_date": "January 15, 2025",
+        "amount": "$49/month",
+        "access_until": "January 15, 2025"
+    }
+    
+    result = await email_service.send_email(recipient_email, template_name, test_variables)
+    
+    # Log the test
+    await db.audit_logs.insert_one({
+        "action": "test_email_sent",
+        "admin_id": admin["id"],
+        "admin_email": admin["email"],
+        "recipient": recipient_email,
+        "template": template_name,
+        "result": result,
+        "timestamp": datetime.now(timezone.utc).isoformat()
+    })
+    
+    return {
+        "status": result.get("status"),
+        "message": f"Test email sent to {recipient_email}" if result.get("status") == "success" else result.get("reason"),
+        "email_id": result.get("email_id")
+    }
+
 @admin_router.get("/audit-logs")
 async def get_audit_logs(
     page: int = Query(1, ge=1),
