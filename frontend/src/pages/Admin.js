@@ -93,6 +93,8 @@ const Admin = () => {
   });
   const [integrationStatus, setIntegrationStatus] = useState(null);
   const [savingIntegration, setSavingIntegration] = useState(false);
+  const [testEmailAddress, setTestEmailAddress] = useState('');
+  const [sendingTestEmail, setSendingTestEmail] = useState(false);
   
   // Visibility toggles
   const [showMassiveApiKey, setShowMassiveApiKey] = useState(false);
