@@ -313,13 +313,27 @@ const Portfolio = () => {
             <RefreshCw className="w-4 h-4" />
           </Button>
           {trades.length > 0 && (
-            <Button
-              onClick={handleClearData}
-              variant="outline"
-              className="border-red-700 text-red-400 hover:bg-red-500/10"
-            >
-              <Trash2 className="w-4 h-4" />
-            </Button>
+            <>
+              <Button
+                onClick={generateAllSuggestions}
+                disabled={generatingSuggestions}
+                className="bg-emerald-600 hover:bg-emerald-700"
+              >
+                {generatingSuggestions ? (
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                ) : (
+                  <Brain className="w-4 h-4 mr-2" />
+                )}
+                AI Suggestions
+              </Button>
+              <Button
+                onClick={handleClearData}
+                variant="outline"
+                className="border-red-700 text-red-400 hover:bg-red-500/10"
+              >
+                <Trash2 className="w-4 h-4" />
+              </Button>
+            </>
           )}
         </div>
       </div>
