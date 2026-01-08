@@ -168,8 +168,14 @@ class IBKRParser:
             if 'AUD' in symbol or 'AUD' in description:
                 currency = 'AUD'
             
+            # Create a deterministic unique ID based on transaction attributes
+            # This prevents duplicates when re-importing the same file
+            import hashlib
+            unique_key = f"{row.get('Account', '')}-{date_str}-{symbol}-{transaction_type}-{quantity}-{price}-{gross_amount}"
+            tx_id = hashlib.md5(unique_key.encode()).hexdigest()[:16]
+            
             return {
-                'id': str(uuid4()),
+                'id': tx_id,
                 'date': trade_date.strftime('%Y-%m-%d'),
                 'datetime': trade_date.isoformat(),
                 'account': row.get('Account', '').strip(),
