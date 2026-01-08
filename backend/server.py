@@ -258,6 +258,40 @@ async def get_massive_api_key():
         return settings.massive_api_key
     return None
 
+async def fetch_stock_quote(symbol: str, api_key: str = None) -> Optional[dict]:
+    """Fetch current stock quote from Massive.com API"""
+    if not api_key:
+        api_key = await get_massive_api_key()
+    
+    if not api_key:
+        # Return mock data if no API key
+        mock = MOCK_STOCKS.get(symbol.upper())
+        if mock:
+            return {"symbol": symbol.upper(), "price": mock["price"]}
+        return None
+    
+    try:
+        async with aiohttp.ClientSession() as session:
+            url = f"https://api.massive.com/v2/aggs/ticker/{symbol}/prev"
+            headers = {"Authorization": f"Bearer {api_key}"}
+            async with session.get(url, headers=headers, timeout=10) as response:
+                if response.status == 200:
+                    data = await response.json()
+                    results = data.get("results", [])
+                    if results:
+                        return {
+                            "symbol": symbol.upper(),
+                            "price": results[0].get("c", 0),
+                            "open": results[0].get("o", 0),
+                            "high": results[0].get("h", 0),
+                            "low": results[0].get("l", 0),
+                            "volume": results[0].get("v", 0)
+                        }
+    except Exception as e:
+        logging.warning(f"Error fetching quote for {symbol}: {e}")
+    
+    return None
+
 async def get_marketaux_client():
     """Get MarketAux API token"""
     settings = await get_admin_settings()
