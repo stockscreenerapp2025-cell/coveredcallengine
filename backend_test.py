@@ -463,6 +463,91 @@ class PremiumHunterAPITester:
                            False,
                            f"Status: {status}, Response: {data}")
 
+    def test_stripe_webhook_integration(self):
+        """Test Stripe webhook integration as requested in review"""
+        if not self.admin_token:
+            self.log_result("Stripe Webhook Test", False, "No admin token available")
+            return
+        
+        print("\n🔧 Testing Stripe Webhook Integration...")
+        
+        # Test 1: Verify GET /api/admin/integration-settings shows stripe.webhook_secret_configured = true
+        success, data, status = self.make_request('GET', 'admin/integration-settings', token=self.admin_token)
+        
+        if success and status == 200:
+            stripe_config = data.get("stripe", {})
+            webhook_configured = stripe_config.get("webhook_secret_configured", False)
+            
+            self.log_result("Stripe Integration Settings - Webhook Secret Configured", 
+                           webhook_configured,
+                           f"webhook_secret_configured: {webhook_configured} (Expected: True)")
+            
+            # Also check secret key configuration
+            secret_key_configured = stripe_config.get("secret_key_configured", False)
+            self.log_result("Stripe Integration Settings - Secret Key Status", 
+                           True,  # Just informational
+                           f"secret_key_configured: {secret_key_configured}")
+        else:
+            self.log_result("Stripe Integration Settings - Basic", 
+                           False,
+                           f"Status: {status}, Response: {data}")
+            return
+        
+        # Test 2: Test the webhook endpoint POST /api/stripe/webhook
+        # Note: This should return 400 (invalid signature) NOT 500 (server error) when called without proper Stripe signature
+        webhook_url = f"{self.base_url}/api/stripe/webhook"
+        
+        try:
+            # Make a direct request to the webhook endpoint without proper Stripe signature
+            response = self.session.post(
+                webhook_url,
+                json={"test": "data"},
+                headers={'Content-Type': 'application/json'}
+            )
+            
+            # The webhook should handle the request properly and return 400 for invalid signature, not 500
+            webhook_working = response.status_code == 400
+            
+            self.log_result("Stripe Webhook Endpoint - Proper Error Handling", 
+                           webhook_working,
+                           f"Status: {response.status_code} (Expected: 400 for invalid signature, NOT 500)")
+            
+            # Check if we get a proper error message
+            try:
+                response_data = response.json()
+                has_error_detail = "detail" in response_data
+                self.log_result("Stripe Webhook Endpoint - Error Response Structure", 
+                               has_error_detail,
+                               f"Response: {response_data}")
+            except:
+                # If response is not JSON, that's also acceptable for a 400 error
+                self.log_result("Stripe Webhook Endpoint - Non-JSON Error Response", 
+                               True,
+                               f"Non-JSON response (acceptable for 400 error): {response.text[:100]}")
+                
+        except Exception as e:
+            self.log_result("Stripe Webhook Endpoint - Request Failed", 
+                           False,
+                           f"Failed to make request to webhook: {str(e)}")
+        
+        # Test 3: Test webhook endpoint with missing signature header (should also return 400)
+        try:
+            response = self.session.post(
+                webhook_url,
+                data="test_payload",
+                headers={'Content-Type': 'application/json'}
+            )
+            
+            webhook_handles_missing_sig = response.status_code == 400
+            self.log_result("Stripe Webhook Endpoint - Missing Signature Handling", 
+                           webhook_handles_missing_sig,
+                           f"Status: {response.status_code} (Expected: 400 for missing signature)")
+                           
+        except Exception as e:
+            self.log_result("Stripe Webhook Endpoint - Missing Signature Test Failed", 
+                           False,
+                           f"Failed to test missing signature: {str(e)}")
+
     def test_unauthorized_access(self):
         """Test endpoints without authentication"""
         # Test protected endpoint without token
