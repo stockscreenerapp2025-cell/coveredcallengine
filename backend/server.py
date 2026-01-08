@@ -2786,14 +2786,18 @@ async def get_integration_settings(admin: dict = Depends(get_admin_user)):
     stripe_settings = await db.admin_settings.find_one({"type": "stripe_settings"}, {"_id": 0})
     email_settings = await db.admin_settings.find_one({"type": "email_settings"}, {"_id": 0})
     
+    # Check env variables as fallback
+    env_resend_key = os.environ.get("RESEND_API_KEY")
+    env_stripe_webhook = os.environ.get("STRIPE_WEBHOOK_SECRET")
+    
     return {
         "stripe": {
-            "webhook_secret_configured": bool(stripe_settings and stripe_settings.get("webhook_secret")),
+            "webhook_secret_configured": bool(stripe_settings and stripe_settings.get("webhook_secret")) or bool(env_stripe_webhook),
             "secret_key_configured": bool(stripe_settings and stripe_settings.get("stripe_secret_key"))
         },
         "email": {
-            "resend_api_key_configured": bool(email_settings and email_settings.get("resend_api_key")),
-            "sender_email": email_settings.get("sender_email", "") if email_settings else ""
+            "resend_api_key_configured": bool(email_settings and email_settings.get("resend_api_key")) or bool(env_resend_key),
+            "sender_email": email_settings.get("sender_email", "") if email_settings else os.environ.get("SENDER_EMAIL", "")
         }
     }
 
