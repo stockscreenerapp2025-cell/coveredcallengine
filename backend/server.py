@@ -2069,7 +2069,7 @@ async def delete_portfolio_position(position_id: str, user: dict = Depends(get_c
 
 @portfolio_router.post("/import-csv")
 async def import_csv(file: UploadFile = File(...), user: dict = Depends(get_current_user)):
-    """Import portfolio from Interactive Brokers CSV"""
+    """Import portfolio from simple CSV format"""
     content = await file.read()
     decoded = content.decode('utf-8')
     
@@ -2078,7 +2078,6 @@ async def import_csv(file: UploadFile = File(...), user: dict = Depends(get_curr
     
     for row in reader:
         try:
-            # Map IB CSV columns to our schema
             pos_doc = {
                 "id": str(uuid.uuid4()),
                 "user_id": user["id"],
@@ -2096,6 +2095,283 @@ async def import_csv(file: UploadFile = File(...), user: dict = Depends(get_curr
             continue
     
     return {"message": f"Imported {imported} positions"}
+
+@portfolio_router.post("/import-ibkr")
+async def import_ibkr_csv(file: UploadFile = File(...), user: dict = Depends(get_current_user)):
+    """Import and parse IBKR transaction history CSV"""
+    from services.ibkr_parser import parse_ibkr_csv
+    
+    content = await file.read()
+    decoded = content.decode('utf-8')
+    
+    # Parse the IBKR CSV
+    result = parse_ibkr_csv(decoded)
+    
+    # Store raw transactions
+    for tx in result.get('raw_transactions', []):
+        tx['user_id'] = user['id']
+        tx['import_id'] = str(uuid.uuid4())
+        await db.ibkr_transactions.update_one(
+            {"user_id": user['id'], "id": tx['id']},
+            {"$set": tx},
+            upsert=True
+        )
+    
+    # Store parsed trades
+    for trade in result.get('trades', []):
+        trade['user_id'] = user['id']
+        # Remove transactions from trade doc to avoid duplication
+        trade_doc = {k: v for k, v in trade.items() if k != 'transactions'}
+        trade_doc['transaction_ids'] = [t['id'] for t in trade.get('transactions', [])]
+        
+        await db.ibkr_trades.update_one(
+            {"user_id": user['id'], "id": trade['id']},
+            {"$set": trade_doc},
+            upsert=True
+        )
+    
+    return {
+        "message": f"Imported {len(result.get('trades', []))} trades from {len(result.get('accounts', []))} accounts",
+        "accounts": result.get('accounts', []),
+        "summary": result.get('summary', {}),
+        "trades_count": len(result.get('trades', []))
+    }
+
+@portfolio_router.get("/ibkr/accounts")
+async def get_ibkr_accounts(user: dict = Depends(get_current_user)):
+    """Get list of broker accounts from imported data"""
+    pipeline = [
+        {"$match": {"user_id": user["id"]}},
+        {"$group": {"_id": "$account"}},
+        {"$project": {"account": "$_id", "_id": 0}}
+    ]
+    accounts = await db.ibkr_trades.aggregate(pipeline).to_list(100)
+    return {"accounts": [a.get('account') for a in accounts if a.get('account')]}
+
+@portfolio_router.get("/ibkr/trades")
+async def get_ibkr_trades(
+    user: dict = Depends(get_current_user),
+    account: Optional[str] = Query(None),
+    strategy: Optional[str] = Query(None),
+    status: Optional[str] = Query(None),
+    symbol: Optional[str] = Query(None),
+    page: int = Query(1, ge=1),
+    limit: int = Query(50, ge=1, le=100)
+):
+    """Get parsed IBKR trades with filters"""
+    query = {"user_id": user["id"]}
+    
+    if account:
+        query["account"] = account
+    if strategy:
+        query["strategy_type"] = strategy
+    if status:
+        query["status"] = status
+    if symbol:
+        query["symbol"] = {"$regex": symbol.upper(), "$options": "i"}
+    
+    skip = (page - 1) * limit
+    
+    trades = await db.ibkr_trades.find(query, {"_id": 0}).sort("date_opened", -1).skip(skip).limit(limit).to_list(limit)
+    total = await db.ibkr_trades.count_documents(query)
+    
+    # Fetch current prices for open trades
+    settings = await db.admin_settings.find_one({"type": "api_keys"}, {"_id": 0})
+    massive_key = settings.get("massive_api_key") if settings else os.environ.get("MASSIVE_API_KEY")
+    
+    if massive_key:
+        symbols_to_fetch = list(set(t.get('symbol') for t in trades if t.get('status') == 'Open' and t.get('symbol')))
+        if symbols_to_fetch:
+            try:
+                # Fetch quotes for all symbols
+                for trade in trades:
+                    if trade.get('status') == 'Open' and trade.get('symbol'):
+                        quote = await fetch_stock_quote(trade['symbol'], massive_key)
+                        if quote:
+                            trade['current_price'] = quote.get('price', 0)
+                            # Calculate unrealized P/L
+                            shares = trade.get('shares', 0)
+                            break_even = trade.get('break_even', 0)
+                            if shares > 0 and break_even > 0:
+                                trade['unrealized_pnl'] = round((trade['current_price'] - break_even) * shares, 2)
+            except Exception as e:
+                logging.warning(f"Error fetching quotes: {e}")
+    
+    return {
+        "trades": trades,
+        "total": total,
+        "page": page,
+        "pages": (total + limit - 1) // limit
+    }
+
+@portfolio_router.get("/ibkr/trades/{trade_id}")
+async def get_ibkr_trade_detail(trade_id: str, user: dict = Depends(get_current_user)):
+    """Get detailed trade information including transaction history"""
+    trade = await db.ibkr_trades.find_one({"user_id": user["id"], "id": trade_id}, {"_id": 0})
+    if not trade:
+        raise HTTPException(status_code=404, detail="Trade not found")
+    
+    # Fetch related transactions
+    tx_ids = trade.get('transaction_ids', [])
+    transactions = await db.ibkr_transactions.find(
+        {"user_id": user["id"], "id": {"$in": tx_ids}},
+        {"_id": 0}
+    ).sort("datetime", 1).to_list(100)
+    
+    trade['transactions'] = transactions
+    
+    # Fetch current price
+    settings = await db.admin_settings.find_one({"type": "api_keys"}, {"_id": 0})
+    massive_key = settings.get("massive_api_key") if settings else os.environ.get("MASSIVE_API_KEY")
+    
+    if massive_key and trade.get('symbol'):
+        try:
+            quote = await fetch_stock_quote(trade['symbol'], massive_key)
+            if quote:
+                trade['current_price'] = quote.get('price', 0)
+                shares = trade.get('shares', 0)
+                break_even = trade.get('break_even', 0)
+                if shares > 0 and break_even > 0:
+                    trade['unrealized_pnl'] = round((trade['current_price'] - break_even) * shares, 2)
+                    if trade.get('entry_price', 0) > 0:
+                        trade['roi'] = round(((trade['current_price'] - break_even) / trade['entry_price']) * 100, 2)
+        except Exception as e:
+            logging.warning(f"Error fetching quote: {e}")
+    
+    return trade
+
+@portfolio_router.get("/ibkr/summary")
+async def get_ibkr_summary(
+    user: dict = Depends(get_current_user),
+    account: Optional[str] = Query(None)
+):
+    """Get portfolio summary statistics"""
+    query = {"user_id": user["id"]}
+    if account:
+        query["account"] = account
+    
+    trades = await db.ibkr_trades.find(query, {"_id": 0}).to_list(1000)
+    
+    # Calculate summary
+    total_invested = 0
+    total_premium = 0
+    total_fees = 0
+    open_trades = 0
+    closed_trades = 0
+    by_strategy = {}
+    
+    for trade in trades:
+        strategy = trade.get('strategy_type', 'OTHER')
+        
+        if strategy not in by_strategy:
+            by_strategy[strategy] = {'count': 0, 'premium': 0, 'invested': 0}
+        by_strategy[strategy]['count'] += 1
+        by_strategy[strategy]['premium'] += trade.get('premium_received', 0)
+        
+        shares = trade.get('shares', 0)
+        entry = trade.get('entry_price', 0)
+        by_strategy[strategy]['invested'] += shares * entry
+        
+        total_invested += shares * entry
+        total_premium += trade.get('premium_received', 0)
+        total_fees += trade.get('total_fees', 0)
+        
+        if trade.get('status') == 'Open':
+            open_trades += 1
+        else:
+            closed_trades += 1
+    
+    return {
+        'total_trades': len(trades),
+        'open_trades': open_trades,
+        'closed_trades': closed_trades,
+        'total_invested': round(total_invested, 2),
+        'total_premium': round(total_premium, 2),
+        'total_fees': round(total_fees, 2),
+        'net_premium': round(total_premium - total_fees, 2),
+        'by_strategy': by_strategy
+    }
+
+@portfolio_router.post("/ibkr/trades/{trade_id}/ai-suggestion")
+async def get_trade_ai_suggestion(trade_id: str, user: dict = Depends(get_current_user)):
+    """Get AI-powered suggestion for a trade"""
+    trade = await db.ibkr_trades.find_one({"user_id": user["id"], "id": trade_id}, {"_id": 0})
+    if not trade:
+        raise HTTPException(status_code=404, detail="Trade not found")
+    
+    # Fetch current market data
+    settings = await db.admin_settings.find_one({"type": "api_keys"}, {"_id": 0})
+    massive_key = settings.get("massive_api_key") if settings else os.environ.get("MASSIVE_API_KEY")
+    
+    current_price = None
+    if massive_key and trade.get('symbol'):
+        try:
+            quote = await fetch_stock_quote(trade['symbol'], massive_key)
+            if quote:
+                current_price = quote.get('price', 0)
+        except:
+            pass
+    
+    # Build context for AI
+    context = f"""
+    Analyze this options trade and provide a recommendation:
+    
+    Symbol: {trade.get('symbol')}
+    Strategy: {trade.get('strategy_label', trade.get('strategy_type'))}
+    Status: {trade.get('status')}
+    Entry Price: ${trade.get('entry_price', 0):.2f}
+    Current Price: ${current_price if current_price else 'N/A'}
+    Break-Even: ${trade.get('break_even', 0):.2f}
+    Option Strike: ${trade.get('option_strike') if trade.get('option_strike') else 'N/A'}
+    Option Expiry: {trade.get('option_expiry', 'N/A')}
+    Days to Expiry: {trade.get('dte', 'N/A')}
+    Premium Received: ${trade.get('premium_received', 0):.2f}
+    Shares: {trade.get('shares', 0)}
+    
+    Based on this information, should the trader:
+    1. HOLD - Keep the current position
+    2. CLOSE - Close the position now
+    3. ROLL UP - Roll the option to a higher strike
+    4. ROLL DOWN - Roll the option to a lower strike
+    5. ROLL OUT - Roll the option to a later expiry
+    
+    Provide a brief recommendation with reasoning (max 100 words).
+    """
+    
+    # Use Emergent LLM key for AI suggestion
+    try:
+        from emergentintegrations.llm.chat import chat, LlmModel
+        
+        response = await chat(
+            api_key=os.environ.get("EMERGENT_LLM_KEY"),
+            model=LlmModel.CLAUDE_SONNET,
+            system_prompt="You are a professional options trading advisor. Provide concise, actionable recommendations.",
+            user_prompt=context
+        )
+        
+        suggestion = response.message if hasattr(response, 'message') else str(response)
+        
+        # Store suggestion
+        await db.ibkr_trades.update_one(
+            {"user_id": user["id"], "id": trade_id},
+            {"$set": {
+                "ai_suggestion": suggestion,
+                "suggestion_updated": datetime.now(timezone.utc).isoformat()
+            }}
+        )
+        
+        return {"suggestion": suggestion, "trade_id": trade_id}
+        
+    except Exception as e:
+        logging.error(f"AI suggestion error: {e}")
+        return {"suggestion": "Unable to generate AI suggestion at this time. Please try again later.", "error": str(e)}
+
+@portfolio_router.delete("/ibkr/clear")
+async def clear_ibkr_data(user: dict = Depends(get_current_user)):
+    """Clear all imported IBKR data for the user"""
+    await db.ibkr_trades.delete_many({"user_id": user["id"]})
+    await db.ibkr_transactions.delete_many({"user_id": user["id"]})
+    return {"message": "All IBKR data cleared"}
 
 @portfolio_router.get("/summary")
 async def get_portfolio_summary(user: dict = Depends(get_current_user)):
