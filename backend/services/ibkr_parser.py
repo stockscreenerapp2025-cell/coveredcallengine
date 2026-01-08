@@ -28,14 +28,39 @@ STRATEGY_TYPES = {
     'OTHER': 'Other'
 }
 
-# Common ETF symbols
+# Common ETF symbols - expanded list
 ETF_SYMBOLS = {
-    'SPY', 'QQQ', 'IWM', 'DIA', 'VTI', 'VOO', 'VXX', 'GLD', 'SLV', 'USO',
+    # Major Index ETFs
+    'SPY', 'QQQ', 'IWM', 'DIA', 'VTI', 'VOO', 'VXX', 'RSP',
+    # Sector ETFs
     'XLF', 'XLE', 'XLK', 'XLV', 'XLI', 'XLP', 'XLY', 'XLB', 'XLU', 'XLRE',
-    'EEM', 'EFA', 'VWO', 'VEA', 'IEMG', 'AGG', 'BND', 'LQD', 'HYG', 'TLT',
-    'IEF', 'SHY', 'ARKK', 'ARKG', 'ARKW', 'ARKF', 'ARKQ', 'SOXL', 'TQQQ',
-    'SPXL', 'UPRO', 'SQQQ', 'SDOW', 'UVXY', 'VIXY', 'VIG', 'VYM', 'SCHD',
-    'HUT', 'BITX', 'BITO'  # Crypto ETFs
+    # International
+    'EEM', 'EFA', 'VWO', 'VEA', 'IEMG', 'VEU', 'VXUS',
+    # Bonds
+    'AGG', 'BND', 'LQD', 'HYG', 'TLT', 'IEF', 'SHY', 'TIP',
+    # Commodities
+    'GLD', 'SLV', 'USO', 'UNG', 'DBA', 'DBC',
+    # ARK Innovation
+    'ARKK', 'ARKG', 'ARKW', 'ARKF', 'ARKQ', 'ARKX',
+    # Leveraged/Inverse
+    'SOXL', 'TQQQ', 'SPXL', 'UPRO', 'SQQQ', 'SDOW', 'UVXY', 'VIXY', 'SOXS',
+    # Dividend/Value
+    'VIG', 'VYM', 'SCHD', 'DVY', 'HDV', 'SDY',
+    # Growth
+    'VUG', 'IWF', 'MGK', 'VONG', 'VGT', 'IGV',
+    # Thematic/Specialty
+    'SMH', 'SOXX', 'XBI', 'IBB', 'HACK', 'SKYY', 'CLOU', 'WCLD',
+    'BOTZ', 'ROBO', 'RBTZ', 'AIQ', 'IRBO',
+    # Crypto/Blockchain
+    'HUT', 'BITX', 'BITO', 'GBTC', 'ETHE', 'BLOK', 'DAPP',
+    # Cannabis
+    'MSOS', 'MJ', 'YOLO',
+    # Clean Energy
+    'ICLN', 'TAN', 'QCLN', 'PBW', 'LIT',
+    # Metals/Mining
+    'GDX', 'GDXJ', 'SIL', 'REMX', 'PICK', 'XME',
+    # Real Estate
+    'VNQ', 'IYR', 'SCHH', 'RWR'
 }
 
 # Index symbols
