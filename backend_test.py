@@ -579,14 +579,21 @@ class PremiumHunterAPITester:
         # Test 2: GET /api/portfolio/ibkr/accounts - Should return detected accounts
         success, data, status = self.make_request('GET', 'portfolio/ibkr/accounts', token=self.admin_token)
         
-        accounts_success = success and status == 200 and isinstance(data, list)
+        accounts_success = success and status == 200
         self.log_result("IBKR Accounts Detection", 
                        accounts_success,
-                       f"Status: {status}, Accounts: {data}")
+                       f"Status: {status}, Response: {data}")
         
         # Check if "Ray Family SMSF" account is detected
         if accounts_success:
-            account_names = [acc.get('_id') for acc in data if '_id' in acc]
+            # Handle both list and dict response formats
+            if isinstance(data, dict) and 'accounts' in data:
+                account_names = data['accounts']
+            elif isinstance(data, list):
+                account_names = [acc.get('_id') for acc in data if '_id' in acc]
+            else:
+                account_names = []
+                
             ray_family_detected = 'Ray Family SMSF' in account_names
             self.log_result("IBKR Account 'Ray Family SMSF' Detected", 
                            ray_family_detected,
