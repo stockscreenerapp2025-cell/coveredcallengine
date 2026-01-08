@@ -934,6 +934,35 @@ const Admin = () => {
               <p className="text-xs text-zinc-500">
                 Get your API key from <a href="https://resend.com" target="_blank" rel="noopener noreferrer" className="text-cyan-400 hover:underline">resend.com</a>
               </p>
+              
+              {/* Test Email Section */}
+              <div className="mt-4 pt-4 border-t border-zinc-700">
+                <Label className="text-zinc-400 mb-2 block">Send Test Email</Label>
+                <div className="flex gap-2">
+                  <Input
+                    value={testEmailAddress}
+                    onChange={(e) => setTestEmailAddress(e.target.value)}
+                    placeholder="your-email@example.com"
+                    className="input-dark flex-1"
+                    type="email"
+                  />
+                  <Button 
+                    onClick={sendTestEmail} 
+                    disabled={sendingTestEmail || !testEmailAddress}
+                    className="bg-cyan-600 hover:bg-cyan-700"
+                  >
+                    {sendingTestEmail ? (
+                      <RefreshCw className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <Mail className="w-4 h-4" />
+                    )}
+                    <span className="ml-2">Test</span>
+                  </Button>
+                </div>
+                <p className="text-xs text-zinc-500 mt-2">
+                  ⚠️ In Resend test mode, emails can only be sent to your verified email address
+                </p>
+              </div>
             </CardContent>
           </Card>
           
