@@ -548,6 +548,131 @@ class PremiumHunterAPITester:
                            False,
                            f"Failed to test missing signature: {str(e)}")
 
+    def test_ibkr_portfolio_import(self):
+        """Test IBKR Portfolio Import functionality as requested in review"""
+        if not self.admin_token:
+            self.log_result("IBKR Import Test", False, "No admin token available")
+            return
+        
+        print("\n📊 Testing IBKR Portfolio Import...")
+        
+        # Test 1: Upload IBKR CSV file
+        csv_file_path = "/app/test_ibkr.csv"
+        try:
+            with open(csv_file_path, 'rb') as f:
+                files = {'file': ('test_ibkr.csv', f, 'text/csv')}
+                success, data, status = self.make_request('POST', 'portfolio/import-ibkr', 
+                                                        token=self.admin_token, files=files)
+            
+            upload_success = success and status == 200
+            self.log_result("IBKR CSV Upload", 
+                           upload_success,
+                           f"Status: {status}, Response: {data}")
+            
+            if not upload_success:
+                return
+                
+        except Exception as e:
+            self.log_result("IBKR CSV Upload", False, f"Failed to upload CSV: {str(e)}")
+            return
+        
+        # Test 2: GET /api/portfolio/ibkr/accounts - Should return detected accounts
+        success, data, status = self.make_request('GET', 'portfolio/ibkr/accounts', token=self.admin_token)
+        
+        accounts_success = success and status == 200 and isinstance(data, list)
+        self.log_result("IBKR Accounts Detection", 
+                       accounts_success,
+                       f"Status: {status}, Accounts: {data}")
+        
+        # Check if "Ray Family SMSF" account is detected
+        if accounts_success:
+            account_names = [acc.get('_id') for acc in data if '_id' in acc]
+            ray_family_detected = 'Ray Family SMSF' in account_names
+            self.log_result("IBKR Account 'Ray Family SMSF' Detected", 
+                           ray_family_detected,
+                           f"Detected accounts: {account_names}")
+        
+        # Test 3: GET /api/portfolio/ibkr/trades - Should return parsed trades
+        success, data, status = self.make_request('GET', 'portfolio/ibkr/trades', token=self.admin_token)
+        
+        trades_success = success and status == 200 and 'trades' in data
+        self.log_result("IBKR Trades Parsing", 
+                       trades_success,
+                       f"Status: {status}, Trades count: {len(data.get('trades', []))}")
+        
+        # Check trade categorization
+        if trades_success:
+            trades = data.get('trades', [])
+            strategy_types = set()
+            symbols = set()
+            
+            for trade in trades:
+                strategy_types.add(trade.get('strategy_type', 'Unknown'))
+                symbols.add(trade.get('symbol', 'Unknown'))
+            
+            self.log_result("IBKR Trade Categorization", 
+                           len(strategy_types) > 0,
+                           f"Strategy types: {list(strategy_types)}, Symbols: {list(symbols)}")
+            
+            # Check for expected strategies (Covered Call, Stock, etc.)
+            expected_strategies = {'COVERED_CALL', 'STOCK'}
+            has_expected_strategies = any(s in strategy_types for s in expected_strategies)
+            self.log_result("IBKR Expected Strategy Types", 
+                           has_expected_strategies,
+                           f"Found strategies: {list(strategy_types)}, Expected: {list(expected_strategies)}")
+        
+        # Test 4: GET /api/portfolio/ibkr/summary - Should return summary statistics
+        success, data, status = self.make_request('GET', 'portfolio/ibkr/summary', token=self.admin_token)
+        
+        summary_success = success and status == 200
+        self.log_result("IBKR Summary Statistics", 
+                       summary_success,
+                       f"Status: {status}, Summary: {data}")
+        
+        # Check summary structure
+        if summary_success:
+            required_fields = ['total_trades', 'total_invested', 'total_premium', 'total_fees']
+            has_required_fields = all(field in data for field in required_fields)
+            self.log_result("IBKR Summary Structure", 
+                           has_required_fields,
+                           f"Summary fields: {list(data.keys())}")
+            
+            # Check if summary has meaningful data
+            total_trades = data.get('total_trades', 0)
+            total_invested = data.get('total_invested', 0)
+            total_premium = data.get('total_premium', 0)
+            
+            has_meaningful_data = total_trades > 0 and (total_invested > 0 or total_premium > 0)
+            self.log_result("IBKR Summary Data Quality", 
+                           has_meaningful_data,
+                           f"Trades: {total_trades}, Invested: {total_invested}, Premium: {total_premium}")
+        
+        # Test 5: Test filtering trades by account
+        success, data, status = self.make_request('GET', 'portfolio/ibkr/trades?account=Ray Family SMSF', 
+                                                 token=self.admin_token)
+        
+        filter_success = success and status == 200
+        self.log_result("IBKR Trade Filtering by Account", 
+                       filter_success,
+                       f"Status: {status}, Filtered trades: {len(data.get('trades', []))}")
+        
+        # Test 6: Test filtering trades by strategy
+        success, data, status = self.make_request('GET', 'portfolio/ibkr/trades?strategy=COVERED_CALL', 
+                                                 token=self.admin_token)
+        
+        strategy_filter_success = success and status == 200
+        self.log_result("IBKR Trade Filtering by Strategy", 
+                       strategy_filter_success,
+                       f"Status: {status}, Covered call trades: {len(data.get('trades', []))}")
+        
+        # Test 7: Clear IBKR data (cleanup)
+        success, data, status = self.make_request('DELETE', 'portfolio/ibkr/clear', token=self.admin_token)
+        
+        cleanup_success = success and status == 200
+        self.log_result("IBKR Data Cleanup", 
+                       cleanup_success,
+                       f"Status: {status}, Response: {data}")
+
     def test_unauthorized_access(self):
         """Test endpoints without authentication"""
         # Test protected endpoint without token
