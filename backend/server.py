@@ -2132,7 +2132,7 @@ async def import_csv(file: UploadFile = File(...), user: dict = Depends(get_curr
 
 @portfolio_router.post("/import-ibkr")
 async def import_ibkr_csv(file: UploadFile = File(...), user: dict = Depends(get_current_user)):
-    """Import and parse IBKR transaction history CSV"""
+    """Import and parse IBKR transaction history CSV - overwrites existing data for same accounts"""
     from services.ibkr_parser import parse_ibkr_csv
     
     content = await file.read()
@@ -2141,15 +2141,24 @@ async def import_ibkr_csv(file: UploadFile = File(...), user: dict = Depends(get
     # Parse the IBKR CSV
     result = parse_ibkr_csv(decoded)
     
+    # Get accounts from the imported file
+    imported_accounts = result.get('accounts', [])
+    
+    # Clear existing data for these accounts (overwrite behavior)
+    if imported_accounts:
+        await db.ibkr_transactions.delete_many({
+            "user_id": user['id'],
+            "account": {"$in": imported_accounts}
+        })
+        await db.ibkr_trades.delete_many({
+            "user_id": user['id'],
+            "account": {"$in": imported_accounts}
+        })
+    
     # Store raw transactions
     for tx in result.get('raw_transactions', []):
         tx['user_id'] = user['id']
-        tx['import_id'] = str(uuid.uuid4())
-        await db.ibkr_transactions.update_one(
-            {"user_id": user['id'], "id": tx['id']},
-            {"$set": tx},
-            upsert=True
-        )
+        await db.ibkr_transactions.insert_one(tx)
     
     # Store parsed trades
     for trade in result.get('trades', []):
@@ -2157,16 +2166,11 @@ async def import_ibkr_csv(file: UploadFile = File(...), user: dict = Depends(get
         # Remove transactions from trade doc to avoid duplication
         trade_doc = {k: v for k, v in trade.items() if k != 'transactions'}
         trade_doc['transaction_ids'] = [t['id'] for t in trade.get('transactions', [])]
-        
-        await db.ibkr_trades.update_one(
-            {"user_id": user['id'], "id": trade['id']},
-            {"$set": trade_doc},
-            upsert=True
-        )
+        await db.ibkr_trades.insert_one(trade_doc)
     
     return {
-        "message": f"Imported {len(result.get('trades', []))} trades from {len(result.get('accounts', []))} accounts",
-        "accounts": result.get('accounts', []),
+        "message": f"Imported {len(result.get('trades', []))} trades from {len(imported_accounts)} accounts",
+        "accounts": imported_accounts,
         "summary": result.get('summary', {}),
         "trades_count": len(result.get('trades', []))
     }
