@@ -201,7 +201,7 @@ EMAIL_TEMPLATES = {
         """
     },
     "annual_thank_you": {
-        "subject": "🙏 Thank you for your annual subscription!",
+        "subject": "🙏 Thank you for your Annual subscription!",
         "enabled": True,
         "html": """
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #09090b; color: #ffffff;">
@@ -211,18 +211,15 @@ EMAIL_TEMPLATES = {
             <div style="padding: 30px 20px;">
                 <h2 style="color: #f59e0b; margin-bottom: 20px;">🙏 Thank you, {{name}}!</h2>
                 <p style="color: #a1a1aa; line-height: 1.6;">
-                    We're thrilled you've chosen the <strong style="color: #f59e0b;">Annual Plan</strong>!
-                </p>
-                <p style="color: #a1a1aa; line-height: 1.6;">
-                    You're saving <strong style="color: #10b981;">$89/year</strong> compared to monthly billing.
+                    We're thrilled you've chosen the <strong style="color: #f59e0b;">Annual Plan</strong> and saved 15%+!
                 </p>
                 <div style="background-color: #18181b; border-radius: 8px; padding: 20px; margin: 20px 0;">
-                    <p style="color: #ffffff; margin: 5px 0;"><strong>Your benefits:</strong></p>
+                    <p style="color: #ffffff; margin: 5px 0;"><strong>Your Annual Plan benefits:</strong></p>
                     <ul style="color: #a1a1aa; line-height: 1.8; margin: 10px 0;">
-                        <li>🌟 Priority support</li>
+                        <li>💰 Special Discount</li>
                         <li>🚀 Early access to new features</li>
-                        <li>💰 Locked-in pricing</li>
-                        <li>📊 Annual strategy review</li>
+                        <li>🎯 Dedicated support channel</li>
+                        <li>🔒 Locked-in pricing</li>
                     </ul>
                 </div>
                 <div style="text-align: center; margin: 30px 0;">
