@@ -62,16 +62,49 @@ class IBKRParser:
         self.accounts = set()
         self.fx_rates = {}
         
-        # Parse CSV
-        reader = csv.DictReader(io.StringIO(csv_content))
-        
+        # Parse IBKR CSV format which has sections
         raw_transactions = []
-        for row in reader:
-            parsed = self._parse_row(row)
-            if parsed:
-                raw_transactions.append(parsed)
-                if parsed.get('account'):
-                    self.accounts.add(parsed['account'])
+        lines = csv_content.strip().split('\n')
+        
+        # Find transaction history section
+        transaction_header = None
+        for i, line in enumerate(lines):
+            if 'Transaction History,Header,' in line:
+                # Extract header fields
+                parts = line.split(',')
+                if len(parts) >= 3:
+                    header_fields = parts[2:]  # Skip "Transaction History,Header,"
+                    transaction_header = header_fields
+                break
+        
+        if not transaction_header:
+            logger.warning("No transaction history header found in CSV")
+            return {
+                'accounts': [],
+                'trades': [],
+                'raw_transactions': [],
+                'fx_rates': {},
+                'summary': self._calculate_summary([])
+            }
+        
+        # Parse transaction data rows
+        for line in lines:
+            if 'Transaction History,Data,' in line:
+                parts = line.split(',')
+                if len(parts) >= len(transaction_header) + 2:  # +2 for "Transaction History,Data,"
+                    data_values = parts[2:]  # Skip "Transaction History,Data,"
+                    
+                    # Create row dict
+                    row = {}
+                    for i, header in enumerate(transaction_header):
+                        if i < len(data_values):
+                            row[header.strip()] = data_values[i].strip()
+                    
+                    parsed = self._parse_row(row)
+                    if parsed:
+                        raw_transactions.append(parsed)
+                        if parsed.get('account'):
+                            self.accounts.add(parsed['account'])
         
         # Extract FX rates from forex transactions
         self._extract_fx_rates(raw_transactions)
