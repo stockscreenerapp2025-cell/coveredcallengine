@@ -85,7 +85,7 @@ metadata:
 
 test_plan:
   current_focus:
-    - "Stripe Webhook Integration"
+    - "Pricing Section Updates"
   stuck_tasks: []
   test_all: false
   test_priority: "high_first"
