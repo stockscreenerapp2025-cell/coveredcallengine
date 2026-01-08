@@ -507,15 +507,16 @@ const Portfolio = () => {
                       <TableHead className="text-zinc-400">Status</TableHead>
                       <TableHead className="text-zinc-400">AI Action</TableHead>
                       <TableHead className="text-zinc-400">Opened</TableHead>
-                      <TableHead className="text-zinc-400">Days</TableHead>
+                      <TableHead className="text-zinc-400">Closed</TableHead>
                       <TableHead className="text-zinc-400">DTE</TableHead>
                       <TableHead className="text-zinc-400 text-right">Shares</TableHead>
                       <TableHead className="text-zinc-400 text-right">Entry</TableHead>
+                      <TableHead className="text-zinc-400 text-right">Strike</TableHead>
                       <TableHead className="text-zinc-400 text-right">Premium</TableHead>
-                      <TableHead className="text-zinc-400 text-right">Fees</TableHead>
-                      <TableHead className="text-zinc-400 text-right">Break-Even</TableHead>
+                      <TableHead className="text-zinc-400 text-right">B/E</TableHead>
                       <TableHead className="text-zinc-400 text-right">Current</TableHead>
                       <TableHead className="text-zinc-400 text-right">P/L</TableHead>
+                      <TableHead className="text-zinc-400 text-right">ROI</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
