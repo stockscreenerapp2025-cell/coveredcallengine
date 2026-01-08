@@ -66,8 +66,7 @@ const STRATEGY_COLORS = {
 
 const STATUS_COLORS = {
   'Open': 'bg-emerald-500/20 text-emerald-400',
-  'Closed': 'bg-zinc-500/20 text-zinc-400',
-  'Assigned': 'bg-amber-500/20 text-amber-400'
+  'Closed': 'bg-zinc-500/20 text-zinc-400'
 };
 
 // AI Action colors
