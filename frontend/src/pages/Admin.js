@@ -475,7 +475,7 @@ const Admin = () => {
                       <span className="text-xl font-bold text-violet-400">{dashboardStats.subscriptions?.monthly || 0}</span>
                     </div>
                     <div className="flex items-center justify-between p-3 bg-zinc-800/50 rounded-lg">
-                      <span className="text-zinc-400">Yearly Plans</span>
+                      <span className="text-zinc-400">Annual Plans</span>
                       <span className="text-xl font-bold text-amber-400">{dashboardStats.subscriptions?.yearly || 0}</span>
                     </div>
                     <div className="flex items-center justify-between p-3 bg-zinc-800/50 rounded-lg">
@@ -761,7 +761,7 @@ const Admin = () => {
                       />
                     </div>
                     <div className="space-y-2">
-                      <Label className="text-zinc-400">Yearly Subscription Link ($499)</Label>
+                      <Label className="text-zinc-400">Annual Subscription Link ($499)</Label>
                       <Input
                         value={subscriptionSettings.test_links?.yearly || ''}
                         onChange={(e) => setSubscriptionSettings(prev => ({
@@ -807,7 +807,7 @@ const Admin = () => {
                       />
                     </div>
                     <div className="space-y-2">
-                      <Label className="text-zinc-400">Yearly Subscription Link ($499)</Label>
+                      <Label className="text-zinc-400">Annual Subscription Link ($499)</Label>
                       <Input
                         value={subscriptionSettings.live_links?.yearly || ''}
                         onChange={(e) => setSubscriptionSettings(prev => ({
