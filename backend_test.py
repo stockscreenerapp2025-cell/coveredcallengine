@@ -587,6 +587,9 @@ class PremiumHunterAPITester:
         # Admin integrations test (specific focus for this review)
         self.test_admin_integrations()
         
+        # Stripe webhook integration test (specific focus for current review)
+        self.test_stripe_webhook_integration()
+        
         # Security tests
         self.test_unauthorized_access()
         
