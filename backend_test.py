@@ -499,6 +499,9 @@ class PremiumHunterAPITester:
         self.test_ai_endpoints()
         self.test_admin_endpoints()
         
+        # Admin integrations test (specific focus for this review)
+        self.test_admin_integrations()
+        
         # Security tests
         self.test_unauthorized_access()
         
