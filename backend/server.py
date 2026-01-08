@@ -16,6 +16,7 @@ from bson import ObjectId
 import csv
 import io
 import httpx
+import aiohttp
 from openai import OpenAI
 import hashlib
 import json
