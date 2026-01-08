@@ -2,77 +2,84 @@
 The user wants to build a web-based application named Covered Call Engine to identify, analyze, and manage Covered Call and Poor Man’s Covered Call (PMCC) strategies.
 
 **PRODUCT REQUIREMENTS:**
-- **Dashboard:** Display new opportunities, market indices, stock data, and a live news feed. It should show the Top 10 opportunities based on a complex set of user-defined criteria.
-- **Clickable Detail View:** Every trade result in the dashboard should be clickable, opening a pop-up with a 1-year TradingView candlestick chart (with SMA 50/200, RSI, Oscillator, ADX), relevant news, fundamental data, and analyst ratings.
-- **Covered Call Screener:** A powerful screening engine with extensive filters. The result should show only one entry per stock symbol (the one with the best composite score).
-- **PMCC Support:** Functionality to identify suitable LEAPS and short calls for PMCC strategies, located on a dedicated page.
-- **Portfolio Tracking:** Allow users to upload Interactive Brokers CSV history or enter trades manually to track P/L, ROI, and break-even.
-- **Watchlist:** A feature to monitor specific stocks for opportunities.
-- **Admin Dashboard:** A panel for managing API credentials.
+- **Dashboard:** Display new opportunities, market indices, stock data, and a live news feed.
+- **Clickable Detail View:** A modal with a TradingView chart (SMA 50/200), news, and fundamental data.
+- **Covered Call Screener:** A powerful screening engine with extensive filters.
+- **PMCC Support:** A dedicated page to identify suitable LEAPS and short calls for PMCC strategies, with filters.
+- **Subscription Model:** Integrate Stripe for a 7-day free trial, a monthly plan (9), and a yearly plan (99). The subscription section should be on the landing page.
+- **Comprehensive Admin Panel:** A multi-faceted admin dashboard for:
+    - **Phase 1 (User & Billing Management):** A KPI dashboard, user database, Stripe webhook integration for automated status updates, and Resend integration for email notifications. Admins should be able to manage API keys and subscription settings.
+    - **Future Phases:** An email template engine, a support ticket system, content management, and audit logs.
 - **Data Integration:** Use Massive.com for stock/options data and MarketAux.com for news.
 
 **User's preferred language**: English
 
 **what currently exists?**
-A full-stack FastAPI/React application. The core functionality is largely complete.
-- **Live Data:** The options screener, dashboard, and all related features are fully integrated with live data from the Massive.com and MarketAux.com APIs. The initial critical issue of the screener not showing data has been resolved.
-- **Screener:** The screener page fetches and displays live options data, correctly showing only the single best opportunity per stock symbol based on a composite score. It can be filtered by stock price.
-- **Dashboard:** The dashboard has two main features implemented:
-    1.  **Top 10 Covered Call Opportunities:** Displays a filtered list of the top 10 trades based on complex, user-defined criteria (price range, trends, SMA, ROI, ATM/OTM strikes).
-    2.  **Stock Detail Modal:** Rows in the opportunities table are clickable, opening a modal with tabs for Technicals (SMA, RSI), Fundamentals (company info), and News.
-- **PMCC Page:** A dedicated page explains the PMCC strategy and shows potential diagonal spread opportunities based on the limited data available from the API (true LEAPS are not available).
-- **Caching:** A MongoDB-based caching layer has been implemented for all major API calls, significantly improving performance. An admin endpoint exists to clear the cache.
+A full-stack FastAPI/React application.
+- **Live Data Features:** The Dashboard, Screener, and PMCC pages are all functional and display live data from Massive.com.
+- **Stock Detail Modal:** A fully functional modal with a working TradingView chart (displaying only SMA 50 & 200), along with Fundamentals and News tabs. This modal is accessible from both the Dashboard and Screener pages.
+- **PMCC Page:** A dedicated page with a comprehensive filter panel that correctly fetches and displays true LEAPS (12-24 month) options. Results are clickable, opening the stock detail modal.
+- **Subscription Flow:** The landing page features a pricing section with Stripe payment links for all three subscription tiers.
+- **Admin Panel (Phase 1):** A new, comprehensive admin panel has been built. It includes a KPI dashboard, a user management table with search and filter capabilities, and an integrations tab for configuring Stripe and Resend API keys. The UI allows admins to manually set a user's subscription status.
+- **Backend Services:** The backend has been partially refactored to include placeholder services for Stripe webhooks () and email notifications ().
 
 **Last working item**:
-- **Last item agent was working:** The agent implemented a clickable stock detail modal that shows Technicals, Fundamentals, and News. However, the TradingView candlestick chart inside the modal's Technicals tab is not rendering; it appears as a blank black box.
-- **Status:** IN PROGRESS
-- **Agent Testing Done:** N (The agent observed the issue via a screenshot but did not proceed to debug the root cause.)
-- **Which testing method agent to use?** Frontend testing. The next agent should use browser developer tools to inspect the console for errors (e.g., Content Security Policy, cross-origin, or widget script errors) when the modal is opened. This will help diagnose why the TradingView iframe is failing to load.
+- **Last item agent was working:** The agent addressed the user's question about why the Status column in the new Admin Panel showed unknown. The agent correctly identified that existing users lacked subscription data, updated the UI to show No Sub for clarity, and added backend endpoints and frontend action buttons (, ) for an admin to manually set a user's subscription status.
+- **Status:** USER VERIFICATION PENDING
+- **Agent Testing Done:** Y
+- **Which testing method agent to use?** Manual testing. The user needs to verify that the Status column is clearer and that the new action buttons in the user management table work as expected.
 - **User Testing Done:** N
 
 **All Pending/In progress Issue list**:
--   **Issue 1:** TradingView chart is blank in the stock detail modal (P0)
+- **Issue 1:** The user filter in the Admin Panel's Users tab needs final verification. (P1)
 
 **Issues Detail:**
--   **Issue 1:** TradingView chart is blank in the stock detail modal
-    -   **Attempted fixes:** The agent created the modal component (), integrated it into the dashboard, and added the TradingView widget script. The other tabs (Fundamentals, News) in the modal are working correctly, indicating the issue is specific to the chart widget's initialization or rendering within the modal context.
-    -   **Next debug checklist:**
-        1.  Open the dashboard, click a stock row to open the modal, and inspect the browser's developer console for any errors.
-        2.  Review . Verify the  hook that initializes the TradingView widget is firing correctly after the modal is visible and that the  it targets exists in the DOM.
-        3.  Check for potential timing issues where the widget script tries to render before the modal's container element is available.
-        4.  Simplify the TradingView widget configuration to its most basic form to rule out configuration errors.
-    -   **Why fix this issue and what will be achieved with the fix?** This will complete a core user requirement for a visual technical analysis tool within the application.
-    -   **Status:** IN PROGRESS
+-   **Issue 1:** Admin panel user filter may not correctly show all users after a filter is applied and then cleared.
+    -   **Attempted fixes:** The agent modified the frontend  function in  to handle the All Status selection correctly by not sending a  parameter in the API call.
+    -   **Next debug checklist:** Navigate to Admin > Users tab. Apply a status filter (e.g., Active), then change the filter back to All Status and confirm the full user list is displayed again.
+    -   **Why fix this issue and what will be achieved with the fix?** This ensures the user management functionality is reliable for admins.
+    -   **Status:** USER VERIFICATION PENDING
     -   **Is recurring issue?** N
-    -   **Should Test frontend/backend/both after fix?** Frontend. A screenshot will be sufficient to verify the chart is rendering.
-    -   **Blocked on other issue:** None.
+    -   **Should Test frontend/backend/both after fix?** Frontend
+    -   **Blocked on other issue:** None
 
 **In progress Task List**:
-There are no other tasks in progress. The focus is on fixing the P0 issue.
+- **Task 1:** Complete Phase 1 of the Admin Panel blueprint. (P0)
+
+**Task Detail:**
+-   **Task 1:** Complete Admin Panel Phase 1 - Stripe & Resend Integration
+    -   **Where to resume:** The UI and backend stubs are complete. The next step is to implement the core logic inside the placeholder files:
+        1.  : Write the code to process incoming Stripe events (e.g., , ) and update the user's status in the MongoDB  collection.
+        2.  : Implement functions to send transactional emails (e.g., Welcome, Cancellation) using the Resend API.
+    -   **What will be achieved with this?** A fully automated subscription management system where user statuses and email notifications are triggered by Stripe events without manual admin intervention.
+    -   **Status:** IN PROGRESS
+    -   **Should Test frontend/backend/both after fix?** Both. The backend webhook logic needs to be tested (e.g., with mock events or Stripe's CLI), and the frontend admin panel should reflect the status changes.
+    -   **Blocked on something:** None.
 
 **Upcoming and Future Tasks**
 - **Upcoming Tasks:**
-  - **Task 1 (P1):** Implement Portfolio Tracking: Build the UI and backend logic for users to manually enter trades and eventually upload Interactive Brokers CSV files.
-  - **Task 2 (P2):** Implement Watchlist Functionality: Build the UI and backend for users to add stocks to a watchlist and see relevant data.
+  - **Task 1 (P1):** Implement Admin Panel Phase 2 - Email Automation Engine (build a UI for admins to edit email templates).
+  - **Task 2 (P2):** Implement Portfolio Tracking (for users to manually enter trades).
+  - **Task 3 (P3):** Implement Watchlist Functionality.
 - **Future Tasks:**
-  - **Task 3 (P3):** Integrate OpenAI GPT for AI-assisted trade sourcing, ranking, and risk analysis.
-  - **Task 4 (P4):** Enhance Admin Dashboard with feature flags.
+  - Admin Panel - Support Ticket System.
+  - Admin Panel - Content & Announcement Manager.
+  - Admin Panel - Roles & Permissions and Audit Logs.
+  - Integrate OpenAI GPT for AI-assisted trade analysis.
 
 **Completed work in this session**
-- **Screener Live Data Fix:** Resolved the critical bug where the options screener showed no live data.
-- **Screener Logic Refinement:** Updated the screener to fetch data for a wider range of stocks and to display only the single best-scored opportunity per symbol.
-- **API Caching Implementation:** Built a robust backend caching system using MongoDB to reduce API calls and improve frontend responsiveness. Added an admin endpoint to clear the cache.
-- **Dashboard Top 10 Opportunities:** Implemented a new, complex backend endpoint and frontend display for the dashboard, showing top covered call trades based on strict, user-defined criteria (price, trends, ROI, SMA).
-- **Dashboard Criteria Relaxation:** Adjusted the filtering logic to be less strict to ensure a top 10 list is always populated.
-- **Dashboard Strike Price Logic:** Refined the dashboard screener to only include ATM (At-The-Money) or slightly OTM (Out-of-The-Money) strikes, aligning with a bullish covered call strategy.
-- **PMCC Page Implementation:** Created a dedicated PMCC page explaining the strategy and showing PMCC-style diagonal spreads, while also clarifying the API's data limitations regarding true LEAPS.
-- **Stock Detail Modal:** Created a clickable pop-up modal on the dashboard that displays detailed stock information across Technicals, Fundamentals, and News tabs.
+- **TradingView Chart Fixed:** Resolved the blank chart issue in the  and configured it to display only SMA 50 and SMA 200 with distinct colors.
+- **Screener Page Enhanced:** Integrated the  into the Screener results.
+- **PMCC Page Overhauled:** Implemented true LEAPS data fetching and added a comprehensive filter panel and clickable results.
+- **Subscription Flow Created:** Built the  page, integrated it into the landing page, and created an admin section to manage Stripe links.
+- **Admin Panel V2 (Phase 1) Built:** Created a new, comprehensive admin panel with a KPI dashboard, a user management table (with filters and actions), and an integrations configuration tab.
+- **Admin User Status Issue Resolved:** Addressed the unknown status bug by improving UI text and adding manual admin actions to update user subscription status.
 
 **Earlier issues found/mentioned but not fixed**
 None.
 
 **Known issue recurrence from previous fork**
-- The  may give false positive errors about missing  files. This can be ignored.
+None.
 
 **Code Architecture**
 
@@ -80,68 +87,78 @@ None.
 **Key Technical Concepts**
 - **Backend:** FastAPI, MongoDB (Motor), JWT Authentication.
 - **Frontend:** React, Tailwind CSS, Shadcn UI, Axios.
-- **API Integration:** REST APIs for Massive.com (market data) and MarketAux.com (news).
-- **Charting:** TradingView Lightweight Charts widget.
+- **API Integration:** Massive.com (market data), MarketAux.com (news), Stripe (payment links), Resend (email, pending implementation).
+- **Charting:** Custom TradingView widget component using a direct  embed.
 
 **key DB schema**
-- **users:** {email, hashed_password, is_admin}
-- **settings:** {api_keys...}
-- **api_cache:** {key, value, timestamp} (New collection for caching API responses)
+-   **users:**  (Schema expanded for admin panel).
+-   **admin_settings:**  (New collection for managing Stripe/Resend keys and links).
+-   **api_cache:** 
 
 **changes in tech stack**
-None.
+-   **Added:**  and  Python libraries.
+-   **Removed:** .
 
 **All files of reference**
-- : **(New)** Contains the logic for the popup modal, including the broken TradingView chart.
-- : **(Heavily Modified)** Contains all new backend endpoints for the dashboard, caching, and stock details.
-- : **(Heavily Modified)** Updated to fetch and display Top 10 opportunities and handle the click-to-open modal.
-- : **(New/Updated)** The dedicated page for the PMCC strategy.
+-   : **(New/Heavily Modified)** The new V2 admin panel.
+-   : **(Heavily Modified)** Added numerous routes for the new admin panel, subscription management, and the Stripe webhook.
+-   : **(Heavily Modified)** Implemented filters and the clickable modal.
+-   : **(Modified)** Updated to use a custom TradingView chart component.
+-   : **(New)** Placeholder service for Resend.
+-   : **(New)** Placeholder service for Stripe webhooks.
 
 **Areas that need refactoring**:
-- The  file has become extremely large and complex. It urgently needs to be refactored by splitting logic into multiple files using FastAPI's  for routes and creating separate  or  modules for business logic. The dashboard and screener endpoints, in particular, are very long and should be separated.
+-  remains large and would benefit from moving more route logic into separate  files.
+-  has grown complex and could be refactored into smaller, more manageable components for each of its tabs (Dashboard, Users, Integrations).
 
 **key api endpoints**
-- : The main options screener endpoint.
-- : **(New)** Fetches top 10 CC opportunities for the dashboard.
-- : **(New)** Fetches top 10 PMCC opportunities.
-- : **(New)** Fetches aggregated details for the stock modal.
-- : **(New)** Clears the MongoDB API cache.
+-   : **(New)** Endpoint to receive Stripe events (logic pending).
+-   : **(New)** Fetches KPIs for the admin dashboard.
+-   : **(New)** Fetches a paginated and filterable list of users.
+-   : **(New)** Manually sets a user's subscription status.
+-   : **(New)** Manages Stripe/Resend API keys.
+-   : **(Updated)** Now accepts a range of filter parameters.
 
 **Critical Info for New Agent**
-- **The #1 priority is fixing the blank TradingView chart in the stock detail modal.**
-- The API data from Massive.com does not provide long-dated options (LEAPS), which limits the PMCC screener. This has been communicated to the user on the PMCC page.
-- The backend  file is a monolith. While refactoring is needed, prioritize fixing the chart first.
+- Your **highest priority (P0)** is to implement the backend logic for the Stripe webhook and Resend email services to complete Phase 1 of the admin panel. The placeholder files are  and .
+- The user has provided a very detailed, multi-phase blueprint for the admin panel. Refer to this for all upcoming work on that feature.
+- The user will provide the necessary Stripe and Resend API keys via the new integrations tab in the admin panel.
 
 **documents and test reports created in this job**
-None new.
+None.
 
 **Last 10 User Messages and any pending HUMAN messages**
-10.  - *Completed. Agent relaxed criteria and added more data to the dashboard.*
-9.  - *Completed. Agent updated dashboard logic to filter for ATM/OTM strikes.*
-8.  - *Completed. Agent implemented a PMCC screener on the dashboard.*
-7.  - *Completed. Agent removed PMCC from the dashboard and enhanced the dedicated PMCC page.*
-6.  - *In Progress. This led to the creation of the stock detail modal. The chart is the only broken piece.*
-5. (No new message)
+-    - Addressed by explaining the cause and implementing UI improvements and manual admin actions. **Status: User Verification Pending.**
+-    - Addressed by fixing the frontend filter logic. **Status: User Verification Pending.**
+-    - Informational.
+-    - Acknowledged. Confirmed tech stack for admin panel.
+-    - In Progress. This defined the large admin panel feature, with Phase 1 UI now complete.
+-    - Completed.
+-    - Completed.
+-    - Completed.
+-    - Completed.
+-    - Completed.
 
 **Project Health Check:**
-- **Broken:** The TradingView chart in the stock detail modal is not rendering.
-- **Mocked:** None. All data is live.
+-   **Broken:** None.
+-   **Mocked:** The core logic for Stripe webhook processing and Resend email sending is currently placeholder code and needs to be implemented.
 
 **3rd Party Integrations**
-- **Massive.com (Market Data):** Requires User API Key.
-- **MarketAux.com (News & Sentiment):** Requires User API Key.
-- **OpenAI GPT-5.2 (AI Analysis):** Uses Emergent LLM Key (Not yet implemented).
-- **TradingView (Charting):** Lightweight Charts widget integrated via script.
+-   **Massive.com (Market Data):** Integrated. Requires User API Key.
+-   **MarketAux.com (News & Sentiment):** Integrated. Requires User API Key.
+-   **TradingView (Charting):** Integrated via a custom  component.
+-   **Stripe (Payments):** Integrated via payment links. Webhook integration is pending implementation. Requires User API Key.
+-   **Resend (Email):** Pending implementation. Requires User API Key.
 
 **Testing status**
-- **Testing agent used after significant changes:** YES, used to verify the initial screener fix.
-- **Troubleshoot agent used after agent stuck in loop:** NO.
-- **Test files created:** None.
-- **Known regressions:** None.
+-   **Testing agent used after significant changes:** YES
+-   **Troubleshoot agent used after agent stuck in loop:** NO
+-   **Test files created:** None
+-   **Known regressions:** None
 
 **Credentials to test flow:**
-- **Username:** 
-- **Password:** 
+-   **Username:** 
+-   **Password:** 
 
 **What agent forgot to execute**
-- The agent did not investigate the console logs or try any debugging steps after observing that the TradingView chart was blank. It identified the problem but did not attempt a solution.</analysis>
+- The agent successfully built the UI and backend stubs for the Phase 1 admin panel but did not implement the actual business logic for the Stripe webhook processing or the Resend email service. This is the main task to be completed next.</analysis>
