@@ -32,6 +32,8 @@ db = client[os.environ['DB_NAME']]
 
 # Cache configuration - default cache duration in seconds (5 minutes for real-time data)
 CACHE_DURATION_SECONDS = 300
+# Weekend cache duration - 72 hours (Friday close to Monday open)
+WEEKEND_CACHE_DURATION_SECONDS = 259200  # 72 hours
 
 # Security
 security = HTTPBearer()
