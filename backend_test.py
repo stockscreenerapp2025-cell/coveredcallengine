@@ -842,6 +842,9 @@ class PremiumHunterAPITester:
         # Stripe webhook integration test (specific focus for current review)
         self.test_stripe_webhook_integration()
         
+        # Stripe subscription configuration test (specific focus for current review)
+        self.test_stripe_subscription_configuration()
+        
         # IBKR Portfolio Import test (specific focus for current review)
         self.test_ibkr_portfolio_import()
         
