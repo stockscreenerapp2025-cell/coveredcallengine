@@ -1318,9 +1318,6 @@ async def screen_covered_calls(
                                     "volume": volume,
                                     "open_interest": open_interest,
                                     "score": score
-                                })
-                        else:
-                            logging.warning(f"Options API returned {response.status_code} for {symbol}")
                     except Exception as e:
                         logging.error(f"Error scanning {symbol}: {e}")
                         continue
@@ -1346,7 +1343,7 @@ async def screen_covered_calls(
             return result
             
         except Exception as e:
-            logging.error(f"Screener error with Massive.com: {e}")
+            logging.error(f"Screener error with Polygon.io: {e}")
     
     # Fallback to mock data
     opportunities = generate_mock_covered_call_opportunities()
@@ -1360,7 +1357,6 @@ async def screen_covered_calls(
         and o["iv_rank"] >= min_iv_rank
         and min_price <= o["stock_price"] <= max_price
         and o["volume"] >= min_volume
-        and o["open_interest"] >= min_open_interest
     ]
     
     # Filter by expiration type
