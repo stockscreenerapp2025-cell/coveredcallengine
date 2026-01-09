@@ -2796,6 +2796,16 @@ async def get_market_news(
     limit: int = Query(10, ge=1, le=50),
     user: dict = Depends(get_current_user)
 ):
+    # Generate cache key for news
+    cache_key = f"market_news_{symbol or 'general'}_{limit}"
+    
+    # Check cache first (news is cached longer on weekends)
+    cached_news = await get_cached_data(cache_key)
+    if cached_news:
+        for item in cached_news:
+            item["from_cache"] = True
+        return cached_news
+    
     # Try MarketAux API for news and sentiment
     marketaux_token = await get_marketaux_client()
     if marketaux_token:
@@ -2816,7 +2826,7 @@ async def get_market_news(
                 if response.status_code == 200:
                     data = response.json()
                     if data.get("data"):
-                        return [{
+                        news_items = [{
                             "title": n.get("title"),
                             "description": n.get("description"),
                             "source": n.get("source"),
@@ -2827,8 +2837,20 @@ async def get_market_news(
                             "tickers": [e.get("symbol") for e in n.get("entities", []) if e.get("symbol")],
                             "is_live": True
                         } for n in data["data"]]
+                        
+                        # Cache news for weekend access
+                        await set_cached_data(cache_key, news_items)
+                        return news_items
         except Exception as e:
             logging.error(f"MarketAux API error: {e}")
+    
+    # If market is closed and no fresh news, try last trading day data
+    if is_market_closed():
+        ltd_news = await get_last_trading_day_data(cache_key)
+        if ltd_news:
+            for item in ltd_news:
+                item["from_cache"] = True
+            return ltd_news
     
     # Return mock news
     return MOCK_NEWS[:limit]
