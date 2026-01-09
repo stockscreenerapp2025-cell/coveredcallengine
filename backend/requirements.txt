@@ -84,3 +84,4 @@ urllib3==2.6.2
 uvicorn==0.25.0
 watchfiles==1.1.1
 yarl==1.22.0
+pytz
