@@ -792,6 +792,397 @@ const Admin = () => {
           </Card>
         </TabsContent>
 
+        {/* Email Automation Tab */}
+        <TabsContent value="email-automation" className="space-y-6 mt-6">
+          {/* Email Stats Overview */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <Card className="glass-card">
+              <CardContent className="p-4">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 rounded-lg bg-emerald-500/20">
+                    <CheckCircle className="w-5 h-5 text-emerald-400" />
+                  </div>
+                  <div>
+                    <div className="text-2xl font-bold text-white">{emailStats?.total_sent || 0}</div>
+                    <div className="text-xs text-zinc-500">Emails Sent</div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+            <Card className="glass-card">
+              <CardContent className="p-4">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 rounded-lg bg-red-500/20">
+                    <XCircle className="w-5 h-5 text-red-400" />
+                  </div>
+                  <div>
+                    <div className="text-2xl font-bold text-white">{emailStats?.total_failed || 0}</div>
+                    <div className="text-xs text-zinc-500">Failed</div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+            <Card className="glass-card">
+              <CardContent className="p-4">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 rounded-lg bg-blue-500/20">
+                    <Mail className="w-5 h-5 text-blue-400" />
+                  </div>
+                  <div>
+                    <div className="text-2xl font-bold text-white">{emailStats?.recent_sent_7d || 0}</div>
+                    <div className="text-xs text-zinc-500">Sent (7 days)</div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+            <Card className="glass-card">
+              <CardContent className="p-4">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 rounded-lg bg-violet-500/20">
+                    <Activity className="w-5 h-5 text-violet-400" />
+                  </div>
+                  <div>
+                    <div className="text-2xl font-bold text-white">{emailTemplates.length}</div>
+                    <div className="text-xs text-zinc-500">Templates</div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+          
+          {/* Sub-tabs for Email Automation */}
+          <Tabs value={emailSubTab} onValueChange={setEmailSubTab} className="w-full">
+            <TabsList className="bg-zinc-800/50 p-1">
+              <TabsTrigger value="templates" className="flex items-center gap-2">
+                <Mail className="w-4 h-4" />
+                Templates
+              </TabsTrigger>
+              <TabsTrigger value="rules" className="flex items-center gap-2">
+                <Settings className="w-4 h-4" />
+                Automation Rules
+              </TabsTrigger>
+              <TabsTrigger value="broadcast" className="flex items-center gap-2">
+                <Newspaper className="w-4 h-4" />
+                Broadcast
+              </TabsTrigger>
+              <TabsTrigger value="logs" className="flex items-center gap-2">
+                <Activity className="w-4 h-4" />
+                Logs & Analytics
+              </TabsTrigger>
+            </TabsList>
+            
+            {/* Email Templates */}
+            <TabsContent value="templates" className="mt-4">
+              <Card className="glass-card">
+                <CardHeader>
+                  <CardTitle className="text-lg flex items-center gap-2">
+                    <Mail className="w-5 h-5 text-emerald-400" />
+                    Email Templates
+                  </CardTitle>
+                  <CardDescription>Manage automated email templates for user lifecycle</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  {emailLoading ? (
+                    <div className="space-y-3">
+                      {[...Array(6)].map((_, i) => <Skeleton key={i} className="h-16 rounded-lg" />)}
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      {emailTemplates.map((template) => (
+                        <div key={template.id || template.key} className="p-4 rounded-lg bg-zinc-800/50 border border-zinc-700 hover:border-zinc-600 transition-colors">
+                          <div className="flex items-center justify-between">
+                            <div className="flex-1">
+                              <div className="flex items-center gap-3">
+                                <h4 className="font-medium text-white">{template.name}</h4>
+                                <Badge className={template.enabled ? 'bg-emerald-500/20 text-emerald-400' : 'bg-zinc-500/20 text-zinc-400'}>
+                                  {template.enabled ? 'Active' : 'Disabled'}
+                                </Badge>
+                                <Badge className="bg-violet-500/20 text-violet-400">{template.purpose}</Badge>
+                                <Badge className="bg-cyan-500/20 text-cyan-400">{template.trigger}</Badge>
+                              </div>
+                              <p className="text-sm text-zinc-500 mt-1">Subject: {template.subject}</p>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <Switch
+                                checked={template.enabled}
+                                onCheckedChange={(enabled) => handleUpdateTemplate(template.key || template.id, { enabled })}
+                              />
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => setSelectedTemplate(template)}
+                                className="text-zinc-400 hover:text-white"
+                              >
+                                <Eye className="w-4 h-4" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => setEditingTemplate(template)}
+                                className="text-zinc-400 hover:text-white"
+                              >
+                                <Settings className="w-4 h-4" />
+                              </Button>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </TabsContent>
+            
+            {/* Automation Rules */}
+            <TabsContent value="rules" className="mt-4">
+              <Card className="glass-card">
+                <CardHeader>
+                  <CardTitle className="text-lg flex items-center gap-2">
+                    <Settings className="w-5 h-5 text-violet-400" />
+                    Automation Rules
+                  </CardTitle>
+                  <CardDescription>Configure when and how emails are sent automatically</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-3">
+                    {automationRules.map((rule) => (
+                      <div key={rule.id} className="p-4 rounded-lg bg-zinc-800/50 border border-zinc-700">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <div className="flex items-center gap-3">
+                              <h4 className="font-medium text-white">{rule.name}</h4>
+                              <Badge className={rule.enabled ? 'bg-emerald-500/20 text-emerald-400' : 'bg-zinc-500/20 text-zinc-400'}>
+                                {rule.enabled ? 'Active' : 'Disabled'}
+                              </Badge>
+                            </div>
+                            <div className="flex items-center gap-4 mt-2 text-sm text-zinc-400">
+                              <span className="flex items-center gap-1">
+                                <Zap className="w-3 h-3" />
+                                {triggerTypes.find(t => t.value === rule.trigger_type)?.label || rule.trigger_type}
+                              </span>
+                              <span className="flex items-center gap-1">
+                                <Clock className="w-3 h-3" />
+                                {rule.delay_minutes === 0 ? 'Immediate' : `${Math.floor(rule.delay_minutes / 60)}h ${rule.delay_minutes % 60}m delay`}
+                              </span>
+                              <span className="flex items-center gap-1">
+                                <Mail className="w-3 h-3" />
+                                {rule.template_key}
+                              </span>
+                            </div>
+                          </div>
+                          <Switch
+                            checked={rule.enabled}
+                            onCheckedChange={(enabled) => handleToggleRule(rule.id, enabled)}
+                          />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            </TabsContent>
+            
+            {/* Broadcast / Announcements */}
+            <TabsContent value="broadcast" className="mt-4">
+              <Card className="glass-card">
+                <CardHeader>
+                  <CardTitle className="text-lg flex items-center gap-2">
+                    <Newspaper className="w-5 h-5 text-cyan-400" />
+                    Send Broadcast
+                  </CardTitle>
+                  <CardDescription>Send announcements or updates to all users</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div>
+                    <Label className="text-zinc-400">Template</Label>
+                    <Select
+                      value={broadcastData.template_key}
+                      onValueChange={(value) => setBroadcastData({ ...broadcastData, template_key: value })}
+                    >
+                      <SelectTrigger className="input-dark mt-2">
+                        <SelectValue placeholder="Select template" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="announcement">Announcement</SelectItem>
+                        <SelectItem value="system_update">System Update</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <Label className="text-zinc-400">Title</Label>
+                    <Input
+                      value={broadcastData.announcement_title}
+                      onChange={(e) => setBroadcastData({ ...broadcastData, announcement_title: e.target.value })}
+                      className="input-dark mt-2"
+                      placeholder="Enter announcement title..."
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-zinc-400">Content</Label>
+                    <textarea
+                      value={broadcastData.announcement_content}
+                      onChange={(e) => setBroadcastData({ ...broadcastData, announcement_content: e.target.value })}
+                      className="w-full h-40 mt-2 px-3 py-2 rounded-lg bg-zinc-800/50 border border-zinc-700 text-white resize-none focus:outline-none focus:border-emerald-500"
+                      placeholder="Enter announcement content..."
+                    />
+                  </div>
+                  <Button
+                    onClick={handleSendBroadcast}
+                    disabled={sendingBroadcast}
+                    className="w-full bg-emerald-600 hover:bg-emerald-700"
+                  >
+                    {sendingBroadcast ? (
+                      <>
+                        <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                        Sending...
+                      </>
+                    ) : (
+                      <>
+                        <Mail className="w-4 h-4 mr-2" />
+                        Send Broadcast to All Users
+                      </>
+                    )}
+                  </Button>
+                </CardContent>
+              </Card>
+            </TabsContent>
+            
+            {/* Logs & Analytics */}
+            <TabsContent value="logs" className="mt-4">
+              <Card className="glass-card">
+                <CardHeader>
+                  <CardTitle className="text-lg flex items-center gap-2">
+                    <Activity className="w-5 h-5 text-blue-400" />
+                    Email Logs
+                  </CardTitle>
+                  <CardDescription>View sent emails and their status</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  {emailLogs.length === 0 ? (
+                    <div className="text-center py-8 text-zinc-500">
+                      <Mail className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                      <p>No emails sent yet</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      {emailLogs.slice(0, 20).map((log) => (
+                        <div key={log.id} className="flex items-center justify-between p-3 rounded-lg bg-zinc-800/30 text-sm">
+                          <div className="flex items-center gap-3">
+                            {log.status === 'sent' ? (
+                              <CheckCircle className="w-4 h-4 text-emerald-400" />
+                            ) : (
+                              <XCircle className="w-4 h-4 text-red-400" />
+                            )}
+                            <div>
+                              <span className="text-white">{log.recipient}</span>
+                              <span className="text-zinc-500 ml-2">• {log.template_key}</span>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-3 text-zinc-500">
+                            <span>{log.subject?.substring(0, 30)}...</span>
+                            <span>{new Date(log.created_at).toLocaleString()}</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </TabsContent>
+          </Tabs>
+          
+          {/* Template Preview Modal */}
+          {selectedTemplate && (
+            <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
+              <div className="bg-zinc-900 rounded-xl max-w-2xl w-full max-h-[80vh] overflow-hidden">
+                <div className="p-4 border-b border-zinc-800 flex items-center justify-between">
+                  <h3 className="font-semibold text-white">Preview: {selectedTemplate.name}</h3>
+                  <Button variant="ghost" size="sm" onClick={() => setSelectedTemplate(null)}>
+                    <XCircle className="w-5 h-5" />
+                  </Button>
+                </div>
+                <div className="p-4 overflow-auto max-h-[60vh]">
+                  <div className="mb-4 p-3 bg-zinc-800 rounded-lg">
+                    <div className="text-xs text-zinc-500">Subject:</div>
+                    <div className="text-white">{selectedTemplate.subject}</div>
+                  </div>
+                  <div dangerouslySetInnerHTML={{ __html: selectedTemplate.html }} />
+                </div>
+                <div className="p-4 border-t border-zinc-800 flex justify-end gap-2">
+                  <Input
+                    placeholder="test@email.com"
+                    className="input-dark w-48"
+                    id="test-email-input"
+                  />
+                  <Button
+                    onClick={() => {
+                      const email = document.getElementById('test-email-input').value;
+                      if (email) handleTestEmail(selectedTemplate.key, email);
+                    }}
+                    className="bg-emerald-600 hover:bg-emerald-700"
+                  >
+                    Send Test
+                  </Button>
+                </div>
+              </div>
+            </div>
+          )}
+          
+          {/* Template Edit Modal */}
+          {editingTemplate && (
+            <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
+              <div className="bg-zinc-900 rounded-xl max-w-2xl w-full max-h-[80vh] overflow-hidden">
+                <div className="p-4 border-b border-zinc-800 flex items-center justify-between">
+                  <h3 className="font-semibold text-white">Edit: {editingTemplate.name}</h3>
+                  <Button variant="ghost" size="sm" onClick={() => setEditingTemplate(null)}>
+                    <XCircle className="w-5 h-5" />
+                  </Button>
+                </div>
+                <div className="p-4 space-y-4 overflow-auto max-h-[60vh]">
+                  <div>
+                    <Label className="text-zinc-400">Template Name</Label>
+                    <Input
+                      value={editingTemplate.name}
+                      onChange={(e) => setEditingTemplate({ ...editingTemplate, name: e.target.value })}
+                      className="input-dark mt-2"
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-zinc-400">Subject Line</Label>
+                    <Input
+                      value={editingTemplate.subject}
+                      onChange={(e) => setEditingTemplate({ ...editingTemplate, subject: e.target.value })}
+                      className="input-dark mt-2"
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-zinc-400">HTML Content</Label>
+                    <textarea
+                      value={editingTemplate.html}
+                      onChange={(e) => setEditingTemplate({ ...editingTemplate, html: e.target.value })}
+                      className="w-full h-60 mt-2 px-3 py-2 rounded-lg bg-zinc-800/50 border border-zinc-700 text-white font-mono text-sm resize-none focus:outline-none focus:border-emerald-500"
+                    />
+                  </div>
+                </div>
+                <div className="p-4 border-t border-zinc-800 flex justify-end gap-2">
+                  <Button variant="outline" onClick={() => setEditingTemplate(null)}>Cancel</Button>
+                  <Button
+                    onClick={() => handleUpdateTemplate(editingTemplate.key || editingTemplate.id, {
+                      name: editingTemplate.name,
+                      subject: editingTemplate.subject,
+                      html: editingTemplate.html
+                    })}
+                    className="bg-emerald-600 hover:bg-emerald-700"
+                  >
+                    <Save className="w-4 h-4 mr-2" />
+                    Save Changes
+                  </Button>
+                </div>
+              </div>
+            </div>
+          )}
+        </TabsContent>
+
         {/* Subscriptions Tab */}
         <TabsContent value="subscriptions" className="space-y-6 mt-6">
           <Card className="glass-card">
