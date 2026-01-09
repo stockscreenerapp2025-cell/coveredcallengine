@@ -943,7 +943,6 @@ const Screener = () => {
                       <SortHeader field="symbol" label="Symbol" />
                       <SortHeader field="stock_price" label="Price" />
                       <SortHeader field="strike" label="Strike" />
-                      <th>Expiry</th>
                       <SortHeader field="dte" label="DTE" />
                       <SortHeader field="premium" label="Premium" />
                       <SortHeader field="roi_pct" label="ROI %" />
@@ -953,7 +952,7 @@ const Screener = () => {
                       <SortHeader field="iv_rank" label="IV Rank" />
                       <SortHeader field="volume" label="Vol" />
                       <SortHeader field="open_interest" label="OI" />
-                      <SortHeader field="score" label="Score" />
+                      <SortHeader field="score" label="AI Score" />
                     </tr>
                   </thead>
                   <tbody>
@@ -970,8 +969,9 @@ const Screener = () => {
                       >
                         <td className="font-semibold text-white">{opp.symbol}</td>
                         <td>${opp.stock_price?.toFixed(2)}</td>
-                        <td>${opp.strike?.toFixed(2)}</td>
-                        <td className="text-xs">{opp.expiry}</td>
+                        <td>
+                          <span className="font-mono text-sm">{formatOptionContract(opp.expiry, opp.strike, opp.option_type || 'call')}</span>
+                        </td>
                         <td>{opp.dte}d</td>
                         <td className="text-emerald-400">${opp.premium?.toFixed(2)}</td>
                         <td className="text-cyan-400 font-medium">{opp.roi_pct?.toFixed(2)}%</td>
