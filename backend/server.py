@@ -1999,110 +1999,74 @@ async def screen_pmcc(
                     if current_price < min_price or current_price > max_price:
                         continue
                     
-                    # Fetch LEAPS options
-                    leaps_response = await client.get(
-                        f"https://api.polygon.io/v3/snapshot/options/{symbol}",
-                        params={
-                            "apiKey": api_key,
-                            "limit": 250,
-                            "contract_type": "call",
-                            "expiration_date.gte": leaps_start,
-                            "expiration_date.lte": leaps_end
-                        }
-                    )
+                    # Fetch LEAPS options using the working endpoint
+                    leaps_options_raw = await fetch_options_chain_polygon(symbol, api_key, "call", max_dte=max_leaps_dte, min_dte=min_leaps_dte)
                     
-                    # Fetch short-term options
-                    short_response = await client.get(
-                        f"https://api.polygon.io/v3/snapshot/options/{symbol}",
-                        params={
-                            "apiKey": api_key,
-                            "limit": 250,
-                            "contract_type": "call",
-                            "expiration_date.gte": short_start,
-                            "expiration_date.lte": short_end
-                        }
-                    )
+                    # Fetch short-term options using the working endpoint
+                    short_options_raw = await fetch_options_chain_polygon(symbol, api_key, "call", max_dte=max_short_dte, min_dte=min_short_dte)
                     
                     leaps_options = []
                     short_options = []
                     
                     # Process LEAPS options
-                    if leaps_response.status_code == 200:
-                        leaps_data = leaps_response.json()
-                        for opt in leaps_data.get("results", []):
-                            details = opt.get("details", {})
-                            greeks = opt.get("greeks", {})
-                            day = opt.get("day", {})
-                            last_quote = opt.get("last_quote", {})
-                            
-                            if details.get("contract_type") != "call":
-                                continue
-                            
-                            strike = details.get("strike_price", 0)
-                            delta = abs(greeks.get("delta", 0)) if greeks else 0
-                            expiry = details.get("expiration_date", "")
-                            dte = calculate_dte(expiry)
-                            
-                            # Apply LEAPS delta filter - must be ITM
-                            if strike >= current_price or delta < min_leaps_delta or delta > max_leaps_delta:
-                                continue
-                            
-                            bid = last_quote.get("bid", 0) if last_quote else 0
-                            ask = last_quote.get("ask", 0) if last_quote else 0
-                            price = ((bid + ask) / 2) if bid > 0 and ask > 0 else (day.get("close", 0) if day else 0)
-                            
-                            if price <= 0:
-                                continue
-                            
-                            iv = opt.get("implied_volatility", 0.25) or 0.25
-                            
-                            leaps_options.append({
-                                "strike": strike,
-                                "expiry": expiry,
-                                "dte": dte,
-                                "delta": round(delta, 3),
-                                "cost": round(price * 100, 2),
-                                "iv": round(iv * 100, 1)
-                            })
+                    for opt in leaps_options_raw:
+                        strike = opt.get("strike", 0)
+                        dte = opt.get("dte", 0)
+                        price = opt.get("close", 0) or opt.get("vwap", 0)
+                        
+                        if price <= 0:
+                            continue
+                        
+                        # LEAPS must be ITM (strike below current price)
+                        if strike >= current_price:
+                            continue
+                        
+                        # Estimate delta - ITM options have high delta
+                        itm_pct = ((current_price - strike) / current_price) * 100
+                        estimated_delta = min(0.95, 0.60 + (itm_pct * 0.02))
+                        
+                        # Apply LEAPS delta filter
+                        if estimated_delta < min_leaps_delta or estimated_delta > max_leaps_delta:
+                            continue
+                        
+                        leaps_options.append({
+                            "strike": strike,
+                            "expiry": opt.get("expiry", ""),
+                            "dte": dte,
+                            "delta": round(estimated_delta, 3),
+                            "cost": round(price * 100, 2),
+                            "iv": 25.0
+                        })
                     
                     # Process short-term options
-                    if short_response.status_code == 200:
-                        short_data = short_response.json()
-                        for opt in short_data.get("results", []):
-                            details = opt.get("details", {})
-                            greeks = opt.get("greeks", {})
-                            day = opt.get("day", {})
-                            last_quote = opt.get("last_quote", {})
-                            
-                            if details.get("contract_type") != "call":
-                                continue
-                            
-                            strike = details.get("strike_price", 0)
-                            delta = abs(greeks.get("delta", 0)) if greeks else 0
-                            expiry = details.get("expiration_date", "")
-                            dte = calculate_dte(expiry)
-                            
-                            # Apply short delta filter - must be OTM
-                            if strike <= current_price or delta < min_short_delta or delta > max_short_delta:
-                                continue
-                            
-                            bid = last_quote.get("bid", 0) if last_quote else 0
-                            ask = last_quote.get("ask", 0) if last_quote else 0
-                            price = ((bid + ask) / 2) if bid > 0 and ask > 0 else (day.get("close", 0) if day else 0)
-                            
-                            if price <= 0:
-                                continue
-                            
-                            iv = opt.get("implied_volatility", 0.25) or 0.25
-                            
-                            short_options.append({
-                                "strike": strike,
-                                "expiry": expiry,
-                                "dte": dte,
-                                "delta": round(delta, 3),
-                                "premium": round(price * 100, 2),
-                                "iv": round(iv * 100, 1)
-                            })
+                    for opt in short_options_raw:
+                        strike = opt.get("strike", 0)
+                        dte = opt.get("dte", 0)
+                        price = opt.get("close", 0) or opt.get("vwap", 0)
+                        
+                        if price <= 0:
+                            continue
+                        
+                        # Short leg must be OTM (strike above current price)
+                        if strike <= current_price:
+                            continue
+                        
+                        # Estimate delta - OTM options have lower delta
+                        otm_pct = ((strike - current_price) / current_price) * 100
+                        estimated_delta = max(0.10, 0.50 - (otm_pct * 0.04))
+                        
+                        # Apply short delta filter
+                        if estimated_delta < min_short_delta or estimated_delta > max_short_delta:
+                            continue
+                        
+                        short_options.append({
+                            "strike": strike,
+                            "expiry": opt.get("expiry", ""),
+                            "dte": dte,
+                            "delta": round(estimated_delta, 3),
+                            "premium": round(price * 100, 2),
+                            "iv": 25.0
+                        })
                     
                     # Build PMCC opportunities if both legs available
                     if leaps_options and short_options:
