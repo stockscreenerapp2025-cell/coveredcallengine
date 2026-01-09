@@ -250,10 +250,31 @@ const PMCC = () => {
         {filtersOpen && (
           <Card className="glass-card lg:col-span-1 h-fit" data-testid="pmcc-filters-panel">
             <CardHeader className="pb-2">
-              <CardTitle className="text-lg flex items-center gap-2">
-                <Filter className="w-5 h-5 text-violet-400" />
-                PMCC Filters
-              </CardTitle>
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <Filter className="w-5 h-5 text-violet-400" />
+                  PMCC Filters
+                </CardTitle>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={resetFilters}
+                    className="btn-outline h-8 px-3"
+                  >
+                    Reset
+                  </Button>
+                  <Button
+                    size="sm"
+                    onClick={fetchOpportunities}
+                    className="bg-violet-600 hover:bg-violet-700 text-white h-8 px-3"
+                    data-testid="scan-pmcc-btn"
+                  >
+                    <Search className="w-3 h-3 mr-1" />
+                    Scan
+                  </Button>
+                </div>
+              </div>
             </CardHeader>
             <CardContent className="space-y-2">
               <Accordion type="multiple" defaultValue={["stock", "leaps", "short", "roi"]} className="w-full">
