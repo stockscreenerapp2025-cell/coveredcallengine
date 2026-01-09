@@ -91,7 +91,7 @@ class ChatbotService:
             response = await chat.send_message(user_message)
             
             # Log the conversation if db is available
-            if self.db:
+            if self.db is not None:
                 await self._log_conversation(session_id, message, response)
             
             return {
