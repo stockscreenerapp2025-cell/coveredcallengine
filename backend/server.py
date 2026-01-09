@@ -317,7 +317,14 @@ async def get_admin_user(user: dict = Depends(get_current_user)):
 # ==================== DATA SERVICES ====================
 
 async def get_admin_settings() -> AdminSettings:
-    settings = await db.admin_settings.find_one({}, {"_id": 0})
+    # First try to find document with API keys
+    settings = await db.admin_settings.find_one({"massive_api_key": {"$exists": True}}, {"_id": 0})
+    if not settings:
+        # Fallback to type-based query
+        settings = await db.admin_settings.find_one({"type": "api_keys"}, {"_id": 0})
+    if not settings:
+        # Legacy fallback - first document without type
+        settings = await db.admin_settings.find_one({"type": {"$exists": False}}, {"_id": 0})
     if settings:
         return AdminSettings(**settings)
     return AdminSettings()
