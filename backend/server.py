@@ -1575,17 +1575,8 @@ async def get_dashboard_opportunities(
                     except Exception:
                         pass
                     
-                    # Get options chain
-                    options_response = await client.get(
-                        f"https://api.polygon.io/v3/snapshot/options/{symbol}",
-                        params={"apiKey": api_key, "limit": 250, "contract_type": "call"}
-                    )
-                    
-                    if options_response.status_code != 200:
-                        continue
-                    
-                    options_data = options_response.json()
-                    options_results = options_data.get("results", [])
+                    # Get options chain using the available Polygon.io endpoints
+                    options_results = await fetch_options_chain_polygon(symbol, api_key, "call", 45)
                     
                     if not options_results:
                         continue
@@ -1595,46 +1586,36 @@ async def get_dashboard_opportunities(
                     best_monthly = None
                     
                     for opt in options_results:
-                        details = opt.get("details", {})
-                        day = opt.get("day", {})
-                        greeks = opt.get("greeks", {})
-                        last_quote = opt.get("last_quote", {})
-                        
-                        if details.get("contract_type") != "call":
-                            continue
-                        
-                        strike = details.get("strike_price", 0)
-                        expiry = details.get("expiration_date", "")
-                        dte = calculate_dte(expiry)
+                        strike = opt.get("strike", 0)
+                        expiry = opt.get("expiry", "")
+                        dte = opt.get("dte", 0)
                         
                         if dte < 1 or dte > 45:
                             continue
                         
                         # Filter for ATM or slightly OTM strikes only
-                        # ATM = within 2% of current price
-                        # Slightly OTM = 0% to 10% above current price
                         strike_pct_diff = ((strike - current_price) / current_price) * 100
                         
                         # Accept strikes from -2% (slightly ITM) to +10% (OTM)
                         if strike_pct_diff < -2 or strike_pct_diff > 10:
                             continue
                         
-                        delta = abs(greeks.get("delta", 0)) if greeks else 0
-                        # For covered calls, delta typically 0.25-0.45 for OTM calls
-                        if delta < 0.20 or delta > 0.55:
-                            continue
-                        
-                        bid = last_quote.get("bid", 0) if last_quote else 0
-                        ask = last_quote.get("ask", 0) if last_quote else 0
-                        premium = ((bid + ask) / 2) if bid > 0 and ask > 0 else (day.get("close", 0) if day else 0)
+                        # Use close price as premium
+                        premium = opt.get("close", 0) or opt.get("vwap", 0)
                         
                         if premium <= 0:
                             continue
                         
+                        # Estimate delta based on moneyness (simplified calculation)
+                        # OTM options have lower delta
+                        if strike_pct_diff <= 0:
+                            estimated_delta = 0.55 - (abs(strike_pct_diff) * 0.02)
+                        else:
+                            estimated_delta = 0.50 - (strike_pct_diff * 0.03)
+                        estimated_delta = max(0.15, min(0.60, estimated_delta))
+                        
                         roi_pct = (premium / current_price) * 100
-                        iv = opt.get("implied_volatility", 0.25) or 0.25
-                        volume = day.get("volume", 0) if day else 0
-                        open_interest = opt.get("open_interest", 0)
+                        volume = opt.get("volume", 0)
                         
                         # Determine if ATM or OTM
                         if strike_pct_diff >= -2 and strike_pct_diff <= 2:
@@ -1652,14 +1633,14 @@ async def get_dashboard_opportunities(
                             "dte": dte,
                             "premium": round(premium, 2),
                             "roi_pct": round(roi_pct, 2),
-                            "delta": round(delta, 3),
-                            "iv": round(iv * 100, 1),
+                            "delta": round(estimated_delta, 3),
+                            "iv": 25.0,  # Default IV estimate
                             "sma_50": round(sma_50, 2),
                             "sma_200": round(sma_200, 2),
                             "trend_6m": round(trend_6m, 1),
                             "trend_12m": round(trend_12m, 1),
                             "volume": volume,
-                            "open_interest": open_interest,
+                            "open_interest": 0,
                             "expiry_type": "weekly" if dte <= 7 else "monthly",
                             "has_dividend": has_dividend_this_month,
                             "next_div_date": next_dividend_date,
