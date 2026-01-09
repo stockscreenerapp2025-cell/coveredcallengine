@@ -561,16 +561,168 @@ const Landing = () => {
         </div>
       </section>
 
+      {/* Contact Section */}
+      <section id="contact" className="py-20 relative">
+        <div className="absolute inset-0 bg-gradient-to-b from-emerald-500/5 to-transparent" />
+        <div className="relative max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="text-center mb-12">
+            <Badge className="bg-emerald-500/20 text-emerald-400 border-emerald-500/30 mb-4">
+              <MessageSquare className="w-3 h-3 mr-1" />
+              Get in Touch
+            </Badge>
+            <h2 className="text-3xl sm:text-4xl font-bold text-white mb-4">
+              Contact Us
+            </h2>
+            <p className="text-zinc-400 text-lg max-w-2xl mx-auto">
+              Have questions about our platform? Need help with your subscription? Our support team is here to help.
+            </p>
+          </div>
+
+          <div className="glass-card p-8">
+            <form onSubmit={handleContactSubmit} className="space-y-6">
+              <div className="grid md:grid-cols-2 gap-6">
+                <div>
+                  <label className="block text-sm font-medium text-zinc-400 mb-2">
+                    Your Name <span className="text-red-400">*</span>
+                  </label>
+                  <Input
+                    type="text"
+                    value={contactForm.name}
+                    onChange={(e) => setContactForm({ ...contactForm, name: e.target.value })}
+                    placeholder="John Doe"
+                    className="input-dark"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-zinc-400 mb-2">
+                    Email Address <span className="text-red-400">*</span>
+                  </label>
+                  <Input
+                    type="email"
+                    value={contactForm.email}
+                    onChange={(e) => setContactForm({ ...contactForm, email: e.target.value })}
+                    placeholder="john@example.com"
+                    className="input-dark"
+                    required
+                  />
+                </div>
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-zinc-400 mb-2">
+                  Subject
+                </label>
+                <Input
+                  type="text"
+                  value={contactForm.subject}
+                  onChange={(e) => setContactForm({ ...contactForm, subject: e.target.value })}
+                  placeholder="How can we help you?"
+                  className="input-dark"
+                />
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-zinc-400 mb-2">
+                  Message <span className="text-red-400">*</span>
+                </label>
+                <textarea
+                  value={contactForm.message}
+                  onChange={(e) => setContactForm({ ...contactForm, message: e.target.value })}
+                  placeholder="Tell us more about your inquiry..."
+                  rows={5}
+                  className="w-full px-4 py-3 rounded-lg bg-zinc-800/50 border border-zinc-700 text-white placeholder-zinc-500 focus:outline-none focus:border-emerald-500 resize-none"
+                  required
+                />
+              </div>
+              
+              <Button
+                type="submit"
+                disabled={sendingContact}
+                className="w-full bg-emerald-600 hover:bg-emerald-700 text-white py-6 text-lg font-semibold"
+              >
+                {sendingContact ? (
+                  <>
+                    <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin mr-2" />
+                    Sending...
+                  </>
+                ) : (
+                  <>
+                    <Send className="w-5 h-5 mr-2" />
+                    Send Message
+                  </>
+                )}
+              </Button>
+            </form>
+          </div>
+        </div>
+      </section>
+
       {/* Footer */}
-      <footer className="py-8 border-t border-white/5">
+      <footer className="py-12 border-t border-white/5">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex flex-col md:flex-row items-center justify-between gap-4">
-            <div className="flex items-center gap-2">
-              <Activity className="w-5 h-5 text-emerald-500" />
-              <span className="text-sm text-zinc-500">© 2025 {APP_NAME}. All rights reserved.</span>
+          <div className="grid md:grid-cols-4 gap-8 mb-8">
+            {/* Brand */}
+            <div className="md:col-span-2">
+              <div className="flex items-center gap-2 mb-4">
+                <Activity className="w-6 h-6 text-emerald-500" />
+                <span className="text-lg font-bold text-white">{APP_NAME}</span>
+              </div>
+              <p className="text-zinc-500 text-sm max-w-md">
+                Professional-grade options screening engine with advanced filters for technicals, fundamentals, and Greeks. Find optimal covered call and PMCC setups.
+              </p>
             </div>
-            <div className="flex items-center gap-6 text-sm text-zinc-500">
-              <span>Powered by Polygon.io & OpenAI</span>
+            
+            {/* Quick Links */}
+            <div>
+              <h4 className="text-white font-semibold mb-4">Quick Links</h4>
+              <ul className="space-y-2">
+                <li>
+                  <button onClick={scrollToTop} className="text-zinc-500 hover:text-emerald-400 text-sm transition-colors">
+                    Home
+                  </button>
+                </li>
+                <li>
+                  <button onClick={scrollToPricing} className="text-zinc-500 hover:text-emerald-400 text-sm transition-colors">
+                    Pricing
+                  </button>
+                </li>
+                <li>
+                  <button onClick={scrollToContact} className="text-zinc-500 hover:text-emerald-400 text-sm transition-colors">
+                    Contact
+                  </button>
+                </li>
+              </ul>
+            </div>
+            
+            {/* Legal */}
+            <div>
+              <h4 className="text-white font-semibold mb-4">Legal</h4>
+              <ul className="space-y-2">
+                <li>
+                  <button onClick={() => navigate('/terms')} className="text-zinc-500 hover:text-emerald-400 text-sm transition-colors">
+                    Terms & Conditions
+                  </button>
+                </li>
+                <li>
+                  <button onClick={() => navigate('/privacy')} className="text-zinc-500 hover:text-emerald-400 text-sm transition-colors">
+                    Privacy Policy
+                  </button>
+                </li>
+              </ul>
+            </div>
+          </div>
+          
+          {/* Bottom */}
+          <div className="pt-8 border-t border-white/5">
+            <div className="flex flex-col md:flex-row items-center justify-between gap-4">
+              <span className="text-sm text-zinc-500">© 2025 {APP_NAME}. All rights reserved.</span>
+              <div className="flex items-center gap-6 text-sm text-zinc-500">
+                <span className="flex items-center gap-1">
+                  <Shield className="w-4 h-4 text-emerald-400" />
+                  Secure Payment via Stripe
+                </span>
+              </div>
             </div>
           </div>
         </div>
