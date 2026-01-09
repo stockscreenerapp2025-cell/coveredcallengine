@@ -157,24 +157,6 @@ const PMCC = () => {
     return sortDirection === 'asc' ? aVal - bVal : bVal - aVal;
   });
 
-  const resetFilters = () => {
-    setFilters({
-      minPrice: 30,
-      maxPrice: 500,
-      minLeapsDelta: 0.70,
-      maxLeapsDelta: 1.0,
-      minLeapsDte: 300,
-      maxLeapsDte: 730,
-      minShortDelta: 0.15,
-      maxShortDelta: 0.40,
-      minShortDte: 7,
-      maxShortDte: 45,
-      minRoiPerCycle: 1.0,
-      minAnnualizedRoi: 20,
-    });
-    toast.success('Filters reset to defaults');
-  };
-
   const SortHeader = ({ field, label }) => (
     <th
       className="cursor-pointer hover:text-white transition-colors"
