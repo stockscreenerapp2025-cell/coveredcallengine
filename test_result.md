@@ -119,6 +119,19 @@ metadata:
           agent: "testing"
           comment: "✅ PORTFOLIO TRACKER & DASHBOARD TESTING COMPLETE: Comprehensive testing verified all critical requirements. Portfolio page shows correct 'AI Suggestion' header (not 'AI Action'), summary cards display expected values (Total: 38, Open: 21, Closed: 17, Invested: $28,238.70, Premium: $12,644.28), all OPEN trades show current prices and unrealized P/L values (APLD ~$31.94, SMCI ~$29.90, IREN ~$45.68, METC ~$20.25), all filter dropdowns functional (Account, Strategy, Status, Search). Dashboard Portfolio Overview section working with View All navigation to /portfolio. Minor: Dashboard shows sample data when no IBKR import detected, but actual portfolio page shows real imported data correctly."
 
+backend:
+  - task: "Stripe Subscription Configuration"
+    implemented: true
+    working: true
+    file: "backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        - working: true
+          agent: "testing"
+          comment: "✅ STRIPE SUBSCRIPTION CONFIGURATION TESTING COMPLETE: All 4 requested endpoints tested successfully. 1) GET /api/subscription/links returns correct payment links (trial: https://buy.stripe.com/test_7sY14pdw912ad3vdvpgYU00, monthly: https://buy.stripe.com/test_cNi14p4ZDeT0bZrgHBgYU01, yearly: https://buy.stripe.com/test_dRm6oJ8bP8uC7JbfDxgYU02) with mode='test'. 2) GET /api/subscription/admin/settings (admin auth) shows test_links contain all 3 payment links with active_mode='test'. 3) GET /api/admin/integration-settings (admin auth) confirms stripe.webhook_secret_configured=true, stripe.secret_key_configured=true, email.resend_api_key_configured=true. 4) POST /api/subscription/admin/switch-mode?mode=test (admin auth) successfully switches mode and verification confirms mode change. All 16 subscription-specific tests passed with 100% success rate."
+
 test_plan:
   current_focus: []
   stuck_tasks: []
