@@ -61,6 +61,23 @@ const Screener = () => {
   const [selectedStock, setSelectedStock] = useState(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
 
+  // Format option contract display like "16JAN26 41.5 C"
+  const formatOptionContract = (expiry, strike, optionType = 'call') => {
+    if (!expiry && !strike) return '-';
+    try {
+      const date = new Date(expiry);
+      const day = date.getDate().toString().padStart(2, '0');
+      const months = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
+      const month = months[date.getMonth()];
+      const year = date.getFullYear().toString().slice(-2);
+      const type = optionType?.toLowerCase() === 'put' ? 'P' : 'C';
+      return `${day}${month}${year} ${strike?.toFixed(1)} ${type}`;
+    } catch {
+      const type = optionType?.toLowerCase() === 'put' ? 'P' : 'C';
+      return `${strike?.toFixed(1)} ${type}`;
+    }
+  };
+
   // Expiration Filters
   const [expirationFilters, setExpirationFilters] = useState({
     minDte: 1,
