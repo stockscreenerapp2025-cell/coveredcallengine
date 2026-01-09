@@ -39,6 +39,9 @@ const Landing = () => {
   const navigate = useNavigate();
   const { isAuthenticated } = useAuth();
   const [subscriptionLinks, setSubscriptionLinks] = useState(null);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [contactForm, setContactForm] = useState({ name: '', email: '', subject: '', message: '' });
+  const [sendingContact, setSendingContact] = useState(false);
 
   useEffect(() => {
     fetchSubscriptionLinks();
