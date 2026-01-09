@@ -11,6 +11,8 @@ import Portfolio from "./pages/Portfolio";
 import Watchlist from "./pages/Watchlist";
 import Admin from "./pages/Admin";
 import Pricing from "./pages/Pricing";
+import Terms from "./pages/Terms";
+import Privacy from "./pages/Privacy";
 import Layout from "./components/Layout";
 import "@/App.css";
 
