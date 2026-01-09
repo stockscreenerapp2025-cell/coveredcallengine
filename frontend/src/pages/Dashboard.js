@@ -268,36 +268,91 @@ const Dashboard = () => {
                   </div>
                 </div>
                 
-                {/* Recent Open Trades */}
-                {ibkrTrades.length > 0 && (
-                  <div className="mt-4">
-                    <h4 className="text-sm text-zinc-500 mb-3 flex items-center gap-2">
-                      <Briefcase className="w-4 h-4" />
-                      Recent Open Positions
+                {/* Portfolio Performance Graph */}
+                {(strategyData.length > 0 || topHoldings.length > 0) && (
+                  <div className="mt-6">
+                    <h4 className="text-sm text-zinc-500 mb-4 flex items-center gap-2">
+                      <PieChart className="w-4 h-4" />
+                      Portfolio Performance Overview
                     </h4>
-                    <div className="space-y-2">
-                      {ibkrTrades.slice(0, 4).map((trade, idx) => (
-                        <div key={idx} className="flex items-center justify-between p-3 bg-zinc-800/30 rounded-lg hover:bg-zinc-800/50 transition-colors">
-                          <div className="flex items-center gap-3">
-                            <span className="font-semibold text-white">{trade.symbol}</span>
-                            <Badge className="bg-violet-500/20 text-violet-400 text-xs">
-                              {trade.strategy_label || trade.strategy_type}
-                            </Badge>
+                    <div className="grid md:grid-cols-2 gap-6">
+                      {/* Strategy Distribution Pie Chart */}
+                      {strategyData.length > 0 && (
+                        <div className="bg-zinc-800/30 rounded-lg p-4">
+                          <h5 className="text-xs text-zinc-400 mb-3">Strategy Distribution</h5>
+                          <div className="h-48">
+                            <ResponsiveContainer width="100%" height="100%">
+                              <RechartsPie>
+                                <Pie
+                                  data={strategyData}
+                                  cx="50%"
+                                  cy="50%"
+                                  innerRadius={40}
+                                  outerRadius={70}
+                                  paddingAngle={2}
+                                  dataKey="value"
+                                  label={({ name, value }) => `${name}: ${value}`}
+                                  labelLine={false}
+                                >
+                                  {strategyData.map((entry, index) => (
+                                    <Cell key={`cell-${index}`} fill={entry.color} />
+                                  ))}
+                                </Pie>
+                                <Tooltip 
+                                  contentStyle={{ background: '#18181b', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px' }}
+                                  formatter={(value, name, props) => [
+                                    `${value} trades | Invested: ${formatCurrency(props.payload.invested)} | Premium: ${formatCurrency(props.payload.premium)}`,
+                                    props.payload.name
+                                  ]}
+                                />
+                              </RechartsPie>
+                            </ResponsiveContainer>
                           </div>
-                          <div className="flex items-center gap-4 text-sm">
-                            <div className="text-right">
-                              <div className="text-zinc-400">{trade.shares} shares</div>
-                              <div className="text-zinc-500 text-xs">Entry: {formatCurrency(trade.entry_price || 0)}</div>
-                            </div>
-                            {trade.current_price && (
-                              <div className={`text-right ${(trade.unrealized_pnl || 0) >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                                <div>{formatCurrency(trade.unrealized_pnl || 0)}</div>
-                                <div className="text-xs text-zinc-500">@ {formatCurrency(trade.current_price)}</div>
+                          <div className="flex flex-wrap gap-2 mt-2 justify-center">
+                            {strategyData.map((s, i) => (
+                              <div key={i} className="flex items-center gap-1.5 text-xs">
+                                <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: s.color }}></div>
+                                <span className="text-zinc-400">{s.name}</span>
                               </div>
-                            )}
+                            ))}
                           </div>
                         </div>
-                      ))}
+                      )}
+                      
+                      {/* Top Holdings Bar Chart */}
+                      {topHoldings.length > 0 && (
+                        <div className="bg-zinc-800/30 rounded-lg p-4">
+                          <h5 className="text-xs text-zinc-400 mb-3">Open Positions by Value</h5>
+                          <div className="h-48">
+                            <ResponsiveContainer width="100%" height="100%">
+                              <BarChart data={topHoldings} layout="vertical" margin={{ left: 10, right: 10 }}>
+                                <CartesianGrid strokeDasharray="3 3" stroke="#333" horizontal={false} />
+                                <XAxis type="number" tickFormatter={(v) => `$${(v/1000).toFixed(0)}k`} stroke="#666" fontSize={10} />
+                                <YAxis type="category" dataKey="symbol" stroke="#999" fontSize={11} width={45} />
+                                <Tooltip 
+                                  contentStyle={{ background: '#18181b', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px' }}
+                                  formatter={(value) => formatCurrency(value)}
+                                />
+                                <Bar dataKey="invested" fill="#8b5cf6" radius={[0, 4, 4, 0]} name="Invested">
+                                  {topHoldings.map((entry, index) => (
+                                    <Cell key={`cell-${index}`} fill={entry.pnl >= 0 ? '#10b981' : '#ef4444'} />
+                                  ))}
+                                </Bar>
+                              </BarChart>
+                            </ResponsiveContainer>
+                          </div>
+                          <div className="flex justify-center gap-4 mt-2 text-xs">
+                            <div className="flex items-center gap-1.5">
+                              <div className="w-2.5 h-2.5 rounded-full bg-emerald-500"></div>
+                              <span className="text-zinc-400">Profit</span>
+                            </div>
+                            <div className="flex items-center gap-1.5">
+                              <div className="w-2.5 h-2.5 rounded-full bg-red-500"></div>
+                              <span className="text-zinc-400">Loss</span>
+                            </div>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   </div>
                 )}
