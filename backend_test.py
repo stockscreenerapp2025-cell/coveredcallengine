@@ -969,6 +969,9 @@ class PremiumHunterAPITester:
         # IBKR Portfolio Import test (specific focus for current review)
         self.test_ibkr_portfolio_import()
         
+        # Contact Form API test (specific focus for current review)
+        self.test_contact_form_api()
+        
         # Security tests
         self.test_unauthorized_access()
         
