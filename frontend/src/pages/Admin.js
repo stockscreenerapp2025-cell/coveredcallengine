@@ -173,6 +173,105 @@ const Admin = () => {
     }
   };
   
+  const fetchEmailTemplates = async () => {
+    setEmailLoading(true);
+    try {
+      const response = await api.get('/admin/email-automation/templates');
+      setEmailTemplates(response.data.templates || []);
+    } catch (error) {
+      console.error('Email templates error:', error);
+    } finally {
+      setEmailLoading(false);
+    }
+  };
+  
+  const fetchAutomationRules = async () => {
+    try {
+      const response = await api.get('/admin/email-automation/rules');
+      setAutomationRules(response.data.rules || []);
+      setTriggerTypes(response.data.trigger_types || []);
+      setActionTypes(response.data.action_types || []);
+    } catch (error) {
+      console.error('Automation rules error:', error);
+    }
+  };
+  
+  const fetchEmailLogs = async () => {
+    try {
+      const response = await api.get('/admin/email-automation/logs');
+      setEmailLogs(response.data.logs || []);
+    } catch (error) {
+      console.error('Email logs error:', error);
+    }
+  };
+  
+  const fetchEmailStats = async () => {
+    try {
+      const response = await api.get('/admin/email-automation/stats');
+      setEmailStats(response.data);
+    } catch (error) {
+      console.error('Email stats error:', error);
+    }
+  };
+  
+  const handleUpdateTemplate = async (templateId, updates) => {
+    try {
+      await api.put(`/admin/email-automation/templates/${templateId}`, null, { params: updates });
+      toast.success('Template updated successfully');
+      fetchEmailTemplates();
+      setEditingTemplate(null);
+    } catch (error) {
+      toast.error('Failed to update template');
+    }
+  };
+  
+  const handleToggleRule = async (ruleId, enabled) => {
+    try {
+      await api.put(`/admin/email-automation/rules/${ruleId}`, null, { params: { enabled } });
+      toast.success(`Rule ${enabled ? 'enabled' : 'disabled'}`);
+      fetchAutomationRules();
+    } catch (error) {
+      toast.error('Failed to update rule');
+    }
+  };
+  
+  const handleSendBroadcast = async () => {
+    if (!broadcastData.announcement_title || !broadcastData.announcement_content) {
+      toast.error('Please fill in title and content');
+      return;
+    }
+    
+    setSendingBroadcast(true);
+    try {
+      const response = await api.post('/admin/email-automation/broadcast', null, {
+        params: {
+          template_key: broadcastData.template_key,
+          announcement_title: broadcastData.announcement_title,
+          announcement_content: broadcastData.announcement_content
+        }
+      });
+      toast.success(`Broadcast sent to ${response.data.sent} users`);
+      setBroadcastData({ template_key: 'announcement', announcement_title: '', announcement_content: '' });
+      fetchEmailLogs();
+      fetchEmailStats();
+    } catch (error) {
+      toast.error('Failed to send broadcast');
+    } finally {
+      setSendingBroadcast(false);
+    }
+  };
+  
+  const handleTestEmail = async (templateKey, email) => {
+    try {
+      await api.post('/admin/email-automation/test-send', null, {
+        params: { template_key: templateKey, recipient_email: email }
+      });
+      toast.success(`Test email sent to ${email}`);
+    } catch (error) {
+      toast.error('Failed to send test email');
+    }
+  };
+  
   const fetchUsers = async (page = 1) => {
     setUsersLoading(true);
     try {
