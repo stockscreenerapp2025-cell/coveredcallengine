@@ -2894,9 +2894,9 @@ async def get_subscription_links():
     if not settings:
         # Return default test links
         return {
-            "trial_link": "https://buy.stripe.com/test_3cI7sD8jQ97bbUH6ip8Ra01",
-            "monthly_link": "https://buy.stripe.com/test_bJe7sD6bIdnr2k7cGN8Ra02",
-            "yearly_link": "https://buy.stripe.com/test_9B64grarY1EJ2k72298Ra00",
+            "trial_link": "https://buy.stripe.com/test_7sY14pdw912ad3vdvpgYU00",
+            "monthly_link": "https://buy.stripe.com/test_cNi14p4ZDeT0bZrgHBgYU01",
+            "yearly_link": "https://buy.stripe.com/test_dRm6oJ8bP8uC7JbfDxgYU02",
             "mode": "test"
         }
     
@@ -2921,9 +2921,9 @@ async def get_subscription_settings(admin: dict = Depends(get_admin_user)):
         return {
             "active_mode": "test",
             "test_links": {
-                "trial": "https://buy.stripe.com/test_3cI7sD8jQ97bbUH6ip8Ra01",
-                "monthly": "https://buy.stripe.com/test_bJe7sD6bIdnr2k7cGN8Ra02",
-                "yearly": "https://buy.stripe.com/test_9B64grarY1EJ2k72298Ra00"
+                "trial": "https://buy.stripe.com/test_7sY14pdw912ad3vdvpgYU00",
+                "monthly": "https://buy.stripe.com/test_cNi14p4ZDeT0bZrgHBgYU01",
+                "yearly": "https://buy.stripe.com/test_dRm6oJ8bP8uC7JbfDxgYU02"
             },
             "live_links": {
                 "trial": "",
