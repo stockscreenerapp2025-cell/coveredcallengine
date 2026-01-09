@@ -1988,14 +1988,23 @@ async def screen_pmcc(
         return {"opportunities": [], "total": 0, "message": "API key not configured", "is_mock": True}
     
     try:
-        # Reduced symbol list for faster scanning
+        # Expanded symbol list for PMCC (stocks up to $200)
         symbols_to_scan = [
-            "AAPL", "MSFT", "GOOGL", "AMZN", "NVDA", "META", "TSLA", "AMD",
-            "SPY", "QQQ", "IWM",
-            "JPM", "BAC", "WFC", "GS",
-            "NKE", "DIS", "HD",
-            "XOM", "CVX",
-            "INTC", "MU"
+            # Tech
+            "AAPL", "MSFT", "GOOGL", "AMZN", "META", "NVDA", "TSLA", "AMD", "INTC", "MU",
+            "QCOM", "TXN", "NFLX", "CRM", "ADBE", "ORCL", "IBM", "CSCO",
+            # ETFs
+            "SPY", "QQQ", "IWM", "DIA", "XLF", "XLE", "XLK",
+            # Financial
+            "JPM", "BAC", "WFC", "GS", "C", "MS", "BLK", "SCHW", "USB", "PNC",
+            # Consumer
+            "COST", "WMT", "HD", "LOW", "NKE", "SBUX", "MCD", "DIS", "TGT",
+            # Healthcare
+            "UNH", "JNJ", "PFE", "MRK", "LLY", "ABBV", "TMO", "ABT",
+            # Industrial/Energy
+            "CAT", "DE", "BA", "HON", "GE", "XOM", "CVX", "COP", "SLB", "OXY",
+            # Other popular options
+            "PYPL", "SQ", "UBER", "V", "MA", "AXP"
         ]
         
         opportunities = []
