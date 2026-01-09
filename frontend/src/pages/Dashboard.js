@@ -19,11 +19,15 @@ import {
   AlertCircle,
   Upload,
   Briefcase,
-  PieChart
+  PieChart,
+  Clock,
+  Moon,
+  Sun
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart as RechartsPie, Pie, Cell, Legend, BarChart, Bar, CartesianGrid } from 'recharts';
 import StockDetailModal from '../components/StockDetailModal';
+import api from '../lib/api';
 
 const Dashboard = () => {
   const navigate = useNavigate();
@@ -38,6 +42,7 @@ const Dashboard = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [oppsLoading, setOppsLoading] = useState(false);
+  const [marketStatus, setMarketStatus] = useState(null);
 
   useEffect(() => {
     fetchDashboardData();
