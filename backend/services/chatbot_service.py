@@ -123,7 +123,7 @@ class ChatbotService:
     
     async def get_conversation_history(self, session_id: str, limit: int = 20) -> List[Dict]:
         """Get conversation history for a session"""
-        if not self.db:
+        if self.db is None:
             return []
         
         try:
