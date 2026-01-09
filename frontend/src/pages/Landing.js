@@ -241,10 +241,30 @@ const Landing = () => {
       <nav className="fixed top-0 w-full z-50 glass border-b border-white/5">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 cursor-pointer" onClick={scrollToTop}>
               <Activity className="w-8 h-8 text-emerald-500" />
               <span className="text-xl font-bold text-white">{APP_NAME}</span>
             </div>
+            
+            {/* Desktop Navigation */}
+            <div className="hidden md:flex items-center gap-6">
+              <button onClick={scrollToTop} className="text-zinc-400 hover:text-white transition-colors text-sm font-medium">
+                Home
+              </button>
+              <button onClick={scrollToPricing} className="text-zinc-400 hover:text-white transition-colors text-sm font-medium">
+                Pricing
+              </button>
+              <button onClick={() => navigate('/terms')} className="text-zinc-400 hover:text-white transition-colors text-sm font-medium">
+                Terms
+              </button>
+              <button onClick={() => navigate('/privacy')} className="text-zinc-400 hover:text-white transition-colors text-sm font-medium">
+                Privacy
+              </button>
+              <button onClick={scrollToContact} className="text-zinc-400 hover:text-white transition-colors text-sm font-medium">
+                Contact
+              </button>
+            </div>
+            
             <div className="flex items-center gap-4">
               {isAuthenticated ? (
                 <Button 
@@ -259,22 +279,63 @@ const Landing = () => {
                   <Button 
                     variant="ghost" 
                     onClick={() => navigate('/login')}
-                    className="text-zinc-400 hover:text-white"
+                    className="text-zinc-400 hover:text-white hidden sm:inline-flex"
                     data-testid="login-btn"
                   >
                     Sign In
                   </Button>
                   <Button 
                     onClick={scrollToPricing}
-                    className="btn-primary"
+                    className="btn-primary hidden sm:inline-flex"
                     data-testid="get-started-btn"
                   >
                     Get Started
                   </Button>
                 </>
               )}
+              
+              {/* Mobile menu button */}
+              <button 
+                className="md:hidden text-zinc-400 hover:text-white p-2"
+                onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+              >
+                {mobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
+              </button>
             </div>
           </div>
+          
+          {/* Mobile Navigation */}
+          {mobileMenuOpen && (
+            <div className="md:hidden py-4 border-t border-white/5">
+              <div className="flex flex-col gap-3">
+                <button onClick={scrollToTop} className="text-zinc-400 hover:text-white transition-colors text-sm font-medium text-left py-2">
+                  Home
+                </button>
+                <button onClick={() => { scrollToPricing(); setMobileMenuOpen(false); }} className="text-zinc-400 hover:text-white transition-colors text-sm font-medium text-left py-2">
+                  Pricing
+                </button>
+                <button onClick={() => { navigate('/terms'); setMobileMenuOpen(false); }} className="text-zinc-400 hover:text-white transition-colors text-sm font-medium text-left py-2">
+                  Terms
+                </button>
+                <button onClick={() => { navigate('/privacy'); setMobileMenuOpen(false); }} className="text-zinc-400 hover:text-white transition-colors text-sm font-medium text-left py-2">
+                  Privacy
+                </button>
+                <button onClick={scrollToContact} className="text-zinc-400 hover:text-white transition-colors text-sm font-medium text-left py-2">
+                  Contact
+                </button>
+                {!isAuthenticated && (
+                  <>
+                    <button onClick={() => { navigate('/login'); setMobileMenuOpen(false); }} className="text-zinc-400 hover:text-white transition-colors text-sm font-medium text-left py-2">
+                      Sign In
+                    </button>
+                    <Button onClick={() => { scrollToPricing(); setMobileMenuOpen(false); }} className="btn-primary mt-2">
+                      Get Started
+                    </Button>
+                  </>
+                )}
+              </div>
+            </div>
+          )}
         </div>
       </nav>
 
