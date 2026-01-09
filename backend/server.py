@@ -1940,28 +1940,46 @@ async def screen_pmcc(
     Screen for PMCC opportunities with customizable filters.
     Uses true LEAPS options (12-24 months) for the long leg.
     """
+    # Generate cache key for PMCC screener
+    cache_params = {
+        "min_price": min_price, "max_price": max_price,
+        "min_leaps_delta": min_leaps_delta, "max_leaps_delta": max_leaps_delta,
+        "min_leaps_dte": min_leaps_dte, "max_leaps_dte": max_leaps_dte,
+        "min_short_delta": min_short_delta, "max_short_delta": max_short_delta,
+        "min_short_dte": min_short_dte, "max_short_dte": max_short_dte,
+        "min_roi": min_roi, "min_annualized_roi": min_annualized_roi
+    }
+    cache_key = generate_cache_key("pmcc_screener", cache_params)
+    
+    # Check cache first
+    cached_data = await get_cached_data(cache_key)
+    if cached_data:
+        cached_data["from_cache"] = True
+        cached_data["market_closed"] = is_market_closed()
+        return cached_data
+    
+    # If market is closed, try last trading day data
+    if is_market_closed():
+        ltd_data = await get_last_trading_day_data(cache_key)
+        if ltd_data:
+            ltd_data["from_cache"] = True
+            ltd_data["market_closed"] = True
+            return ltd_data
+    
     api_key = await get_massive_api_key()
     
     if not api_key:
         return {"opportunities": [], "total": 0, "message": "API key not configured", "is_mock": True}
     
     try:
+        # Reduced symbol list for faster scanning
         symbols_to_scan = [
-            # Tech stocks with good options liquidity
-            "AAPL", "MSFT", "GOOGL", "AMZN", "NVDA", "META", "TSLA", "AMD", "INTC", "MU",
-            "QCOM", "TXN", "NFLX", "CRM", "ADBE", "ORCL", "IBM", "CSCO",
-            # ETFs
-            "SPY", "QQQ", "IWM", "DIA", "XLF", "XLE",
-            # Financial
-            "JPM", "BAC", "WFC", "GS", "C", "MS", "BLK", "SCHW",
-            # Consumer
-            "COST", "WMT", "HD", "NKE", "SBUX", "MCD", "DIS", "ABNB", "BKNG",
-            # Healthcare
-            "UNH", "JNJ", "PFE", "MRK", "LLY", "ABBV", "TMO",
-            # Industrial/Energy
-            "CAT", "DE", "BA", "XOM", "CVX", "COP", "SLB",
-            # Other
-            "PYPL", "SQ", "UBER", "LYFT", "COIN", "HOOD"
+            "AAPL", "MSFT", "GOOGL", "AMZN", "NVDA", "META", "TSLA", "AMD",
+            "SPY", "QQQ", "IWM",
+            "JPM", "BAC", "WFC", "GS",
+            "NKE", "DIS", "HD",
+            "XOM", "CVX",
+            "INTC", "MU"
         ]
         
         opportunities = []
