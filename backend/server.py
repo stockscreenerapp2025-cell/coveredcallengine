@@ -1306,18 +1306,6 @@ async def screen_covered_calls(
                                 "open_interest": 0,
                                 "score": score
                             })
-                                    "expiry": expiry,
-                                    "dte": dte,
-                                    "premium": round(premium, 2),
-                                    "roi_pct": round(roi_pct, 2),
-                                    "delta": round(delta, 3),
-                                    "theta": round(greeks.get("theta", 0) or 0, 4),
-                                    "iv": round(iv, 4),
-                                    "iv_rank": round(iv_rank, 1),
-                                    "downside_protection": round(protection, 2),
-                                    "volume": volume,
-                                    "open_interest": open_interest,
-                                    "score": score
                     except Exception as e:
                         logging.error(f"Error scanning {symbol}: {e}")
                         continue
