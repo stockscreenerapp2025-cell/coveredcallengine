@@ -46,7 +46,17 @@ const Dashboard = () => {
 
   useEffect(() => {
     fetchDashboardData();
+    fetchMarketStatus();
   }, []);
+
+  const fetchMarketStatus = async () => {
+    try {
+      const res = await api.get('/market-status');
+      setMarketStatus(res.data);
+    } catch (error) {
+      console.log('Could not fetch market status:', error);
+    }
+  };
 
   const fetchDashboardData = async () => {
     setLoading(true);
