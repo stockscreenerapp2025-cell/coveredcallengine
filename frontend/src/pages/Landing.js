@@ -63,6 +63,38 @@ const Landing = () => {
     }
   };
 
+  const scrollToContact = () => {
+    const contactSection = document.getElementById('contact');
+    if (contactSection) {
+      contactSection.scrollIntoView({ behavior: 'smooth' });
+    }
+    setMobileMenuOpen(false);
+  };
+
+  const scrollToTop = () => {
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+    setMobileMenuOpen(false);
+  };
+
+  const handleContactSubmit = async (e) => {
+    e.preventDefault();
+    if (!contactForm.name || !contactForm.email || !contactForm.message) {
+      toast.error('Please fill in all required fields');
+      return;
+    }
+    
+    setSendingContact(true);
+    try {
+      await api.post('/contact', contactForm);
+      toast.success('Message sent successfully! We\'ll get back to you soon.');
+      setContactForm({ name: '', email: '', subject: '', message: '' });
+    } catch (error) {
+      toast.error('Failed to send message. Please try again.');
+    } finally {
+      setSendingContact(false);
+    }
+  };
+
   const handleSubscribe = (link) => {
     if (!link) return;
     window.open(link, '_blank');
