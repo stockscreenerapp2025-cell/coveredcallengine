@@ -1982,23 +1982,23 @@ async def screen_pmcc(
         return {"opportunities": [], "total": 0, "message": "API key not configured", "is_mock": True}
     
     try:
-        # Expanded symbol list for PMCC (stocks up to $200)
+        # Expanded symbol list for PMCC (stocks up to $200) - reduced for speed
         symbols_to_scan = [
             # Tech
-            "AAPL", "MSFT", "GOOGL", "AMZN", "META", "NVDA", "TSLA", "AMD", "INTC", "MU",
-            "QCOM", "TXN", "NFLX", "CRM", "ADBE", "ORCL", "IBM", "CSCO",
+            "AAPL", "MSFT", "META", "AMD", "INTC", "MU",
+            "NFLX", "CRM", "ORCL", "IBM",
             # ETFs
-            "SPY", "QQQ", "IWM", "DIA", "XLF", "XLE", "XLK",
+            "SPY", "QQQ", "IWM",
             # Financial
-            "JPM", "BAC", "WFC", "GS", "C", "MS", "BLK", "SCHW", "USB", "PNC",
+            "JPM", "BAC", "WFC", "GS", "C",
             # Consumer
-            "COST", "WMT", "HD", "LOW", "NKE", "SBUX", "MCD", "DIS", "TGT",
+            "COST", "HD", "NKE", "DIS",
             # Healthcare
-            "UNH", "JNJ", "PFE", "MRK", "LLY", "ABBV", "TMO", "ABT",
-            # Industrial/Energy
-            "CAT", "DE", "BA", "HON", "GE", "XOM", "CVX", "COP", "SLB", "OXY",
-            # Other popular options
-            "PYPL", "SQ", "UBER", "V", "MA", "AXP"
+            "UNH", "JNJ", "PFE", "MRK",
+            # Energy
+            "XOM", "CVX", "COP",
+            # Other
+            "PYPL", "V", "MA"
         ]
         
         opportunities = []
