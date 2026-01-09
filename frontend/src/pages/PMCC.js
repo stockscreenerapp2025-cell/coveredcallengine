@@ -525,15 +525,15 @@ const PMCC = () => {
                           <td className="font-mono">${opp.stock_price?.toFixed(2)}</td>
                           <td>
                             <div className="flex flex-col">
-                              <span className="text-emerald-400 font-mono">${opp.leaps_strike?.toFixed(0)}</span>
-                              <span className="text-xs text-zinc-500">{opp.leaps_dte}d • δ{opp.leaps_delta?.toFixed(2)}</span>
+                              <span className="text-emerald-400 font-mono text-sm">{formatOptionContract(opp.leaps_dte, opp.leaps_strike)}</span>
+                              <span className="text-xs text-zinc-500">δ{opp.leaps_delta?.toFixed(2)}</span>
                             </div>
                           </td>
                           <td className="text-red-400 font-mono">${opp.leaps_cost?.toLocaleString()}</td>
                           <td>
                             <div className="flex flex-col">
-                              <span className="text-cyan-400 font-mono">${opp.short_strike?.toFixed(0)}</span>
-                              <span className="text-xs text-zinc-500">{opp.short_dte}d • δ{opp.short_delta?.toFixed(2)}</span>
+                              <span className="text-cyan-400 font-mono text-sm">{formatOptionContract(opp.short_dte, opp.short_strike)}</span>
+                              <span className="text-xs text-zinc-500">δ{opp.short_delta?.toFixed(2)}</span>
                             </div>
                           </td>
                           <td className="text-emerald-400 font-mono">${opp.short_premium?.toFixed(0)}</td>
