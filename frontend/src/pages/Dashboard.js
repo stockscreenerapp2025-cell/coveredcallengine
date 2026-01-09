@@ -330,8 +330,11 @@ const Dashboard = () => {
                                 <YAxis type="category" dataKey="symbol" stroke="#999" fontSize={10} width={40} interval={0} />
                                 <Tooltip 
                                   contentStyle={{ background: '#18181b', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px' }}
-                                  formatter={(value, name, props) => [formatCurrency(value), 'Realized P/L']}
-                                  labelFormatter={(label) => `${label}`}
+                                  formatter={(value, name, props) => [
+                                    <span style={{ color: value >= 0 ? '#10b981' : '#ef4444' }}>{formatCurrency(value)}</span>,
+                                    'Realized P/L'
+                                  ]}
+                                  labelFormatter={(label) => <span style={{ color: '#fff' }}>{label}</span>}
                                 />
                                 <Bar dataKey="pnl" radius={[0, 3, 3, 0]} name="P/L">
                                   {closedPositions.map((entry, index) => (
