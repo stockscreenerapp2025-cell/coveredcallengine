@@ -329,6 +329,26 @@ const Screener = () => {
 
   return (
     <div className="space-y-6" data-testid="screener-page">
+      {/* Market Status Banner */}
+      {marketStatus && !marketStatus.is_open && (
+        <div className="glass-card p-3 flex items-center justify-between bg-zinc-800/50 border-amber-500/30">
+          <div className="flex items-center gap-3">
+            {marketStatus.is_weekend ? (
+              <Moon className="w-5 h-5 text-amber-400" />
+            ) : (
+              <Clock className="w-5 h-5 text-amber-400" />
+            )}
+            <div>
+              <span className="text-amber-400 font-medium">{marketStatus.reason}</span>
+              <span className="text-zinc-400 ml-2 text-sm">• {marketStatus.data_note}</span>
+            </div>
+          </div>
+          <Badge className="bg-amber-500/20 text-amber-400 border-amber-500/30">
+            {marketStatus.current_time_et}
+          </Badge>
+        </div>
+      )}
+
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
@@ -336,7 +356,11 @@ const Screener = () => {
             <Search className="w-8 h-8 text-emerald-500" />
             Covered Call Screener
           </h1>
-          <p className="text-zinc-400 mt-1">Advanced filtering for optimal premium opportunities</p>
+          <p className="text-zinc-400 mt-1">
+            {dataInfo?.from_cache && marketStatus && !marketStatus.is_open 
+              ? "Showing data from last market session" 
+              : "Advanced filtering for optimal premium opportunities"}
+          </p>
         </div>
         <div className="flex flex-wrap gap-3">
           <Button
