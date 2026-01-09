@@ -174,33 +174,31 @@ const AIChatbot = () => {
       {showWelcome && !isOpen && (
         <div className="fixed bottom-24 right-6 z-50 animate-bounce-in">
           <div className="bg-gradient-to-r from-violet-600 to-emerald-600 p-[1px] rounded-2xl shadow-2xl">
-            <div className="bg-zinc-900 rounded-2xl p-4 max-w-xs">
+            <div className="bg-zinc-900 rounded-2xl p-4 w-64">
               <button 
                 onClick={() => setShowWelcome(false)}
                 className="absolute -top-2 -right-2 bg-zinc-800 rounded-full p-1 hover:bg-zinc-700 transition-colors"
               >
                 <X className="w-4 h-4 text-zinc-400" />
               </button>
-              <div className="flex items-start gap-3">
-                <div className="w-10 h-10 rounded-full bg-gradient-to-r from-violet-500 to-emerald-500 flex items-center justify-center flex-shrink-0">
-                  <Bot className="w-5 h-5 text-white" />
+              <div className="flex flex-col items-center text-center">
+                <div className="w-12 h-12 rounded-full bg-gradient-to-r from-violet-500 to-emerald-500 flex items-center justify-center mb-3">
+                  <Bot className="w-6 h-6 text-white" />
                 </div>
-                <div>
-                  <p className="text-white text-sm font-medium mb-1">
-                    👋 Need help finding covered calls?
-                  </p>
-                  <p className="text-zinc-400 text-xs mb-3">
-                    I can answer your questions and help you get started!
-                  </p>
-                  <Button 
-                    onClick={openChat}
-                    size="sm"
-                    className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs w-full"
-                  >
-                    <Sparkles className="w-3 h-3 mr-1" />
-                    Chat with AI Assistant
-                  </Button>
-                </div>
+                <p className="text-white text-sm font-medium mb-1">
+                  👋 Need help finding covered calls?
+                </p>
+                <p className="text-zinc-400 text-xs mb-4">
+                  I can answer your questions and help you get started!
+                </p>
+                <Button 
+                  onClick={openChat}
+                  size="sm"
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs w-full"
+                >
+                  <Sparkles className="w-3 h-3 mr-1" />
+                  Chat with AI Assistant
+                </Button>
               </div>
             </div>
           </div>
