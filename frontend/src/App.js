@@ -115,6 +115,10 @@ function App() {
             </ProtectedRoute>
           } />
           
+          {/* Public pages */}
+          <Route path="/terms" element={<Terms />} />
+          <Route path="/privacy" element={<Privacy />} />
+          
           {/* Fallback */}
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
