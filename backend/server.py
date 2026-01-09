@@ -3813,7 +3813,7 @@ async def get_quick_response(topic: str):
 
 class ContactForm(BaseModel):
     name: str
-    email: str
+    email: EmailStr
     subject: Optional[str] = ""
     message: str
 
