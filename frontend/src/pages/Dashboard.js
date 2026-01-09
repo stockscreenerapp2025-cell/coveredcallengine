@@ -18,10 +18,11 @@ import {
   CheckCircle,
   AlertCircle,
   Upload,
-  Briefcase
+  Briefcase,
+  PieChart
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
+import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart as RechartsPie, Pie, Cell, Legend, BarChart, Bar, CartesianGrid } from 'recharts';
 import StockDetailModal from '../components/StockDetailModal';
 
 const Dashboard = () => {
