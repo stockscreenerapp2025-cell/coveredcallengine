@@ -101,6 +101,34 @@ const PMCC = () => {
     }
   };
 
+  // Format option contract display like "26SEP25 49.5 C"
+  const formatOptionContract = (expiry, strike, type = 'C') => {
+    if (!expiry && !strike) return '-';
+    try {
+      // Handle DTE (days) input - convert to date
+      let dateStr = '';
+      if (typeof expiry === 'number') {
+        const date = new Date();
+        date.setDate(date.getDate() + expiry);
+        const day = date.getDate().toString().padStart(2, '0');
+        const months = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
+        const month = months[date.getMonth()];
+        const year = date.getFullYear().toString().slice(-2);
+        dateStr = `${day}${month}${year}`;
+      } else if (expiry) {
+        const date = new Date(expiry);
+        const day = date.getDate().toString().padStart(2, '0');
+        const months = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
+        const month = months[date.getMonth()];
+        const year = date.getFullYear().toString().slice(-2);
+        dateStr = `${day}${month}${year}`;
+      }
+      return `${dateStr} ${strike?.toFixed(0) || ''} ${type}`;
+    } catch {
+      return `${strike?.toFixed(0) || ''} ${type}`;
+    }
+  };
+
   const sortedOpportunities = [...opportunities].sort((a, b) => {
     const aVal = a[sortField] || 0;
     const bVal = b[sortField] || 0;
