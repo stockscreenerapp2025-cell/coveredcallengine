@@ -1454,8 +1454,8 @@ async def get_dashboard_opportunities(
                     
                     current_price = stock_data["results"][0].get("c", 0)
                     
-                    # RELAXED: Stock price between $25 and $100
-                    if current_price < 25 or current_price > 100:
+                    # RELAXED: Stock price between $20 and $150
+                    if current_price < 20 or current_price > 150:
                         continue
                     
                     # Get historical data for SMA and trend
