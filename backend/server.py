@@ -3809,6 +3809,71 @@ async def get_quick_response(topic: str):
     
     return {"response": None, "topic": topic, "available_topics": list(QUICK_RESPONSES.keys())}
 
+# ==================== CONTACT FORM ENDPOINT ====================
+
+class ContactForm(BaseModel):
+    name: str
+    email: str
+    subject: Optional[str] = ""
+    message: str
+
+@api_router.post("/contact")
+async def submit_contact_form(form: ContactForm):
+    """Submit a contact/support form - creates a support ticket"""
+    from uuid import uuid4
+    
+    now = datetime.now(timezone.utc).isoformat()
+    
+    ticket = {
+        "id": str(uuid4()),
+        "name": form.name,
+        "email": form.email,
+        "subject": form.subject or "General Inquiry",
+        "message": form.message,
+        "status": "open",
+        "priority": "normal",
+        "source": "contact_form",
+        "created_at": now,
+        "updated_at": now
+    }
+    
+    await db.support_tickets.insert_one(ticket)
+    
+    # Try to send notification email to admin (optional)
+    try:
+        from services.email_service import EmailService
+        email_service = EmailService(db)
+        if await email_service.initialize():
+            # Get admin settings for notification email
+            settings = await db.admin_settings.find_one({"type": "email_settings"}, {"_id": 0})
+            admin_email = settings.get("sender_email") if settings else None
+            
+            if admin_email:
+                # Send notification to admin about new ticket
+                await email_service.send_raw_email(
+                    to_email=admin_email,
+                    subject=f"[CCE Support] New Contact Form: {form.subject or 'General Inquiry'}",
+                    html_content=f"""
+                    <div style="font-family: Arial, sans-serif; padding: 20px;">
+                        <h2>New Support Ticket</h2>
+                        <p><strong>From:</strong> {form.name} ({form.email})</p>
+                        <p><strong>Subject:</strong> {form.subject or 'General Inquiry'}</p>
+                        <p><strong>Message:</strong></p>
+                        <div style="background: #f5f5f5; padding: 15px; border-radius: 8px;">
+                            {form.message}
+                        </div>
+                        <p style="color: #666; font-size: 12px; margin-top: 20px;">
+                            Ticket ID: {ticket['id']}
+                        </p>
+                    </div>
+                    """
+                )
+    except Exception as e:
+        # Don't fail the contact submission if email fails
+        logger.warning(f"Failed to send contact notification email: {e}")
+    
+    return {"success": True, "ticket_id": ticket["id"], "message": "Your message has been received. We'll get back to you soon."}
+
 @api_router.get("/")
 async def root():
     return {"message": "Covered Call Engine API - Options Trading Platform", "version": "1.0.0"}
