@@ -332,7 +332,7 @@ const Dashboard = () => {
                                   contentStyle={{ background: '#18181b', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px' }}
                                   formatter={(value, name, props) => [
                                     <span style={{ color: value >= 0 ? '#10b981' : '#ef4444' }}>{formatCurrency(value)}</span>,
-                                    'Realized P/L'
+                                    <span style={{ color: '#a1a1aa' }}>Realized P/L</span>
                                   ]}
                                   labelFormatter={(label) => <span style={{ color: '#fff' }}>{label}</span>}
                                 />
