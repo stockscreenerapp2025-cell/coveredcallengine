@@ -3449,7 +3449,314 @@ async def get_audit_logs(
         "pages": (total + limit - 1) // limit
     }
 
-# ==================== ROOT ROUTES ====================
+# ==================== EMAIL AUTOMATION ENDPOINTS ====================
+
+@admin_router.get("/email-automation/templates")
+async def get_email_templates(admin: dict = Depends(get_admin_user)):
+    """Get all email templates"""
+    from services.email_automation import EmailAutomationService
+    
+    email_automation = EmailAutomationService(db)
+    await email_automation.setup_default_templates()  # Ensure defaults exist
+    
+    templates = await email_automation.get_templates()
+    return {"templates": templates}
+
+@admin_router.get("/email-automation/templates/{template_id}")
+async def get_email_template(template_id: str, admin: dict = Depends(get_admin_user)):
+    """Get a single email template"""
+    from services.email_automation import EmailAutomationService
+    
+    email_automation = EmailAutomationService(db)
+    template = await email_automation.get_template(template_id)
+    
+    if not template:
+        raise HTTPException(status_code=404, detail="Template not found")
+    
+    return template
+
+@admin_router.put("/email-automation/templates/{template_id}")
+async def update_email_template(
+    template_id: str,
+    name: Optional[str] = None,
+    subject: Optional[str] = None,
+    html: Optional[str] = None,
+    enabled: Optional[bool] = None,
+    admin: dict = Depends(get_admin_user)
+):
+    """Update an email template"""
+    from services.email_automation import EmailAutomationService
+    
+    email_automation = EmailAutomationService(db)
+    
+    updates = {}
+    if name is not None:
+        updates["name"] = name
+    if subject is not None:
+        updates["subject"] = subject
+    if html is not None:
+        updates["html"] = html
+    if enabled is not None:
+        updates["enabled"] = enabled
+    
+    if not updates:
+        raise HTTPException(status_code=400, detail="No updates provided")
+    
+    success = await email_automation.update_template(template_id, updates)
+    
+    if not success:
+        raise HTTPException(status_code=404, detail="Template not found or update failed")
+    
+    # Log the action
+    await db.audit_logs.insert_one({
+        "action": "email_template_updated",
+        "admin_id": admin["id"],
+        "admin_email": admin["email"],
+        "template_id": template_id,
+        "updates": list(updates.keys()),
+        "timestamp": datetime.now(timezone.utc).isoformat()
+    })
+    
+    return {"message": "Template updated successfully"}
+
+@admin_router.get("/email-automation/rules")
+async def get_automation_rules(admin: dict = Depends(get_admin_user)):
+    """Get all automation rules"""
+    from services.email_automation import EmailAutomationService, TRIGGER_TYPES, ACTION_TYPES
+    
+    email_automation = EmailAutomationService(db)
+    await email_automation.setup_default_rules()  # Ensure defaults exist
+    
+    rules = await email_automation.get_rules()
+    return {
+        "rules": rules,
+        "trigger_types": TRIGGER_TYPES,
+        "action_types": ACTION_TYPES
+    }
+
+@admin_router.post("/email-automation/rules")
+async def create_automation_rule(
+    name: str,
+    trigger_type: str,
+    action: str,
+    template_key: str,
+    delay_minutes: int = 0,
+    condition: Optional[str] = None,
+    enabled: bool = True,
+    admin: dict = Depends(get_admin_user)
+):
+    """Create a new automation rule"""
+    from services.email_automation import EmailAutomationService
+    import json
+    
+    email_automation = EmailAutomationService(db)
+    
+    rule_data = {
+        "name": name,
+        "trigger_type": trigger_type,
+        "condition": json.loads(condition) if condition else {},
+        "delay_minutes": delay_minutes,
+        "action": action,
+        "template_key": template_key,
+        "enabled": enabled
+    }
+    
+    rule = await email_automation.create_rule(rule_data)
+    
+    # Log the action
+    await db.audit_logs.insert_one({
+        "action": "automation_rule_created",
+        "admin_id": admin["id"],
+        "admin_email": admin["email"],
+        "rule_name": name,
+        "timestamp": datetime.now(timezone.utc).isoformat()
+    })
+    
+    return {"message": "Rule created successfully", "rule": rule}
+
+@admin_router.put("/email-automation/rules/{rule_id}")
+async def update_automation_rule(
+    rule_id: str,
+    name: Optional[str] = None,
+    trigger_type: Optional[str] = None,
+    action: Optional[str] = None,
+    template_key: Optional[str] = None,
+    delay_minutes: Optional[int] = None,
+    condition: Optional[str] = None,
+    enabled: Optional[bool] = None,
+    admin: dict = Depends(get_admin_user)
+):
+    """Update an automation rule"""
+    from services.email_automation import EmailAutomationService
+    import json
+    
+    email_automation = EmailAutomationService(db)
+    
+    updates = {}
+    if name is not None:
+        updates["name"] = name
+    if trigger_type is not None:
+        updates["trigger_type"] = trigger_type
+    if action is not None:
+        updates["action"] = action
+    if template_key is not None:
+        updates["template_key"] = template_key
+    if delay_minutes is not None:
+        updates["delay_minutes"] = delay_minutes
+    if condition is not None:
+        updates["condition"] = json.loads(condition)
+    if enabled is not None:
+        updates["enabled"] = enabled
+    
+    if not updates:
+        raise HTTPException(status_code=400, detail="No updates provided")
+    
+    success = await email_automation.update_rule(rule_id, updates)
+    
+    if not success:
+        raise HTTPException(status_code=404, detail="Rule not found or update failed")
+    
+    return {"message": "Rule updated successfully"}
+
+@admin_router.delete("/email-automation/rules/{rule_id}")
+async def delete_automation_rule(rule_id: str, admin: dict = Depends(get_admin_user)):
+    """Delete an automation rule"""
+    from services.email_automation import EmailAutomationService
+    
+    email_automation = EmailAutomationService(db)
+    success = await email_automation.delete_rule(rule_id)
+    
+    if not success:
+        raise HTTPException(status_code=404, detail="Rule not found")
+    
+    # Log the action
+    await db.audit_logs.insert_one({
+        "action": "automation_rule_deleted",
+        "admin_id": admin["id"],
+        "admin_email": admin["email"],
+        "rule_id": rule_id,
+        "timestamp": datetime.now(timezone.utc).isoformat()
+    })
+    
+    return {"message": "Rule deleted successfully"}
+
+@admin_router.get("/email-automation/logs")
+async def get_email_logs(
+    page: int = Query(1, ge=1),
+    limit: int = Query(50, ge=1, le=100),
+    status: Optional[str] = None,
+    template_key: Optional[str] = None,
+    admin: dict = Depends(get_admin_user)
+):
+    """Get email logs with pagination and filters"""
+    from services.email_automation import EmailAutomationService
+    
+    email_automation = EmailAutomationService(db)
+    
+    filters = {}
+    if status:
+        filters["status"] = status
+    if template_key:
+        filters["template_key"] = template_key
+    
+    skip = (page - 1) * limit
+    result = await email_automation.get_email_logs(limit=limit, skip=skip, filters=filters)
+    
+    return {
+        "logs": result["logs"],
+        "total": result["total"],
+        "page": page,
+        "pages": (result["total"] + limit - 1) // limit if result["total"] > 0 else 1
+    }
+
+@admin_router.get("/email-automation/stats")
+async def get_email_stats(admin: dict = Depends(get_admin_user)):
+    """Get email analytics/statistics"""
+    from services.email_automation import EmailAutomationService
+    
+    email_automation = EmailAutomationService(db)
+    stats = await email_automation.get_email_stats()
+    
+    return stats
+
+@admin_router.post("/email-automation/broadcast")
+async def send_broadcast_email(
+    template_key: str,
+    subject_override: Optional[str] = None,
+    announcement_title: Optional[str] = None,
+    announcement_content: Optional[str] = None,
+    update_title: Optional[str] = None,
+    update_content: Optional[str] = None,
+    recipient_filter: Optional[str] = None,
+    admin: dict = Depends(get_admin_user)
+):
+    """Send a broadcast email to multiple users"""
+    from services.email_automation import EmailAutomationService
+    import json
+    
+    email_automation = EmailAutomationService(db)
+    
+    variables = {}
+    if announcement_title:
+        variables["announcement_title"] = announcement_title
+    if announcement_content:
+        variables["announcement_content"] = announcement_content
+    if update_title:
+        variables["update_title"] = update_title
+    if update_content:
+        variables["update_content"] = update_content
+    
+    filter_dict = json.loads(recipient_filter) if recipient_filter else None
+    
+    result = await email_automation.send_broadcast(template_key, variables, filter_dict)
+    
+    # Log the action
+    await db.audit_logs.insert_one({
+        "action": "broadcast_email_sent",
+        "admin_id": admin["id"],
+        "admin_email": admin["email"],
+        "template_key": template_key,
+        "recipients_count": result.get("total", 0),
+        "sent": result.get("sent", 0),
+        "failed": result.get("failed", 0),
+        "timestamp": datetime.now(timezone.utc).isoformat()
+    })
+    
+    return result
+
+@admin_router.post("/email-automation/test-send")
+async def test_send_email(
+    template_key: str,
+    recipient_email: str,
+    admin: dict = Depends(get_admin_user)
+):
+    """Send a test email to a specific recipient"""
+    from services.email_automation import EmailAutomationService
+    
+    email_automation = EmailAutomationService(db)
+    
+    # Test variables
+    variables = {
+        "first_name": "Test User",
+        "name": "Test User",
+        "dashboard_url": "https://coveredcallengine.com/dashboard",
+        "scanner_link": "https://coveredcallengine.com/screener",
+        "feature_link": "https://coveredcallengine.com/screener",
+        "upgrade_link": "https://coveredcallengine.com/pricing",
+        "trial_days": "7",
+        "announcement_title": "Test Announcement",
+        "announcement_content": "This is a test announcement content.",
+        "update_title": "Test Update",
+        "update_content": "This is a test system update content."
+    }
+    
+    result = await email_automation.send_email(recipient_email, template_key, variables)
+    
+    return {
+        "success": result.get("success", False),
+        "message": f"Test email sent to {recipient_email}" if result.get("success") else result.get("error"),
+        "message_id": result.get("message_id")
+    }
 
 @api_router.get("/")
 async def root():
