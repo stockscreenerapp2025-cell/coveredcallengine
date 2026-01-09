@@ -1181,21 +1181,37 @@ async def screen_covered_calls(
     if api_key:
         try:
             opportunities = []
-            # Scan popular stocks for options
-            symbols_to_scan = [
-                # Large Cap Tech ($100+)
-                "AAPL", "MSFT", "GOOGL", "AMZN", "NVDA", "META", "TSLA", 
-                # Major ETFs
-                "SPY", "QQQ", "IWM", "DIA",
-                # Financial ($100+)
-                "JPM", "GS", "V", "MA",
-                # Mid-range stocks ($50-$100)
-                "INTC", "AMD", "CSCO", "PYPL", "UBER", "DIS", "NKE", "SBUX", "KO", "PEP",
-                # Lower-priced stocks ($20-$50)
-                "BAC", "WFC", "C", "F", "GM", "T", "VZ", "PFE", "MRK", "ABBV",
-                # Additional popular options stocks
-                "PLTR", "SOFI", "RIVN", "LCID", "NIO", "SNAP", "HOOD", "COIN"
+            
+            # Tiered symbol scanning - prioritize stocks under $100
+            tier1_symbols = [
+                # Under $100 - High Priority
+                "INTC", "AMD", "CSCO", "BAC", "WFC", "C", "F", "GM", "T", "VZ",
+                "PFE", "MRK", "ABBV", "KO", "PEP", "NKE", "DIS", "SBUX",
+                "PYPL", "UBER", "SNAP", "HOOD", "SOFI", "PLTR", "RIVN", "LCID", "NIO",
+                "AAL", "DAL", "UAL", "CCL", "NCLH", "MGM", "WYNN",
+                "USB", "PNC", "TFC", "KEY", "RF", "CFG", "FITB", "ZION",
+                "DVN", "APA", "HAL", "SLB", "OXY", "MRO", "COP",
+                "HPQ", "DELL", "IBM", "ORCL"
             ]
+            
+            tier2_symbols = [
+                # $100-$200 - Secondary
+                "AAPL", "MSFT", "META", "GOOGL", "AMZN", "NVDA", "TSLA",
+                "JPM", "GS", "V", "MA", "AXP",
+                "SPY", "QQQ", "IWM", "DIA",
+                "HD", "LOW", "COST", "WMT", "TGT",
+                "UNH", "JNJ", "LLY", "TMO", "ABT",
+                "CAT", "DE", "HON", "GE", "BA",
+                "XOM", "CVX"
+            ]
+            
+            # Combine based on price filter
+            if max_price <= 100:
+                symbols_to_scan = tier1_symbols
+            elif min_price >= 100:
+                symbols_to_scan = tier2_symbols
+            else:
+                symbols_to_scan = tier1_symbols + tier2_symbols
             
             async with httpx.AsyncClient(timeout=30.0) as client:
                 for symbol in symbols_to_scan:
