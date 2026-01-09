@@ -90,10 +90,10 @@ const Screener = () => {
     expirationType: 'all', // 'all', 'weekly', 'monthly'
   });
 
-  // Stock Filters
+  // Stock Filters - Default to under $100 first
   const [stockFilters, setStockFilters] = useState({
     minPrice: 10,
-    maxPrice: 500,
+    maxPrice: 100,
     includeStocks: true,
     includeETFs: true,
     includeIndex: false,
@@ -102,21 +102,21 @@ const Screener = () => {
   // Options Filters
   const [optionsFilters, setOptionsFilters] = useState({
     minVolume: 0,
-    minOpenInterest: 100,
+    minOpenInterest: 0,
     moneyness: 'all', // 'all', 'itm', 'atm', 'otm'
   });
 
-  // Greeks Filters
+  // Greeks Filters - Wider range
   const [greeksFilters, setGreeksFilters] = useState({
-    minDelta: 0.15,
-    maxDelta: 0.45,
+    minDelta: 0.10,
+    maxDelta: 0.50,
     minTheta: -999,
     maxTheta: 0,
   });
 
   // Probability Filters
   const [probabilityFilters, setProbabilityFilters] = useState({
-    minProbOTM: 50,
+    minProbOTM: 40,
     maxProbOTM: 100,
   });
 
@@ -137,10 +137,10 @@ const Screener = () => {
     minRoe: 0,
   });
 
-  // ROI Filters
+  // ROI Filters - Lower minimum
   const [roiFilters, setRoiFilters] = useState({
-    minRoi: 0.5,
-    minAnnualizedRoi: 10,
+    minRoi: 0.3,
+    minAnnualizedRoi: 5,
   });
 
   useEffect(() => {
