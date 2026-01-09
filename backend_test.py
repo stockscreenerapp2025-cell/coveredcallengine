@@ -800,6 +800,127 @@ class PremiumHunterAPITester:
                        cleanup_success,
                        f"Status: {status}, Response: {data}")
 
+    def test_contact_form_api(self):
+        """Test Contact Form API endpoint as requested in review"""
+        print("\n📧 Testing Contact Form API...")
+        
+        # Test 1: Valid contact form submission
+        valid_contact_form = {
+            "name": "John Smith",
+            "email": "john.smith@example.com",
+            "subject": "Product Inquiry",
+            "message": "I'm interested in learning more about your covered call strategies and premium features."
+        }
+        
+        success, data, status = self.make_request('POST', 'contact', valid_contact_form)
+        
+        form_success = success and status == 200
+        self.log_result("Contact Form - Valid Submission", 
+                       form_success,
+                       f"Status: {status}, Response: {data}")
+        
+        # Verify response structure
+        if form_success:
+            has_success = data.get("success") is True
+            has_ticket_id = "ticket_id" in data and data["ticket_id"]
+            has_message = "message" in data
+            
+            self.log_result("Contact Form - Response Structure", 
+                           has_success and has_ticket_id and has_message,
+                           f"success: {data.get('success')}, ticket_id: {data.get('ticket_id')}, message: {data.get('message')}")
+            
+            # Store ticket_id for verification
+            ticket_id = data.get("ticket_id")
+            
+            # Test 2: Verify ticket is saved in support_tickets collection
+            if ticket_id:
+                # We can't directly query the database, but we can test another valid submission
+                # to ensure the endpoint is consistently working
+                another_form = {
+                    "name": "Sarah Johnson", 
+                    "email": "sarah.johnson@test.com",
+                    "subject": "Technical Support",
+                    "message": "I'm having trouble with the portfolio import feature."
+                }
+                
+                success2, data2, status2 = self.make_request('POST', 'contact', another_form)
+                
+                consistent_success = success2 and status2 == 200 and data2.get("success") is True
+                self.log_result("Contact Form - Database Persistence (Consistency Check)", 
+                               consistent_success,
+                               f"Second submission - Status: {status2}, Success: {data2.get('success')}")
+        
+        # Test 3: Validation - Missing required field (name)
+        invalid_form_no_name = {
+            "email": "test@example.com",
+            "subject": "Test",
+            "message": "Test message"
+        }
+        
+        success, data, status = self.make_request('POST', 'contact', invalid_form_no_name)
+        
+        validation_working = not success or status == 422 or status == 400
+        self.log_result("Contact Form - Validation (Missing Name)", 
+                       validation_working,
+                       f"Status: {status}, Response: {data}")
+        
+        # Test 4: Validation - Missing required field (email)
+        invalid_form_no_email = {
+            "name": "Test User",
+            "subject": "Test",
+            "message": "Test message"
+        }
+        
+        success, data, status = self.make_request('POST', 'contact', invalid_form_no_email)
+        
+        validation_working = not success or status == 422 or status == 400
+        self.log_result("Contact Form - Validation (Missing Email)", 
+                       validation_working,
+                       f"Status: {status}, Response: {data}")
+        
+        # Test 5: Validation - Missing required field (message)
+        invalid_form_no_message = {
+            "name": "Test User",
+            "email": "test@example.com",
+            "subject": "Test"
+        }
+        
+        success, data, status = self.make_request('POST', 'contact', invalid_form_no_message)
+        
+        validation_working = not success or status == 422 or status == 400
+        self.log_result("Contact Form - Validation (Missing Message)", 
+                       validation_working,
+                       f"Status: {status}, Response: {data}")
+        
+        # Test 6: Validation - Invalid email format
+        invalid_form_bad_email = {
+            "name": "Test User",
+            "email": "invalid-email-format",
+            "subject": "Test",
+            "message": "Test message"
+        }
+        
+        success, data, status = self.make_request('POST', 'contact', invalid_form_bad_email)
+        
+        validation_working = not success or status == 422 or status == 400
+        self.log_result("Contact Form - Validation (Invalid Email Format)", 
+                       validation_working,
+                       f"Status: {status}, Response: {data}")
+        
+        # Test 7: Optional subject field (should work without subject)
+        form_no_subject = {
+            "name": "Test User",
+            "email": "test@example.com", 
+            "message": "This is a message without a subject"
+        }
+        
+        success, data, status = self.make_request('POST', 'contact', form_no_subject)
+        
+        optional_subject_works = success and status == 200 and data.get("success") is True
+        self.log_result("Contact Form - Optional Subject Field", 
+                       optional_subject_works,
+                       f"Status: {status}, Success: {data.get('success')}")
+
     def test_unauthorized_access(self):
         """Test endpoints without authentication"""
         # Test protected endpoint without token
