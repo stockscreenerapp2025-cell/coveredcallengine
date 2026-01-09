@@ -472,12 +472,32 @@ const Admin = () => {
 
       {/* Main Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid w-full grid-cols-5 bg-zinc-800/50 p-1">
+        <TabsList className="grid w-full grid-cols-6 bg-zinc-800/50 p-1">
           <TabsTrigger value="dashboard" className="flex items-center gap-2">
             <BarChart3 className="w-4 h-4" />
             Dashboard
           </TabsTrigger>
           <TabsTrigger value="users" className="flex items-center gap-2" onClick={() => fetchUsers(1)}>
+            <Users className="w-4 h-4" />
+            Users
+          </TabsTrigger>
+          <TabsTrigger value="email-automation" className="flex items-center gap-2" onClick={() => { fetchEmailTemplates(); fetchAutomationRules(); fetchEmailLogs(); fetchEmailStats(); }}>
+            <Mail className="w-4 h-4" />
+            Email
+          </TabsTrigger>
+          <TabsTrigger value="subscriptions" className="flex items-center gap-2">
+            <CreditCard className="w-4 h-4" />
+            Billing
+          </TabsTrigger>
+          <TabsTrigger value="integrations" className="flex items-center gap-2">
+            <Zap className="w-4 h-4" />
+            Integrations
+          </TabsTrigger>
+          <TabsTrigger value="api-keys" className="flex items-center gap-2">
+            <Key className="w-4 h-4" />
+            API Keys
+          </TabsTrigger>
+        </TabsList>
             <Users className="w-4 h-4" />
             Users
           </TabsTrigger>
