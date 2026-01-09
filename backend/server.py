@@ -1184,24 +1184,21 @@ async def screen_covered_calls(
             
             # Tiered symbol scanning - prioritize stocks under $100
             tier1_symbols = [
-                # Under $100 - High Priority
-                "INTC", "AMD", "CSCO", "BAC", "WFC", "C", "F", "GM", "T", "VZ",
-                "PFE", "MRK", "ABBV", "KO", "PEP", "NKE", "DIS", "SBUX",
-                "PYPL", "UBER", "SNAP", "HOOD", "SOFI", "PLTR", "RIVN", "LCID", "NIO",
-                "AAL", "DAL", "UAL", "CCL", "NCLH", "MGM", "WYNN",
-                "USB", "PNC", "TFC", "KEY", "RF", "CFG", "FITB", "ZION",
-                "DVN", "APA", "HAL", "SLB", "OXY", "MRO", "COP",
-                "HPQ", "DELL", "IBM", "ORCL"
+                # Under $100 - High Priority (reduced for speed)
+                "INTC", "AMD", "BAC", "WFC", "C", "F", "GM", "T", "VZ",
+                "PFE", "MRK", "KO", "PEP", "NKE", "DIS",
+                "PYPL", "UBER", "SNAP", "PLTR", "SOFI",
+                "AAL", "DAL", "CCL",
+                "USB", "PNC", "CFG",
+                "DVN", "APA", "HAL", "OXY"
             ]
             
             tier2_symbols = [
                 # $100-$200 - Secondary
-                "AAPL", "MSFT", "META", "GOOGL", "AMZN", "NVDA", "TSLA",
-                "JPM", "GS", "V", "MA", "AXP",
-                "SPY", "QQQ", "IWM", "DIA",
-                "HD", "LOW", "COST", "WMT", "TGT",
-                "UNH", "JNJ", "LLY", "TMO", "ABT",
-                "CAT", "DE", "HON", "GE", "BA",
+                "AAPL", "MSFT", "META", "AMD",
+                "JPM", "GS", "V", "MA",
+                "SPY", "QQQ", "IWM",
+                "HD", "COST",
                 "XOM", "CVX"
             ]
             
