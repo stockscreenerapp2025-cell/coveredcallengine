@@ -548,6 +548,126 @@ class PremiumHunterAPITester:
                            False,
                            f"Failed to test missing signature: {str(e)}")
 
+    def test_stripe_subscription_configuration(self):
+        """Test Stripe subscription configuration as requested in review"""
+        print("\n💳 Testing Stripe Subscription Configuration...")
+        
+        # Test 1: GET /api/subscription/links (public endpoint)
+        success, data, status = self.make_request('GET', 'subscription/links')
+        
+        links_success = success and status == 200
+        self.log_result("Subscription Payment Links - Basic", 
+                       links_success,
+                       f"Status: {status}, Response: {data}")
+        
+        if links_success:
+            # Verify the expected payment links
+            expected_trial = "https://buy.stripe.com/test_7sY14pdw912ad3vdvpgYU00"
+            expected_monthly = "https://buy.stripe.com/test_cNi14p4ZDeT0bZrgHBgYU01"
+            expected_yearly = "https://buy.stripe.com/test_dRm6oJ8bP8uC7JbfDxgYU02"
+            
+            trial_correct = data.get("trial_link") == expected_trial
+            monthly_correct = data.get("monthly_link") == expected_monthly
+            yearly_correct = data.get("yearly_link") == expected_yearly
+            mode_test = data.get("mode") == "test"
+            
+            self.log_result("Subscription Links - Trial Link", 
+                           trial_correct,
+                           f"Expected: {expected_trial}, Got: {data.get('trial_link')}")
+            
+            self.log_result("Subscription Links - Monthly Link", 
+                           monthly_correct,
+                           f"Expected: {expected_monthly}, Got: {data.get('monthly_link')}")
+            
+            self.log_result("Subscription Links - Yearly Link", 
+                           yearly_correct,
+                           f"Expected: {expected_yearly}, Got: {data.get('yearly_link')}")
+            
+            self.log_result("Subscription Links - Test Mode", 
+                           mode_test,
+                           f"Expected: test, Got: {data.get('mode')}")
+        
+        # Test 2: GET /api/subscription/admin/settings (requires admin auth)
+        if not self.admin_token:
+            self.log_result("Admin Subscription Settings", False, "No admin token available")
+            return
+        
+        success, data, status = self.make_request('GET', 'subscription/admin/settings', token=self.admin_token)
+        
+        admin_settings_success = success and status == 200
+        self.log_result("Admin Subscription Settings - Basic", 
+                       admin_settings_success,
+                       f"Status: {status}, Response: {data}")
+        
+        if admin_settings_success:
+            # Verify test_links contain all 3 payment links
+            test_links = data.get("test_links", {})
+            active_mode = data.get("active_mode")
+            
+            has_trial = "trial" in test_links
+            has_monthly = "monthly" in test_links  
+            has_yearly = "yearly" in test_links
+            
+            self.log_result("Admin Settings - Test Links Structure", 
+                           has_trial and has_monthly and has_yearly,
+                           f"Test links: {test_links}")
+            
+            self.log_result("Admin Settings - Active Mode", 
+                           active_mode == "test",
+                           f"Active mode: {active_mode} (Expected: test)")
+        
+        # Test 3: GET /api/admin/integration-settings (requires admin auth) - Stripe configuration
+        success, data, status = self.make_request('GET', 'admin/integration-settings', token=self.admin_token)
+        
+        integration_success = success and status == 200
+        self.log_result("Integration Settings - Basic", 
+                       integration_success,
+                       f"Status: {status}, Response: {data}")
+        
+        if integration_success:
+            stripe_config = data.get("stripe", {})
+            email_config = data.get("email", {})
+            
+            webhook_configured = stripe_config.get("webhook_secret_configured", False)
+            secret_key_configured = stripe_config.get("secret_key_configured", False)
+            resend_configured = email_config.get("resend_api_key_configured", False)
+            
+            self.log_result("Integration Settings - Stripe Webhook Secret", 
+                           webhook_configured,
+                           f"webhook_secret_configured: {webhook_configured} (Expected: True)")
+            
+            self.log_result("Integration Settings - Stripe Secret Key", 
+                           secret_key_configured,
+                           f"secret_key_configured: {secret_key_configured} (Expected: True)")
+            
+            self.log_result("Integration Settings - Resend API Key", 
+                           resend_configured,
+                           f"resend_api_key_configured: {resend_configured} (Expected: True)")
+        
+        # Test 4: POST /api/subscription/admin/switch-mode?mode=test (requires admin auth)
+        success, data, status = self.make_request('POST', 'subscription/admin/switch-mode?mode=test', 
+                                                 token=self.admin_token)
+        
+        switch_success = success and status == 200
+        self.log_result("Subscription Mode Switch - Test Mode", 
+                       switch_success,
+                       f"Status: {status}, Response: {data}")
+        
+        if switch_success:
+            active_mode = data.get("active_mode")
+            self.log_result("Mode Switch - Verification", 
+                           active_mode == "test",
+                           f"Active mode after switch: {active_mode} (Expected: test)")
+        
+        # Test 5: Verify mode switch worked by checking links again
+        success, data, status = self.make_request('GET', 'subscription/links')
+        
+        if success and status == 200:
+            mode_after_switch = data.get("mode")
+            self.log_result("Mode Switch - Links Verification", 
+                           mode_after_switch == "test",
+                           f"Mode in links endpoint: {mode_after_switch} (Expected: test)")
+
     def test_ibkr_portfolio_import(self):
         """Test IBKR Portfolio Import functionality as requested in review"""
         if not self.admin_token:
