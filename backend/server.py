@@ -4027,6 +4027,52 @@ async def root():
 async def health():
     return {"status": "healthy", "timestamp": datetime.now(timezone.utc).isoformat()}
 
+@api_router.get("/market-status")
+async def get_market_status():
+    """Get current market status (open/closed) and relevant times"""
+    try:
+        eastern = pytz.timezone('US/Eastern')
+        now_eastern = datetime.now(eastern)
+        
+        market_open_time = now_eastern.replace(hour=9, minute=30, second=0, microsecond=0)
+        market_close_time = now_eastern.replace(hour=16, minute=0, second=0, microsecond=0)
+        
+        is_weekend = now_eastern.weekday() >= 5
+        is_before_open = now_eastern < market_open_time
+        is_after_close = now_eastern > market_close_time
+        
+        market_closed = is_weekend or is_before_open or is_after_close
+        
+        status = "closed"
+        reason = ""
+        
+        if is_weekend:
+            status = "closed"
+            reason = "Weekend - Market is closed"
+        elif is_before_open:
+            status = "pre-market"
+            reason = "Pre-market hours"
+        elif is_after_close:
+            status = "after-hours"
+            reason = "After-hours - Market closed"
+        else:
+            status = "open"
+            reason = "Market is open"
+        
+        return {
+            "status": status,
+            "is_open": not market_closed,
+            "is_weekend": is_weekend,
+            "reason": reason,
+            "current_time_et": now_eastern.strftime("%Y-%m-%d %H:%M:%S ET"),
+            "market_open": "9:30 AM ET",
+            "market_close": "4:00 PM ET",
+            "data_note": "Data shown is from Friday's market close" if is_weekend else ("Data is cached from market hours" if market_closed else "Live market data")
+        }
+    except Exception as e:
+        logging.error(f"Market status error: {e}")
+        return {"status": "unknown", "is_open": False, "error": str(e)}
+
 # Include all routers
 api_router.include_router(auth_router)
 api_router.include_router(stocks_router)
