@@ -68,20 +68,22 @@ const PMCC = () => {
   const fetchOpportunities = async () => {
     setLoading(true);
     try {
-      const response = await screenerApi.getPMCC({
-        min_price: filters.minPrice,
-        max_price: filters.maxPrice,
-        min_leaps_delta: filters.minLeapsDelta,
-        max_leaps_delta: filters.maxLeapsDelta,
-        min_leaps_dte: filters.minLeapsDte,
-        max_leaps_dte: filters.maxLeapsDte,
-        min_short_delta: filters.minShortDelta,
-        max_short_delta: filters.maxShortDelta,
-        min_short_dte: filters.minShortDte,
-        max_short_dte: filters.maxShortDte,
-        min_roi: filters.minRoiPerCycle,
-        min_annualized_roi: filters.minAnnualizedRoi,
-      });
+      // Only pass non-empty filter values
+      const params = {};
+      if (filters.minPrice) params.min_price = filters.minPrice;
+      if (filters.maxPrice) params.max_price = filters.maxPrice;
+      if (filters.minLeapsDelta) params.min_leaps_delta = filters.minLeapsDelta;
+      if (filters.maxLeapsDelta) params.max_leaps_delta = filters.maxLeapsDelta;
+      if (filters.minLeapsDte) params.min_leaps_dte = filters.minLeapsDte;
+      if (filters.maxLeapsDte) params.max_leaps_dte = filters.maxLeapsDte;
+      if (filters.minShortDelta) params.min_short_delta = filters.minShortDelta;
+      if (filters.maxShortDelta) params.max_short_delta = filters.maxShortDelta;
+      if (filters.minShortDte) params.min_short_dte = filters.minShortDte;
+      if (filters.maxShortDte) params.max_short_dte = filters.maxShortDte;
+      if (filters.minRoiPerCycle) params.min_roi = filters.minRoiPerCycle;
+      if (filters.minAnnualizedRoi) params.min_annualized_roi = filters.minAnnualizedRoi;
+      
+      const response = await screenerApi.getPMCC(params);
       setOpportunities(response.data.opportunities || []);
       setApiInfo(response.data);
     } catch (error) {
@@ -90,6 +92,23 @@ const PMCC = () => {
     } finally {
       setLoading(false);
     }
+  };
+
+  const resetFilters = () => {
+    setFilters({
+      minPrice: '',
+      maxPrice: '',
+      minLeapsDelta: '',
+      maxLeapsDelta: '',
+      minLeapsDte: '',
+      maxLeapsDte: '',
+      minShortDelta: '',
+      maxShortDelta: '',
+      minShortDte: '',
+      maxShortDte: '',
+      minRoiPerCycle: '',
+      minAnnualizedRoi: '',
+    });
   };
 
   const handleSort = (field) => {
