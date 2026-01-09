@@ -404,6 +404,96 @@ async def get_marketaux_client():
         return settings.marketaux_api_token
     return None
 
+async def fetch_options_chain_polygon(symbol: str, api_key: str, contract_type: str = "call", max_dte: int = 45) -> list:
+    """
+    Fetch options chain using Polygon.io endpoints that work with basic subscription:
+    1. v3/reference/options/contracts - Get list of available contracts
+    2. v2/aggs/ticker/{contract}/prev - Get previous day OHLCV for each contract
+    
+    Returns list of option data with pricing info.
+    """
+    from datetime import datetime, timedelta
+    
+    options = []
+    today = datetime.now()
+    min_expiry = today.strftime("%Y-%m-%d")
+    max_expiry = (today + timedelta(days=max_dte)).strftime("%Y-%m-%d")
+    
+    try:
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            # Step 1: Get list of contracts
+            contracts_response = await client.get(
+                "https://api.polygon.io/v3/reference/options/contracts",
+                params={
+                    "underlying_ticker": symbol.upper(),
+                    "contract_type": contract_type,
+                    "expired": "false",
+                    "expiration_date.gte": min_expiry,
+                    "expiration_date.lte": max_expiry,
+                    "limit": 100,
+                    "apiKey": api_key
+                }
+            )
+            
+            if contracts_response.status_code != 200:
+                logging.warning(f"Polygon contracts API returned {contracts_response.status_code} for {symbol}")
+                return []
+            
+            contracts_data = contracts_response.json()
+            contracts = contracts_data.get("results", [])
+            
+            if not contracts:
+                return []
+            
+            logging.info(f"Found {len(contracts)} {contract_type} contracts for {symbol}")
+            
+            # Step 2: Get pricing for each contract (batch requests to avoid rate limits)
+            for contract in contracts[:50]:  # Limit to 50 contracts per symbol
+                contract_ticker = contract.get("ticker", "")
+                if not contract_ticker:
+                    continue
+                
+                try:
+                    # Get previous day's OHLCV
+                    price_response = await client.get(
+                        f"https://api.polygon.io/v2/aggs/ticker/{contract_ticker}/prev",
+                        params={"apiKey": api_key}
+                    )
+                    
+                    if price_response.status_code == 200:
+                        price_data = price_response.json()
+                        results = price_data.get("results", [])
+                        
+                        if results:
+                            result = results[0]
+                            
+                            # Calculate estimated delta based on moneyness (simplified)
+                            strike = contract.get("strike_price", 0)
+                            
+                            options.append({
+                                "contract_ticker": contract_ticker,
+                                "underlying": symbol.upper(),
+                                "strike": strike,
+                                "expiry": contract.get("expiration_date", ""),
+                                "dte": calculate_dte(contract.get("expiration_date", "")),
+                                "type": contract.get("contract_type", "call"),
+                                "close": result.get("c", 0),
+                                "open": result.get("o", 0),
+                                "high": result.get("h", 0),
+                                "low": result.get("l", 0),
+                                "volume": result.get("v", 0),
+                                "vwap": result.get("vw", 0),
+                            })
+                except Exception as e:
+                    logging.warning(f"Error fetching price for {contract_ticker}: {e}")
+                    continue
+            
+            return options
+            
+    except Exception as e:
+        logging.error(f"Error fetching options chain for {symbol}: {e}")
+        return []
+
 # Mock market data (used when Polygon API is not configured)
 MOCK_STOCKS = {
     "AAPL": {"price": 178.50, "change": 2.35, "change_pct": 1.33, "volume": 45000000, "market_cap": 2800000000000, "pe": 28.5, "roe": 147.0},
