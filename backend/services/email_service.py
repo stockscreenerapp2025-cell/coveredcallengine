@@ -381,3 +381,45 @@ class EmailService:
             "access_until": user.get("subscription", {}).get("cancelled_at", "N/A")
         }
         return await self.send_email(user["email"], "subscription_cancelled", variables)
+    
+    async def send_raw_email(self, to_email: str, subject: str, html_content: str) -> dict:
+        """Send a raw email without using templates"""
+        if not await self.initialize():
+            logger.warning("Email service not configured - skipping email")
+            return {"status": "skipped", "reason": "Email service not configured"}
+        
+        params = {
+            "from": self.sender_email,
+            "to": [to_email],
+            "subject": subject,
+            "html": html_content
+        }
+        
+        try:
+            email_result = await asyncio.to_thread(resend.Emails.send, params)
+            
+            # Log email send
+            await self.db.email_logs.insert_one({
+                "to": to_email,
+                "template": "raw_email",
+                "subject": subject,
+                "status": "sent",
+                "email_id": email_result.get("id"),
+                "sent_at": datetime.now(timezone.utc).isoformat()
+            })
+            
+            return {"status": "success", "email_id": email_result.get("id")}
+        except Exception as e:
+            logger.error(f"Failed to send raw email: {e}")
+            
+            # Log failure
+            await self.db.email_logs.insert_one({
+                "to": to_email,
+                "template": "raw_email",
+                "subject": subject,
+                "status": "failed",
+                "error": str(e),
+                "sent_at": datetime.now(timezone.utc).isoformat()
+            })
+            
+            return {"status": "error", "reason": str(e)}
