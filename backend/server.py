@@ -1309,6 +1309,23 @@ async def get_dashboard_opportunities(
     - Analyst ratings when available
     - Weekly: min 0.8% ROI, Monthly: min 2.5% ROI - RELAXED
     """
+    cache_key = "dashboard_opportunities_v2"
+    
+    # Check cache first (with extended duration for weekends)
+    cached_data = await get_cached_data(cache_key)
+    if cached_data:
+        cached_data["from_cache"] = True
+        cached_data["market_closed"] = is_market_closed()
+        return cached_data
+    
+    # If market is closed and no recent cache, try last trading day data
+    if is_market_closed():
+        ltd_data = await get_last_trading_day_data(cache_key)
+        if ltd_data:
+            ltd_data["from_cache"] = True
+            ltd_data["market_closed"] = True
+            return ltd_data
+    
     api_key = await get_massive_api_key()
     
     if not api_key:
