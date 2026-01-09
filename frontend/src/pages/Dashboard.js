@@ -99,6 +99,52 @@ const Dashboard = () => {
     value: 450 + Math.random() * 50 - (i > 15 ? -10 : 10) + i * 0.5
   }));
 
+  // Format option contract display like "26SEP25 49.5 C"
+  const formatOptionContract = (expiry, strike, type = 'C') => {
+    if (!expiry || !strike) return '-';
+    try {
+      const date = new Date(expiry);
+      const day = date.getDate().toString().padStart(2, '0');
+      const months = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
+      const month = months[date.getMonth()];
+      const year = date.getFullYear().toString().slice(-2);
+      return `${day}${month}${year} ${strike} ${type}`;
+    } catch {
+      return `${strike} ${type}`;
+    }
+  };
+
+  // Portfolio performance colors
+  const STRATEGY_COLORS = {
+    COVERED_CALL: '#10b981',
+    STOCK: '#3b82f6',
+    ETF: '#8b5cf6',
+    NAKED_PUT: '#f59e0b',
+    PMCC: '#06b6d4',
+    OTHER: '#6b7280'
+  };
+
+  // Prepare strategy distribution data for pie chart
+  const strategyData = ibkrSummary?.by_strategy ? Object.entries(ibkrSummary.by_strategy).map(([key, value]) => ({
+    name: key.replace('_', ' '),
+    value: value.count,
+    invested: value.invested,
+    premium: value.premium,
+    color: STRATEGY_COLORS[key] || STRATEGY_COLORS.OTHER
+  })) : [];
+
+  // Prepare performance data for bar chart (top holdings by invested amount)
+  const topHoldings = ibkrTrades
+    .filter(t => t.shares > 0 && t.entry_price)
+    .map(t => ({
+      symbol: t.symbol,
+      invested: (t.shares * t.entry_price),
+      pnl: t.unrealized_pnl || 0,
+      shares: t.shares
+    }))
+    .sort((a, b) => b.invested - a.invested)
+    .slice(0, 5);
+
   const formatCurrency = (value) => {
     return new Intl.NumberFormat('en-US', {
       style: 'currency',
