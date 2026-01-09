@@ -1883,7 +1883,7 @@ async def get_dashboard_pmcc_opportunities(
         opportunities.sort(key=lambda x: x["score"], reverse=True)
         top_10 = opportunities[:10]
         
-        return {
+        result = {
             "opportunities": top_10,
             "total": len(top_10),
             "is_live": True,
@@ -1895,6 +1895,11 @@ async def get_dashboard_pmcc_opportunities(
                 "short_leg": f"7-45 days out ({short_start} to {short_end}), OTM (δ 0.15-0.40)"
             }
         }
+        
+        # Cache the result for weekend access
+        await set_cached_data(cache_key, result)
+        
+        return result
         
     except Exception as e:
         logging.error(f"Dashboard PMCC error: {e}")
