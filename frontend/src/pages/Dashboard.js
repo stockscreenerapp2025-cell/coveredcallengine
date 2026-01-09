@@ -100,7 +100,7 @@ const Dashboard = () => {
   }));
 
   // Format option contract display like "26SEP25 49.5 C"
-  const formatOptionContract = (expiry, strike, type = 'C') => {
+  const formatOptionContract = (expiry, strike, optionType = 'call') => {
     if (!expiry || !strike) return '-';
     try {
       const date = new Date(expiry);
@@ -108,8 +108,11 @@ const Dashboard = () => {
       const months = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
       const month = months[date.getMonth()];
       const year = date.getFullYear().toString().slice(-2);
+      // C for Call, P for Put
+      const type = optionType?.toLowerCase() === 'put' ? 'P' : 'C';
       return `${day}${month}${year} ${strike} ${type}`;
     } catch {
+      const type = optionType?.toLowerCase() === 'put' ? 'P' : 'C';
       return `${strike} ${type}`;
     }
   };
