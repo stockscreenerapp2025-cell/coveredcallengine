@@ -506,7 +506,7 @@ const PMCC = () => {
                         <SortHeader field="strike_width" label="Width" />
                         <SortHeader field="roi_per_cycle" label="ROI/Cycle" />
                         <SortHeader field="annualized_roi" label="Ann. ROI" />
-                        <SortHeader field="score" label="Score" />
+                        <SortHeader field="score" label="AI Score" />
                       </tr>
                     </thead>
                     <tbody>
