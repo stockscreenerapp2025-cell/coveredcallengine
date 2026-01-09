@@ -496,7 +496,7 @@ const Dashboard = () => {
                     <th>IV</th>
                     <th>6M</th>
                     <th>12M</th>
-                    <th>Score</th>
+                    <th>AI Score</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -517,9 +517,9 @@ const Dashboard = () => {
                       </td>
                       <td>${opp.stock_price?.toFixed(2)}</td>
                       <td>
-                        <div className="flex items-center gap-1">
-                          ${opp.strike?.toFixed(2)}
-                          <Badge className={opp.moneyness === 'ATM' ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30 text-xs' : 'bg-blue-500/20 text-blue-400 border-blue-500/30 text-xs'}>
+                        <div className="flex flex-col">
+                          <span className="font-mono text-sm">{formatOptionContract(opp.expiry, opp.strike?.toFixed(1))}</span>
+                          <Badge className={`mt-0.5 w-fit ${opp.moneyness === 'ATM' ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30 text-xs' : 'bg-blue-500/20 text-blue-400 border-blue-500/30 text-xs'}`}>
                             {opp.moneyness || (opp.strike_pct !== undefined ? (opp.strike_pct >= -2 && opp.strike_pct <= 2 ? 'ATM' : 'OTM') : '')}
                           </Badge>
                         </div>
