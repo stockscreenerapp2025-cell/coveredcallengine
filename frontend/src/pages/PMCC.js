@@ -41,24 +41,24 @@ const PMCC = () => {
   const [sortField, setSortField] = useState('score');
   const [sortDirection, setSortDirection] = useState('desc');
 
-  // PMCC Filters
+  // PMCC Filters - blank by default for best opportunities
   const [filters, setFilters] = useState({
     // Stock filters
-    minPrice: 30,
-    maxPrice: 500,
+    minPrice: '',
+    maxPrice: '',
     // LEAPS filters
-    minLeapsDelta: 0.70,
-    maxLeapsDelta: 1.0,
-    minLeapsDte: 300,
-    maxLeapsDte: 730,
+    minLeapsDelta: '',
+    maxLeapsDelta: '',
+    minLeapsDte: '',
+    maxLeapsDte: '',
     // Short leg filters
-    minShortDelta: 0.15,
-    maxShortDelta: 0.40,
-    minShortDte: 7,
-    maxShortDte: 45,
+    minShortDelta: '',
+    maxShortDelta: '',
+    minShortDte: '',
+    maxShortDte: '',
     // ROI filters
-    minRoiPerCycle: 1.0,
-    minAnnualizedRoi: 20,
+    minRoiPerCycle: '',
+    minAnnualizedRoi: '',
   });
 
   useEffect(() => {
