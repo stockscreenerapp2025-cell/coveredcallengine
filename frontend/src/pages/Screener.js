@@ -146,7 +146,17 @@ const Screener = () => {
   useEffect(() => {
     fetchOpportunities();
     fetchSavedFilters();
+    fetchMarketStatus();
   }, []);
+
+  const fetchMarketStatus = async () => {
+    try {
+      const res = await api.get('/market-status');
+      setMarketStatus(res.data);
+    } catch (error) {
+      console.log('Could not fetch market status:', error);
+    }
+  };
 
   const fetchOpportunities = async () => {
     setLoading(true);
@@ -166,6 +176,11 @@ const Screener = () => {
       });
       
       let results = response.data.opportunities || [];
+      setDataInfo({
+        from_cache: response.data.from_cache,
+        market_closed: response.data.market_closed,
+        is_last_trading_day: response.data.is_last_trading_day
+      });
       
       // Client-side filtering for moneyness
       if (optionsFilters.moneyness !== 'all') {
