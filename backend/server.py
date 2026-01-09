@@ -1609,7 +1609,7 @@ async def get_dashboard_opportunities(
                 if len(unique_opps) >= 10:
                     break
         
-        return {
+        result = {
             "opportunities": unique_opps,
             "total": len(unique_opps),
             "is_live": True,
@@ -1622,6 +1622,11 @@ async def get_dashboard_opportunities(
                 "monthly_min_roi": "2.5%"
             }
         }
+        
+        # Cache the result for weekend access
+        await set_cached_data(cache_key, result)
+        
+        return result
         
     except Exception as e:
         logging.error(f"Dashboard opportunities error: {e}")
