@@ -372,7 +372,7 @@ async def fetch_stock_quote(symbol: str, api_key: str = None) -> Optional[dict]:
     if api_key:
         try:
             async with aiohttp.ClientSession() as session:
-                url = f"https://api.massive.com/v2/aggs/ticker/{symbol}/prev"
+                url = f"https://api.polygon.io/v2/aggs/ticker/{symbol}/prev"
                 headers = {"Authorization": f"Bearer {api_key}"}
                 async with session.get(url, headers=headers, timeout=10) as response:
                     if response.status == 200:
@@ -655,7 +655,7 @@ async def get_stock_quote(symbol: str, user: dict = Depends(get_current_user)):
                 # Massive.com uses apiKey as query parameter (similar to Polygon)
                 # Get previous day aggregates for price data
                 response = await client.get(
-                    f"https://api.massive.com/v2/aggs/ticker/{symbol}/prev",
+                    f"https://api.polygon.io/v2/aggs/ticker/{symbol}/prev",
                     params={"apiKey": api_key}
                 )
                 logging.info(f"Stock quote API response for {symbol}: status={response.status_code}")
@@ -677,7 +677,7 @@ async def get_stock_quote(symbol: str, user: dict = Depends(get_current_user)):
                 
                 # Fallback: try last trade endpoint
                 response = await client.get(
-                    f"https://api.massive.com/v2/last/trade/{symbol}",
+                    f"https://api.polygon.io/v2/last/trade/{symbol}",
                     params={"apiKey": api_key}
                 )
                 if response.status_code == 200:
@@ -736,7 +736,7 @@ async def get_stock_details(symbol: str, user: dict = Depends(get_current_user))
             async with httpx.AsyncClient(timeout=30.0) as client:
                 # Get current price
                 price_response = await client.get(
-                    f"https://api.massive.com/v2/aggs/ticker/{symbol}/prev",
+                    f"https://api.polygon.io/v2/aggs/ticker/{symbol}/prev",
                     params={"apiKey": api_key}
                 )
                 if price_response.status_code == 200:
@@ -754,7 +754,7 @@ async def get_stock_details(symbol: str, user: dict = Depends(get_current_user))
                 
                 # Get ticker details/fundamentals
                 ticker_response = await client.get(
-                    f"https://api.massive.com/v3/reference/tickers/{symbol}",
+                    f"https://api.polygon.io/v3/reference/tickers/{symbol}",
                     params={"apiKey": api_key}
                 )
                 if ticker_response.status_code == 200:
@@ -774,7 +774,7 @@ async def get_stock_details(symbol: str, user: dict = Depends(get_current_user))
                 
                 # Get news from Massive.com
                 news_response = await client.get(
-                    f"https://api.massive.com/v2/reference/news",
+                    f"https://api.polygon.io/v2/reference/news",
                     params={"apiKey": api_key, "ticker": symbol, "limit": 5}
                 )
                 if news_response.status_code == 200:
@@ -794,7 +794,7 @@ async def get_stock_details(symbol: str, user: dict = Depends(get_current_user))
                 start_date = (datetime.now() - timedelta(days=250)).strftime("%Y-%m-%d")
                 
                 hist_response = await client.get(
-                    f"https://api.massive.com/v2/aggs/ticker/{symbol}/range/1/day/{start_date}/{end_date}",
+                    f"https://api.polygon.io/v2/aggs/ticker/{symbol}/range/1/day/{start_date}/{end_date}",
                     params={"apiKey": api_key, "adjusted": "true", "sort": "desc", "limit": 250}
                 )
                 
@@ -921,7 +921,7 @@ async def get_options_chain(
             async with httpx.AsyncClient(timeout=30.0) as client:
                 # First get the stock price
                 stock_response = await client.get(
-                    f"https://api.massive.com/v2/aggs/ticker/{symbol}/prev",
+                    f"https://api.polygon.io/v2/aggs/ticker/{symbol}/prev",
                     params={"apiKey": api_key}
                 )
                 underlying_price = 0
@@ -940,7 +940,7 @@ async def get_options_chain(
                 if expiry:
                     params["expiration_date"] = expiry
                 
-                url = f"https://api.massive.com/v3/snapshot/options/{symbol}"
+                url = f"https://api.polygon.io/v3/snapshot/options/{symbol}"
                 logging.info(f"Options chain API request: {url} with params (excluding key): expiry={expiry}")
                 
                 response = await client.get(url, params=params)
@@ -1112,7 +1112,7 @@ async def screen_covered_calls(
                     try:
                         # First get the current stock price
                         stock_response = await client.get(
-                            f"https://api.massive.com/v2/aggs/ticker/{symbol}/prev",
+                            f"https://api.polygon.io/v2/aggs/ticker/{symbol}/prev",
                             params={"apiKey": api_key}
                         )
                         
@@ -1138,7 +1138,7 @@ async def screen_covered_calls(
                         }
                         
                         response = await client.get(
-                            f"https://api.massive.com/v3/snapshot/options/{symbol}",
+                            f"https://api.polygon.io/v3/snapshot/options/{symbol}",
                             params=params
                         )
                         
@@ -1367,7 +1367,7 @@ async def get_dashboard_opportunities(
                 try:
                     # Get stock price
                     stock_response = await client.get(
-                        f"https://api.massive.com/v2/aggs/ticker/{symbol}/prev",
+                        f"https://api.polygon.io/v2/aggs/ticker/{symbol}/prev",
                         params={"apiKey": api_key}
                     )
                     
@@ -1389,7 +1389,7 @@ async def get_dashboard_opportunities(
                     start_date = (datetime.now() - timedelta(days=400)).strftime("%Y-%m-%d")
                     
                     aggs_response = await client.get(
-                        f"https://api.massive.com/v2/aggs/ticker/{symbol}/range/1/day/{start_date}/{end_date}",
+                        f"https://api.polygon.io/v2/aggs/ticker/{symbol}/range/1/day/{start_date}/{end_date}",
                         params={"apiKey": api_key, "adjusted": "true", "sort": "desc", "limit": 300}
                     )
                     
@@ -1432,7 +1432,7 @@ async def get_dashboard_opportunities(
                     roe = None
                     try:
                         ticker_response = await client.get(
-                            f"https://api.massive.com/v3/reference/tickers/{symbol}",
+                            f"https://api.polygon.io/v3/reference/tickers/{symbol}",
                             params={"apiKey": api_key}
                         )
                         if ticker_response.status_code == 200:
@@ -1448,7 +1448,7 @@ async def get_dashboard_opportunities(
                     next_dividend_date = None
                     try:
                         div_response = await client.get(
-                            f"https://api.massive.com/v3/reference/dividends",
+                            f"https://api.polygon.io/v3/reference/dividends",
                             params={"apiKey": api_key, "ticker": symbol, "limit": 3}
                         )
                         if div_response.status_code == 200:
@@ -1472,7 +1472,7 @@ async def get_dashboard_opportunities(
                     try:
                         # Try to get analyst data from ticker news/insights
                         news_response = await client.get(
-                            f"https://api.massive.com/v2/reference/news",
+                            f"https://api.polygon.io/v2/reference/news",
                             params={"apiKey": api_key, "ticker": symbol, "limit": 5}
                         )
                         if news_response.status_code == 200:
@@ -1487,7 +1487,7 @@ async def get_dashboard_opportunities(
                     
                     # Get options chain
                     options_response = await client.get(
-                        f"https://api.massive.com/v3/snapshot/options/{symbol}",
+                        f"https://api.polygon.io/v3/snapshot/options/{symbol}",
                         params={"apiKey": api_key, "limit": 250, "contract_type": "call"}
                     )
                     
@@ -1710,7 +1710,7 @@ async def get_dashboard_pmcc_opportunities(
                 try:
                     # Get current stock price
                     stock_response = await client.get(
-                        f"https://api.massive.com/v2/aggs/ticker/{symbol}/prev",
+                        f"https://api.polygon.io/v2/aggs/ticker/{symbol}/prev",
                         params={"apiKey": api_key}
                     )
                     
@@ -1729,7 +1729,7 @@ async def get_dashboard_pmcc_opportunities(
                     
                     # Fetch LEAPS options (12-24 months out)
                     leaps_response = await client.get(
-                        f"https://api.massive.com/v3/snapshot/options/{symbol}",
+                        f"https://api.polygon.io/v3/snapshot/options/{symbol}",
                         params={
                             "apiKey": api_key,
                             "limit": 250,
@@ -1741,7 +1741,7 @@ async def get_dashboard_pmcc_opportunities(
                     
                     # Fetch short-term options (7-45 days)
                     short_response = await client.get(
-                        f"https://api.massive.com/v3/snapshot/options/{symbol}",
+                        f"https://api.polygon.io/v3/snapshot/options/{symbol}",
                         params={
                             "apiKey": api_key,
                             "limit": 250,
@@ -1975,7 +1975,7 @@ async def screen_pmcc(
                 try:
                     # Get current stock price
                     stock_response = await client.get(
-                        f"https://api.massive.com/v2/aggs/ticker/{symbol}/prev",
+                        f"https://api.polygon.io/v2/aggs/ticker/{symbol}/prev",
                         params={"apiKey": api_key}
                     )
                     
@@ -1994,7 +1994,7 @@ async def screen_pmcc(
                     
                     # Fetch LEAPS options
                     leaps_response = await client.get(
-                        f"https://api.massive.com/v3/snapshot/options/{symbol}",
+                        f"https://api.polygon.io/v3/snapshot/options/{symbol}",
                         params={
                             "apiKey": api_key,
                             "limit": 250,
@@ -2006,7 +2006,7 @@ async def screen_pmcc(
                     
                     # Fetch short-term options
                     short_response = await client.get(
-                        f"https://api.massive.com/v3/snapshot/options/{symbol}",
+                        f"https://api.polygon.io/v3/snapshot/options/{symbol}",
                         params={
                             "apiKey": api_key,
                             "limit": 250,
