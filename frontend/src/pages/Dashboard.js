@@ -268,7 +268,7 @@ const Dashboard = () => {
                 </div>
                 
                 {/* Portfolio Performance Graph */}
-                {(strategyData.length > 0 || topHoldings.length > 0) && (
+                {(strategyData.length > 0 || closedPositions.length > 0) && (
                   <div className="mt-6">
                     <h4 className="text-sm text-zinc-500 mb-4 flex items-center gap-2">
                       <PieChart className="w-4 h-4" />
@@ -318,22 +318,23 @@ const Dashboard = () => {
                         </div>
                       )}
                       
-                      {/* Top Holdings Bar Chart */}
-                      {topHoldings.length > 0 && (
+                      {/* Closed Positions P/L Bar Chart */}
+                      {closedPositions.length > 0 && (
                         <div className="bg-zinc-800/30 rounded-lg p-4">
-                          <h5 className="text-xs text-zinc-400 mb-3">Open Positions by Value</h5>
-                          <div className="h-48">
+                          <h5 className="text-xs text-zinc-400 mb-3">Closed Positions - Realized P/L</h5>
+                          <div className="h-56">
                             <ResponsiveContainer width="100%" height="100%">
-                              <BarChart data={topHoldings} layout="vertical" margin={{ left: 10, right: 10 }}>
+                              <BarChart data={closedPositions} layout="vertical" margin={{ left: 5, right: 10, top: 5, bottom: 5 }} barSize={12}>
                                 <CartesianGrid strokeDasharray="3 3" stroke="#333" horizontal={false} />
-                                <XAxis type="number" tickFormatter={(v) => `$${(v/1000).toFixed(0)}k`} stroke="#666" fontSize={10} />
-                                <YAxis type="category" dataKey="symbol" stroke="#999" fontSize={11} width={45} />
+                                <XAxis type="number" tickFormatter={(v) => v >= 1000 || v <= -1000 ? `$${(v/1000).toFixed(1)}k` : `$${v.toFixed(0)}`} stroke="#666" fontSize={9} />
+                                <YAxis type="category" dataKey="symbol" stroke="#999" fontSize={10} width={40} interval={0} />
                                 <Tooltip 
                                   contentStyle={{ background: '#18181b', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px' }}
-                                  formatter={(value) => formatCurrency(value)}
+                                  formatter={(value, name, props) => [formatCurrency(value), 'Realized P/L']}
+                                  labelFormatter={(label) => `${label}`}
                                 />
-                                <Bar dataKey="invested" fill="#8b5cf6" radius={[0, 4, 4, 0]} name="Invested">
-                                  {topHoldings.map((entry, index) => (
+                                <Bar dataKey="pnl" radius={[0, 3, 3, 0]} name="P/L">
+                                  {closedPositions.map((entry, index) => (
                                     <Cell key={`cell-${index}`} fill={entry.pnl >= 0 ? '#10b981' : '#ef4444'} />
                                   ))}
                                 </Bar>
