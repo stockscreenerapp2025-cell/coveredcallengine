@@ -63,6 +63,8 @@ const Screener = () => {
   const [saveDialogOpen, setSaveDialogOpen] = useState(false);
   const [selectedStock, setSelectedStock] = useState(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [marketStatus, setMarketStatus] = useState(null);
+  const [dataInfo, setDataInfo] = useState(null);
 
   // Format option contract display like "16JAN26 41.5 C"
   const formatOptionContract = (expiry, strike, optionType = 'call') => {
