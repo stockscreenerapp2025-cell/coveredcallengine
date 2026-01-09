@@ -3828,6 +3828,7 @@ api_router.include_router(news_router)
 api_router.include_router(ai_router)
 api_router.include_router(admin_router)
 api_router.include_router(subscription_router)
+api_router.include_router(chatbot_router)
 
 app.include_router(api_router)
 
