@@ -178,14 +178,47 @@ const Dashboard = () => {
 
   return (
     <div className="space-y-6" data-testid="dashboard-page">
+      {/* Market Status Banner */}
+      {marketStatus && !marketStatus.is_open && (
+        <div className="glass-card p-3 flex items-center justify-between bg-zinc-800/50 border-amber-500/30">
+          <div className="flex items-center gap-3">
+            {marketStatus.is_weekend ? (
+              <Moon className="w-5 h-5 text-amber-400" />
+            ) : (
+              <Clock className="w-5 h-5 text-amber-400" />
+            )}
+            <div>
+              <span className="text-amber-400 font-medium">{marketStatus.reason}</span>
+              <span className="text-zinc-400 ml-2 text-sm">• {marketStatus.data_note}</span>
+            </div>
+          </div>
+          <Badge className="bg-amber-500/20 text-amber-400 border-amber-500/30">
+            {marketStatus.current_time_et}
+          </Badge>
+        </div>
+      )}
+
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl md:text-3xl font-bold text-white flex items-center gap-3">
             <Search className="w-8 h-8 text-emerald-500" />
             Dashboard
+            {marketStatus && (
+              <Badge className={`ml-2 ${marketStatus.is_open ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' : 'bg-zinc-500/20 text-zinc-400 border-zinc-500/30'}`}>
+                {marketStatus.is_open ? (
+                  <><Sun className="w-3 h-3 mr-1" /> Market Open</>
+                ) : (
+                  <><Moon className="w-3 h-3 mr-1" /> Market Closed</>
+                )}
+              </Badge>
+            )}
           </h1>
-          <p className="text-zinc-400 mt-1">Real-time market overview and opportunities</p>
+          <p className="text-zinc-400 mt-1">
+            {marketStatus && !marketStatus.is_open 
+              ? "Showing data from last market session" 
+              : "Real-time market overview and opportunities"}
+          </p>
         </div>
         <Button
           onClick={fetchDashboardData}
