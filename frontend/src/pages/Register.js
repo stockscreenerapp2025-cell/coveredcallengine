@@ -4,7 +4,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
-import { Activity, Eye, EyeOff, AlertCircle, CheckCircle } from 'lucide-react';
+import { Activity, Eye, EyeOff, AlertCircle, CheckCircle, FileText } from 'lucide-react';
 import { toast } from 'sonner';
 
 const APP_NAME = "Covered Call Engine";
@@ -17,6 +17,7 @@ const Register = () => {
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [acceptedTerms, setAcceptedTerms] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -35,6 +36,11 @@ const Register = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
+
+    if (!acceptedTerms) {
+      setError('You must accept the Terms & Conditions to create an account');
+      return;
+    }
 
     if (!password || !confirmPassword) {
       setError('Please fill in all password fields');
