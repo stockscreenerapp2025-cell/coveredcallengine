@@ -206,21 +206,6 @@ const PMCC = () => {
             <Filter className="w-4 h-4 mr-2" />
             {filtersOpen ? 'Hide' : 'Show'} Filters
           </Button>
-          <Button
-            variant="outline"
-            onClick={resetFilters}
-            className="btn-outline"
-          >
-            Reset
-          </Button>
-          <Button
-            onClick={fetchOpportunities}
-            className="bg-violet-600 hover:bg-violet-700 text-white"
-            data-testid="scan-pmcc-btn"
-          >
-            <Search className="w-4 h-4 mr-2" />
-            Scan
-          </Button>
         </div>
       </div>
 
