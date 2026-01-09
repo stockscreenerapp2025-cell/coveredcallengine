@@ -447,8 +447,8 @@ async def fetch_options_chain_polygon(symbol: str, api_key: str, contract_type: 
             
             logging.info(f"Found {len(contracts)} {contract_type} contracts for {symbol} (DTE: {min_dte}-{max_dte})")
             
-            # Step 2: Get pricing for each contract (batch requests to avoid rate limits)
-            for contract in contracts[:50]:  # Limit to 50 contracts per symbol
+            # Step 2: Get pricing for top contracts only (limit to 20 per symbol for speed)
+            for contract in contracts[:20]:  # Reduced from 50 to 20
                 contract_ticker = contract.get("ticker", "")
                 if not contract_ticker:
                     continue
