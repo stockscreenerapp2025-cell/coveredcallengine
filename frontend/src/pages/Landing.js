@@ -5,6 +5,7 @@ import { Button } from '../components/ui/button';
 import { Card, CardContent } from '../components/ui/card';
 import { Badge } from '../components/ui/badge';
 import api from '../lib/api';
+import AIChatbot from '../components/AIChatbot';
 import { 
   TrendingUp, 
   Shield, 
