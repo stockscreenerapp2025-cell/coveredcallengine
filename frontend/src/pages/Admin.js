@@ -105,6 +105,24 @@ const Admin = () => {
   const [showStripeWebhook, setShowStripeWebhook] = useState(false);
   const [showStripeSecret, setShowStripeSecret] = useState(false);
   const [showResendKey, setShowResendKey] = useState(false);
+  
+  // Email Automation
+  const [emailTemplates, setEmailTemplates] = useState([]);
+  const [automationRules, setAutomationRules] = useState([]);
+  const [emailLogs, setEmailLogs] = useState([]);
+  const [emailStats, setEmailStats] = useState(null);
+  const [emailLoading, setEmailLoading] = useState(false);
+  const [selectedTemplate, setSelectedTemplate] = useState(null);
+  const [editingTemplate, setEditingTemplate] = useState(null);
+  const [emailSubTab, setEmailSubTab] = useState('templates');
+  const [triggerTypes, setTriggerTypes] = useState([]);
+  const [actionTypes, setActionTypes] = useState([]);
+  const [broadcastData, setBroadcastData] = useState({
+    template_key: 'announcement',
+    announcement_title: '',
+    announcement_content: ''
+  });
+  const [sendingBroadcast, setSendingBroadcast] = useState(false);
 
   useEffect(() => {
     fetchSettings();
