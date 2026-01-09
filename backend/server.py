@@ -1418,24 +1418,21 @@ async def get_dashboard_opportunities(
         return {"opportunities": [], "total": 0, "message": "API key not configured", "is_mock": True}
     
     try:
-        # Extended list of stocks to scan - more diverse selection
+        # Extended list of stocks to scan - prioritize under $100
         symbols_to_scan = [
-            # Tech stocks in range
-            "INTC", "CSCO", "MU", "QCOM", "TXN", "ADI", "MCHP", "ON", "HPQ", "DELL",
-            # Financial stocks
+            # Under $100 stocks - Priority
+            "INTC", "CSCO", "MU", "QCOM", "TXN", "ADI", "MCHP", "ON", "HPQ",
             "BAC", "WFC", "C", "USB", "PNC", "TFC", "KEY", "RF", "CFG", "FITB",
-            # Consumer stocks
             "KO", "PEP", "NKE", "SBUX", "DIS", "GM", "F",
-            # Telecom/Utilities
-            "VZ", "T", 
-            # Healthcare
+            "VZ", "T", "TMUS",
             "PFE", "MRK", "ABBV", "BMY", "GILD",
-            # Energy
-            "OXY", "DVN", "APA", "HAL", "SLB",
-            # Industrials
-            "CAT", "DE", "GE", "HON", "MMM",
-            # Additional popular options stocks
-            "PYPL", "SQ", "ROKU", "SNAP", "UBER", "LYFT"
+            "OXY", "DVN", "APA", "HAL", "SLB", "MRO",
+            "CAT", "DE", "GE", "HON",
+            "PYPL", "SQ", "ROKU", "SNAP", "UBER", "LYFT",
+            "AAL", "DAL", "UAL", "CCL", "NCLH",
+            "PLTR", "SOFI", "HOOD", "RIVN", "LCID", "NIO",
+            # $100-150 range
+            "AAPL", "AMD", "DELL", "IBM", "ORCL"
         ]
         
         opportunities = []
