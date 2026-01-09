@@ -498,22 +498,6 @@ const Admin = () => {
             API Keys
           </TabsTrigger>
         </TabsList>
-            <Users className="w-4 h-4" />
-            Users
-          </TabsTrigger>
-          <TabsTrigger value="subscriptions" className="flex items-center gap-2">
-            <CreditCard className="w-4 h-4" />
-            Subscriptions
-          </TabsTrigger>
-          <TabsTrigger value="integrations" className="flex items-center gap-2">
-            <Key className="w-4 h-4" />
-            Integrations
-          </TabsTrigger>
-          <TabsTrigger value="api-keys" className="flex items-center gap-2">
-            <Database className="w-4 h-4" />
-            API Keys
-          </TabsTrigger>
-        </TabsList>
 
         {/* Dashboard Tab */}
         <TabsContent value="dashboard" className="space-y-6 mt-6">
