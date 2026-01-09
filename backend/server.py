@@ -404,7 +404,7 @@ async def get_marketaux_client():
         return settings.marketaux_api_token
     return None
 
-async def fetch_options_chain_polygon(symbol: str, api_key: str, contract_type: str = "call", max_dte: int = 45) -> list:
+async def fetch_options_chain_polygon(symbol: str, api_key: str, contract_type: str = "call", max_dte: int = 45, min_dte: int = 1) -> list:
     """
     Fetch options chain using Polygon.io endpoints that work with basic subscription:
     1. v3/reference/options/contracts - Get list of available contracts
@@ -416,7 +416,7 @@ async def fetch_options_chain_polygon(symbol: str, api_key: str, contract_type: 
     
     options = []
     today = datetime.now()
-    min_expiry = today.strftime("%Y-%m-%d")
+    min_expiry = (today + timedelta(days=min_dte)).strftime("%Y-%m-%d")
     max_expiry = (today + timedelta(days=max_dte)).strftime("%Y-%m-%d")
     
     try:
@@ -445,7 +445,7 @@ async def fetch_options_chain_polygon(symbol: str, api_key: str, contract_type: 
             if not contracts:
                 return []
             
-            logging.info(f"Found {len(contracts)} {contract_type} contracts for {symbol}")
+            logging.info(f"Found {len(contracts)} {contract_type} contracts for {symbol} (DTE: {min_dte}-{max_dte})")
             
             # Step 2: Get pricing for each contract (batch requests to avoid rate limits)
             for contract in contracts[:50]:  # Limit to 50 contracts per symbol
