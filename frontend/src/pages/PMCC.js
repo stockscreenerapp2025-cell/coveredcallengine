@@ -121,7 +121,7 @@ const PMCC = () => {
   };
 
   // Format option contract display like "26SEP25 49.5 C"
-  const formatOptionContract = (expiry, strike, type = 'C') => {
+  const formatOptionContract = (expiry, strike, optionType = 'call') => {
     if (!expiry && !strike) return '-';
     try {
       // Handle DTE (days) input - convert to date
@@ -142,8 +142,11 @@ const PMCC = () => {
         const year = date.getFullYear().toString().slice(-2);
         dateStr = `${day}${month}${year}`;
       }
+      // C for Call, P for Put
+      const type = optionType?.toLowerCase() === 'put' ? 'P' : 'C';
       return `${dateStr} ${strike?.toFixed(0) || ''} ${type}`;
     } catch {
+      const type = optionType?.toLowerCase() === 'put' ? 'P' : 'C';
       return `${strike?.toFixed(0) || ''} ${type}`;
     }
   };
