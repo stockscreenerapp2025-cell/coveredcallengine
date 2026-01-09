@@ -133,17 +133,16 @@ const Dashboard = () => {
     color: STRATEGY_COLORS[key] || STRATEGY_COLORS.OTHER
   })) : [];
 
-  // Prepare performance data for bar chart (top holdings by invested amount)
-  const topHoldings = ibkrTrades
-    .filter(t => t.shares > 0 && t.entry_price)
+  // Prepare performance data for bar chart - closed positions by realized P/L
+  const closedPositions = ibkrTrades
+    .filter(t => t.realized_pnl !== null && t.realized_pnl !== undefined)
     .map(t => ({
       symbol: t.symbol,
-      invested: (t.shares * t.entry_price),
-      pnl: t.unrealized_pnl || 0,
-      shares: t.shares
+      pnl: t.realized_pnl || 0,
+      roi: t.roi || 0
     }))
-    .sort((a, b) => b.invested - a.invested)
-    .slice(0, 5);
+    .sort((a, b) => b.pnl - a.pnl)
+    .slice(0, 12);
 
   const formatCurrency = (value) => {
     return new Intl.NumberFormat('en-US', {
