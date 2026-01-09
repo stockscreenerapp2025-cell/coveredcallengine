@@ -2149,7 +2149,7 @@ async def screen_pmcc(
         # Sort by score
         opportunities.sort(key=lambda x: x["score"], reverse=True)
         
-        return {
+        result = {
             "opportunities": opportunities,
             "total": len(opportunities),
             "is_live": True,
@@ -2163,6 +2163,11 @@ async def screen_pmcc(
                 "min_annualized_roi": f"{min_annualized_roi}%"
             }
         }
+        
+        # Cache the result
+        await set_cached_data(cache_key, result)
+        
+        return result
         
     except Exception as e:
         logging.error(f"PMCC screener error: {e}")
