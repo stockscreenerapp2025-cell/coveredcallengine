@@ -285,7 +285,7 @@ const Portfolio = () => {
           </h1>
           <p className="text-zinc-400 mt-1">Import and track your IBKR transactions</p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <input
             type="file"
             ref={fileInputRef}
@@ -295,7 +295,7 @@ const Portfolio = () => {
           />
           <Button
             onClick={() => fileInputRef.current?.click()}
-            className="bg-violet-600 hover:bg-violet-700"
+            className="bg-violet-600 hover:bg-violet-700 h-9"
             disabled={uploading}
           >
             {uploading ? (
@@ -308,7 +308,7 @@ const Portfolio = () => {
           <Button
             onClick={fetchTrades}
             variant="outline"
-            className="border-zinc-700"
+            className="border-zinc-700 h-9 px-3"
           >
             <RefreshCw className="w-4 h-4" />
           </Button>
@@ -317,7 +317,7 @@ const Portfolio = () => {
               <Button
                 onClick={generateAllSuggestions}
                 disabled={generatingSuggestions}
-                className="bg-emerald-600 hover:bg-emerald-700"
+                className="bg-emerald-600 hover:bg-emerald-700 h-9"
               >
                 {generatingSuggestions ? (
                   <Loader2 className="w-4 h-4 mr-2 animate-spin" />
@@ -329,7 +329,7 @@ const Portfolio = () => {
               <Button
                 onClick={handleClearData}
                 variant="outline"
-                className="border-red-700 text-red-400 hover:bg-red-500/10"
+                className="border-red-700 text-red-400 hover:bg-red-500/10 h-9 px-3"
               >
                 <Trash2 className="w-4 h-4" />
               </Button>
