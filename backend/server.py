@@ -1834,6 +1834,7 @@ async def get_dashboard_pmcc_opportunities(
                         })
                     
                     # Process short-term options
+                    short_count = 0
                     for opt in short_options_raw:
                         strike = opt.get("strike", 0)
                         dte = opt.get("dte", 0)
@@ -1854,6 +1855,7 @@ async def get_dashboard_pmcc_opportunities(
                         if estimated_delta < 0.15 or estimated_delta > 0.40:
                             continue
                         
+                        short_count += 1
                         short_options.append({
                             "strike": strike,
                             "expiry": opt.get("expiry", ""),
@@ -1862,6 +1864,8 @@ async def get_dashboard_pmcc_opportunities(
                             "premium": round(price * 100, 2),
                             "iv": 25.0  # Default estimate
                         })
+                    
+                    logging.info(f"{symbol}: Short options - {len(short_options_raw)} raw, {short_count} passed filters")
                     
                     # Build PMCC if both legs available
                     if leaps_options and short_options:
