@@ -632,11 +632,11 @@ async def fetch_options_chain_yahoo(symbol: str, contract_type: str = "call", ma
                                 "dte": dte,
                                 "type": contract_type,
                                 "close": last_price,
-                                "bid": row.get('bid', 0),
-                                "ask": row.get('ask', 0),
-                                "volume": int(row.get('volume', 0) or 0),
-                                "open_interest": int(row.get('openInterest', 0) or 0),
-                                "implied_volatility": row.get('impliedVolatility', 0),
+                                "bid": row.get('bid', 0) if pd.notna(row.get('bid')) else 0,
+                                "ask": row.get('ask', 0) if pd.notna(row.get('ask')) else 0,
+                                "volume": int(row.get('volume', 0)) if pd.notna(row.get('volume')) else 0,
+                                "open_interest": int(row.get('openInterest', 0)) if pd.notna(row.get('openInterest')) else 0,
+                                "implied_volatility": row.get('impliedVolatility', 0) if pd.notna(row.get('impliedVolatility')) else 0,
                             })
                             
                             # Limit results per expiration
