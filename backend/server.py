@@ -2028,20 +2028,23 @@ async def screen_pmcc(
     }
     cache_key = generate_cache_key("pmcc_screener", cache_params)
     
-    # Check cache first
-    cached_data = await get_cached_data(cache_key)
-    if cached_data:
-        cached_data["from_cache"] = True
-        cached_data["market_closed"] = is_market_closed()
-        return cached_data
-    
-    # If market is closed, try last trading day data
-    if is_market_closed():
-        ltd_data = await get_last_trading_day_data(cache_key)
-        if ltd_data:
-            ltd_data["from_cache"] = True
-            ltd_data["market_closed"] = True
-            return ltd_data
+    # Check cache first (unless bypassed)
+    if not bypass_cache:
+        cached_data = await get_cached_data(cache_key)
+        if cached_data:
+            cached_data["from_cache"] = True
+            cached_data["market_closed"] = is_market_closed()
+            return cached_data
+        
+        # If market is closed, try last trading day data
+        if is_market_closed():
+            ltd_data = await get_last_trading_day_data(cache_key)
+            if ltd_data:
+                ltd_data["from_cache"] = True
+                ltd_data["market_closed"] = True
+                return ltd_data
+    else:
+        logging.info(f"PMCC screener: Cache bypassed by user request")
     
     api_key = await get_massive_api_key()
     
