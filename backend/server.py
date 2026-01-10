@@ -452,6 +452,16 @@ async def fetch_options_chain_polygon(symbol: str, api_key: str, contract_type: 
             # This helps find valid ITM LEAPS for PMCC (strikes at 40-95% of stock price)
             contracts.sort(key=lambda x: x.get("strike_price", 0), reverse=True)
             
+            # If current_price provided, filter to valid strike range before fetching pricing
+            if current_price > 0:
+                if min_dte >= 300:  # LEAPS - want ITM (40-95% of price)
+                    valid_contracts = [c for c in contracts 
+                                      if current_price * 0.40 <= c.get("strike_price", 0) <= current_price * 0.95]
+                else:  # Short calls - want OTM (100-140% of price)
+                    valid_contracts = [c for c in contracts 
+                                      if current_price * 1.00 <= c.get("strike_price", 0) <= current_price * 1.40]
+                contracts = valid_contracts if valid_contracts else contracts[:50]
+            
             logging.info(f"Found {len(contracts)} {contract_type} contracts for {symbol} (DTE: {min_dte}-{max_dte})")
             
             # Step 2: Get pricing for top contracts only (limit to 30 per symbol)
