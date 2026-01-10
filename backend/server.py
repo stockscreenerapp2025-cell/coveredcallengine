@@ -1747,8 +1747,18 @@ async def get_dashboard_opportunities(
                     except Exception:
                         pass
                     
-                    # Get options chain using the available Polygon.io endpoints - pass current_price for proper filtering
-                    options_results = await fetch_options_chain_polygon(symbol, api_key, "call", 45, min_dte=1, current_price=current_price)
+                    # Get options chain - use Yahoo Finance for ETFs, Polygon for stocks
+                    if symbol.upper() in ETF_SYMBOLS:
+                        options_results = await fetch_options_chain_yahoo(symbol, "call", 45, min_dte=1, current_price=current_price)
+                        logging.info(f"Dashboard {symbol} (ETF): Using Yahoo Finance, got {len(options_results)} options")
+                    else:
+                        options_results = await fetch_options_chain_polygon(symbol, api_key, "call", 45, min_dte=1, current_price=current_price)
+                    
+                    # Try Yahoo as fallback if Polygon returns nothing
+                    if not options_results and symbol.upper() not in ETF_SYMBOLS:
+                        options_results = await fetch_options_chain_yahoo(symbol, "call", 45, min_dte=1, current_price=current_price)
+                        if options_results:
+                            logging.info(f"Dashboard {symbol}: Polygon returned nothing, Yahoo fallback got {len(options_results)} options")
                     
                     if not options_results:
                         continue
