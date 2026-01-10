@@ -162,20 +162,21 @@ const Screener = () => {
   const fetchOpportunities = async (bypassCache = false) => {
     setLoading(true);
     try {
-      const response = await screenerApi.getCoveredCalls({
-        min_roi: roiFilters.minRoi,
-        max_dte: expirationFilters.maxDte,
-        min_delta: greeksFilters.minDelta,
-        max_delta: greeksFilters.maxDelta,
-        min_iv_rank: 0,
-        min_price: stockFilters.minPrice,
-        max_price: stockFilters.maxPrice,
-        min_volume: optionsFilters.minVolume,
-        min_open_interest: optionsFilters.minOpenInterest,
-        weekly_only: expirationFilters.expirationType === 'weekly',
-        monthly_only: expirationFilters.expirationType === 'monthly',
-        bypass_cache: bypassCache,
-      });
+      // Only pass filter values that are set (not empty strings)
+      const params = { bypass_cache: bypassCache };
+      
+      if (roiFilters.minRoi !== '' && roiFilters.minRoi !== undefined) params.min_roi = roiFilters.minRoi;
+      if (expirationFilters.maxDte !== '' && expirationFilters.maxDte !== undefined) params.max_dte = expirationFilters.maxDte;
+      if (greeksFilters.minDelta !== '' && greeksFilters.minDelta !== undefined) params.min_delta = greeksFilters.minDelta;
+      if (greeksFilters.maxDelta !== '' && greeksFilters.maxDelta !== undefined) params.max_delta = greeksFilters.maxDelta;
+      if (stockFilters.minPrice !== '' && stockFilters.minPrice !== undefined) params.min_price = stockFilters.minPrice;
+      if (stockFilters.maxPrice !== '' && stockFilters.maxPrice !== undefined) params.max_price = stockFilters.maxPrice;
+      if (optionsFilters.minVolume !== '' && optionsFilters.minVolume !== undefined) params.min_volume = optionsFilters.minVolume;
+      if (optionsFilters.minOpenInterest !== '' && optionsFilters.minOpenInterest !== undefined) params.min_open_interest = optionsFilters.minOpenInterest;
+      if (expirationFilters.expirationType === 'weekly') params.weekly_only = true;
+      if (expirationFilters.expirationType === 'monthly') params.monthly_only = true;
+      
+      const response = await screenerApi.getCoveredCalls(params);
       
       let results = response.data.opportunities || [];
       setDataInfo({
