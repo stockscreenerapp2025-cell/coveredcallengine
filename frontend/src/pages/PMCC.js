@@ -113,6 +113,19 @@ const PMCC = () => {
     });
   };
 
+  const handleRefreshData = async () => {
+    setRefreshing(true);
+    toast.info('Fetching fresh market data... This may take a few minutes.');
+    try {
+      await fetchOpportunities(true);
+      toast.success('Fresh market data loaded successfully!');
+    } catch (error) {
+      toast.error('Failed to refresh market data');
+    } finally {
+      setRefreshing(false);
+    }
+  };
+
   const handleSort = (field) => {
     if (sortField === field) {
       setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
