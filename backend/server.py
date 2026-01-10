@@ -404,13 +404,16 @@ async def get_marketaux_client():
         return settings.marketaux_api_token
     return None
 
-async def fetch_options_chain_polygon(symbol: str, api_key: str, contract_type: str = "call", max_dte: int = 45, min_dte: int = 1) -> list:
+async def fetch_options_chain_polygon(symbol: str, api_key: str, contract_type: str = "call", max_dte: int = 45, min_dte: int = 1, current_price: float = 0) -> list:
     """
     Fetch options chain using Polygon.io endpoints that work with basic subscription:
     1. v3/reference/options/contracts - Get list of available contracts
     2. v2/aggs/ticker/{contract}/prev - Get previous day OHLCV for each contract
     
     Returns list of option data with pricing info.
+    
+    If current_price is provided, filters contracts to strikes between 40-95% of price (for LEAPS)
+    or 100-130% of price (for short calls).
     """
     from datetime import datetime, timedelta
     
