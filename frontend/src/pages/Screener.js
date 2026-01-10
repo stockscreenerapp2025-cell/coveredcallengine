@@ -159,7 +159,7 @@ const Screener = () => {
     }
   };
 
-  const fetchOpportunities = async () => {
+  const fetchOpportunities = async (bypassCache = false) => {
     setLoading(true);
     try {
       const response = await screenerApi.getCoveredCalls({
@@ -174,6 +174,7 @@ const Screener = () => {
         min_open_interest: optionsFilters.minOpenInterest,
         weekly_only: expirationFilters.expirationType === 'weekly',
         monthly_only: expirationFilters.expirationType === 'monthly',
+        bypass_cache: bypassCache,
       });
       
       let results = response.data.opportunities || [];
