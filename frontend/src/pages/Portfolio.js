@@ -523,7 +523,7 @@ const Portfolio = () => {
                       <li>Click on <span className="text-white">Transaction History</span></li>
                       <li>Select your desired date range</li>
                       <li>Download as <span className="text-emerald-400">CSV file</span></li>
-                      <li>Use the <span className="text-emerald-400">Import button</span> above</li>
+                      <li>Use the <span className="text-emerald-400">Import button</span> below</li>
                     </ol>
                     <Button
                       onClick={() => fileInputRef.current?.click()}
