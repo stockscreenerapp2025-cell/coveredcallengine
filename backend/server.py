@@ -3020,6 +3020,215 @@ async def clear_ibkr_data(user: dict = Depends(get_current_user)):
     await db.ibkr_transactions.delete_many({"user_id": user["id"]})
     return {"message": "All IBKR data cleared"}
 
+
+# Manual Trade Entry Models
+class ManualTradeEntry(BaseModel):
+    symbol: str = Field(..., min_length=1, max_length=10)
+    trade_type: str = Field(..., description="covered_call, pmcc, stock_only, option_only")
+    
+    # Stock leg
+    stock_quantity: Optional[int] = None
+    stock_price: Optional[float] = None
+    stock_date: Optional[str] = None
+    
+    # Option leg (for covered calls / PMCC)
+    option_type: Optional[str] = None  # call, put
+    option_action: Optional[str] = None  # sell, buy
+    strike_price: Optional[float] = None
+    expiry_date: Optional[str] = None
+    option_premium: Optional[float] = None
+    option_quantity: Optional[int] = None
+    option_date: Optional[str] = None
+    
+    # For PMCC - LEAPS leg
+    leaps_strike: Optional[float] = None
+    leaps_expiry: Optional[str] = None
+    leaps_cost: Optional[float] = None
+    leaps_quantity: Optional[int] = None
+    leaps_date: Optional[str] = None
+    
+    notes: Optional[str] = None
+
+
+@portfolio_router.post("/manual-trade")
+async def add_manual_trade(trade: ManualTradeEntry, user: dict = Depends(get_current_user)):
+    """Add a manually entered trade"""
+    trade_id = str(uuid.uuid4())
+    now = datetime.now(timezone.utc)
+    
+    # Calculate P/L and other metrics based on trade type
+    realized_pnl = 0
+    unrealized_pnl = 0
+    cost_basis = 0
+    premium_collected = 0
+    
+    if trade.trade_type == "covered_call":
+        # Covered call: own stock + sold call
+        if trade.stock_quantity and trade.stock_price:
+            cost_basis = trade.stock_quantity * trade.stock_price * 100  # per 100 shares
+        if trade.option_premium and trade.option_quantity:
+            premium_collected = trade.option_premium * trade.option_quantity * 100
+            
+    elif trade.trade_type == "pmcc":
+        # PMCC: LEAPS (long call) + short call
+        if trade.leaps_cost and trade.leaps_quantity:
+            cost_basis = trade.leaps_cost * trade.leaps_quantity * 100
+        if trade.option_premium and trade.option_quantity:
+            premium_collected = trade.option_premium * trade.option_quantity * 100
+            
+    elif trade.trade_type == "stock_only":
+        if trade.stock_quantity and trade.stock_price:
+            cost_basis = trade.stock_quantity * trade.stock_price
+            
+    elif trade.trade_type == "option_only":
+        if trade.option_premium and trade.option_quantity:
+            if trade.option_action == "buy":
+                cost_basis = trade.option_premium * trade.option_quantity * 100
+            else:
+                premium_collected = trade.option_premium * trade.option_quantity * 100
+    
+    # Create trade document
+    trade_doc = {
+        "id": trade_id,
+        "user_id": user["id"],
+        "symbol": trade.symbol.upper(),
+        "strategy": trade.trade_type.replace("_", " ").title(),
+        "status": "Open",
+        "source": "manual",
+        
+        # Stock details
+        "stock_quantity": trade.stock_quantity,
+        "stock_price": trade.stock_price,
+        "stock_date": trade.stock_date,
+        
+        # Option details
+        "option_type": trade.option_type,
+        "option_action": trade.option_action,
+        "strike": trade.strike_price,
+        "expiry": trade.expiry_date,
+        "premium": trade.option_premium,
+        "option_quantity": trade.option_quantity,
+        "option_date": trade.option_date,
+        
+        # LEAPS details (for PMCC)
+        "leaps_strike": trade.leaps_strike,
+        "leaps_expiry": trade.leaps_expiry,
+        "leaps_cost": trade.leaps_cost,
+        "leaps_quantity": trade.leaps_quantity,
+        "leaps_date": trade.leaps_date,
+        
+        # Calculated fields
+        "cost_basis": cost_basis,
+        "premium_collected": premium_collected,
+        "realized_pnl": realized_pnl,
+        "unrealized_pnl": unrealized_pnl,
+        "roi": (premium_collected / cost_basis * 100) if cost_basis > 0 else 0,
+        
+        # Metadata
+        "notes": trade.notes,
+        "date_opened": trade.stock_date or trade.option_date or trade.leaps_date or now.isoformat(),
+        "created_at": now.isoformat(),
+        "updated_at": now.isoformat(),
+    }
+    
+    await db.ibkr_trades.insert_one(trade_doc)
+    
+    # Return without _id
+    del trade_doc["_id"] if "_id" in trade_doc else None
+    return {"message": "Trade added successfully", "trade": trade_doc}
+
+
+@portfolio_router.put("/manual-trade/{trade_id}")
+async def update_manual_trade(trade_id: str, trade: ManualTradeEntry, user: dict = Depends(get_current_user)):
+    """Update a manually entered trade"""
+    existing = await db.ibkr_trades.find_one({"id": trade_id, "user_id": user["id"], "source": "manual"})
+    if not existing:
+        raise HTTPException(status_code=404, detail="Trade not found or not a manual entry")
+    
+    # Recalculate values
+    cost_basis = 0
+    premium_collected = 0
+    
+    if trade.trade_type == "covered_call":
+        if trade.stock_quantity and trade.stock_price:
+            cost_basis = trade.stock_quantity * trade.stock_price * 100
+        if trade.option_premium and trade.option_quantity:
+            premium_collected = trade.option_premium * trade.option_quantity * 100
+    elif trade.trade_type == "pmcc":
+        if trade.leaps_cost and trade.leaps_quantity:
+            cost_basis = trade.leaps_cost * trade.leaps_quantity * 100
+        if trade.option_premium and trade.option_quantity:
+            premium_collected = trade.option_premium * trade.option_quantity * 100
+    
+    update_doc = {
+        "symbol": trade.symbol.upper(),
+        "strategy": trade.trade_type.replace("_", " ").title(),
+        "stock_quantity": trade.stock_quantity,
+        "stock_price": trade.stock_price,
+        "stock_date": trade.stock_date,
+        "option_type": trade.option_type,
+        "option_action": trade.option_action,
+        "strike": trade.strike_price,
+        "expiry": trade.expiry_date,
+        "premium": trade.option_premium,
+        "option_quantity": trade.option_quantity,
+        "option_date": trade.option_date,
+        "leaps_strike": trade.leaps_strike,
+        "leaps_expiry": trade.leaps_expiry,
+        "leaps_cost": trade.leaps_cost,
+        "leaps_quantity": trade.leaps_quantity,
+        "leaps_date": trade.leaps_date,
+        "cost_basis": cost_basis,
+        "premium_collected": premium_collected,
+        "roi": (premium_collected / cost_basis * 100) if cost_basis > 0 else 0,
+        "notes": trade.notes,
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+    }
+    
+    await db.ibkr_trades.update_one({"id": trade_id}, {"$set": update_doc})
+    return {"message": "Trade updated successfully"}
+
+
+@portfolio_router.delete("/manual-trade/{trade_id}")
+async def delete_manual_trade(trade_id: str, user: dict = Depends(get_current_user)):
+    """Delete a manually entered trade"""
+    result = await db.ibkr_trades.delete_one({"id": trade_id, "user_id": user["id"]})
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Trade not found")
+    return {"message": "Trade deleted successfully"}
+
+
+@portfolio_router.put("/trade/{trade_id}/close")
+async def close_trade(trade_id: str, close_price: float = Query(...), user: dict = Depends(get_current_user)):
+    """Mark a trade as closed with final P/L"""
+    trade = await db.ibkr_trades.find_one({"id": trade_id, "user_id": user["id"]})
+    if not trade:
+        raise HTTPException(status_code=404, detail="Trade not found")
+    
+    # Calculate final P/L
+    cost_basis = trade.get("cost_basis", 0)
+    premium_collected = trade.get("premium_collected", 0)
+    
+    # For covered calls: P/L = premium + (close_price - stock_price) * quantity
+    realized_pnl = premium_collected
+    if trade.get("stock_quantity") and trade.get("stock_price"):
+        stock_pnl = (close_price - trade["stock_price"]) * trade["stock_quantity"] * 100
+        realized_pnl += stock_pnl
+    
+    await db.ibkr_trades.update_one(
+        {"id": trade_id},
+        {"$set": {
+            "status": "Closed",
+            "close_price": close_price,
+            "realized_pnl": realized_pnl,
+            "date_closed": datetime.now(timezone.utc).isoformat(),
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }}
+    )
+    
+    return {"message": "Trade closed", "realized_pnl": realized_pnl}
+
+
 @portfolio_router.get("/summary")
 async def get_portfolio_summary(user: dict = Depends(get_current_user)):
     positions = await db.portfolio.find({"user_id": user["id"]}, {"_id": 0}).to_list(1000)
