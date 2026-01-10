@@ -310,15 +310,15 @@ const Screener = () => {
   };
 
   const resetFilters = () => {
-    setExpirationFilters({ minDte: 1, maxDte: 45, expirationType: 'all' });
-    setStockFilters({ minPrice: 10, maxPrice: 500, includeStocks: true, includeETFs: true, includeIndex: false });
-    setOptionsFilters({ minVolume: 0, minOpenInterest: 100, moneyness: 'all' });
-    setGreeksFilters({ minDelta: 0.15, maxDelta: 0.45, minTheta: -999, maxTheta: 0 });
-    setProbabilityFilters({ minProbOTM: 50, maxProbOTM: 100 });
+    setExpirationFilters({ minDte: '', maxDte: '', expirationType: 'all' });
+    setStockFilters({ minPrice: '', maxPrice: '', includeStocks: true, includeETFs: true, includeIndex: false });
+    setOptionsFilters({ minVolume: '', minOpenInterest: '', moneyness: 'all' });
+    setGreeksFilters({ minDelta: '', maxDelta: '', minTheta: '', maxTheta: '' });
+    setProbabilityFilters({ minProbOTM: '', maxProbOTM: '' });
     setTechnicalFilters({ smaFilter: 'none', rsiFilter: 'all', macdSignal: 'all', trendStrength: 'all', overallSignal: 'all' });
-    setFundamentalFilters({ analystRating: 'all', minAnalystCount: 0, peRatio: 'all', minRoe: 0 });
-    setRoiFilters({ minRoi: 0.5, minAnnualizedRoi: 10 });
-    toast.success('Filters reset to defaults');
+    setFundamentalFilters({ analystRating: 'all', minAnalystCount: '', peRatio: 'all', minRoe: '' });
+    setRoiFilters({ minRoi: '', minAnnualizedRoi: '' });
+    toast.success('Filters reset');
   };
 
   const exportToCSV = () => {
