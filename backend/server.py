@@ -1321,6 +1321,9 @@ async def screen_covered_calls(
     min_open_interest: int = Query(0, ge=0),
     weekly_only: bool = Query(False),
     monthly_only: bool = Query(False),
+    include_stocks: bool = Query(True),
+    include_etfs: bool = Query(True),
+    include_index: bool = Query(False),
     bypass_cache: bool = Query(False),
     user: dict = Depends(get_current_user)
 ):
@@ -1328,6 +1331,7 @@ async def screen_covered_calls(
     cache_params = {
         "min_roi": min_roi, "max_dte": max_dte, "min_delta": min_delta, "max_delta": max_delta,
         "min_iv_rank": min_iv_rank, "min_price": min_price, "max_price": max_price,
+        "include_stocks": include_stocks, "include_etfs": include_etfs, "include_index": include_index,
         "min_volume": min_volume, "min_open_interest": min_open_interest,
         "weekly_only": weekly_only, "monthly_only": monthly_only
     }
