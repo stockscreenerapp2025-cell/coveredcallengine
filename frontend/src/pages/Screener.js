@@ -909,10 +909,10 @@ const Screener = () => {
                       <Label className="text-xs text-zinc-400">Minimum ROE (%)</Label>
                       <Input
                         type="number"
-                        value={fundamentalFilters.minRoe || ""} placeholder="Min"
-                        onChange={(e) => setFundamentalFilters(f => ({ ...f, minRoe: parseFloat(e.target.value) || 0 }))}
+                        value={fundamentalFilters.minRoe}
+                        onChange={(e) => setFundamentalFilters(f => ({ ...f, minRoe: e.target.value === '' ? '' : parseFloat(e.target.value) || 0 }))}
                         className="input-dark mt-2"
-                        placeholder="15"
+                        placeholder="Min"
                         data-testid="min-roe-input"
                       />
                     </div>
