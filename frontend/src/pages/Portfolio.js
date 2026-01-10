@@ -241,6 +241,111 @@ const Portfolio = () => {
     }
   };
 
+  // Manual Trade Entry Handlers
+  const resetManualTradeForm = () => {
+    setManualTrade({
+      symbol: '',
+      trade_type: 'covered_call',
+      stock_quantity: '',
+      stock_price: '',
+      stock_date: '',
+      option_type: 'call',
+      option_action: 'sell',
+      strike_price: '',
+      expiry_date: '',
+      option_premium: '',
+      option_quantity: '',
+      option_date: '',
+      leaps_strike: '',
+      leaps_expiry: '',
+      leaps_cost: '',
+      leaps_quantity: '',
+      leaps_date: '',
+      notes: ''
+    });
+  };
+
+  const handleManualTradeSubmit = async () => {
+    // Validation
+    if (!manualTrade.symbol) {
+      toast.error('Symbol is required');
+      return;
+    }
+
+    if (manualTrade.trade_type === 'covered_call') {
+      if (!manualTrade.stock_quantity || !manualTrade.stock_price) {
+        toast.error('Stock quantity and price are required for covered calls');
+        return;
+      }
+      if (!manualTrade.strike_price || !manualTrade.option_premium) {
+        toast.error('Strike price and premium are required for covered calls');
+        return;
+      }
+    }
+
+    if (manualTrade.trade_type === 'pmcc') {
+      if (!manualTrade.leaps_cost || !manualTrade.leaps_strike) {
+        toast.error('LEAPS cost and strike are required for PMCC');
+        return;
+      }
+      if (!manualTrade.strike_price || !manualTrade.option_premium) {
+        toast.error('Short call strike and premium are required for PMCC');
+        return;
+      }
+    }
+
+    setSavingManualTrade(true);
+    try {
+      // Prepare data - convert strings to numbers where needed
+      const tradeData = {
+        symbol: manualTrade.symbol.toUpperCase(),
+        trade_type: manualTrade.trade_type,
+        stock_quantity: manualTrade.stock_quantity ? parseInt(manualTrade.stock_quantity) : null,
+        stock_price: manualTrade.stock_price ? parseFloat(manualTrade.stock_price) : null,
+        stock_date: manualTrade.stock_date || null,
+        option_type: manualTrade.option_type,
+        option_action: manualTrade.option_action,
+        strike_price: manualTrade.strike_price ? parseFloat(manualTrade.strike_price) : null,
+        expiry_date: manualTrade.expiry_date || null,
+        option_premium: manualTrade.option_premium ? parseFloat(manualTrade.option_premium) : null,
+        option_quantity: manualTrade.option_quantity ? parseInt(manualTrade.option_quantity) : 1,
+        option_date: manualTrade.option_date || null,
+        leaps_strike: manualTrade.leaps_strike ? parseFloat(manualTrade.leaps_strike) : null,
+        leaps_expiry: manualTrade.leaps_expiry || null,
+        leaps_cost: manualTrade.leaps_cost ? parseFloat(manualTrade.leaps_cost) : null,
+        leaps_quantity: manualTrade.leaps_quantity ? parseInt(manualTrade.leaps_quantity) : 1,
+        leaps_date: manualTrade.leaps_date || null,
+        notes: manualTrade.notes || null
+      };
+
+      await portfolioApi.addManualTrade(tradeData);
+      toast.success('Trade added successfully!');
+      setManualTradeOpen(false);
+      resetManualTradeForm();
+      fetchTrades();
+      fetchSummary();
+    } catch (error) {
+      console.error('Error adding manual trade:', error);
+      toast.error(error.response?.data?.detail || 'Failed to add trade');
+    } finally {
+      setSavingManualTrade(false);
+    }
+  };
+
+  const handleDeleteTrade = async (tradeId) => {
+    if (!window.confirm('Are you sure you want to delete this trade?')) {
+      return;
+    }
+    try {
+      await portfolioApi.deleteManualTrade(tradeId);
+      toast.success('Trade deleted');
+      fetchTrades();
+      fetchSummary();
+    } catch (error) {
+      toast.error('Failed to delete trade');
+    }
+  };
+
   const openTradeDetail = async (trade) => {
     try {
       const res = await portfolioApi.getIBKRTradeDetail(trade.id);
