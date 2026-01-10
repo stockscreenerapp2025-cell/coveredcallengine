@@ -176,6 +176,39 @@ const Register = () => {
               )}
             </div>
 
+            {/* Terms & Conditions Checkbox */}
+            <div className="form-group">
+              <label className="flex items-start gap-3 cursor-pointer group">
+                <input
+                  type="checkbox"
+                  checked={acceptedTerms}
+                  onChange={(e) => setAcceptedTerms(e.target.checked)}
+                  className="mt-1 w-4 h-4 rounded border-zinc-600 bg-zinc-800 text-emerald-500 focus:ring-emerald-500 focus:ring-offset-0 focus:ring-offset-zinc-900"
+                  data-testid="terms-checkbox"
+                />
+                <span className="text-sm text-zinc-400 group-hover:text-zinc-300">
+                  I agree to the{' '}
+                  <Link 
+                    to="/terms" 
+                    target="_blank"
+                    className="text-emerald-400 hover:text-emerald-300 underline"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    Terms & Conditions
+                  </Link>
+                  {' '}and{' '}
+                  <Link 
+                    to="/privacy" 
+                    target="_blank"
+                    className="text-emerald-400 hover:text-emerald-300 underline"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    Privacy Policy
+                  </Link>
+                </span>
+              </label>
+            </div>
+
             <Button
               type="submit"
               className="w-full bg-emerald-600 hover:bg-emerald-700 text-white h-12"
