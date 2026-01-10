@@ -15,7 +15,7 @@ Build a web-based application to identify, analyse, and manage Covered Call and 
 - **Backend**: FastAPI + MongoDB (Motor async driver)
 - **Frontend**: React + Tailwind CSS + Shadcn UI
 - **Authentication**: JWT tokens with bcrypt password hashing
-- **Data**: Mock data with Polygon.io integration ready
+- **Data**: Polygon.io API with parallel asyncio.gather optimization
 
 ## User Personas
 1. **Options Trader**: Primary user looking to find covered call opportunities
@@ -34,6 +34,22 @@ Build a web-based application to identify, analyse, and manage Covered Call and 
 - [x] News Feed
 - [x] JWT Authentication
 - [x] CSV Import for Portfolio
+- [x] Terms & Conditions checkbox on registration
+
+## Recent Updates (January 2026)
+### Screener/PMCC Performance Fix
+- Implemented parallel API requests using `asyncio.gather` in `fetch_options_chain_polygon`
+- Added semaphore-based rate limiting (15 concurrent requests)
+- Expanded strike price filtering for short options (95-150% of stock price)
+- Added proper ATM/OTM filtering for covered calls (97-115% of stock price)
+- Results improved from 2 PMCC opportunities to 40+ opportunities
+- Added "Refresh Data" button to bypass cache and fetch fresh market data
+- Added `/api/screener/clear-cache` endpoint for cache management
+
+### Terms & Conditions
+- Added mandatory checkbox on registration page
+- Links to Terms & Conditions and Privacy Policy pages
+- Validation prevents registration without acceptance
 
 ## Screener Filters (All Implemented ✅)
 
