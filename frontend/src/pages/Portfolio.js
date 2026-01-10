@@ -439,6 +439,14 @@ const Portfolio = () => {
             Import CSV
           </Button>
           <Button
+            onClick={() => setManualTradeOpen(true)}
+            className="bg-emerald-600 hover:bg-emerald-700 h-9 whitespace-nowrap"
+            data-testid="add-manual-trade-btn"
+          >
+            <Plus className="w-4 h-4 mr-2" />
+            Add Trade
+          </Button>
+          <Button
             onClick={fetchTrades}
             variant="outline"
             className="border-zinc-700 h-9 w-9 p-0"
