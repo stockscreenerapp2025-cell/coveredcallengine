@@ -3092,7 +3092,6 @@ async def add_manual_trade(trade: ManualTradeEntry, user: dict = Depends(get_cur
     expiry_date_str = trade.expiry_date or trade.leaps_expiry
     if expiry_date_str:
         try:
-            from datetime import datetime
             expiry_dt = datetime.strptime(expiry_date_str, "%Y-%m-%d")
             dte = (expiry_dt - datetime.now()).days
             if dte < 0:
