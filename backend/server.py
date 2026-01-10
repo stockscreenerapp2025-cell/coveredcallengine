@@ -1408,8 +1408,18 @@ async def screen_covered_calls(
                         if underlying_price < min_price or underlying_price > max_price:
                             continue
                         
-                        # Get options chain using the working endpoint - pass current_price for OTM filtering
-                        options_results = await fetch_options_chain_polygon(symbol, api_key, "call", max_dte, min_dte=1, current_price=underlying_price)
+                        # Get options chain - use Yahoo Finance for ETFs, Polygon for stocks
+                        if symbol.upper() in ETF_SYMBOLS:
+                            options_results = await fetch_options_chain_yahoo(symbol, "call", max_dte, min_dte=1, current_price=underlying_price)
+                            logging.info(f"{symbol} (ETF): Using Yahoo Finance, got {len(options_results)} options")
+                        else:
+                            options_results = await fetch_options_chain_polygon(symbol, api_key, "call", max_dte, min_dte=1, current_price=underlying_price)
+                        
+                        # Try Yahoo as fallback if Polygon returns nothing
+                        if not options_results and symbol.upper() not in ETF_SYMBOLS:
+                            options_results = await fetch_options_chain_yahoo(symbol, "call", max_dte, min_dte=1, current_price=underlying_price)
+                            if options_results:
+                                logging.info(f"{symbol}: Polygon returned nothing, Yahoo fallback got {len(options_results)} options")
                         
                         if not options_results:
                             continue
