@@ -438,7 +438,7 @@ const Screener = () => {
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-2">
-              <Accordion type="multiple" defaultValue={["expiration", "greeks", "roi"]} className="w-full">
+              <Accordion type="multiple" defaultValue={[]} className="w-full">
                 
                 {/* Days to Expiration */}
                 <AccordionItem value="expiration" className="border-zinc-800">
