@@ -176,6 +176,11 @@ const Screener = () => {
       if (expirationFilters.expirationType === 'weekly') params.weekly_only = true;
       if (expirationFilters.expirationType === 'monthly') params.monthly_only = true;
       
+      // Security type filters
+      params.include_stocks = stockFilters.includeStocks;
+      params.include_etfs = stockFilters.includeETFs;
+      params.include_index = stockFilters.includeIndex;
+      
       const response = await screenerApi.getCoveredCalls(params);
       
       let results = response.data.opportunities || [];
