@@ -721,30 +721,43 @@ const Portfolio = () => {
                 </Card>
 
                 {/* Option 3: Manual Entry */}
-                <Card className="glass-card border-amber-500/30 hover:border-amber-500/50 transition-colors flex flex-col">
+                <Card className="glass-card border-emerald-500/30 hover:border-emerald-500/50 transition-colors flex flex-col">
                   <CardHeader className="pb-2">
-                    <div className="w-12 h-12 rounded-lg bg-amber-500/20 flex items-center justify-center mb-2">
-                      <FileSpreadsheet className="w-6 h-6 text-amber-400" />
+                    <div className="w-12 h-12 rounded-lg bg-emerald-500/20 flex items-center justify-center mb-2">
+                      <Edit className="w-6 h-6 text-emerald-400" />
                     </div>
-                    <CardTitle className="text-lg text-amber-400">Manual Entry</CardTitle>
-                    <CardDescription className="text-zinc-500">Coming Soon</CardDescription>
+                    <CardTitle className="text-lg text-emerald-400">Manual Entry</CardTitle>
+                    <CardDescription className="text-zinc-500">Add trades manually</CardDescription>
                   </CardHeader>
                   <CardContent className="text-sm text-zinc-400 space-y-3 flex-1 flex flex-col">
-                    <p>Want to track trades from other brokers or enter manually?</p>
+                    <p>Track trades from any broker by entering them manually:</p>
                     <div className="p-3 rounded-lg bg-zinc-800/50 border border-zinc-700/50 flex-1">
-                      <p className="text-zinc-500 text-xs mb-2">We're working on:</p>
-                      <ul className="space-y-1 text-zinc-500 text-xs">
-                        <li>• Manual trade entry form</li>
-                        <li>• Generic CSV import with field mapping</li>
-                        <li>• Support for other brokers</li>
+                      <ul className="space-y-2 text-zinc-500 text-xs">
+                        <li className="flex items-center gap-2">
+                          <CheckCircle className="w-3.5 h-3.5 text-emerald-400" />
+                          Covered Call positions
+                        </li>
+                        <li className="flex items-center gap-2">
+                          <CheckCircle className="w-3.5 h-3.5 text-emerald-400" />
+                          PMCC (Poor Man's Covered Call)
+                        </li>
+                        <li className="flex items-center gap-2">
+                          <CheckCircle className="w-3.5 h-3.5 text-emerald-400" />
+                          Stock-only positions
+                        </li>
+                        <li className="flex items-center gap-2">
+                          <CheckCircle className="w-3.5 h-3.5 text-emerald-400" />
+                          Individual options
+                        </li>
                       </ul>
                     </div>
                     <Button
-                      disabled
-                      className="w-full bg-zinc-700 text-zinc-400 mt-auto cursor-not-allowed"
+                      onClick={() => setManualTradeOpen(true)}
+                      className="w-full bg-emerald-600 hover:bg-emerald-700 mt-auto"
+                      data-testid="manual-entry-btn"
                     >
-                      <Clock className="w-4 h-4 mr-2" />
-                      Coming Soon
+                      <Plus className="w-4 h-4 mr-2" />
+                      Add Manual Trade
                     </Button>
                   </CardContent>
                 </Card>
