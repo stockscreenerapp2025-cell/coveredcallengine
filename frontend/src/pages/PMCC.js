@@ -66,7 +66,7 @@ const PMCC = () => {
     fetchOpportunities();
   }, []);
 
-  const fetchOpportunities = async () => {
+  const fetchOpportunities = async (bypassCache = false) => {
     setLoading(true);
     try {
       // Only pass non-empty filter values
