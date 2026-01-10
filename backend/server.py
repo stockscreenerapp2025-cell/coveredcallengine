@@ -2053,6 +2053,7 @@ async def screen_pmcc(
                     short_options = []
                     
                     # Process LEAPS options
+                    leaps_count = 0
                     for opt in leaps_options_raw:
                         strike = opt.get("strike", 0)
                         dte = opt.get("dte", 0)
@@ -2074,6 +2075,7 @@ async def screen_pmcc(
                         if estimated_delta < min_leaps_delta or estimated_delta > max_leaps_delta:
                             continue
                         
+                        leaps_count += 1
                         leaps_options.append({
                             "strike": strike,
                             "expiry": opt.get("expiry", ""),
@@ -2082,6 +2084,8 @@ async def screen_pmcc(
                             "cost": round(price * 100, 2),
                             "iv": 25.0
                         })
+                    
+                    logging.info(f"{symbol}: Processed {len(leaps_options_raw)} raw LEAPS, {leaps_count} passed filters")
                     
                     # Process short-term options
                     for opt in short_options_raw:
