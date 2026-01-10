@@ -3087,12 +3087,43 @@ async def add_manual_trade(trade: ManualTradeEntry, user: dict = Depends(get_cur
             else:
                 premium_collected = trade.option_premium * trade.option_quantity * 100
     
-    # Create trade document
+    # Calculate DTE (days to expiration)
+    dte = None
+    expiry_date_str = trade.expiry_date or trade.leaps_expiry
+    if expiry_date_str:
+        try:
+            from datetime import datetime
+            expiry_dt = datetime.strptime(expiry_date_str, "%Y-%m-%d")
+            dte = (expiry_dt - datetime.now()).days
+            if dte < 0:
+                dte = 0
+        except:
+            pass
+    
+    # Calculate break-even price
+    break_even = None
+    if trade.trade_type == "covered_call" and trade.stock_price and trade.option_premium:
+        break_even = trade.stock_price - trade.option_premium
+    elif trade.trade_type == "pmcc" and trade.leaps_cost and trade.leaps_strike and trade.option_premium:
+        break_even = trade.leaps_strike + trade.leaps_cost - trade.option_premium
+    
+    # Map strategy types for display
+    strategy_map = {
+        "covered_call": ("COVERED_CALL", "Covered Call"),
+        "pmcc": ("PMCC", "Poor Man's CC"),
+        "stock_only": ("STOCK", "Stock Only"),
+        "option_only": ("OPTION", "Option Only")
+    }
+    strategy_type, strategy_label = strategy_map.get(trade.trade_type, ("OTHER", "Other"))
+    
+    # Create trade document with proper field mapping for frontend
     trade_doc = {
         "id": trade_id,
         "user_id": user["id"],
         "symbol": trade.symbol.upper(),
         "strategy": trade.trade_type.replace("_", " ").title(),
+        "strategy_type": strategy_type,
+        "strategy_label": strategy_label,
         "status": "Open",
         "source": "manual",
         
@@ -3117,7 +3148,14 @@ async def add_manual_trade(trade: ManualTradeEntry, user: dict = Depends(get_cur
         "leaps_quantity": trade.leaps_quantity,
         "leaps_date": trade.leaps_date,
         
-        # Calculated fields
+        # Calculated fields for display (matching frontend expectations)
+        "shares": trade.stock_quantity * 100 if trade.stock_quantity else (trade.option_quantity * 100 if trade.option_quantity else None),
+        "entry_price": trade.stock_price or trade.leaps_cost,
+        "premium_received": trade.option_premium,
+        "break_even": break_even,
+        "dte": dte,
+        
+        # P/L fields
         "cost_basis": cost_basis,
         "premium_collected": premium_collected,
         "realized_pnl": realized_pnl,
