@@ -490,10 +490,137 @@ const Portfolio = () => {
               ))}
             </div>
           ) : trades.length === 0 ? (
-            <div className="text-center py-12 text-zinc-500">
-              <FileSpreadsheet className="w-12 h-12 mx-auto mb-4 opacity-50" />
-              <p className="text-lg mb-2">No trades found</p>
-              <p className="text-sm">Import your IBKR transaction CSV to get started</p>
+            // Comprehensive onboarding section
+            <div className="py-6">
+              {/* Welcome Banner */}
+              <div className="text-center mb-8">
+                <div className="w-20 h-20 mx-auto mb-4 rounded-full bg-gradient-to-br from-violet-500/30 to-purple-500/30 flex items-center justify-center">
+                  <Wallet className="w-10 h-10 text-violet-400" />
+                </div>
+                <h2 className="text-2xl font-bold text-white mb-2">Portfolio Tracker</h2>
+                <p className="text-zinc-400 max-w-2xl mx-auto">
+                  Track your options trading performance with detailed P/L analysis and AI-powered suggestions. 
+                  <span className="text-violet-400"> This is a bonus feature</span> to help you manage your covered call strategies.
+                </p>
+              </div>
+
+              {/* Import Options Grid */}
+              <div className="grid md:grid-cols-3 gap-6 mb-8">
+                {/* Option 1: IBKR Import */}
+                <Card className="glass-card border-emerald-500/30 hover:border-emerald-500/50 transition-colors">
+                  <CardHeader className="pb-2">
+                    <div className="w-12 h-12 rounded-lg bg-emerald-500/20 flex items-center justify-center mb-2">
+                      <FileSpreadsheet className="w-6 h-6 text-emerald-400" />
+                    </div>
+                    <CardTitle className="text-lg text-emerald-400">Import from IBKR</CardTitle>
+                    <CardDescription className="text-zinc-500">Recommended</CardDescription>
+                  </CardHeader>
+                  <CardContent className="text-sm text-zinc-400 space-y-3">
+                    <p>If you have an existing Interactive Brokers account:</p>
+                    <ol className="list-decimal list-inside space-y-2 text-zinc-500">
+                      <li>Log into your <span className="text-white">IBKR Dashboard</span></li>
+                      <li>Go to <span className="text-white">Performance & Reports</span> menu</li>
+                      <li>Click on <span className="text-white">Transaction History</span></li>
+                      <li>Select your desired date range</li>
+                      <li>Download as <span className="text-emerald-400">CSV file</span></li>
+                      <li>Use the <span className="text-emerald-400">Import button</span> above</li>
+                    </ol>
+                    <Button
+                      onClick={() => fileInputRef.current?.click()}
+                      className="w-full bg-emerald-600 hover:bg-emerald-700 mt-2"
+                      disabled={uploading}
+                    >
+                      <Upload className="w-4 h-4 mr-2" />
+                      Import IBKR CSV
+                    </Button>
+                  </CardContent>
+                </Card>
+
+                {/* Option 2: Open IBKR Account */}
+                <Card className="glass-card border-blue-500/30 hover:border-blue-500/50 transition-colors">
+                  <CardHeader className="pb-2">
+                    <div className="w-12 h-12 rounded-lg bg-blue-500/20 flex items-center justify-center mb-2">
+                      <ExternalLink className="w-6 h-6 text-blue-400" />
+                    </div>
+                    <CardTitle className="text-lg text-blue-400">New to IBKR?</CardTitle>
+                    <CardDescription className="text-zinc-500">Open an account</CardDescription>
+                  </CardHeader>
+                  <CardContent className="text-sm text-zinc-400 space-y-3">
+                    <p>Don't have an Interactive Brokers account yet? IBKR offers:</p>
+                    <ul className="space-y-2 text-zinc-500">
+                      <li className="flex items-center gap-2">
+                        <CheckCircle className="w-4 h-4 text-blue-400" />
+                        Low commissions for options trading
+                      </li>
+                      <li className="flex items-center gap-2">
+                        <CheckCircle className="w-4 h-4 text-blue-400" />
+                        Access to global markets
+                      </li>
+                      <li className="flex items-center gap-2">
+                        <CheckCircle className="w-4 h-4 text-blue-400" />
+                        Professional-grade trading tools
+                      </li>
+                      <li className="flex items-center gap-2">
+                        <CheckCircle className="w-4 h-4 text-blue-400" />
+                        Detailed transaction history export
+                      </li>
+                    </ul>
+                    <Button
+                      onClick={() => window.open('https://www.interactivebrokers.com', '_blank')}
+                      className="w-full bg-blue-600 hover:bg-blue-700 mt-2"
+                      data-testid="open-ibkr-btn"
+                    >
+                      <ExternalLink className="w-4 h-4 mr-2" />
+                      Open IBKR Account
+                    </Button>
+                    <p className="text-xs text-zinc-600 text-center mt-1">Opens in new window</p>
+                  </CardContent>
+                </Card>
+
+                {/* Option 3: Manual Entry */}
+                <Card className="glass-card border-amber-500/30 hover:border-amber-500/50 transition-colors">
+                  <CardHeader className="pb-2">
+                    <div className="w-12 h-12 rounded-lg bg-amber-500/20 flex items-center justify-center mb-2">
+                      <FileSpreadsheet className="w-6 h-6 text-amber-400" />
+                    </div>
+                    <CardTitle className="text-lg text-amber-400">Manual Entry</CardTitle>
+                    <CardDescription className="text-zinc-500">Coming Soon</CardDescription>
+                  </CardHeader>
+                  <CardContent className="text-sm text-zinc-400 space-y-3">
+                    <p>Want to track trades from other brokers or enter manually?</p>
+                    <div className="p-3 rounded-lg bg-zinc-800/50 border border-zinc-700/50">
+                      <p className="text-zinc-500 text-xs mb-2">We're working on:</p>
+                      <ul className="space-y-1 text-zinc-500 text-xs">
+                        <li>• Manual trade entry form</li>
+                        <li>• Generic CSV import with field mapping</li>
+                        <li>• Support for other brokers</li>
+                      </ul>
+                    </div>
+                    <Button
+                      disabled
+                      className="w-full bg-zinc-700 text-zinc-400 mt-2 cursor-not-allowed"
+                    >
+                      <Clock className="w-4 h-4 mr-2" />
+                      Coming Soon
+                    </Button>
+                  </CardContent>
+                </Card>
+              </div>
+
+              {/* Info Note */}
+              <div className="p-4 rounded-lg bg-zinc-800/50 border border-zinc-700/50 max-w-2xl mx-auto">
+                <div className="flex items-start gap-3">
+                  <AlertCircle className="w-5 h-5 text-amber-400 flex-shrink-0 mt-0.5" />
+                  <div className="text-sm">
+                    <p className="text-zinc-300 font-medium mb-1">Note about this feature</p>
+                    <p className="text-zinc-500">
+                      Portfolio tracking is a <span className="text-violet-400">bonus feature</span> designed for users with IBKR accounts. 
+                      The main value of this platform is in the <span className="text-emerald-400">Screener</span> and <span className="text-emerald-400">PMCC</span> opportunity scanners. 
+                      If you don't use IBKR, you can still fully benefit from all other features!
+                    </p>
+                  </div>
+                </div>
+              </div>
             </div>
           ) : (
             <>
