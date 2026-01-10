@@ -79,6 +79,12 @@ export const portfolioApi = {
   },
   getSummary: () => api.get('/portfolio/summary'),
   
+  // Manual trade entry
+  addManualTrade: (data) => api.post('/portfolio/manual-trade', data),
+  updateManualTrade: (id, data) => api.put(`/portfolio/manual-trade/${id}`, data),
+  deleteManualTrade: (id) => api.delete(`/portfolio/manual-trade/${id}`),
+  closeTrade: (id, closePrice) => api.put(`/portfolio/trade/${id}/close?close_price=${closePrice}`),
+  
   // IBKR Import APIs
   importIBKR: (file) => {
     const formData = new FormData();
