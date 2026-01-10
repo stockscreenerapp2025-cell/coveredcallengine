@@ -3134,7 +3134,8 @@ async def add_manual_trade(trade: ManualTradeEntry, user: dict = Depends(get_cur
     await db.ibkr_trades.insert_one(trade_doc)
     
     # Return without _id
-    del trade_doc["_id"] if "_id" in trade_doc else None
+    if "_id" in trade_doc:
+        del trade_doc["_id"]
     return {"message": "Trade added successfully", "trade": trade_doc}
 
 
