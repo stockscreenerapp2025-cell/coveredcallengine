@@ -507,7 +507,7 @@ const Portfolio = () => {
               {/* Import Options Grid */}
               <div className="grid md:grid-cols-3 gap-6 mb-8">
                 {/* Option 1: IBKR Import */}
-                <Card className="glass-card border-emerald-500/30 hover:border-emerald-500/50 transition-colors">
+                <Card className="glass-card border-emerald-500/30 hover:border-emerald-500/50 transition-colors flex flex-col">
                   <CardHeader className="pb-2">
                     <div className="w-12 h-12 rounded-lg bg-emerald-500/20 flex items-center justify-center mb-2">
                       <FileSpreadsheet className="w-6 h-6 text-emerald-400" />
@@ -515,9 +515,9 @@ const Portfolio = () => {
                     <CardTitle className="text-lg text-emerald-400">Import from IBKR</CardTitle>
                     <CardDescription className="text-zinc-500">Recommended</CardDescription>
                   </CardHeader>
-                  <CardContent className="text-sm text-zinc-400 space-y-3">
+                  <CardContent className="text-sm text-zinc-400 space-y-3 flex-1 flex flex-col">
                     <p>If you have an existing Interactive Brokers account:</p>
-                    <ol className="list-decimal list-inside space-y-2 text-zinc-500">
+                    <ol className="list-decimal list-inside space-y-2 text-zinc-500 flex-1">
                       <li>Log into your <span className="text-white">IBKR Dashboard</span></li>
                       <li>Go to <span className="text-white">Performance & Reports</span> menu</li>
                       <li>Click on <span className="text-white">Transaction History</span></li>
@@ -527,7 +527,7 @@ const Portfolio = () => {
                     </ol>
                     <Button
                       onClick={() => fileInputRef.current?.click()}
-                      className="w-full bg-emerald-600 hover:bg-emerald-700 mt-2"
+                      className="w-full bg-emerald-600 hover:bg-emerald-700 mt-auto"
                       disabled={uploading}
                     >
                       <Upload className="w-4 h-4 mr-2" />
@@ -537,7 +537,7 @@ const Portfolio = () => {
                 </Card>
 
                 {/* Option 2: Open IBKR Account */}
-                <Card className="glass-card border-blue-500/30 hover:border-blue-500/50 transition-colors">
+                <Card className="glass-card border-blue-500/30 hover:border-blue-500/50 transition-colors flex flex-col">
                   <CardHeader className="pb-2">
                     <div className="w-12 h-12 rounded-lg bg-blue-500/20 flex items-center justify-center mb-2">
                       <ExternalLink className="w-6 h-6 text-blue-400" />
@@ -545,9 +545,9 @@ const Portfolio = () => {
                     <CardTitle className="text-lg text-blue-400">New to IBKR?</CardTitle>
                     <CardDescription className="text-zinc-500">Open an account</CardDescription>
                   </CardHeader>
-                  <CardContent className="text-sm text-zinc-400 space-y-3">
+                  <CardContent className="text-sm text-zinc-400 space-y-3 flex-1 flex flex-col">
                     <p>Don't have an Interactive Brokers account yet? IBKR offers:</p>
-                    <ul className="space-y-2 text-zinc-500">
+                    <ul className="space-y-2 text-zinc-500 flex-1">
                       <li className="flex items-center gap-2">
                         <CheckCircle className="w-4 h-4 text-blue-400" />
                         Low commissions for options trading
@@ -565,20 +565,22 @@ const Portfolio = () => {
                         Detailed transaction history export
                       </li>
                     </ul>
-                    <Button
-                      onClick={() => window.open('https://www.interactivebrokers.com', '_blank')}
-                      className="w-full bg-blue-600 hover:bg-blue-700 mt-2"
-                      data-testid="open-ibkr-btn"
-                    >
-                      <ExternalLink className="w-4 h-4 mr-2" />
-                      Open IBKR Account
-                    </Button>
-                    <p className="text-xs text-zinc-600 text-center mt-1">Opens in new window</p>
+                    <div className="mt-auto">
+                      <Button
+                        onClick={() => window.open('https://www.interactivebrokers.com', '_blank')}
+                        className="w-full bg-blue-600 hover:bg-blue-700"
+                        data-testid="open-ibkr-btn"
+                      >
+                        <ExternalLink className="w-4 h-4 mr-2" />
+                        Open IBKR Account
+                      </Button>
+                      <p className="text-xs text-zinc-600 text-center mt-1">Opens in new window</p>
+                    </div>
                   </CardContent>
                 </Card>
 
                 {/* Option 3: Manual Entry */}
-                <Card className="glass-card border-amber-500/30 hover:border-amber-500/50 transition-colors">
+                <Card className="glass-card border-amber-500/30 hover:border-amber-500/50 transition-colors flex flex-col">
                   <CardHeader className="pb-2">
                     <div className="w-12 h-12 rounded-lg bg-amber-500/20 flex items-center justify-center mb-2">
                       <FileSpreadsheet className="w-6 h-6 text-amber-400" />
@@ -586,9 +588,9 @@ const Portfolio = () => {
                     <CardTitle className="text-lg text-amber-400">Manual Entry</CardTitle>
                     <CardDescription className="text-zinc-500">Coming Soon</CardDescription>
                   </CardHeader>
-                  <CardContent className="text-sm text-zinc-400 space-y-3">
+                  <CardContent className="text-sm text-zinc-400 space-y-3 flex-1 flex flex-col">
                     <p>Want to track trades from other brokers or enter manually?</p>
-                    <div className="p-3 rounded-lg bg-zinc-800/50 border border-zinc-700/50">
+                    <div className="p-3 rounded-lg bg-zinc-800/50 border border-zinc-700/50 flex-1">
                       <p className="text-zinc-500 text-xs mb-2">We're working on:</p>
                       <ul className="space-y-1 text-zinc-500 text-xs">
                         <li>• Manual trade entry form</li>
@@ -598,7 +600,7 @@ const Portfolio = () => {
                     </div>
                     <Button
                       disabled
-                      className="w-full bg-zinc-700 text-zinc-400 mt-2 cursor-not-allowed"
+                      className="w-full bg-zinc-700 text-zinc-400 mt-auto cursor-not-allowed"
                     >
                       <Clock className="w-4 h-4 mr-2" />
                       Coming Soon
