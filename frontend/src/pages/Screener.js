@@ -432,12 +432,23 @@ const Screener = () => {
             Export
           </Button>
           <Button
-            onClick={fetchOpportunities}
+            onClick={() => fetchOpportunities(false)}
             className="bg-emerald-600 hover:bg-emerald-700 text-white"
             data-testid="apply-filters-btn"
           >
             <Search className="w-4 h-4 mr-2" />
             Scan
+          </Button>
+          <Button
+            variant="outline"
+            onClick={handleRefreshData}
+            disabled={refreshing || loading}
+            className="btn-outline"
+            data-testid="refresh-data-btn"
+            title="Fetch fresh data from market (bypasses cache)"
+          >
+            <RefreshCw className={`w-4 h-4 mr-2 ${refreshing ? 'animate-spin' : ''}`} />
+            {refreshing ? 'Refreshing...' : 'Refresh Data'}
           </Button>
         </div>
       </div>
