@@ -3191,41 +3191,66 @@ async def get_market_news(
             item["from_cache"] = True
         return cached_news
     
-    # Try MarketAux API for news and sentiment
+    # Check rate limit before making API call
+    can_request = await check_marketaux_rate_limit()
+    
+    # Try MarketAux API for news and sentiment (if within rate limit)
     marketaux_token = await get_marketaux_client()
-    if marketaux_token:
+    if marketaux_token and can_request:
         try:
             async with httpx.AsyncClient() as client:
+                # Request more items to allow for filtering
+                request_limit = min(limit * 3, 50)  # Request 3x to account for filtering
+                
                 params = {
                     "api_token": marketaux_token,
-                    "limit": limit,
-                    "language": "en"
+                    "limit": request_limit,
+                    "language": "en",
+                    "filter_entities": "true"  # Get entity data for better filtering
                 }
+                
+                # If specific symbol requested, filter to that symbol
                 if symbol:
                     params["symbols"] = symbol.upper()
+                else:
+                    # For general news, use our tracked symbols
+                    # Use top liquid symbols for general market news
+                    params["symbols"] = ",".join(["AAPL", "MSFT", "GOOGL", "AMZN", "NVDA", "SPY", "QQQ", "META", "TSLA", "AMD"])
                 
                 response = await client.get(
                     "https://api.marketaux.com/v1/news/all",
                     params=params
                 )
+                
+                # Increment counter after successful request
+                await increment_marketaux_counter()
+                
                 if response.status_code == 200:
                     data = response.json()
                     if data.get("data"):
-                        news_items = [{
-                            "title": n.get("title"),
-                            "description": n.get("description"),
-                            "source": n.get("source"),
-                            "url": n.get("url"),
-                            "published_at": n.get("published_at"),
-                            "sentiment": n.get("sentiment"),  # MarketAux provides sentiment
-                            "sentiment_score": n.get("sentiment_score"),
-                            "tickers": [e.get("symbol") for e in n.get("entities", []) if e.get("symbol")],
-                            "is_live": True
-                        } for n in data["data"]]
+                        # Filter for relevant news
+                        filtered_news = []
+                        for n in data["data"]:
+                            if is_relevant_news(n):
+                                filtered_news.append({
+                                    "title": n.get("title"),
+                                    "description": n.get("description"),
+                                    "source": n.get("source"),
+                                    "url": n.get("url"),
+                                    "published_at": n.get("published_at"),
+                                    "sentiment": n.get("sentiment"),
+                                    "sentiment_score": n.get("sentiment_score"),
+                                    "tickers": [e.get("symbol") for e in n.get("entities", []) if e.get("symbol")],
+                                    "is_live": True
+                                })
+                                if len(filtered_news) >= limit:
+                                    break
                         
-                        # Cache news for weekend access
-                        await set_cached_data(cache_key, news_items)
-                        return news_items
+                        if filtered_news:
+                            # Cache news for weekend access
+                            await set_cached_data(cache_key, filtered_news)
+                            return filtered_news
+                        
         except Exception as e:
             logging.error(f"MarketAux API error: {e}")
     
@@ -3237,7 +3262,7 @@ async def get_market_news(
                 item["from_cache"] = True
             return ltd_news
     
-    # Return mock news
+    # Return filtered mock news
     return MOCK_NEWS[:limit]
 
 # ==================== AI ROUTES ====================
