@@ -171,7 +171,7 @@ Build a web-based application to identify, analyse, and manage Covered Call and 
 - **Cost**: 50 credits/month
 
 ## Next Action Items
-1. Configure Stripe webhook URL in Stripe dashboard: `https://covercall.preview.emergentagent.com/api/webhooks/stripe`
+1. Configure Stripe webhook URL in Stripe dashboard: `https://optionsflow-3.preview.emergentagent.com/api/webhooks/stripe`
 2. Verify domain in Resend for email delivery
 3. Validate portfolio parser with user's second IBKR account CSV
 4. Implement Watchlist functionality
