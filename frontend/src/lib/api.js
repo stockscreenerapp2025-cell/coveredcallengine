@@ -62,6 +62,7 @@ export const screenerApi = {
   getFilters: () => api.get('/screener/filters'),
   saveFilter: (data) => api.post('/screener/filters', data),
   deleteFilter: (id) => api.delete(`/screener/filters/${id}`),
+  clearCache: () => api.post('/screener/clear-cache'),
 };
 
 export const portfolioApi = {
