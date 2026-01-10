@@ -3094,6 +3094,87 @@ async def remove_from_watchlist(item_id: str, user: dict = Depends(get_current_u
 
 # ==================== NEWS ROUTES ====================
 
+# MarketAux rate limiting - 100 requests per day for free tier
+MARKETAUX_DAILY_LIMIT = 100
+marketaux_request_count = {"date": None, "count": 0}
+
+# Relevant keywords for options trading news filtering
+OPTIONS_TRADING_KEYWORDS = [
+    'option', 'options', 'call', 'put', 'strike', 'expir', 'volatility', 'iv', 'implied',
+    'premium', 'delta', 'theta', 'gamma', 'vega', 'covered call', 'iron condor', 'straddle',
+    'strangle', 'spread', 'hedge', 'earnings', 'dividend', 'stock', 'etf', 'market', 'trading',
+    'invest', 'bull', 'bear', 'rally', 'decline', 'rise', 'fall', 'gain', 'loss', 'profit',
+    'revenue', 'eps', 'guidance', 'forecast', 'analyst', 'upgrade', 'downgrade', 'target',
+    'fed', 'interest rate', 'inflation', 'gdp', 'employment', 'jobs', 'economic',
+    's&p', 'nasdaq', 'dow', 'russell', 'index', 'sector', 'tech', 'financ', 'energy',
+    'healthcare', 'consumer', 'industrial', 'ipo', 'merger', 'acquisition', 'buyback',
+    'short', 'squeeze', 'momentum', 'breakout', 'support', 'resistance', 'trend'
+]
+
+# List of stocks/ETFs we track for news filtering
+TRACKED_SYMBOLS = {
+    # Top stocks
+    "AAPL", "MSFT", "GOOGL", "AMZN", "META", "NVDA", "TSLA", "AMD", "INTC", "JPM",
+    "BAC", "WFC", "C", "GS", "V", "MA", "PFE", "MRK", "JNJ", "UNH", "KO", "PEP",
+    "NKE", "DIS", "NFLX", "PYPL", "UBER", "SNAP", "PLTR", "SOFI", "AAL", "DAL",
+    "CCL", "USB", "PNC", "CFG", "DVN", "APA", "HAL", "OXY", "HD", "COST", "XOM", "CVX",
+    # ETFs
+    "SPY", "QQQ", "IWM", "DIA", "XLF", "XLE", "XLK", "XLV", "XLI", "XLB", "XLU", "XLP", "XLY",
+    "GLD", "SLV", "TLT", "HYG", "VIX", "VXX", "ARKK", "TQQQ", "SQQQ"
+}
+
+def is_relevant_news(article: dict) -> bool:
+    """Check if a news article is relevant for options traders"""
+    title = (article.get("title") or "").lower()
+    description = (article.get("description") or "").lower()
+    source = (article.get("source") or "").lower()
+    
+    # Skip clearly irrelevant sources
+    irrelevant_sources = ['entertainment', 'sports', 'celebrity', 'lifestyle', 'music', 'concert', 'ticket']
+    if any(src in source for src in irrelevant_sources):
+        return False
+    
+    # Check if article mentions any tracked symbols
+    entities = article.get("entities", [])
+    article_symbols = {e.get("symbol", "").upper() for e in entities if e.get("symbol")}
+    if article_symbols & TRACKED_SYMBOLS:  # Intersection
+        return True
+    
+    # Check for relevant keywords in title or description
+    combined_text = f"{title} {description}"
+    keyword_matches = sum(1 for kw in OPTIONS_TRADING_KEYWORDS if kw in combined_text)
+    
+    # Require at least 2 keyword matches for general financial relevance
+    return keyword_matches >= 2
+
+async def check_marketaux_rate_limit() -> bool:
+    """Check if we can make a MarketAux API request (100/day limit)"""
+    global marketaux_request_count
+    today = datetime.now(timezone.utc).date().isoformat()
+    
+    if marketaux_request_count["date"] != today:
+        # Reset counter for new day
+        marketaux_request_count = {"date": today, "count": 0}
+    
+    if marketaux_request_count["count"] >= MARKETAUX_DAILY_LIMIT:
+        logging.warning(f"MarketAux daily limit reached ({MARKETAUX_DAILY_LIMIT} requests)")
+        return False
+    
+    return True
+
+async def increment_marketaux_counter():
+    """Increment the MarketAux request counter"""
+    global marketaux_request_count
+    today = datetime.now(timezone.utc).date().isoformat()
+    
+    if marketaux_request_count["date"] != today:
+        marketaux_request_count = {"date": today, "count": 1}
+    else:
+        marketaux_request_count["count"] += 1
+    
+    logging.info(f"MarketAux requests today: {marketaux_request_count['count']}/{MARKETAUX_DAILY_LIMIT}")
+
+
 @news_router.get("/")
 async def get_market_news(
     symbol: Optional[str] = None,
