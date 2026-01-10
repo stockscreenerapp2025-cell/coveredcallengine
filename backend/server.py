@@ -1730,19 +1730,14 @@ async def get_dashboard_pmcc_opportunities(
     
     try:
         symbols_to_scan = [
-            # Tech stocks with good options liquidity
-            "AAPL", "MSFT", "GOOGL", "AMZN", "NVDA", "META", "TSLA", "AMD", "INTC", "MU",
-            "QCOM", "TXN", "NFLX", "CRM", "ADBE",
-            # ETFs
+            # Full symbol list for PMCC Dashboard
+            "AAPL", "MSFT", "GOOGL", "META", "NVDA", "AMD", "INTC", "MU", "QCOM",
             "SPY", "QQQ", "IWM", "DIA",
-            # Financial
-            "JPM", "BAC", "WFC", "GS", "C",
-            # Consumer
-            "COST", "WMT", "HD", "NKE", "SBUX", "MCD", "DIS",
-            # Healthcare
+            "JPM", "BAC", "WFC", "GS", "C", "MS",
+            "COST", "HD", "NKE", "DIS", "SBUX",
             "UNH", "JNJ", "PFE", "MRK", "LLY",
-            # Industrial/Energy
-            "CAT", "DE", "BA", "XOM", "CVX"
+            "XOM", "CVX", "COP", "OXY",
+            "PYPL", "V", "MA", "UBER"
         ]
         
         opportunities = []
