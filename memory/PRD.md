@@ -51,6 +51,27 @@ Build a web-based application to identify, analyse, and manage Covered Call and 
 - Added ETF symbols: SPY, QQQ, IWM, DIA, XLF, XLE, XLK and more
 - ETFs are now included in Screener results regardless of price filter
 - Yahoo Finance provides real-time options data for ETFs
+- Security Type filter (Stocks/ETFs/Index) now works correctly
+
+### MarketAux News Rate Limiting & Filtering
+- Implemented 100 requests/day rate limit for free tier
+- Added `/api/news/rate-limit` endpoint to check usage status
+- Filtered news to only show relevant stock/options trading content
+- News now includes ticker symbols and excludes irrelevant content (concerts, entertainment, etc.)
+- Keywords filter for options-related terms: volatility, earnings, dividend, Fed, etc.
+
+### Dashboard Portfolio Mockup
+- Enhanced mockup section with colorful sample charts
+- Sample Strategy Distribution pie chart (Covered Calls, PMCC, Stocks)
+- Sample Realized P/L bar chart by position
+- Clear "Sample Data Preview" banner explaining import process
+- Call-to-action button to import IBKR data
+
+### Portfolio Onboarding Page
+- Three-option onboarding: IBKR Import, New Account, Manual Entry (coming soon)
+- Step-by-step IBKR export instructions
+- Clear "bonus feature" messaging to manage expectations
+- Affiliate link placeholder for IBKR account opening (admin configurable)
 
 ### Screener Filter UI Fix
 - All filter fields now show as blank/empty placeholders by default
