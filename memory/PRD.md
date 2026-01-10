@@ -129,8 +129,16 @@ Build a web-based application to identify, analyse, and manage Covered Call and 
 - **Cost**: 50 credits/month
 
 ## Next Action Items
-1. Deploy to Emergent (click Deploy button)
-2. Link custom domain: coveredcallengine.com
-3. Configure DNS at domain registrar
-4. Add Polygon.io API key in Admin settings for live data
-5. Optional: Add OpenAI API key for enhanced AI (Emergent key works as fallback)
+1. Configure Stripe webhook URL in Stripe dashboard: `https://covercall.preview.emergentagent.com/api/webhooks/stripe`
+2. Verify domain in Resend for email delivery
+3. Validate portfolio parser with user's second IBKR account CSV
+4. Implement Watchlist functionality
+
+## Pending User Actions
+- Stripe webhook configuration (required for subscription management)
+- Resend domain verification (required for email notifications)
+
+## Future Tasks
+- Admin Panel - Support Ticket System
+- Admin Panel - Content & Announcement Manager
+- Admin Panel - Roles & Permissions and Audit Logs
