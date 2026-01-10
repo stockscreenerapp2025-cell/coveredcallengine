@@ -73,7 +73,7 @@ const TradingViewChart = memo(({ symbol }) => {
           id: "MASimple@tv-basicstudies",
           inputs: { length: 50 },
           styles: { 
-            "plot.color": "#2962FF",
+            "plot.color": "#06B6D4",
             "plot.linewidth": 2
           }
         },
@@ -81,7 +81,7 @@ const TradingViewChart = memo(({ symbol }) => {
           id: "MASimple@tv-basicstudies", 
           inputs: { length: 200 },
           styles: {
-            "plot.color": "#FF6D00",
+            "plot.color": "#3B82F6",
             "plot.linewidth": 2
           }
         }
