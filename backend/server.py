@@ -1984,23 +1984,15 @@ async def screen_pmcc(
         return {"opportunities": [], "total": 0, "message": "API key not configured", "is_mock": True}
     
     try:
-        # Full symbol list for PMCC (stocks up to $200)
+        # Full symbol list for PMCC Dashboard
         symbols_to_scan = [
-            # Tech - various price ranges
-            "AAPL", "MSFT", "GOOGL", "AMZN", "META", "NVDA", "TSLA", "AMD", "INTC", "MU",
-            "QCOM", "TXN", "NFLX", "CRM", "ADBE", "ORCL", "IBM", "CSCO", "AVGO", "NOW",
-            # ETFs
-            "SPY", "QQQ", "IWM", "DIA", "XLF", "XLE", "XLK", "XLV", "XLI", "ARKK",
-            # Financial
-            "JPM", "BAC", "WFC", "GS", "C", "MS", "BLK", "SCHW", "USB", "PNC", "AXP",
-            # Consumer
-            "COST", "WMT", "HD", "LOW", "NKE", "SBUX", "MCD", "DIS", "TGT", "AMZN",
-            # Healthcare
-            "UNH", "JNJ", "PFE", "MRK", "LLY", "ABBV", "TMO", "ABT", "CVS", "CI",
-            # Industrial/Energy
-            "CAT", "DE", "BA", "HON", "GE", "XOM", "CVX", "COP", "SLB", "OXY", "DVN",
-            # Other popular
-            "PYPL", "SQ", "UBER", "V", "MA", "COIN", "HOOD", "SOFI", "PLTR", "SNAP"
+            "AAPL", "MSFT", "GOOGL", "META", "NVDA", "AMD", "INTC", "MU", "QCOM",
+            "SPY", "QQQ", "IWM", "DIA",
+            "JPM", "BAC", "WFC", "GS", "C", "MS",
+            "COST", "HD", "NKE", "DIS", "SBUX",
+            "UNH", "JNJ", "PFE", "MRK", "LLY",
+            "XOM", "CVX", "COP", "OXY",
+            "PYPL", "V", "MA", "UBER"
         ]
         
         opportunities = []
