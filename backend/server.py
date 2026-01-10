@@ -2056,9 +2056,9 @@ async def screen_pmcc(
                         if price <= 0:
                             continue
                         
-                        # LEAPS must be ITM but not too deep (strike should be 50-95% of current price)
+                        # LEAPS must be ITM (strike should be 40-95% of current price for valid PMCC)
                         strike_pct = (strike / current_price) * 100
-                        if strike_pct < 50 or strike_pct > 95:
+                        if strike_pct < 40 or strike_pct > 95:
                             continue
                         
                         # Estimate delta - ITM options have high delta
