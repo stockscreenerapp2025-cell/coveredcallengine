@@ -443,9 +443,9 @@ const PMCC = () => {
                         type="number"
                         step="0.5"
                         value={filters.minRoiPerCycle}
-                        onChange={(e) => setFilters(f => ({ ...f, minRoiPerCycle: parseFloat(e.target.value) || 0 }))}
+                        onChange={(e) => setFilters(f => ({ ...f, minRoiPerCycle: e.target.value === '' ? '' : parseFloat(e.target.value) || 0 }))}
                         className="input-dark mt-2"
-                        placeholder="1.0"
+                        placeholder="Min"
                       />
                       <p className="text-xs text-zinc-500 mt-1">Premium / LEAPS cost</p>
                     </div>
@@ -454,9 +454,9 @@ const PMCC = () => {
                       <Input
                         type="number"
                         value={filters.minAnnualizedRoi}
-                        onChange={(e) => setFilters(f => ({ ...f, minAnnualizedRoi: parseFloat(e.target.value) || 0 }))}
+                        onChange={(e) => setFilters(f => ({ ...f, minAnnualizedRoi: e.target.value === '' ? '' : parseFloat(e.target.value) || 0 }))}
                         className="input-dark mt-2"
-                        placeholder="20"
+                        placeholder="Min"
                       />
                     </div>
                   </AccordionContent>
