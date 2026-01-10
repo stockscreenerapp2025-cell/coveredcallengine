@@ -877,10 +877,10 @@ const Screener = () => {
                       <Label className="text-xs text-zinc-400">Minimum Analyst Coverage</Label>
                       <Input
                         type="number"
-                        value={fundamentalFilters.minAnalystCount || ""} placeholder="Min"
-                        onChange={(e) => setFundamentalFilters(f => ({ ...f, minAnalystCount: parseInt(e.target.value) || 0 }))}
+                        value={fundamentalFilters.minAnalystCount}
+                        onChange={(e) => setFundamentalFilters(f => ({ ...f, minAnalystCount: e.target.value === '' ? '' : parseInt(e.target.value) || 0 }))}
                         className="input-dark mt-2"
-                        placeholder="5"
+                        placeholder="Min"
                         data-testid="min-analyst-input"
                       />
                     </div>
