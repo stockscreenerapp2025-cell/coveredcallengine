@@ -412,40 +412,153 @@ const Dashboard = () => {
                 )}
               </>
             ) : (
-              // Mockup for users without IBKR data
-              <div className="text-center py-8">
-                <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-violet-500/20 flex items-center justify-center">
-                  <Upload className="w-8 h-8 text-violet-400" />
+              // Enhanced Mockup for users without IBKR data - colorful sample charts
+              <div className="py-4">
+                {/* Notification Banner */}
+                <div className="mb-6 p-4 rounded-lg bg-gradient-to-r from-violet-500/20 via-purple-500/20 to-pink-500/20 border border-violet-500/30">
+                  <div className="flex items-start gap-3">
+                    <div className="w-10 h-10 rounded-full bg-violet-500/30 flex items-center justify-center flex-shrink-0">
+                      <Upload className="w-5 h-5 text-violet-400" />
+                    </div>
+                    <div>
+                      <h3 className="text-white font-semibold mb-1">📊 Sample Data Preview</h3>
+                      <p className="text-zinc-400 text-sm">
+                        Import your Interactive Brokers transaction history to see <span className="text-emerald-400 font-medium">your actual portfolio performance</span> here with real P/L, strategy breakdown, and AI-powered suggestions.
+                      </p>
+                    </div>
+                  </div>
                 </div>
-                <h3 className="text-lg font-semibold text-white mb-2">Track Your Portfolio</h3>
-                <p className="text-zinc-400 text-sm mb-6 max-w-md mx-auto">
-                  Import your Interactive Brokers transaction history to see your trades, P/L, and AI-powered suggestions.
-                </p>
+
+                {/* Sample Stats */}
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-                  <div className="p-4 rounded-lg bg-zinc-800/30">
-                    <div className="text-xs text-zinc-500 mb-1">Sample: Total Invested</div>
-                    <div className="text-xl font-bold font-mono text-zinc-600">$50,000</div>
+                  <div className="p-4 rounded-lg bg-gradient-to-br from-blue-500/10 to-blue-600/5 border border-blue-500/20">
+                    <div className="text-xs text-blue-400 mb-1">Total Invested</div>
+                    <div className="text-xl font-bold font-mono text-blue-300">$52,450</div>
+                    <div className="text-xs text-zinc-500 mt-1">Sample data</div>
                   </div>
-                  <div className="p-4 rounded-lg bg-zinc-800/30">
-                    <div className="text-xs text-zinc-500 mb-1">Sample: Premium</div>
-                    <div className="text-xl font-bold font-mono text-zinc-600">$2,500</div>
+                  <div className="p-4 rounded-lg bg-gradient-to-br from-cyan-500/10 to-cyan-600/5 border border-cyan-500/20">
+                    <div className="text-xs text-cyan-400 mb-1">Premium Collected</div>
+                    <div className="text-xl font-bold font-mono text-cyan-300">$3,280</div>
+                    <div className="text-xs text-zinc-500 mt-1">Sample data</div>
                   </div>
-                  <div className="p-4 rounded-lg bg-zinc-800/30">
-                    <div className="text-xs text-zinc-500 mb-1">Sample: Open Trades</div>
-                    <div className="text-xl font-bold font-mono text-zinc-600">12</div>
+                  <div className="p-4 rounded-lg bg-gradient-to-br from-emerald-500/10 to-emerald-600/5 border border-emerald-500/20">
+                    <div className="text-xs text-emerald-400 mb-1">Open Trades</div>
+                    <div className="text-xl font-bold font-mono text-emerald-300">14</div>
+                    <div className="text-xs text-zinc-500 mt-1">Sample data</div>
                   </div>
-                  <div className="p-4 rounded-lg bg-zinc-800/30">
-                    <div className="text-xs text-zinc-500 mb-1">Sample: Closed</div>
-                    <div className="text-xl font-bold font-mono text-zinc-600">8</div>
+                  <div className="p-4 rounded-lg bg-gradient-to-br from-amber-500/10 to-amber-600/5 border border-amber-500/20">
+                    <div className="text-xs text-amber-400 mb-1">Realized P/L</div>
+                    <div className="text-xl font-bold font-mono text-amber-300">+$1,845</div>
+                    <div className="text-xs text-zinc-500 mt-1">Sample data</div>
                   </div>
                 </div>
-                <Button
-                  onClick={() => navigate('/portfolio')}
-                  className="bg-violet-600 hover:bg-violet-700"
-                >
-                  <Upload className="w-4 h-4 mr-2" />
-                  Import IBKR Data
-                </Button>
+
+                {/* Sample Charts */}
+                <div className="grid md:grid-cols-2 gap-6 mb-6">
+                  {/* Sample Strategy Pie Chart */}
+                  <div className="bg-zinc-800/30 rounded-lg p-4 border border-zinc-700/30">
+                    <h5 className="text-xs text-zinc-400 mb-3">📈 Sample Strategy Distribution</h5>
+                    <div className="h-48">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <RechartsPie>
+                          <Pie
+                            data={[
+                              { name: 'Covered Calls', value: 8, color: '#10b981' },
+                              { name: 'PMCC', value: 4, color: '#06b6d4' },
+                              { name: 'Stocks', value: 2, color: '#3b82f6' }
+                            ]}
+                            cx="50%"
+                            cy="50%"
+                            innerRadius={40}
+                            outerRadius={70}
+                            paddingAngle={2}
+                            dataKey="value"
+                            label={({ name, value }) => `${value}`}
+                            labelLine={false}
+                          >
+                            <Cell fill="#10b981" />
+                            <Cell fill="#06b6d4" />
+                            <Cell fill="#3b82f6" />
+                          </Pie>
+                          <Tooltip 
+                            contentStyle={{ background: '#18181b', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px' }}
+                          />
+                        </RechartsPie>
+                      </ResponsiveContainer>
+                    </div>
+                    <div className="flex flex-wrap gap-3 mt-2 justify-center">
+                      <div className="flex items-center gap-1.5 text-xs">
+                        <div className="w-2.5 h-2.5 rounded-full bg-emerald-500"></div>
+                        <span className="text-zinc-400">Covered Calls</span>
+                      </div>
+                      <div className="flex items-center gap-1.5 text-xs">
+                        <div className="w-2.5 h-2.5 rounded-full bg-cyan-500"></div>
+                        <span className="text-zinc-400">PMCC</span>
+                      </div>
+                      <div className="flex items-center gap-1.5 text-xs">
+                        <div className="w-2.5 h-2.5 rounded-full bg-blue-500"></div>
+                        <span className="text-zinc-400">Stocks</span>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  {/* Sample P/L Bar Chart */}
+                  <div className="bg-zinc-800/30 rounded-lg p-4 border border-zinc-700/30">
+                    <h5 className="text-xs text-zinc-400 mb-3">💰 Sample Realized P/L by Position</h5>
+                    <div className="h-48">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <BarChart 
+                          data={[
+                            { symbol: 'AAPL', pnl: 520 },
+                            { symbol: 'MSFT', pnl: 380 },
+                            { symbol: 'AMD', pnl: 245 },
+                            { symbol: 'NVDA', pnl: -120 },
+                            { symbol: 'INTC', pnl: 410 },
+                            { symbol: 'SPY', pnl: 310 }
+                          ]} 
+                          layout="vertical" 
+                          margin={{ left: 5, right: 10, top: 5, bottom: 5 }} 
+                          barSize={14}
+                        >
+                          <CartesianGrid strokeDasharray="3 3" stroke="#333" horizontal={false} />
+                          <XAxis type="number" tickFormatter={(v) => `$${v}`} stroke="#666" fontSize={9} />
+                          <YAxis type="category" dataKey="symbol" stroke="#999" fontSize={10} width={40} interval={0} />
+                          <Tooltip 
+                            contentStyle={{ background: '#18181b', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px' }}
+                            formatter={(value) => [`$${value}`, 'P/L']}
+                          />
+                          <Bar dataKey="pnl" radius={[0, 3, 3, 0]}>
+                            {[520, 380, 245, -120, 410, 310].map((val, index) => (
+                              <Cell key={`cell-${index}`} fill={val >= 0 ? '#10b981' : '#ef4444'} />
+                            ))}
+                          </Bar>
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </div>
+                    <div className="flex justify-center gap-4 mt-2 text-xs">
+                      <div className="flex items-center gap-1.5">
+                        <div className="w-2.5 h-2.5 rounded-full bg-emerald-500"></div>
+                        <span className="text-zinc-400">Profit</span>
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <div className="w-2.5 h-2.5 rounded-full bg-red-500"></div>
+                        <span className="text-zinc-400">Loss</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* CTA Button */}
+                <div className="text-center">
+                  <Button
+                    onClick={() => navigate('/portfolio')}
+                    className="bg-gradient-to-r from-violet-600 to-purple-600 hover:from-violet-700 hover:to-purple-700 text-white px-6"
+                  >
+                    <Upload className="w-4 h-4 mr-2" />
+                    Import Your IBKR Data
+                  </Button>
+                  <p className="text-zinc-500 text-xs mt-2">Replace sample data with your actual portfolio</p>
+                </div>
               </div>
             )}
           </CardContent>
