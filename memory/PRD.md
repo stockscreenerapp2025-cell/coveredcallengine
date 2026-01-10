@@ -37,6 +37,16 @@ Build a web-based application to identify, analyse, and manage Covered Call and 
 - [x] Terms & Conditions checkbox on registration
 
 ## Recent Updates (January 2026)
+### Manual Trade Entry Form (New)
+- Added "Add Trade" button to Portfolio header
+- Full manual trade entry form with support for:
+  - Covered Calls (Stock + Short Call)
+  - PMCC (LEAPS + Short Call)
+  - Stock-only positions
+  - Individual options
+- Backend API endpoints: POST/PUT/DELETE `/api/portfolio/manual-trade`
+- Close trade endpoint with P/L calculation
+
 ### Screener/PMCC Performance Fix
 - Implemented parallel API requests using `asyncio.gather` in `fetch_options_chain_polygon`
 - Added semaphore-based rate limiting (15 concurrent requests)
