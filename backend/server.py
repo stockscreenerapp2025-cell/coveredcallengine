@@ -2061,10 +2061,10 @@ async def screen_pmcc(
                         continue
                     
                     # Fetch LEAPS options using the working endpoint
-                    leaps_options_raw = await fetch_options_chain_polygon(symbol, api_key, "call", max_dte=max_leaps_dte, min_dte=min_leaps_dte)
+                    leaps_options_raw = await fetch_options_chain_polygon(symbol, api_key, "call", max_dte=max_leaps_dte, min_dte=min_leaps_dte, current_price=current_price)
                     
                     # Fetch short-term options using the working endpoint
-                    short_options_raw = await fetch_options_chain_polygon(symbol, api_key, "call", max_dte=max_short_dte, min_dte=min_short_dte)
+                    short_options_raw = await fetch_options_chain_polygon(symbol, api_key, "call", max_dte=max_short_dte, min_dte=min_short_dte, current_price=current_price)
                     
                     leaps_options = []
                     short_options = []
