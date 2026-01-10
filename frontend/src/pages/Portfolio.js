@@ -93,6 +93,30 @@ const Portfolio = () => {
   const [generatingSuggestions, setGeneratingSuggestions] = useState(false);
   const fileInputRef = useRef(null);
 
+  // Manual Trade Entry State
+  const [manualTradeOpen, setManualTradeOpen] = useState(false);
+  const [savingManualTrade, setSavingManualTrade] = useState(false);
+  const [manualTrade, setManualTrade] = useState({
+    symbol: '',
+    trade_type: 'covered_call',
+    stock_quantity: '',
+    stock_price: '',
+    stock_date: '',
+    option_type: 'call',
+    option_action: 'sell',
+    strike_price: '',
+    expiry_date: '',
+    option_premium: '',
+    option_quantity: '',
+    option_date: '',
+    leaps_strike: '',
+    leaps_expiry: '',
+    leaps_cost: '',
+    leaps_quantity: '',
+    leaps_date: '',
+    notes: ''
+  });
+
   // Filters
   const [filters, setFilters] = useState({
     account: '',
