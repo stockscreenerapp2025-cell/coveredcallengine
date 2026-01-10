@@ -933,10 +933,10 @@ const Screener = () => {
                       <Input
                         type="number"
                         step="0.25"
-                        value={roiFilters.minRoi || ""} placeholder="Min"
-                        onChange={(e) => setRoiFilters(f => ({ ...f, minRoi: parseFloat(e.target.value) || 0 }))}
+                        value={roiFilters.minRoi}
+                        onChange={(e) => setRoiFilters(f => ({ ...f, minRoi: e.target.value === '' ? '' : parseFloat(e.target.value) || 0 }))}
                         className="input-dark mt-2"
-                        placeholder="0.5"
+                        placeholder="Min"
                         data-testid="min-roi-input"
                       />
                       <p className="text-xs text-zinc-500 mt-1">Premium / Stock Price</p>
@@ -945,10 +945,10 @@ const Screener = () => {
                       <Label className="text-xs text-zinc-400">Minimum Annualized ROI (%)</Label>
                       <Input
                         type="number"
-                        value={roiFilters.minAnnualizedRoi || ""} placeholder="Min"
-                        onChange={(e) => setRoiFilters(f => ({ ...f, minAnnualizedRoi: parseFloat(e.target.value) || 0 }))}
+                        value={roiFilters.minAnnualizedRoi}
+                        onChange={(e) => setRoiFilters(f => ({ ...f, minAnnualizedRoi: e.target.value === '' ? '' : parseFloat(e.target.value) || 0 }))}
                         className="input-dark mt-2"
-                        placeholder="10"
+                        placeholder="Min"
                         data-testid="min-annual-roi-input"
                       />
                     </div>
