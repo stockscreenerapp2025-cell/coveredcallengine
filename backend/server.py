@@ -1386,13 +1386,27 @@ async def screen_covered_calls(
                 "SPY", "QQQ", "IWM", "DIA", "XLF", "XLE", "XLK"
             ]
             
-            # Combine based on price filter
-            if max_price <= 100:
-                symbols_to_scan = tier1_symbols + etf_symbols  # Always include ETFs
-            elif min_price >= 100:
-                symbols_to_scan = tier2_symbols + etf_symbols
-            else:
-                symbols_to_scan = tier1_symbols + tier2_symbols + etf_symbols
+            # Build symbols list based on security type filters
+            symbols_to_scan = []
+            
+            # Add stock symbols if stocks are included
+            if include_stocks:
+                if max_price <= 100:
+                    symbols_to_scan.extend(tier1_symbols)
+                elif min_price >= 100:
+                    symbols_to_scan.extend(tier2_symbols)
+                else:
+                    symbols_to_scan.extend(tier1_symbols + tier2_symbols)
+            
+            # Add ETF symbols if ETFs are included
+            if include_etfs:
+                symbols_to_scan.extend(etf_symbols)
+            
+            # Note: Index options would be added here if include_index is True
+            # Currently no index-specific symbols as they require different data sources
+            
+            logging.info(f"Security type filter: stocks={include_stocks}, etfs={include_etfs}, index={include_index}")
+            logging.info(f"Symbols to scan: {len(symbols_to_scan)} symbols")
             
             async with httpx.AsyncClient(timeout=30.0) as client:
                 for symbol in symbols_to_scan:
