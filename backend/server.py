@@ -1369,21 +1369,25 @@ async def screen_covered_calls(
             ]
             
             tier2_symbols = [
-                # $100-$200 - Secondary
+                # $100-$500 - Secondary
                 "AAPL", "MSFT", "META", "AMD",
                 "JPM", "GS", "V", "MA",
-                "SPY", "QQQ", "IWM",
                 "HD", "COST",
                 "XOM", "CVX"
             ]
             
+            # ETF symbols (separate category - any price)
+            etf_symbols = [
+                "SPY", "QQQ", "IWM", "DIA", "XLF", "XLE", "XLK"
+            ]
+            
             # Combine based on price filter
             if max_price <= 100:
-                symbols_to_scan = tier1_symbols
+                symbols_to_scan = tier1_symbols + etf_symbols  # Always include ETFs
             elif min_price >= 100:
-                symbols_to_scan = tier2_symbols
+                symbols_to_scan = tier2_symbols + etf_symbols
             else:
-                symbols_to_scan = tier1_symbols + tier2_symbols
+                symbols_to_scan = tier1_symbols + tier2_symbols + etf_symbols
             
             async with httpx.AsyncClient(timeout=30.0) as client:
                 for symbol in symbols_to_scan:
