@@ -83,6 +83,7 @@ const PMCC = () => {
       if (filters.maxShortDte) params.max_short_dte = filters.maxShortDte;
       if (filters.minRoiPerCycle) params.min_roi = filters.minRoiPerCycle;
       if (filters.minAnnualizedRoi) params.min_annualized_roi = filters.minAnnualizedRoi;
+      if (bypassCache) params.bypass_cache = true;
       
       const response = await screenerApi.getPMCC(params);
       setOpportunities(response.data.opportunities || []);
