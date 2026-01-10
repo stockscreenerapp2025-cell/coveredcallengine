@@ -277,15 +277,15 @@ const Portfolio = () => {
   return (
     <div className="space-y-6" data-testid="portfolio-page">
       {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+        <div className="flex-shrink-0">
           <h1 className="text-2xl md:text-3xl font-bold text-white flex items-center gap-3">
             <Wallet className="w-8 h-8 text-violet-500" />
             Portfolio Tracker
           </h1>
           <p className="text-zinc-400 mt-1">Import and track your IBKR transactions</p>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex items-center gap-2 flex-shrink-0">
           <input
             type="file"
             ref={fileInputRef}
@@ -295,7 +295,7 @@ const Portfolio = () => {
           />
           <Button
             onClick={() => fileInputRef.current?.click()}
-            className="bg-violet-600 hover:bg-violet-700 h-9"
+            className="bg-violet-600 hover:bg-violet-700 h-9 whitespace-nowrap"
             disabled={uploading}
           >
             {uploading ? (
@@ -303,12 +303,12 @@ const Portfolio = () => {
             ) : (
               <Upload className="w-4 h-4 mr-2" />
             )}
-            Import IBKR CSV
+            Import CSV
           </Button>
           <Button
             onClick={fetchTrades}
             variant="outline"
-            className="border-zinc-700 h-9 px-3"
+            className="border-zinc-700 h-9 w-9 p-0"
           >
             <RefreshCw className="w-4 h-4" />
           </Button>
@@ -317,19 +317,19 @@ const Portfolio = () => {
               <Button
                 onClick={generateAllSuggestions}
                 disabled={generatingSuggestions}
-                className="bg-emerald-600 hover:bg-emerald-700 h-9"
+                className="bg-emerald-600 hover:bg-emerald-700 h-9 whitespace-nowrap"
               >
                 {generatingSuggestions ? (
                   <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                 ) : (
                   <Brain className="w-4 h-4 mr-2" />
                 )}
-                AI Suggestions
+                AI Suggest
               </Button>
               <Button
                 onClick={handleClearData}
                 variant="outline"
-                className="border-red-700 text-red-400 hover:bg-red-500/10 h-9 px-3"
+                className="border-red-700 text-red-400 hover:bg-red-500/10 h-9 w-9 p-0"
               >
                 <Trash2 className="w-4 h-4" />
               </Button>
