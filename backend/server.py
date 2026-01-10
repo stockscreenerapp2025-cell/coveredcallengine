@@ -1793,10 +1793,10 @@ async def get_dashboard_pmcc_opportunities(
                         continue
                     
                     # Fetch LEAPS options (365-730 days = 12-24 months)
-                    leaps_options_raw = await fetch_options_chain_polygon(symbol, api_key, "call", max_dte=730, min_dte=365)
+                    leaps_options_raw = await fetch_options_chain_polygon(symbol, api_key, "call", max_dte=730, min_dte=365, current_price=current_price)
                     
                     # Fetch short-term options (7-45 days)
-                    short_options_raw = await fetch_options_chain_polygon(symbol, api_key, "call", max_dte=45, min_dte=7)
+                    short_options_raw = await fetch_options_chain_polygon(symbol, api_key, "call", max_dte=45, min_dte=7, current_price=current_price)
                     
                     leaps_options = []
                     short_options = []
