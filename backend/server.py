@@ -2010,6 +2010,7 @@ async def screen_pmcc(
     max_short_dte: int = Query(45, le=90),
     min_roi: float = Query(1.0, ge=0),
     min_annualized_roi: float = Query(20, ge=0),
+    bypass_cache: bool = Query(False),
     user: dict = Depends(get_current_user)
 ):
     """
