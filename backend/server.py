@@ -404,16 +404,20 @@ async def get_marketaux_client():
         return settings.marketaux_api_token
     return None
 
+import asyncio
+
 async def fetch_options_chain_polygon(symbol: str, api_key: str, contract_type: str = "call", max_dte: int = 45, min_dte: int = 1, current_price: float = 0) -> list:
     """
     Fetch options chain using Polygon.io endpoints that work with basic subscription:
     1. v3/reference/options/contracts - Get list of available contracts
-    2. v2/aggs/ticker/{contract}/prev - Get previous day OHLCV for each contract
+    2. v2/aggs/ticker/{contract}/prev - Get previous day OHLCV for each contract (PARALLEL)
     
     Returns list of option data with pricing info.
     
+    Uses asyncio.gather for PARALLEL price fetching to dramatically improve performance.
+    
     If current_price is provided, filters contracts to strikes between 40-95% of price (for LEAPS)
-    or 100-130% of price (for short calls).
+    or 95-150% of price (for short calls - EXPANDED range).
     """
     from datetime import datetime, timedelta
     
@@ -424,18 +428,29 @@ async def fetch_options_chain_polygon(symbol: str, api_key: str, contract_type: 
     
     try:
         async with httpx.AsyncClient(timeout=60.0) as client:
-            # Step 1: Get list of contracts
+            # Step 1: Get list of contracts - request sorted by strike price
+            params = {
+                "underlying_ticker": symbol.upper(),
+                "contract_type": contract_type,
+                "expired": "false",
+                "expiration_date.gte": min_expiry,
+                "expiration_date.lte": max_expiry,
+                "limit": 250,
+                "apiKey": api_key
+            }
+            
+            # For short calls (low DTE), sort ascending to get OTM strikes first
+            # For LEAPS (high DTE), sort descending to get ITM strikes first
+            if min_dte < 100:
+                params["sort"] = "strike_price"
+                params["order"] = "asc"  # Get lower strikes first, then filter to OTM
+            else:
+                params["sort"] = "strike_price"
+                params["order"] = "desc"  # Get higher strikes first for LEAPS
+            
             contracts_response = await client.get(
                 "https://api.polygon.io/v3/reference/options/contracts",
-                params={
-                    "underlying_ticker": symbol.upper(),
-                    "contract_type": contract_type,
-                    "expired": "false",
-                    "expiration_date.gte": min_expiry,
-                    "expiration_date.lte": max_expiry,
-                    "limit": 250,  # Get more contracts to find valid strikes
-                    "apiKey": api_key
-                }
+                params=params
             )
             
             if contracts_response.status_code != 200:
@@ -446,32 +461,41 @@ async def fetch_options_chain_polygon(symbol: str, api_key: str, contract_type: 
             contracts = contracts_data.get("results", [])
             
             if not contracts:
+                logging.info(f"No contracts found for {symbol} (DTE: {min_dte}-{max_dte})")
                 return []
             
-            # Sort contracts by strike price descending to prioritize strikes closer to current price
-            # This helps find valid ITM LEAPS for PMCC (strikes at 40-95% of stock price)
-            contracts.sort(key=lambda x: x.get("strike_price", 0), reverse=True)
+            logging.info(f"Found {len(contracts)} raw {contract_type} contracts for {symbol} (DTE: {min_dte}-{max_dte})")
             
             # If current_price provided, filter to valid strike range before fetching pricing
             if current_price > 0:
                 if min_dte >= 300:  # LEAPS - want ITM (40-95% of price)
                     valid_contracts = [c for c in contracts 
                                       if current_price * 0.40 <= c.get("strike_price", 0) <= current_price * 0.95]
-                else:  # Short calls - want OTM (100-140% of price)
+                    logging.info(f"{symbol} LEAPS: {len(valid_contracts)} contracts in ITM range (40-95% of ${current_price:.2f})")
+                else:  # Short calls - want OTM (95-150% of price) - EXPANDED RANGE
                     valid_contracts = [c for c in contracts 
-                                      if current_price * 1.00 <= c.get("strike_price", 0) <= current_price * 1.40]
-                contracts = valid_contracts if valid_contracts else contracts[:50]
+                                      if current_price * 0.95 <= c.get("strike_price", 0) <= current_price * 1.50]
+                    logging.info(f"{symbol} Short: {len(valid_contracts)} contracts in OTM range (95-150% of ${current_price:.2f})")
+                
+                # Use filtered contracts if we have them, otherwise use all contracts
+                if valid_contracts:
+                    contracts = valid_contracts
+                else:
+                    logging.warning(f"{symbol}: No contracts in target range, using top 50 from all")
+                    contracts = contracts[:50]
             
-            logging.info(f"Found {len(contracts)} {contract_type} contracts for {symbol} (DTE: {min_dte}-{max_dte})")
+            # Limit to 40 contracts per symbol for price fetching (increased from 30)
+            contracts_to_fetch = contracts[:40]
+            logging.info(f"Fetching prices for {len(contracts_to_fetch)} contracts for {symbol}")
             
-            # Step 2: Get pricing for top contracts only (limit to 30 per symbol)
-            for contract in contracts[:30]:
+            # Step 2: Fetch prices in PARALLEL using asyncio.gather
+            async def fetch_single_price(contract):
+                """Fetch price for a single contract"""
                 contract_ticker = contract.get("ticker", "")
                 if not contract_ticker:
-                    continue
+                    return None
                 
                 try:
-                    # Get previous day's OHLCV
                     price_response = await client.get(
                         f"https://api.polygon.io/v2/aggs/ticker/{contract_ticker}/prev",
                         params={"apiKey": api_key}
@@ -483,11 +507,9 @@ async def fetch_options_chain_polygon(symbol: str, api_key: str, contract_type: 
                         
                         if results:
                             result = results[0]
-                            
-                            # Calculate estimated delta based on moneyness (simplified)
                             strike = contract.get("strike_price", 0)
                             
-                            options.append({
+                            return {
                                 "contract_ticker": contract_ticker,
                                 "underlying": symbol.upper(),
                                 "strike": strike,
@@ -500,11 +522,27 @@ async def fetch_options_chain_polygon(symbol: str, api_key: str, contract_type: 
                                 "low": result.get("l", 0),
                                 "volume": result.get("v", 0),
                                 "vwap": result.get("vw", 0),
-                            })
+                            }
                 except Exception as e:
-                    logging.warning(f"Error fetching price for {contract_ticker}: {e}")
-                    continue
+                    logging.debug(f"Error fetching price for {contract_ticker}: {e}")
+                return None
             
+            # Execute all price fetches in parallel with semaphore to limit concurrency
+            semaphore = asyncio.Semaphore(15)  # Limit to 15 concurrent requests
+            
+            async def fetch_with_semaphore(contract):
+                async with semaphore:
+                    return await fetch_single_price(contract)
+            
+            # Run all fetches in parallel
+            results = await asyncio.gather(*[fetch_with_semaphore(c) for c in contracts_to_fetch], return_exceptions=True)
+            
+            # Filter out None results and exceptions
+            for result in results:
+                if result and not isinstance(result, Exception):
+                    options.append(result)
+            
+            logging.info(f"Successfully fetched {len(options)} option prices for {symbol}")
             return options
             
     except Exception as e:
