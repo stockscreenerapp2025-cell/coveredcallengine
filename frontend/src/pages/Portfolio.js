@@ -1111,6 +1111,270 @@ const Portfolio = () => {
           )}
         </DialogContent>
       </Dialog>
+
+      {/* Manual Trade Entry Dialog */}
+      <Dialog open={manualTradeOpen} onOpenChange={setManualTradeOpen}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto bg-zinc-900 border-zinc-800">
+          <DialogHeader>
+            <DialogTitle className="text-xl flex items-center gap-3">
+              <Plus className="w-6 h-6 text-emerald-400" />
+              Add Manual Trade
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-6 py-4">
+            {/* Trade Type Selection */}
+            <div className="space-y-2">
+              <Label className="text-zinc-300">Trade Type</Label>
+              <Select
+                value={manualTrade.trade_type}
+                onValueChange={(value) => setManualTrade(prev => ({ ...prev, trade_type: value }))}
+              >
+                <SelectTrigger className="bg-zinc-800 border-zinc-700">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent className="bg-zinc-800 border-zinc-700">
+                  <SelectItem value="covered_call">Covered Call (Stock + Short Call)</SelectItem>
+                  <SelectItem value="pmcc">PMCC (LEAPS + Short Call)</SelectItem>
+                  <SelectItem value="stock_only">Stock Only</SelectItem>
+                  <SelectItem value="option_only">Option Only</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Symbol */}
+            <div className="space-y-2">
+              <Label className="text-zinc-300">Symbol *</Label>
+              <Input
+                value={manualTrade.symbol}
+                onChange={(e) => setManualTrade(prev => ({ ...prev, symbol: e.target.value.toUpperCase() }))}
+                placeholder="e.g., AAPL"
+                className="bg-zinc-800 border-zinc-700 uppercase"
+                maxLength={10}
+              />
+            </div>
+
+            {/* Stock Leg - Show for covered_call and stock_only */}
+            {(manualTrade.trade_type === 'covered_call' || manualTrade.trade_type === 'stock_only') && (
+              <div className="space-y-4 p-4 rounded-lg bg-blue-500/10 border border-blue-500/30">
+                <h4 className="text-sm font-medium text-blue-400 flex items-center gap-2">
+                  <TrendingUp className="w-4 h-4" />
+                  Stock Position
+                </h4>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label className="text-zinc-400 text-xs">Quantity (shares)</Label>
+                    <Input
+                      type="number"
+                      value={manualTrade.stock_quantity}
+                      onChange={(e) => setManualTrade(prev => ({ ...prev, stock_quantity: e.target.value }))}
+                      placeholder="100"
+                      className="bg-zinc-800 border-zinc-700"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="text-zinc-400 text-xs">Purchase Price ($)</Label>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      value={manualTrade.stock_price}
+                      onChange={(e) => setManualTrade(prev => ({ ...prev, stock_price: e.target.value }))}
+                      placeholder="150.00"
+                      className="bg-zinc-800 border-zinc-700"
+                    />
+                  </div>
+                  <div className="space-y-2 col-span-2">
+                    <Label className="text-zinc-400 text-xs">Purchase Date</Label>
+                    <Input
+                      type="date"
+                      value={manualTrade.stock_date}
+                      onChange={(e) => setManualTrade(prev => ({ ...prev, stock_date: e.target.value }))}
+                      className="bg-zinc-800 border-zinc-700"
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* LEAPS Leg - Show for PMCC */}
+            {manualTrade.trade_type === 'pmcc' && (
+              <div className="space-y-4 p-4 rounded-lg bg-violet-500/10 border border-violet-500/30">
+                <h4 className="text-sm font-medium text-violet-400 flex items-center gap-2">
+                  <TrendingUp className="w-4 h-4" />
+                  LEAPS (Long Call)
+                </h4>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label className="text-zinc-400 text-xs">Strike Price ($)</Label>
+                    <Input
+                      type="number"
+                      step="0.5"
+                      value={manualTrade.leaps_strike}
+                      onChange={(e) => setManualTrade(prev => ({ ...prev, leaps_strike: e.target.value }))}
+                      placeholder="120.00"
+                      className="bg-zinc-800 border-zinc-700"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="text-zinc-400 text-xs">Premium Paid ($)</Label>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      value={manualTrade.leaps_cost}
+                      onChange={(e) => setManualTrade(prev => ({ ...prev, leaps_cost: e.target.value }))}
+                      placeholder="25.00"
+                      className="bg-zinc-800 border-zinc-700"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="text-zinc-400 text-xs">Expiry Date</Label>
+                    <Input
+                      type="date"
+                      value={manualTrade.leaps_expiry}
+                      onChange={(e) => setManualTrade(prev => ({ ...prev, leaps_expiry: e.target.value }))}
+                      className="bg-zinc-800 border-zinc-700"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="text-zinc-400 text-xs">Contracts</Label>
+                    <Input
+                      type="number"
+                      value={manualTrade.leaps_quantity}
+                      onChange={(e) => setManualTrade(prev => ({ ...prev, leaps_quantity: e.target.value }))}
+                      placeholder="1"
+                      className="bg-zinc-800 border-zinc-700"
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Short Call Leg - Show for covered_call, pmcc, option_only */}
+            {(manualTrade.trade_type === 'covered_call' || manualTrade.trade_type === 'pmcc' || manualTrade.trade_type === 'option_only') && (
+              <div className="space-y-4 p-4 rounded-lg bg-emerald-500/10 border border-emerald-500/30">
+                <h4 className="text-sm font-medium text-emerald-400 flex items-center gap-2">
+                  <DollarSign className="w-4 h-4" />
+                  {manualTrade.trade_type === 'option_only' ? 'Option' : 'Short Call'}
+                </h4>
+                {manualTrade.trade_type === 'option_only' && (
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label className="text-zinc-400 text-xs">Option Type</Label>
+                      <Select
+                        value={manualTrade.option_type}
+                        onValueChange={(value) => setManualTrade(prev => ({ ...prev, option_type: value }))}
+                      >
+                        <SelectTrigger className="bg-zinc-800 border-zinc-700">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent className="bg-zinc-800 border-zinc-700">
+                          <SelectItem value="call">Call</SelectItem>
+                          <SelectItem value="put">Put</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label className="text-zinc-400 text-xs">Action</Label>
+                      <Select
+                        value={manualTrade.option_action}
+                        onValueChange={(value) => setManualTrade(prev => ({ ...prev, option_action: value }))}
+                      >
+                        <SelectTrigger className="bg-zinc-800 border-zinc-700">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent className="bg-zinc-800 border-zinc-700">
+                          <SelectItem value="buy">Buy</SelectItem>
+                          <SelectItem value="sell">Sell</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                )}
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label className="text-zinc-400 text-xs">Strike Price ($)</Label>
+                    <Input
+                      type="number"
+                      step="0.5"
+                      value={manualTrade.strike_price}
+                      onChange={(e) => setManualTrade(prev => ({ ...prev, strike_price: e.target.value }))}
+                      placeholder="155.00"
+                      className="bg-zinc-800 border-zinc-700"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="text-zinc-400 text-xs">Premium ($)</Label>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      value={manualTrade.option_premium}
+                      onChange={(e) => setManualTrade(prev => ({ ...prev, option_premium: e.target.value }))}
+                      placeholder="3.50"
+                      className="bg-zinc-800 border-zinc-700"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="text-zinc-400 text-xs">Expiry Date</Label>
+                    <Input
+                      type="date"
+                      value={manualTrade.expiry_date}
+                      onChange={(e) => setManualTrade(prev => ({ ...prev, expiry_date: e.target.value }))}
+                      className="bg-zinc-800 border-zinc-700"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="text-zinc-400 text-xs">Contracts</Label>
+                    <Input
+                      type="number"
+                      value={manualTrade.option_quantity}
+                      onChange={(e) => setManualTrade(prev => ({ ...prev, option_quantity: e.target.value }))}
+                      placeholder="1"
+                      className="bg-zinc-800 border-zinc-700"
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Notes */}
+            <div className="space-y-2">
+              <Label className="text-zinc-300">Notes (optional)</Label>
+              <Textarea
+                value={manualTrade.notes}
+                onChange={(e) => setManualTrade(prev => ({ ...prev, notes: e.target.value }))}
+                placeholder="Add any notes about this trade..."
+                className="bg-zinc-800 border-zinc-700 min-h-[80px]"
+              />
+            </div>
+
+            {/* Action Buttons */}
+            <div className="flex justify-end gap-3 pt-4 border-t border-zinc-800">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setManualTradeOpen(false);
+                  resetManualTradeForm();
+                }}
+                className="border-zinc-700"
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={handleManualTradeSubmit}
+                disabled={savingManualTrade}
+                className="bg-emerald-600 hover:bg-emerald-700"
+              >
+                {savingManualTrade ? (
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                ) : (
+                  <Plus className="w-4 h-4 mr-2" />
+                )}
+                Add Trade
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
