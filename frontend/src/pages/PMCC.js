@@ -34,6 +34,7 @@ import StockDetailModal from '../components/StockDetailModal';
 const PMCC = () => {
   const [opportunities, setOpportunities] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [apiInfo, setApiInfo] = useState(null);
   const [filtersOpen, setFiltersOpen] = useState(true);
   const [selectedStock, setSelectedStock] = useState(null);
