@@ -1301,6 +1301,11 @@ async def screen_covered_calls(
                             expiry = opt.get("expiry", "")
                             dte = opt.get("dte", 0)
                             
+                            # For covered calls, filter to ATM or slightly OTM (97% to 115% of price)
+                            strike_pct = (strike / underlying_price) * 100 if underlying_price > 0 else 0
+                            if strike_pct < 97 or strike_pct > 115:
+                                continue
+                            
                             # Apply DTE filters
                             if dte > max_dte or dte < 1:
                                 continue
