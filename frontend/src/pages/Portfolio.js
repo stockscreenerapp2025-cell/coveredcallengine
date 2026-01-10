@@ -47,7 +47,10 @@ import {
   CheckCircle,
   AlertCircle,
   XCircle,
-  Loader2
+  Loader2,
+  Plus,
+  Edit,
+  X
 } from 'lucide-react';
 import { toast } from 'sonner';
 
