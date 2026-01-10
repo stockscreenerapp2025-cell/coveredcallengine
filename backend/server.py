@@ -22,6 +22,7 @@ import hashlib
 import json
 import stripe
 import pytz
+import yfinance as yf
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
