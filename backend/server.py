@@ -1798,8 +1798,10 @@ async def get_dashboard_pmcc_opportunities(
                         if price <= 0:
                             continue
                         
-                        # LEAPS should be ITM (strike below current price)
-                        if strike >= current_price:
+                        # LEAPS must be ITM but not too deep (strike should be 60-90% of current price)
+                        # This ensures realistic PMCC setups
+                        strike_pct = (strike / current_price) * 100
+                        if strike_pct < 60 or strike_pct > 95:
                             continue
                         
                         # Estimate delta - ITM options have high delta
