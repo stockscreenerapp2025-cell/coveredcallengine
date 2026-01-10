@@ -430,7 +430,7 @@ async def fetch_options_chain_polygon(symbol: str, api_key: str, contract_type: 
                     "expired": "false",
                     "expiration_date.gte": min_expiry,
                     "expiration_date.lte": max_expiry,
-                    "limit": 100,
+                    "limit": 250,  # Get more contracts to find valid strikes
                     "apiKey": api_key
                 }
             )
