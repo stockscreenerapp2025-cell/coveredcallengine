@@ -3265,6 +3265,21 @@ async def get_market_news(
     # Return filtered mock news
     return MOCK_NEWS[:limit]
 
+
+@news_router.get("/rate-limit")
+async def get_news_rate_limit(user: dict = Depends(get_current_user)):
+    """Get current MarketAux API rate limit status"""
+    today = datetime.now(timezone.utc).date().isoformat()
+    current_count = marketaux_request_count.get("count", 0) if marketaux_request_count.get("date") == today else 0
+    
+    return {
+        "daily_limit": MARKETAUX_DAILY_LIMIT,
+        "requests_today": current_count,
+        "remaining": MARKETAUX_DAILY_LIMIT - current_count,
+        "date": today,
+        "limit_reached": current_count >= MARKETAUX_DAILY_LIMIT
+    }
+
 # ==================== AI ROUTES ====================
 
 @ai_router.post("/analyze")
