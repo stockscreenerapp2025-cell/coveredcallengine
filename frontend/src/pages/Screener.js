@@ -55,6 +55,7 @@ import StockDetailModal from '../components/StockDetailModal';
 const Screener = () => {
   const [opportunities, setOpportunities] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(true);
   const [sortField, setSortField] = useState('score');
   const [sortDirection, setSortDirection] = useState('desc');
