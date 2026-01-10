@@ -46,6 +46,17 @@ Build a web-based application to identify, analyse, and manage Covered Call and 
 - Added "Refresh Data" button to bypass cache and fetch fresh market data
 - Added `/api/screener/clear-cache` endpoint for cache management
 
+### ETF Options Support (New)
+- Integrated Yahoo Finance (`yfinance`) as data source for ETF options
+- Added ETF symbols: SPY, QQQ, IWM, DIA, XLF, XLE, XLK and more
+- ETFs are now included in Screener results regardless of price filter
+- Yahoo Finance provides real-time options data for ETFs
+
+### Screener Filter UI Fix
+- All filter fields now show as blank/empty placeholders by default
+- Removed pre-populated default values (no more 10-100, 1-45, etc.)
+- Filters only apply when user explicitly sets values
+
 ### Terms & Conditions
 - Added mandatory checkbox on registration page
 - Links to Terms & Conditions and Privacy Policy pages
