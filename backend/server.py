@@ -1288,8 +1288,8 @@ async def screen_covered_calls(
                         if underlying_price < min_price or underlying_price > max_price:
                             continue
                         
-                        # Get options chain using the working endpoint
-                        options_results = await fetch_options_chain_polygon(symbol, api_key, "call", max_dte)
+                        # Get options chain using the working endpoint - pass current_price for OTM filtering
+                        options_results = await fetch_options_chain_polygon(symbol, api_key, "call", max_dte, min_dte=1, current_price=underlying_price)
                         
                         if not options_results:
                             continue
