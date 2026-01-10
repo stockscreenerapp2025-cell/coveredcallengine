@@ -2124,6 +2124,11 @@ async def screen_pmcc(
                         
                         if best_leaps["cost"] > 0:
                             net_debit = best_leaps["cost"] - best_short["premium"]
+                            
+                            # PMCC should have positive net debit (cost to enter)
+                            if net_debit <= 0:
+                                continue
+                            
                             strike_width = best_short["strike"] - best_leaps["strike"]
                             max_profit = (strike_width * 100) - net_debit
                             breakeven = best_leaps["strike"] + (net_debit / 100)
