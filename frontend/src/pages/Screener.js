@@ -478,18 +478,20 @@ const Screener = () => {
                       <div className="flex items-center gap-2 mt-2">
                         <Input
                           type="number"
-                          value={expirationFilters.minDte}
+                          value={expirationFilters.minDte || ''}
                           onChange={(e) => setExpirationFilters(f => ({ ...f, minDte: parseInt(e.target.value) || 1 }))}
                           className="input-dark w-20 text-center"
+                          placeholder="Min"
                           min={1}
                           data-testid="min-dte-input"
                         />
                         <span className="text-zinc-500">to</span>
                         <Input
                           type="number"
-                          value={expirationFilters.maxDte}
+                          value={expirationFilters.maxDte || ''}
                           onChange={(e) => setExpirationFilters(f => ({ ...f, maxDte: parseInt(e.target.value) || 45 }))}
                           className="input-dark w-20 text-center"
+                          placeholder="Max"
                           data-testid="max-dte-input"
                         />
                         <span className="text-zinc-500 text-sm">days</span>
