@@ -550,6 +550,125 @@ async def fetch_options_chain_polygon(symbol: str, api_key: str, contract_type: 
         logging.error(f"Error fetching options chain for {symbol}: {e}")
         return []
 
+
+async def fetch_options_chain_yahoo(symbol: str, contract_type: str = "call", max_dte: int = 45, min_dte: int = 1, current_price: float = 0) -> list:
+    """
+    Fetch options chain using Yahoo Finance (yfinance) as fallback.
+    Useful for ETFs like SPY, QQQ, IWM that may not have data in Polygon.
+    
+    Returns list of option data with pricing info.
+    """
+    import asyncio
+    from datetime import datetime, timedelta
+    
+    options = []
+    today = datetime.now()
+    min_expiry = today + timedelta(days=min_dte)
+    max_expiry = today + timedelta(days=max_dte)
+    
+    try:
+        # yfinance is synchronous, so run in executor
+        def fetch_yahoo_options():
+            try:
+                ticker = yf.Ticker(symbol)
+                
+                # Get available expiration dates
+                expirations = ticker.options
+                if not expirations:
+                    logging.info(f"Yahoo: No options available for {symbol}")
+                    return []
+                
+                # Filter expirations within DTE range
+                valid_expirations = []
+                for exp in expirations:
+                    try:
+                        exp_date = datetime.strptime(exp, "%Y-%m-%d")
+                        if min_expiry <= exp_date <= max_expiry:
+                            valid_expirations.append(exp)
+                    except:
+                        continue
+                
+                if not valid_expirations:
+                    logging.info(f"Yahoo: No expirations in DTE range for {symbol}")
+                    return []
+                
+                logging.info(f"Yahoo: Found {len(valid_expirations)} valid expirations for {symbol}")
+                
+                results = []
+                for exp in valid_expirations[:3]:  # Limit to 3 expirations for performance
+                    try:
+                        chain = ticker.option_chain(exp)
+                        df = chain.calls if contract_type == "call" else chain.puts
+                        
+                        if df.empty:
+                            continue
+                        
+                        for _, row in df.iterrows():
+                            strike = row.get('strike', 0)
+                            last_price = row.get('lastPrice', 0)
+                            
+                            # Skip if no price data
+                            if last_price <= 0:
+                                continue
+                            
+                            # Apply strike filtering if current_price provided
+                            if current_price > 0:
+                                strike_pct = (strike / current_price) * 100
+                                if min_dte >= 300:  # LEAPS
+                                    if strike_pct < 40 or strike_pct > 95:
+                                        continue
+                                else:  # Short calls
+                                    if strike_pct < 95 or strike_pct > 150:
+                                        continue
+                            
+                            exp_date = datetime.strptime(exp, "%Y-%m-%d")
+                            dte = (exp_date - today).days
+                            
+                            results.append({
+                                "contract_ticker": row.get('contractSymbol', ''),
+                                "underlying": symbol.upper(),
+                                "strike": strike,
+                                "expiry": exp,
+                                "dte": dte,
+                                "type": contract_type,
+                                "close": last_price,
+                                "bid": row.get('bid', 0),
+                                "ask": row.get('ask', 0),
+                                "volume": int(row.get('volume', 0) or 0),
+                                "open_interest": int(row.get('openInterest', 0) or 0),
+                                "implied_volatility": row.get('impliedVolatility', 0),
+                            })
+                            
+                            # Limit results per expiration
+                            if len(results) > 40:
+                                break
+                                
+                    except Exception as e:
+                        logging.warning(f"Yahoo: Error fetching chain for {symbol} {exp}: {e}")
+                        continue
+                
+                return results
+                
+            except Exception as e:
+                logging.error(f"Yahoo: Error for {symbol}: {e}")
+                return []
+        
+        # Run synchronous yfinance call in executor
+        loop = asyncio.get_event_loop()
+        options = await loop.run_in_executor(None, fetch_yahoo_options)
+        
+        logging.info(f"Yahoo: Retrieved {len(options)} options for {symbol}")
+        return options
+        
+    except Exception as e:
+        logging.error(f"Yahoo options fetch error for {symbol}: {e}")
+        return []
+
+
+# ETF symbols that should use Yahoo Finance fallback
+ETF_SYMBOLS = {"SPY", "QQQ", "IWM", "DIA", "XLF", "XLE", "XLK", "XLV", "XLI", "XLB", "XLU", "XLP", "XLY", "XLRE", "GLD", "SLV", "USO", "TLT", "HYG", "EEM", "VXX", "ARKK", "TQQQ", "SQQQ"}
+
+
 # Mock market data (used when Polygon API is not configured)
 MOCK_STOCKS = {
     "AAPL": {"price": 178.50, "change": 2.35, "change_pct": 1.33, "volume": 45000000, "market_cap": 2800000000000, "pe": 28.5, "roe": 147.0},
