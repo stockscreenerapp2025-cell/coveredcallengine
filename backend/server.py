@@ -1617,8 +1617,8 @@ async def get_dashboard_opportunities(
                     except Exception:
                         pass
                     
-                    # Get options chain using the available Polygon.io endpoints
-                    options_results = await fetch_options_chain_polygon(symbol, api_key, "call", 45)
+                    # Get options chain using the available Polygon.io endpoints - pass current_price for proper filtering
+                    options_results = await fetch_options_chain_polygon(symbol, api_key, "call", 45, min_dte=1, current_price=current_price)
                     
                     if not options_results:
                         continue
