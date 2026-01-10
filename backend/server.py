@@ -1465,7 +1465,8 @@ async def screen_covered_calls(
                                 estimated_delta = 0.50 - (strike_pct_diff * 0.03)
                             estimated_delta = max(0.15, min(0.60, estimated_delta))
                             
-                            if estimated_delta < min_delta or estimated_delta > max_delta:
+                            # Skip delta filter for ETFs to get more results
+                            if not is_etf and (estimated_delta < min_delta or estimated_delta > max_delta):
                                 continue
                             
                             # Use close price as premium
