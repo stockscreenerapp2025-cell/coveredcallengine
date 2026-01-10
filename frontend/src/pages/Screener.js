@@ -196,11 +196,15 @@ const Screener = () => {
         });
       }
 
-      // Filter by probability OTM
-      results = results.filter(o => {
-        const probOTM = Math.round((1 - o.delta) * 100);
-        return probOTM >= probabilityFilters.minProbOTM && probOTM <= probabilityFilters.maxProbOTM;
-      });
+      // Filter by probability OTM (only if filters are set)
+      if (probabilityFilters.minProbOTM !== '' || probabilityFilters.maxProbOTM !== '') {
+        results = results.filter(o => {
+          const probOTM = Math.round((1 - o.delta) * 100);
+          const minProb = probabilityFilters.minProbOTM !== '' ? probabilityFilters.minProbOTM : 0;
+          const maxProb = probabilityFilters.maxProbOTM !== '' ? probabilityFilters.maxProbOTM : 100;
+          return probOTM >= minProb && probOTM <= maxProb;
+        });
+      }
       
       setOpportunities(results);
     } catch (error) {
