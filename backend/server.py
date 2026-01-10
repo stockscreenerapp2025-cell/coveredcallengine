@@ -1408,19 +1408,20 @@ async def screen_covered_calls(
                             logging.warning(f"Could not get price for {symbol}")
                             continue
                             
-                        # Skip if price out of range
-                        if underlying_price < min_price or underlying_price > max_price:
+                        # Skip if price out of range (but always include ETFs)
+                        is_etf = symbol.upper() in ETF_SYMBOLS
+                        if not is_etf and (underlying_price < min_price or underlying_price > max_price):
                             continue
                         
                         # Get options chain - use Yahoo Finance for ETFs, Polygon for stocks
-                        if symbol.upper() in ETF_SYMBOLS:
+                        if is_etf:
                             options_results = await fetch_options_chain_yahoo(symbol, "call", max_dte, min_dte=1, current_price=underlying_price)
                             logging.info(f"{symbol} (ETF): Using Yahoo Finance, got {len(options_results)} options")
                         else:
                             options_results = await fetch_options_chain_polygon(symbol, api_key, "call", max_dte, min_dte=1, current_price=underlying_price)
                         
                         # Try Yahoo as fallback if Polygon returns nothing
-                        if not options_results and symbol.upper() not in ETF_SYMBOLS:
+                        if not options_results and not is_etf:
                             options_results = await fetch_options_chain_yahoo(symbol, "call", max_dte, min_dte=1, current_price=underlying_price)
                             if options_results:
                                 logging.info(f"{symbol}: Polygon returned nothing, Yahoo fallback got {len(options_results)} options")
