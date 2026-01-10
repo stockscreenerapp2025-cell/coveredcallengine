@@ -1848,17 +1848,22 @@ async def get_dashboard_pmcc_opportunities(
                     
                     # Build PMCC if both legs available
                     if leaps_options and short_options:
+                        logging.info(f"{symbol}: Found {len(leaps_options)} LEAPS and {len(short_options)} short options")
+                        
                         # Best LEAPS: highest delta (deepest ITM)
                         best_leaps = max(leaps_options, key=lambda x: x["delta"])
                         
                         # Best short: closest to delta 0.25
                         best_short = min(short_options, key=lambda x: abs(x["delta"] - 0.25))
                         
+                        logging.info(f"{symbol}: Best LEAPS strike={best_leaps['strike']}, cost={best_leaps['cost']}, Best Short premium={best_short['premium']}")
+                        
                         if best_leaps["cost"] > 0:
                             net_debit = best_leaps["cost"] - best_short["premium"]
                             
                             # PMCC should have positive net debit (cost to enter)
                             if net_debit <= 0:
+                                logging.info(f"{symbol}: Skipping - negative net debit {net_debit}")
                                 continue
                             
                             strike_width = best_short["strike"] - best_leaps["strike"]
