@@ -2281,6 +2281,28 @@ async def get_saved_filters(user: dict = Depends(get_current_user)):
     filters = await db.screener_filters.find({"user_id": user["id"]}, {"_id": 0}).to_list(100)
     return filters
 
+@screener_router.post("/clear-cache")
+async def clear_screener_cache(user: dict = Depends(get_current_user)):
+    """Clear all screener-related cache to force fresh data fetch"""
+    try:
+        # Clear specific screener caches
+        prefixes_to_clear = [
+            "screener_covered_calls",
+            "pmcc_screener",
+            "dashboard_opportunities",
+            "dashboard_pmcc"
+        ]
+        total_cleared = 0
+        for prefix in prefixes_to_clear:
+            count = await clear_cache(prefix)
+            total_cleared += count
+        
+        logging.info(f"Cache cleared by user {user.get('email')}: {total_cleared} entries")
+        return {"message": f"Cache cleared successfully", "entries_cleared": total_cleared}
+    except Exception as e:
+        logging.error(f"Error clearing cache: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to clear cache: {str(e)}")
+
 @screener_router.post("/filters")
 async def save_filter(filter_data: ScreenerFilterCreate, user: dict = Depends(get_current_user)):
     filter_doc = {
