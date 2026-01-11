@@ -93,12 +93,11 @@ Build a web-based application named "Covered Call Engine" to identify, analyze, 
 - [ ] IBKR CSV Parser Validation - Waiting for user's second account CSV
 
 ### 📋 Backlog
-- [ ] Trade Simulator Phase 4 - Analytics feedback loop (P2)
 - [ ] Admin Panel - Support Ticket System (P2)
 - [ ] Admin Panel - Content Manager (P2)
 - [ ] Admin Panel - Roles & Permissions (P3)
 - [ ] Generic CSV Import with field mapping (P3)
-- [ ] Refactor server.py into modular structure (P3)
+- [ ] Refactor server.py into modular structure (P1 - Technical debt)
 
 ---
 
