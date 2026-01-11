@@ -3061,9 +3061,40 @@ class ManualTradeEntry(BaseModel):
 async def add_manual_trade(trade: ManualTradeEntry, user: dict = Depends(get_current_user)):
     """Add a manually entered trade"""
     
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    
+    # Helper function to validate dates
+    def is_future_date(date_str):
+        if not date_str:
+            return False
+        return date_str > today
+    
+    def is_past_date(date_str):
+        if not date_str:
+            return False
+        return date_str < today
+    
     # Backend validation for required fields based on trade type
     if not trade.symbol or trade.symbol.strip() == "":
         raise HTTPException(status_code=400, detail="Symbol is required")
+    
+    # Date validations - Purchase dates cannot be in the future
+    if is_future_date(trade.stock_date):
+        raise HTTPException(status_code=400, detail="Purchase date cannot be in the future")
+    if is_future_date(trade.option_date):
+        raise HTTPException(status_code=400, detail="Option purchase date cannot be in the future")
+    if is_future_date(trade.leaps_date):
+        raise HTTPException(status_code=400, detail="LEAPS purchase date cannot be in the future")
+    if is_future_date(trade.put_date):
+        raise HTTPException(status_code=400, detail="Put purchase date cannot be in the future")
+    
+    # Date validations - Expiry dates cannot be in the past
+    if is_past_date(trade.expiry_date):
+        raise HTTPException(status_code=400, detail="Expiry date cannot be in the past")
+    if is_past_date(trade.leaps_expiry):
+        raise HTTPException(status_code=400, detail="LEAPS expiry date cannot be in the past")
+    if is_past_date(trade.put_expiry):
+        raise HTTPException(status_code=400, detail="Put expiry date cannot be in the past")
     
     if trade.trade_type == "covered_call":
         if not trade.stock_quantity or not trade.stock_price:
@@ -3072,6 +3103,18 @@ async def add_manual_trade(trade: ManualTradeEntry, user: dict = Depends(get_cur
             raise HTTPException(status_code=400, detail="Strike price and premium are required for covered calls")
         if not trade.expiry_date:
             raise HTTPException(status_code=400, detail="Expiry date is required for covered calls")
+    
+    elif trade.trade_type == "collar":
+        if not trade.stock_quantity or not trade.stock_price:
+            raise HTTPException(status_code=400, detail="Stock quantity and price are required for collar")
+        if not trade.strike_price or not trade.option_premium:
+            raise HTTPException(status_code=400, detail="Short call strike and premium are required for collar")
+        if not trade.expiry_date:
+            raise HTTPException(status_code=400, detail="Short call expiry date is required for collar")
+        if not trade.put_strike or not trade.put_premium:
+            raise HTTPException(status_code=400, detail="Protective put strike and premium are required for collar")
+        if not trade.put_expiry:
+            raise HTTPException(status_code=400, detail="Protective put expiry date is required for collar")
     
     elif trade.trade_type == "pmcc":
         if not trade.leaps_cost or not trade.leaps_strike:
@@ -3082,6 +3125,11 @@ async def add_manual_trade(trade: ManualTradeEntry, user: dict = Depends(get_cur
             raise HTTPException(status_code=400, detail="Short call strike and premium are required for PMCC")
         if not trade.expiry_date:
             raise HTTPException(status_code=400, detail="Short call expiry date is required for PMCC")
+        # PMCC: Both legs must have same number of contracts
+        leaps_qty = trade.leaps_quantity or 1
+        short_call_qty = trade.option_quantity or 1
+        if leaps_qty != short_call_qty:
+            raise HTTPException(status_code=400, detail="PMCC requires same number of contracts for both LEAPS and short call")
     
     elif trade.trade_type == "stock_only":
         if not trade.stock_quantity or not trade.stock_price:
@@ -3105,6 +3153,7 @@ async def add_manual_trade(trade: ManualTradeEntry, user: dict = Depends(get_cur
     unrealized_pnl = 0
     cost_basis = 0
     premium_collected = 0
+    put_cost = 0  # For collar protective put
     
     if trade.trade_type == "covered_call":
         # Covered call: own stock + sold call
@@ -3114,6 +3163,15 @@ async def add_manual_trade(trade: ManualTradeEntry, user: dict = Depends(get_cur
             cost_basis = trade.stock_quantity * trade.stock_price  # actual shares * price
         if trade.option_premium and trade.option_quantity:
             premium_collected = trade.option_premium * trade.option_quantity * 100  # premium per share * contracts * 100
+    
+    elif trade.trade_type == "collar":
+        # Collar: own stock + sold call + long put (protective)
+        if trade.stock_quantity and trade.stock_price:
+            cost_basis = trade.stock_quantity * trade.stock_price
+        if trade.option_premium and trade.option_quantity:
+            premium_collected = trade.option_premium * trade.option_quantity * 100
+        if trade.put_premium and trade.put_quantity:
+            put_cost = trade.put_premium * trade.put_quantity * 100  # Premium paid for protection
             
     elif trade.trade_type == "pmcc":
         # PMCC: LEAPS (long call) + short call
