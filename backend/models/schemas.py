@@ -97,8 +97,9 @@ class AdminSettings(BaseModel):
 # ==================== AI MODELS ====================
 
 class AIAnalysisRequest(BaseModel):
-    symbol: str
-    analysis_type: str = "covered_call"
+    symbol: Optional[str] = None
+    analysis_type: str = "covered_call"  # "opportunity", "risk", "roll_suggestion", "general", "covered_call"
+    context: Optional[str] = None
     data: Optional[Dict[str, Any]] = None
 
 
