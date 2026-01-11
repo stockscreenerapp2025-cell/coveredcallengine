@@ -138,6 +138,34 @@ export const simulatorApi = {
   updatePrices: () => api.post('/simulator/update-prices'),
   getSummary: () => api.get('/simulator/summary'),
   clearAll: () => api.delete('/simulator/clear'),
+  
+  // Phase 3: Rules Management
+  getRules: (params = {}) => {
+    const queryParams = new URLSearchParams();
+    if (params.strategy) queryParams.append('strategy', params.strategy);
+    if (params.enabled_only) queryParams.append('enabled_only', params.enabled_only);
+    return api.get(`/simulator/rules?${queryParams.toString()}`);
+  },
+  getRule: (ruleId) => api.get(`/simulator/rules/${ruleId}`),
+  createRule: (data) => api.post('/simulator/rules', data),
+  updateRule: (ruleId, data) => api.put(`/simulator/rules/${ruleId}`, data),
+  deleteRule: (ruleId) => api.delete(`/simulator/rules/${ruleId}`),
+  getRuleTemplates: () => api.get('/simulator/rules/templates'),
+  createFromTemplate: (templateId) => api.post(`/simulator/rules/from-template/${templateId}`),
+  evaluateRules: (dryRun = true) => api.post(`/simulator/rules/evaluate?dry_run=${dryRun}`),
+  
+  // Action Logs
+  getActionLogs: (params = {}) => {
+    const queryParams = new URLSearchParams();
+    if (params.trade_id) queryParams.append('trade_id', params.trade_id);
+    if (params.action_type) queryParams.append('action_type', params.action_type);
+    if (params.limit) queryParams.append('limit', params.limit);
+    if (params.page) queryParams.append('page', params.page);
+    return api.get(`/simulator/action-logs?${queryParams.toString()}`);
+  },
+  
+  // PMCC Summary
+  getPMCCSummary: () => api.get('/simulator/pmcc-summary'),
 };
 
 export const newsApi = {
