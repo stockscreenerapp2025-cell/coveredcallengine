@@ -280,15 +280,76 @@ const Portfolio = () => {
     setManualTrade(prev => ({
       ...prev,
       stock_quantity: value,
-      // Auto-populate option_quantity for covered calls (1 contract per 100 shares)
-      option_quantity: prev.trade_type === 'covered_call' && contracts > 0 ? contracts.toString() : prev.option_quantity
+      // Auto-populate option_quantity for covered calls and collars (1 contract per 100 shares)
+      option_quantity: (prev.trade_type === 'covered_call' || prev.trade_type === 'collar') && contracts > 0 ? contracts.toString() : prev.option_quantity,
+      // For collar, also set put_quantity
+      put_quantity: prev.trade_type === 'collar' && contracts > 0 ? contracts.toString() : prev.put_quantity
     }));
+  };
+
+  // Smart handler for PMCC LEAPS quantity - sync with short call quantity
+  const handleLeapsQuantityChange = (value) => {
+    setManualTrade(prev => ({
+      ...prev,
+      leaps_quantity: value,
+      // Auto-sync option_quantity with leaps_quantity for PMCC
+      option_quantity: prev.trade_type === 'pmcc' ? value : prev.option_quantity
+    }));
+  };
+
+  // Get today's date in YYYY-MM-DD format for validation
+  const getTodayDate = () => {
+    return new Date().toISOString().split('T')[0];
+  };
+
+  // Validate date is not in the future (for purchase dates)
+  const isValidPurchaseDate = (dateStr) => {
+    if (!dateStr) return true; // Optional field
+    return dateStr <= getTodayDate();
+  };
+
+  // Validate date is not in the past (for expiry dates)
+  const isValidExpiryDate = (dateStr) => {
+    if (!dateStr) return true; // Will be caught by required validation
+    return dateStr >= getTodayDate();
   };
 
   const handleManualTradeSubmit = async () => {
     // Validation - Symbol is always required
     if (!manualTrade.symbol || manualTrade.symbol.trim() === '') {
       toast.error('Symbol is required');
+      return;
+    }
+
+    // Date validation - Purchase dates cannot be in the future
+    if (manualTrade.stock_date && !isValidPurchaseDate(manualTrade.stock_date)) {
+      toast.error('Purchase date cannot be in the future');
+      return;
+    }
+    if (manualTrade.option_date && !isValidPurchaseDate(manualTrade.option_date)) {
+      toast.error('Option purchase date cannot be in the future');
+      return;
+    }
+    if (manualTrade.leaps_date && !isValidPurchaseDate(manualTrade.leaps_date)) {
+      toast.error('LEAPS purchase date cannot be in the future');
+      return;
+    }
+    if (manualTrade.put_date && !isValidPurchaseDate(manualTrade.put_date)) {
+      toast.error('Put purchase date cannot be in the future');
+      return;
+    }
+
+    // Date validation - Expiry dates cannot be in the past
+    if (manualTrade.expiry_date && !isValidExpiryDate(manualTrade.expiry_date)) {
+      toast.error('Expiry date cannot be in the past');
+      return;
+    }
+    if (manualTrade.leaps_expiry && !isValidExpiryDate(manualTrade.leaps_expiry)) {
+      toast.error('LEAPS expiry date cannot be in the past');
+      return;
+    }
+    if (manualTrade.put_expiry && !isValidExpiryDate(manualTrade.put_expiry)) {
+      toast.error('Put expiry date cannot be in the past');
       return;
     }
 
@@ -324,6 +385,37 @@ const Portfolio = () => {
       }
       if (!manualTrade.expiry_date) {
         toast.error('Short call expiry date is required for PMCC');
+        return;
+      }
+      // PMCC: Both legs must have same number of contracts
+      const leapsQty = parseInt(manualTrade.leaps_quantity) || 1;
+      const shortCallQty = parseInt(manualTrade.option_quantity) || 1;
+      if (leapsQty !== shortCallQty) {
+        toast.error('PMCC requires same number of contracts for both LEAPS and short call');
+        return;
+      }
+    }
+
+    // Collar validation
+    if (manualTrade.trade_type === 'collar') {
+      if (!manualTrade.stock_quantity || !manualTrade.stock_price) {
+        toast.error('Stock quantity and price are required for collar');
+        return;
+      }
+      if (!manualTrade.strike_price || !manualTrade.option_premium) {
+        toast.error('Short call strike and premium are required for collar');
+        return;
+      }
+      if (!manualTrade.expiry_date) {
+        toast.error('Short call expiry date is required for collar');
+        return;
+      }
+      if (!manualTrade.put_strike || !manualTrade.put_premium) {
+        toast.error('Protective put strike and premium are required for collar');
+        return;
+      }
+      if (!manualTrade.put_expiry) {
+        toast.error('Protective put expiry date is required for collar');
         return;
       }
     }
