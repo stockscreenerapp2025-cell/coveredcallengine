@@ -5026,6 +5026,489 @@ async def get_market_status():
         logging.error(f"Market status error: {e}")
         return {"status": "unknown", "is_open": False, "error": str(e)}
 
+# ==================== SIMULATOR ROUTES ====================
+
+# Pydantic Models for Simulator
+class SimulatorTradeEntry(BaseModel):
+    """Model for adding a trade to the simulator"""
+    symbol: str
+    strategy_type: str  # "covered_call" or "pmcc"
+    
+    # Stock/LEAPS Entry
+    underlying_price: float
+    
+    # Short Call Details
+    short_call_strike: float
+    short_call_expiry: str
+    short_call_premium: float
+    short_call_delta: Optional[float] = None
+    short_call_iv: Optional[float] = None
+    
+    # For PMCC - LEAPS details
+    leaps_strike: Optional[float] = None
+    leaps_expiry: Optional[str] = None
+    leaps_premium: Optional[float] = None
+    leaps_delta: Optional[float] = None
+    
+    # Position sizing
+    contracts: int = 1
+    
+    # Scan metadata (for feedback loop)
+    scan_parameters: Optional[Dict[str, Any]] = None
+    notes: Optional[str] = None
+
+
+@simulator_router.post("/trade")
+async def add_simulator_trade(trade: SimulatorTradeEntry, user: dict = Depends(get_current_user)):
+    """Add a new trade to the simulator from screener results"""
+    
+    trade_id = str(uuid.uuid4())
+    now = datetime.now(timezone.utc)
+    entry_date = now.strftime("%Y-%m-%d")
+    
+    # Calculate key metrics based on strategy type
+    if trade.strategy_type == "covered_call":
+        # Covered Call: Long 100 shares + Short call
+        capital_per_contract = trade.underlying_price * 100  # Cost of 100 shares
+        total_capital = capital_per_contract * trade.contracts
+        premium_received = trade.short_call_premium * trade.contracts * 100
+        max_profit = ((trade.short_call_strike - trade.underlying_price) * 100 + trade.short_call_premium * 100) * trade.contracts
+        max_loss = (trade.underlying_price * 100 - trade.short_call_premium * 100) * trade.contracts  # Stock goes to 0
+        breakeven = trade.underlying_price - trade.short_call_premium
+        
+    elif trade.strategy_type == "pmcc":
+        # PMCC: Long LEAPS + Short call
+        if not trade.leaps_strike or not trade.leaps_expiry or not trade.leaps_premium:
+            raise HTTPException(status_code=400, detail="PMCC requires LEAPS details")
+        
+        capital_per_contract = trade.leaps_premium * 100  # Cost of LEAPS
+        total_capital = capital_per_contract * trade.contracts
+        premium_received = trade.short_call_premium * trade.contracts * 100
+        
+        # Max profit: difference between strikes + net credit/debit
+        strike_diff = trade.short_call_strike - trade.leaps_strike
+        net_debit = trade.leaps_premium - trade.short_call_premium
+        max_profit = (strike_diff * 100 - net_debit * 100) * trade.contracts if strike_diff > 0 else (trade.short_call_premium * 100 * trade.contracts)
+        max_loss = total_capital  # LEAPS expires worthless
+        breakeven = trade.leaps_strike + net_debit
+    else:
+        raise HTTPException(status_code=400, detail="Invalid strategy type. Must be 'covered_call' or 'pmcc'")
+    
+    # Calculate DTE
+    try:
+        expiry_dt = datetime.strptime(trade.short_call_expiry, "%Y-%m-%d")
+        dte = (expiry_dt - datetime.now()).days
+    except:
+        dte = 30  # Default
+    
+    # Create simulator trade document
+    trade_doc = {
+        "id": trade_id,
+        "user_id": user["id"],
+        "symbol": trade.symbol.upper(),
+        "strategy_type": trade.strategy_type,
+        "status": "active",  # active, closed, expired, assigned
+        
+        # Entry snapshot (immutable)
+        "entry_date": entry_date,
+        "entry_underlying_price": trade.underlying_price,
+        
+        # Short call details
+        "short_call_strike": trade.short_call_strike,
+        "short_call_expiry": trade.short_call_expiry,
+        "short_call_premium": trade.short_call_premium,
+        "short_call_delta": trade.short_call_delta,
+        "short_call_iv": trade.short_call_iv,
+        
+        # LEAPS details (for PMCC)
+        "leaps_strike": trade.leaps_strike,
+        "leaps_expiry": trade.leaps_expiry,
+        "leaps_premium": trade.leaps_premium,
+        "leaps_delta": trade.leaps_delta,
+        
+        # Position sizing
+        "contracts": trade.contracts,
+        
+        # Calculated at entry
+        "capital_deployed": total_capital,
+        "premium_received": premium_received,
+        "max_profit": max_profit,
+        "max_loss": max_loss,
+        "breakeven": breakeven,
+        "initial_dte": dte,
+        
+        # Live tracking (updated daily)
+        "current_underlying_price": trade.underlying_price,
+        "current_option_value": trade.short_call_premium,
+        "unrealized_pnl": 0,
+        "realized_pnl": 0,
+        "days_held": 0,
+        "dte_remaining": dte,
+        "last_updated": now.isoformat(),
+        
+        # Outcome (set when closed)
+        "close_date": None,
+        "close_price": None,
+        "close_reason": None,  # expired_otm, assigned, early_close, rolled
+        "final_pnl": None,
+        "roi_percent": None,
+        
+        # Scan metadata for feedback loop
+        "scan_parameters": trade.scan_parameters,
+        "notes": trade.notes,
+        
+        # Audit
+        "created_at": now.isoformat(),
+        "updated_at": now.isoformat(),
+        "action_log": [{
+            "action": "opened",
+            "timestamp": now.isoformat(),
+            "details": f"Opened {trade.contracts} contract(s) at ${trade.underlying_price}"
+        }]
+    }
+    
+    # Check for duplicate (same symbol, strike, expiry)
+    existing = await db.simulator_trades.find_one({
+        "user_id": user["id"],
+        "symbol": trade.symbol.upper(),
+        "short_call_strike": trade.short_call_strike,
+        "short_call_expiry": trade.short_call_expiry,
+        "status": "active"
+    })
+    
+    if existing:
+        raise HTTPException(status_code=400, detail="Duplicate trade already exists in simulator")
+    
+    await db.simulator_trades.insert_one(trade_doc)
+    
+    # Remove _id for response
+    if "_id" in trade_doc:
+        del trade_doc["_id"]
+    
+    return {"message": "Trade added to simulator", "trade": trade_doc}
+
+
+@simulator_router.get("/trades")
+async def get_simulator_trades(
+    user: dict = Depends(get_current_user),
+    status: Optional[str] = Query(None, description="Filter by status: active, closed, expired, assigned"),
+    strategy: Optional[str] = Query(None, description="Filter by strategy: covered_call, pmcc"),
+    page: int = Query(1, ge=1),
+    limit: int = Query(50, ge=1, le=100)
+):
+    """Get all simulator trades for the user"""
+    query = {"user_id": user["id"]}
+    
+    if status:
+        query["status"] = status
+    if strategy:
+        query["strategy_type"] = strategy
+    
+    skip = (page - 1) * limit
+    
+    trades = await db.simulator_trades.find(query, {"_id": 0}).sort("created_at", -1).skip(skip).limit(limit).to_list(limit)
+    total = await db.simulator_trades.count_documents(query)
+    
+    return {
+        "trades": trades,
+        "total": total,
+        "page": page,
+        "pages": (total + limit - 1) // limit
+    }
+
+
+@simulator_router.get("/trades/{trade_id}")
+async def get_simulator_trade_detail(trade_id: str, user: dict = Depends(get_current_user)):
+    """Get detailed information about a specific simulator trade"""
+    trade = await db.simulator_trades.find_one({"id": trade_id, "user_id": user["id"]}, {"_id": 0})
+    if not trade:
+        raise HTTPException(status_code=404, detail="Trade not found")
+    return trade
+
+
+@simulator_router.delete("/trades/{trade_id}")
+async def delete_simulator_trade(trade_id: str, user: dict = Depends(get_current_user)):
+    """Delete a simulator trade"""
+    result = await db.simulator_trades.delete_one({"id": trade_id, "user_id": user["id"]})
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Trade not found")
+    return {"message": "Trade deleted"}
+
+
+@simulator_router.post("/trades/{trade_id}/close")
+async def close_simulator_trade(
+    trade_id: str,
+    close_price: float = Query(..., description="Closing underlying price"),
+    close_reason: str = Query("early_close", description="Reason: early_close, rolled"),
+    user: dict = Depends(get_current_user)
+):
+    """Manually close a simulator trade before expiry"""
+    trade = await db.simulator_trades.find_one({"id": trade_id, "user_id": user["id"]}, {"_id": 0})
+    if not trade:
+        raise HTTPException(status_code=404, detail="Trade not found")
+    
+    if trade["status"] != "active":
+        raise HTTPException(status_code=400, detail="Trade is not active")
+    
+    now = datetime.now(timezone.utc)
+    
+    # Calculate final P&L
+    if trade["strategy_type"] == "covered_call":
+        # Stock P&L + Premium received
+        stock_pnl = (close_price - trade["entry_underlying_price"]) * 100 * trade["contracts"]
+        final_pnl = stock_pnl + trade["premium_received"]
+    else:  # PMCC
+        # Simplified: Assume LEAPS value proportional to intrinsic + some time value
+        leaps_value_est = max(0, close_price - trade["leaps_strike"]) * 100 * trade["contracts"]
+        final_pnl = leaps_value_est - trade["capital_deployed"] + trade["premium_received"]
+    
+    roi_percent = (final_pnl / trade["capital_deployed"]) * 100 if trade["capital_deployed"] > 0 else 0
+    
+    # Calculate days held
+    try:
+        entry_dt = datetime.strptime(trade["entry_date"], "%Y-%m-%d")
+        days_held = (datetime.now() - entry_dt).days
+    except:
+        days_held = trade.get("days_held", 0)
+    
+    update_doc = {
+        "status": "closed",
+        "close_date": now.strftime("%Y-%m-%d"),
+        "close_price": close_price,
+        "close_reason": close_reason,
+        "final_pnl": round(final_pnl, 2),
+        "roi_percent": round(roi_percent, 2),
+        "realized_pnl": round(final_pnl, 2),
+        "days_held": days_held,
+        "updated_at": now.isoformat()
+    }
+    
+    # Add to action log
+    await db.simulator_trades.update_one(
+        {"id": trade_id},
+        {
+            "$set": update_doc,
+            "$push": {"action_log": {
+                "action": "closed",
+                "timestamp": now.isoformat(),
+                "details": f"Closed at ${close_price}, P/L: ${final_pnl:.2f} ({roi_percent:.2f}%)",
+                "reason": close_reason
+            }}
+        }
+    )
+    
+    return {"message": "Trade closed", "final_pnl": final_pnl, "roi_percent": roi_percent}
+
+
+@simulator_router.post("/update-prices")
+async def update_simulator_prices(user: dict = Depends(get_current_user)):
+    """Update all active simulator trades with current EOD prices"""
+    
+    # Get all active trades for user
+    active_trades = await db.simulator_trades.find(
+        {"user_id": user["id"], "status": "active"},
+        {"_id": 0}
+    ).to_list(1000)
+    
+    if not active_trades:
+        return {"message": "No active trades to update", "updated": 0}
+    
+    # Get unique symbols
+    symbols = list(set(t["symbol"] for t in active_trades))
+    
+    # Fetch current prices
+    price_cache = {}
+    for symbol in symbols:
+        try:
+            quote = await fetch_stock_quote(symbol)
+            if quote and quote.get("price"):
+                price_cache[symbol] = quote["price"]
+        except Exception as e:
+            logging.warning(f"Could not fetch price for {symbol}: {e}")
+    
+    now = datetime.now(timezone.utc)
+    updated_count = 0
+    expired_count = 0
+    assigned_count = 0
+    
+    for trade in active_trades:
+        symbol = trade["symbol"]
+        if symbol not in price_cache:
+            continue
+        
+        current_price = price_cache[symbol]
+        
+        # Calculate DTE remaining
+        try:
+            expiry_dt = datetime.strptime(trade["short_call_expiry"], "%Y-%m-%d")
+            dte_remaining = (expiry_dt - datetime.now()).days
+        except:
+            dte_remaining = trade.get("dte_remaining", 0)
+        
+        # Calculate days held
+        try:
+            entry_dt = datetime.strptime(trade["entry_date"], "%Y-%m-%d")
+            days_held = (datetime.now() - entry_dt).days
+        except:
+            days_held = trade.get("days_held", 0)
+        
+        # Calculate unrealized P&L
+        if trade["strategy_type"] == "covered_call":
+            stock_pnl = (current_price - trade["entry_underlying_price"]) * 100 * trade["contracts"]
+            unrealized_pnl = stock_pnl + trade["premium_received"]
+        else:  # PMCC
+            leaps_value_est = max(0, current_price - trade["leaps_strike"]) * 100 * trade["contracts"]
+            unrealized_pnl = leaps_value_est - trade["capital_deployed"] + trade["premium_received"]
+        
+        update_doc = {
+            "current_underlying_price": current_price,
+            "unrealized_pnl": round(unrealized_pnl, 2),
+            "days_held": days_held,
+            "dte_remaining": dte_remaining,
+            "last_updated": now.isoformat(),
+            "updated_at": now.isoformat()
+        }
+        
+        # Check for expiry (DTE <= 0)
+        if dte_remaining <= 0:
+            # Determine outcome based on price vs strike
+            if current_price >= trade["short_call_strike"]:
+                # ITM - Assigned
+                if trade["strategy_type"] == "covered_call":
+                    # Shares called away at strike
+                    final_pnl = ((trade["short_call_strike"] - trade["entry_underlying_price"]) * 100 + trade["short_call_premium"] * 100) * trade["contracts"]
+                else:  # PMCC
+                    # Close both legs at intrinsic
+                    short_call_loss = (current_price - trade["short_call_strike"]) * 100 * trade["contracts"]
+                    leaps_gain = max(0, current_price - trade["leaps_strike"]) * 100 * trade["contracts"]
+                    final_pnl = leaps_gain - trade["capital_deployed"] + trade["premium_received"] - short_call_loss
+                
+                update_doc.update({
+                    "status": "assigned",
+                    "close_date": now.strftime("%Y-%m-%d"),
+                    "close_price": current_price,
+                    "close_reason": "assigned_itm",
+                    "final_pnl": round(final_pnl, 2),
+                    "roi_percent": round((final_pnl / trade["capital_deployed"]) * 100, 2) if trade["capital_deployed"] > 0 else 0,
+                    "realized_pnl": round(final_pnl, 2)
+                })
+                assigned_count += 1
+            else:
+                # OTM - Option expires worthless, keep premium
+                final_pnl = trade["premium_received"]
+                if trade["strategy_type"] == "covered_call":
+                    # Still hold shares, mark to market
+                    final_pnl = (current_price - trade["entry_underlying_price"]) * 100 * trade["contracts"] + trade["premium_received"]
+                
+                update_doc.update({
+                    "status": "expired",
+                    "close_date": now.strftime("%Y-%m-%d"),
+                    "close_price": current_price,
+                    "close_reason": "expired_otm",
+                    "final_pnl": round(final_pnl, 2),
+                    "roi_percent": round((final_pnl / trade["capital_deployed"]) * 100, 2) if trade["capital_deployed"] > 0 else 0,
+                    "realized_pnl": round(final_pnl, 2)
+                })
+                expired_count += 1
+            
+            # Add action log entry
+            await db.simulator_trades.update_one(
+                {"id": trade["id"]},
+                {"$push": {"action_log": {
+                    "action": update_doc["status"],
+                    "timestamp": now.isoformat(),
+                    "details": f"Expired at ${current_price}, Final P/L: ${update_doc['final_pnl']:.2f}"
+                }}}
+            )
+        
+        await db.simulator_trades.update_one({"id": trade["id"]}, {"$set": update_doc})
+        updated_count += 1
+    
+    return {
+        "message": "Prices updated",
+        "updated": updated_count,
+        "expired": expired_count,
+        "assigned": assigned_count
+    }
+
+
+@simulator_router.get("/summary")
+async def get_simulator_summary(user: dict = Depends(get_current_user)):
+    """Get portfolio-level summary statistics"""
+    
+    trades = await db.simulator_trades.find(
+        {"user_id": user["id"]},
+        {"_id": 0}
+    ).to_list(1000)
+    
+    if not trades:
+        return {
+            "total_trades": 0,
+            "active_trades": 0,
+            "closed_trades": 0,
+            "total_capital_deployed": 0,
+            "total_unrealized_pnl": 0,
+            "total_realized_pnl": 0,
+            "total_pnl": 0,
+            "win_rate": 0,
+            "avg_return_per_trade": 0,
+            "assignment_rate": 0,
+            "by_strategy": {}
+        }
+    
+    # Aggregate stats
+    active_trades = [t for t in trades if t["status"] == "active"]
+    closed_trades = [t for t in trades if t["status"] in ["closed", "expired", "assigned"]]
+    winning_trades = [t for t in closed_trades if (t.get("final_pnl") or 0) > 0]
+    assigned_trades = [t for t in closed_trades if t["status"] == "assigned"]
+    
+    total_capital = sum(t.get("capital_deployed", 0) for t in active_trades)
+    total_unrealized = sum(t.get("unrealized_pnl", 0) for t in active_trades)
+    total_realized = sum(t.get("final_pnl", 0) or 0 for t in closed_trades)
+    
+    win_rate = (len(winning_trades) / len(closed_trades) * 100) if closed_trades else 0
+    avg_return = (total_realized / len(closed_trades)) if closed_trades else 0
+    assignment_rate = (len(assigned_trades) / len(closed_trades) * 100) if closed_trades else 0
+    
+    # By strategy breakdown
+    by_strategy = {}
+    for strategy in ["covered_call", "pmcc"]:
+        strat_trades = [t for t in trades if t["strategy_type"] == strategy]
+        strat_active = [t for t in strat_trades if t["status"] == "active"]
+        strat_closed = [t for t in strat_trades if t["status"] in ["closed", "expired", "assigned"]]
+        strat_wins = [t for t in strat_closed if (t.get("final_pnl") or 0) > 0]
+        
+        by_strategy[strategy] = {
+            "total": len(strat_trades),
+            "active": len(strat_active),
+            "closed": len(strat_closed),
+            "capital_deployed": sum(t.get("capital_deployed", 0) for t in strat_active),
+            "unrealized_pnl": sum(t.get("unrealized_pnl", 0) for t in strat_active),
+            "realized_pnl": sum(t.get("final_pnl", 0) or 0 for t in strat_closed),
+            "win_rate": (len(strat_wins) / len(strat_closed) * 100) if strat_closed else 0
+        }
+    
+    return {
+        "total_trades": len(trades),
+        "active_trades": len(active_trades),
+        "closed_trades": len(closed_trades),
+        "total_capital_deployed": round(total_capital, 2),
+        "total_unrealized_pnl": round(total_unrealized, 2),
+        "total_realized_pnl": round(total_realized, 2),
+        "total_pnl": round(total_unrealized + total_realized, 2),
+        "win_rate": round(win_rate, 1),
+        "avg_return_per_trade": round(avg_return, 2),
+        "assignment_rate": round(assignment_rate, 1),
+        "by_strategy": by_strategy
+    }
+
+
+@simulator_router.delete("/clear")
+async def clear_simulator_data(user: dict = Depends(get_current_user)):
+    """Clear all simulator trades for the user"""
+    result = await db.simulator_trades.delete_many({"user_id": user["id"]})
+    return {"message": f"Cleared {result.deleted_count} simulator trades"}
+
 # Include all routers
 api_router.include_router(auth_router)
 api_router.include_router(stocks_router)
