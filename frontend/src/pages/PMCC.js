@@ -599,6 +599,7 @@ const PMCC = () => {
                         <SortHeader field="roi_per_cycle" label="ROI/Cycle" />
                         <SortHeader field="annualized_roi" label="Ann. ROI" />
                         <SortHeader field="score" label="AI Score" />
+                        <th className="text-center">Action</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -638,6 +639,22 @@ const PMCC = () => {
                               {opp.score?.toFixed(0)}
                             </Badge>
                           </td>
+                          <td className="text-center">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setSimulateOpp(opp);
+                                setSimulateModalOpen(true);
+                              }}
+                              className="bg-violet-500/10 border-violet-500/30 text-violet-400 hover:bg-violet-500/20 hover:text-violet-300"
+                              data-testid={`simulate-btn-${opp.symbol}`}
+                            >
+                              <Play className="w-3 h-3 mr-1" />
+                              Simulate
+                            </Button>
+                          </td>
                         </tr>
                       ))}
                     </tbody>
@@ -675,6 +692,96 @@ const PMCC = () => {
           </div>
         </div>
       </div>
+
+      {/* Simulate Trade Modal */}
+      <Dialog open={simulateModalOpen} onOpenChange={setSimulateModalOpen}>
+        <DialogContent className="bg-zinc-900 border-zinc-800 max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Play className="w-5 h-5 text-violet-400" />
+              Add PMCC to Simulator
+            </DialogTitle>
+          </DialogHeader>
+          {simulateOpp && (
+            <div className="space-y-4 pt-4">
+              <div className="p-4 bg-zinc-800/50 rounded-lg space-y-2">
+                <div className="flex justify-between">
+                  <span className="text-zinc-400">Symbol</span>
+                  <span className="font-semibold text-white">{simulateOpp.symbol}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-zinc-400">Strategy</span>
+                  <Badge className="bg-violet-500/20 text-violet-400">PMCC</Badge>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-zinc-400">Stock Price</span>
+                  <span className="text-white">${simulateOpp.stock_price?.toFixed(2)}</span>
+                </div>
+                <div className="border-t border-zinc-700 pt-2 mt-2">
+                  <div className="text-xs text-emerald-400 mb-1">LEAPS (Buy)</div>
+                  <div className="flex justify-between">
+                    <span className="text-zinc-400">Strike</span>
+                    <span className="text-white">${simulateOpp.leaps_strike?.toFixed(2)}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-zinc-400">Cost</span>
+                    <span className="text-red-400">${simulateOpp.leaps_cost?.toLocaleString()}</span>
+                  </div>
+                </div>
+                <div className="border-t border-zinc-700 pt-2">
+                  <div className="text-xs text-cyan-400 mb-1">Short Call (Sell)</div>
+                  <div className="flex justify-between">
+                    <span className="text-zinc-400">Strike</span>
+                    <span className="text-white">${simulateOpp.short_strike?.toFixed(2)}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-zinc-400">Premium</span>
+                    <span className="text-emerald-400">${simulateOpp.short_premium?.toFixed(0)}</span>
+                  </div>
+                </div>
+                <div className="border-t border-zinc-700 pt-2">
+                  <div className="flex justify-between">
+                    <span className="text-zinc-400">Net Debit</span>
+                    <span className="text-white">${simulateOpp.net_debit?.toLocaleString()}</span>
+                  </div>
+                </div>
+              </div>
+              
+              <div>
+                <Label>Number of Contracts</Label>
+                <Input
+                  type="number"
+                  min={1}
+                  max={100}
+                  value={simulateContracts}
+                  onChange={(e) => setSimulateContracts(parseInt(e.target.value) || 1)}
+                  className="input-dark mt-2"
+                />
+                <p className="text-xs text-zinc-500 mt-1">
+                  Capital required: ${((simulateOpp.leaps_cost || 0) * simulateContracts).toLocaleString()}
+                </p>
+              </div>
+              
+              <div className="flex gap-2 pt-2">
+                <Button
+                  variant="outline"
+                  onClick={() => setSimulateModalOpen(false)}
+                  className="flex-1 btn-outline"
+                >
+                  Cancel
+                </Button>
+                <Button
+                  onClick={handleSimulate}
+                  disabled={simulateLoading}
+                  className="flex-1 bg-violet-600 hover:bg-violet-700 text-white"
+                >
+                  {simulateLoading ? 'Adding...' : 'Add to Simulator'}
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
 
       {/* Stock Detail Modal */}
       <StockDetailModal 
