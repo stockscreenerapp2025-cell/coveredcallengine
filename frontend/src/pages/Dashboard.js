@@ -593,7 +593,9 @@ const Dashboard = () => {
                             <Cell fill="#3b82f6" />
                           </Pie>
                           <Tooltip 
-                            contentStyle={{ background: '#18181b', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px' }}
+                            contentStyle={{ background: '#18181b', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', color: '#fff' }}
+                            itemStyle={{ color: '#fff' }}
+                            labelStyle={{ color: '#fff' }}
                           />
                         </RechartsPie>
                       </ResponsiveContainer>
