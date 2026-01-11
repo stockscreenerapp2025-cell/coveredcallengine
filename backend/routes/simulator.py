@@ -5,7 +5,7 @@ Designed for forward-running simulation of covered call and PMCC strategies
 from fastapi import APIRouter, Depends, Query, HTTPException
 from pydantic import BaseModel
 from typing import Optional, Dict, Any, List
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 import logging
 import math
 import uuid
