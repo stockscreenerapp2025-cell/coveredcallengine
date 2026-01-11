@@ -1298,7 +1298,7 @@ const Portfolio = () => {
                 </h4>
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <Label className="text-zinc-400 text-xs">Strike Price ($)</Label>
+                    <Label className="text-zinc-400 text-xs">Strike Price ($) *</Label>
                     <Input
                       type="number"
                       step="0.5"
@@ -1306,10 +1306,11 @@ const Portfolio = () => {
                       onChange={(e) => setManualTrade(prev => ({ ...prev, leaps_strike: e.target.value }))}
                       placeholder="120.00"
                       className="bg-zinc-800 border-zinc-700"
+                      min="0.01"
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label className="text-zinc-400 text-xs">Premium Paid ($)</Label>
+                    <Label className="text-zinc-400 text-xs">Premium Paid ($) *</Label>
                     <Input
                       type="number"
                       step="0.01"
@@ -1317,10 +1318,11 @@ const Portfolio = () => {
                       onChange={(e) => setManualTrade(prev => ({ ...prev, leaps_cost: e.target.value }))}
                       placeholder="25.00"
                       className="bg-zinc-800 border-zinc-700"
+                      min="0.01"
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label className="text-zinc-400 text-xs">Expiry Date</Label>
+                    <Label className="text-zinc-400 text-xs">Expiry Date *</Label>
                     <Input
                       type="date"
                       value={manualTrade.leaps_expiry}
@@ -1336,6 +1338,7 @@ const Portfolio = () => {
                       onChange={(e) => setManualTrade(prev => ({ ...prev, leaps_quantity: e.target.value }))}
                       placeholder="1"
                       className="bg-zinc-800 border-zinc-700"
+                      min="1"
                     />
                   </div>
                 </div>
