@@ -463,7 +463,7 @@ async def screen_pmcc(
     bypass_cache: bool = Query(False),
     user: dict = Depends(get_current_user)
 ):
-    """Screen for Poor Man's Covered Call (PMCC) opportunities"""
+    """Screen for Poor Man's Covered Call (PMCC) opportunities - generates multiple combinations per symbol"""
     funcs = _get_server_functions()
     
     cache_params = {
@@ -486,15 +486,24 @@ async def screen_pmcc(
         return {"opportunities": [], "total": 0, "message": "API key required for PMCC screening", "is_mock": True}
     
     try:
+        # Expanded symbol list for more opportunities
         symbols_to_scan = [
-            "INTC", "AMD", "MU", "QCOM",
-            "BAC", "WFC", "C", "USB",
-            "KO", "PEP", "NKE",
-            "PFE", "MRK",
-            "OXY", "DVN",
-            "PYPL", "UBER", "SNAP",
-            "AAL", "DAL",
-            "PLTR", "SOFI"
+            # Tech
+            "INTC", "AMD", "MU", "QCOM", "CSCO", "HPQ", "DELL", "IBM",
+            # Financials
+            "BAC", "WFC", "C", "USB", "PNC", "KEY", "RF", "CFG",
+            # Consumer
+            "KO", "PEP", "NKE", "SBUX", "DIS", "GM", "F",
+            # Healthcare
+            "PFE", "MRK", "ABBV", "BMY", "GILD",
+            # Energy
+            "OXY", "DVN", "APA", "HAL", "SLB",
+            # Growth/Fintech
+            "PYPL", "UBER", "SNAP", "SQ", "HOOD",
+            # Airlines/Travel
+            "AAL", "DAL", "UAL", "CCL", "NCLH",
+            # High volatility
+            "PLTR", "SOFI", "RIVN", "LCID", "NIO"
         ]
         
         opportunities = []
@@ -558,49 +567,66 @@ async def screen_pmcc(
                                 if opt["premium"] > 0:
                                     filtered_short.append(opt)
                     
+                    # Generate multiple combinations per symbol (up to top 3 LEAPS x top 3 shorts)
                     if filtered_leaps and filtered_short:
-                        best_leaps = max(filtered_leaps, key=lambda x: x["delta"])
-                        best_short = min(filtered_short, key=lambda x: abs(x["delta"] - 0.25))
+                        # Sort LEAPS by delta (highest first - deepest ITM)
+                        filtered_leaps.sort(key=lambda x: x["delta"], reverse=True)
+                        # Sort shorts by delta closest to 0.25 (ideal short delta)
+                        filtered_short.sort(key=lambda x: abs(x["delta"] - 0.25))
                         
-                        if best_leaps["cost"] > 0:
-                            net_debit = best_leaps["cost"] - best_short["premium"]
-                            
-                            if net_debit <= 0:
-                                continue
-                            
-                            roi_per_cycle = (best_short["premium"] / best_leaps["cost"]) * 100
-                            cycles_per_year = 365 / max(best_short.get("dte", 30), 7)
-                            annualized_roi = roi_per_cycle * min(cycles_per_year, 52)
-                            
-                            if roi_per_cycle < min_roi or annualized_roi < min_annualized_roi:
-                                continue
-                            
-                            score = roi_per_cycle * 10 + annualized_roi / 5
-                            
-                            opportunities.append({
-                                "symbol": symbol,
-                                "stock_price": round(current_price, 2),
-                                "leaps_strike": best_leaps.get("strike"),
-                                "leaps_expiry": best_leaps.get("expiry"),
-                                "leaps_dte": best_leaps.get("dte"),
-                                "leaps_delta": round(best_leaps["delta"], 2),
-                                "leaps_cost": round(best_leaps["cost"], 2),
-                                "short_strike": best_short.get("strike"),
-                                "short_expiry": best_short.get("expiry"),
-                                "short_dte": best_short.get("dte"),
-                                "short_delta": round(best_short["delta"], 2),
-                                "short_premium": round(best_short["premium"], 2),
-                                "net_debit": round(net_debit, 2),
-                                "roi_per_cycle": round(roi_per_cycle, 2),
-                                "annualized_roi": round(annualized_roi, 1),
-                                "score": round(score, 1)
-                            })
+                        # Take top 3 of each for combinations
+                        top_leaps = filtered_leaps[:3]
+                        top_shorts = filtered_short[:3]
+                        
+                        for leaps in top_leaps:
+                            for short in top_shorts:
+                                if leaps["cost"] <= 0:
+                                    continue
+                                    
+                                net_debit = leaps["cost"] - short["premium"]
+                                
+                                if net_debit <= 0:
+                                    continue
+                                
+                                roi_per_cycle = (short["premium"] / leaps["cost"]) * 100
+                                cycles_per_year = 365 / max(short.get("dte", 30), 7)
+                                annualized_roi = roi_per_cycle * min(cycles_per_year, 52)
+                                
+                                if roi_per_cycle < min_roi or annualized_roi < min_annualized_roi:
+                                    continue
+                                
+                                # Score based on ROI, delta quality, and capital efficiency
+                                roi_score = roi_per_cycle * 10
+                                delta_score = (leaps["delta"] - 0.7) * 50  # Bonus for higher LEAPS delta
+                                efficiency_score = (1 - net_debit / (current_price * 100)) * 20  # Lower cost = better
+                                score = round(roi_score + delta_score + efficiency_score + annualized_roi / 5, 1)
+                                
+                                opportunities.append({
+                                    "symbol": symbol,
+                                    "stock_price": round(current_price, 2),
+                                    "leaps_strike": leaps.get("strike"),
+                                    "leaps_expiry": leaps.get("expiry"),
+                                    "leaps_dte": leaps.get("dte"),
+                                    "leaps_delta": round(leaps["delta"], 2),
+                                    "leaps_cost": round(leaps["cost"], 2),
+                                    "short_strike": short.get("strike"),
+                                    "short_expiry": short.get("expiry"),
+                                    "short_dte": short.get("dte"),
+                                    "short_delta": round(short["delta"], 2),
+                                    "short_premium": round(short["premium"], 2),
+                                    "net_debit": round(net_debit, 2),
+                                    "roi_per_cycle": round(roi_per_cycle, 2),
+                                    "annualized_roi": round(annualized_roi, 1),
+                                    "score": round(score, 1)
+                                })
                     
                 except Exception as e:
                     logging.error(f"PMCC scan error for {symbol}: {e}")
                     continue
         
+        # Sort by score and limit to top 100
         opportunities.sort(key=lambda x: x["score"], reverse=True)
+        opportunities = opportunities[:100]
         
         result = {"opportunities": opportunities, "total": len(opportunities), "is_live": True}
         await funcs['set_cached_data'](cache_key, result)
