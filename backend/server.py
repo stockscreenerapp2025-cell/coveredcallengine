@@ -3164,7 +3164,9 @@ async def add_manual_trade(trade: ManualTradeEntry, user: dict = Depends(get_cur
         "leaps_date": trade.leaps_date,
         
         # Calculated fields for display (matching frontend expectations)
-        "shares": trade.stock_quantity * 100 if trade.stock_quantity else (trade.option_quantity * 100 if trade.option_quantity else None),
+        # For stocks: shares = stock_quantity (user enters actual shares)
+        # For options: shares = option_quantity * 100 (contracts to shares)
+        "shares": trade.stock_quantity if trade.stock_quantity else (trade.option_quantity * 100 if trade.option_quantity else None),
         "entry_price": trade.stock_price or trade.leaps_cost,
         "premium_received": trade.option_premium,
         "break_even": break_even,
