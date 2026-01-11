@@ -137,30 +137,18 @@ Build a web-based application named "Covered Call Engine" to identify, analyze, 
 ---
 
 ## Last Updated
-January 11, 2026 - Trade Simulator Phase 1 MVP Complete
+January 11, 2026 - Trade Simulator Phase 2 Complete
 
 ## Recent Changes (Jan 11, 2026)
-### Trade Simulator (NEW Feature)
-- Added "Simulator" page to sidebar navigation (under Portfolio)
-- Added "SIMULATE" button on Screener page results table
-- Added "SIMULATE" button on PMCC page results table
-- Created Simulator dashboard with:
-  - Summary cards: Total P/L, Win Rate, Active Trades, Capital Deployed, Avg Return, Assignment Rate
-  - Strategy Distribution pie chart
-  - P/L by Strategy bar chart
-  - Trades table with status/strategy filters
-  - Trade detail dialog
-- Backend endpoints:
-  - POST /api/simulator/trade - Add trade from screener
-  - GET /api/simulator/trades - List trades with pagination/filters
-  - GET /api/simulator/summary - Portfolio-level metrics
-  - POST /api/simulator/update-prices - EOD price updates
-  - DELETE /api/simulator/trades/{id} - Delete trade
-  - POST /api/simulator/trades/{id}/close - Close trade manually
-- Features:
-  - Immutable entry snapshot (no repainting)
-  - Position sizing (editable contracts)
-  - Expiry handling (ITM=assigned, OTM=expired)
-  - Daily price updates via Yahoo Finance
-  - Capital tracking per trade and portfolio-level
-- Testing: 12/12 backend+frontend tests passing (100% success rate)
+### Trade Simulator Phase 2: Live Monitoring & Greeks
+- **Automated Daily Updates:** APScheduler runs at 4:30 PM ET (after market close) on weekdays
+- **Black-Scholes Greeks Calculations:** Delta, Gamma, Theta, Vega computed for each trade
+- **Premium Capture Tracking:** Shows percentage of premium captured (target: 50%+)
+- **Mark-to-Market Option Values:** Current option value calculated using Black-Scholes
+- **Enhanced P&L:** Unrealized P&L now accounts for option value changes, not just premium received
+- **Scheduler Status Endpoint:** GET /api/simulator/scheduler-status shows next run time
+- **Frontend Updates:**
+  - New columns in trades table: Current Price, Delta, Theta, Premium %
+  - Greeks section in trade detail dialog: Delta, Gamma, Theta, Vega, Premium Captured
+  - Current Option Value displayed
+- **Testing:** Backend verified with curl, frontend verified with screenshots
