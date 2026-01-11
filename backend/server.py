@@ -3243,6 +3243,18 @@ async def add_manual_trade(trade: ManualTradeEntry, user: dict = Depends(get_cur
     else:
         strategy_type, strategy_label = strategy_map.get(trade.trade_type, ("OTHER", "Other"))
     
+    # Calculate days in trade
+    days_in_trade = None
+    open_date = trade.stock_date or trade.option_date or trade.leaps_date or trade.put_date
+    if open_date:
+        try:
+            open_dt = datetime.strptime(open_date, "%Y-%m-%d")
+            days_in_trade = (datetime.now() - open_dt).days
+            if days_in_trade < 0:
+                days_in_trade = 0
+        except:
+            pass
+    
     # Create trade document with proper field mapping for frontend
     trade_doc = {
         "id": trade_id,
@@ -3259,14 +3271,15 @@ async def add_manual_trade(trade: ManualTradeEntry, user: dict = Depends(get_cur
         "stock_price": trade.stock_price,
         "stock_date": trade.stock_date,
         
-        # Option details
+        # Option details - use frontend expected field names
         "option_type": trade.option_type,
         "option_action": trade.option_action,
-        "strike": trade.strike_price,
-        "expiry": trade.expiry_date,
+        "option_strike": trade.strike_price,  # Frontend expects option_strike
+        "option_expiry": trade.expiry_date,   # Frontend expects option_expiry
         "premium": trade.option_premium,
         "option_quantity": trade.option_quantity,
         "option_date": trade.option_date,
+        "contracts": trade.option_quantity,  # Frontend expects contracts field
         
         # LEAPS details (for PMCC)
         "leaps_strike": trade.leaps_strike,
@@ -3276,9 +3289,9 @@ async def add_manual_trade(trade: ManualTradeEntry, user: dict = Depends(get_cur
         "leaps_date": trade.leaps_date,
         
         # Protective Put details (for Collar)
-        "put_strike": trade.put_strike,
-        "put_expiry": trade.put_expiry,
-        "put_premium": trade.put_premium,
+        "protective_put_strike": trade.put_strike,
+        "protective_put_expiry": trade.put_expiry,
+        "protective_put_premium": trade.put_premium,
         "put_quantity": trade.put_quantity,
         "put_date": trade.put_date,
         
@@ -3291,6 +3304,8 @@ async def add_manual_trade(trade: ManualTradeEntry, user: dict = Depends(get_cur
         "put_cost": put_cost,  # For collar - cost of protective put
         "break_even": break_even,
         "dte": dte,
+        "days_in_trade": days_in_trade,  # Frontend expects days_in_trade
+        "total_fees": 0,  # Manual trades don't have IBKR fees
         
         # P/L fields - For collar, net premium = call premium - put cost
         "cost_basis": cost_basis + put_cost if trade.trade_type == "collar" else cost_basis,
@@ -3301,6 +3316,7 @@ async def add_manual_trade(trade: ManualTradeEntry, user: dict = Depends(get_cur
         
         # Metadata
         "notes": trade.notes,
+        "account": "Manual",  # Add account field for display
         "date_opened": trade.stock_date or trade.option_date or trade.leaps_date or trade.put_date or now.isoformat(),
         "created_at": now.isoformat(),
         "updated_at": now.isoformat(),
