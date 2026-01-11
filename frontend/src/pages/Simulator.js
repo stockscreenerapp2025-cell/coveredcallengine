@@ -157,8 +157,15 @@ const Simulator = () => {
   });
 
   useEffect(() => {
-    fetchTrades();
-    fetchSummary();
+    const loadData = async () => {
+      await fetchTrades();
+      await fetchSummary();
+      // Auto-update prices for active trades on initial load
+      if (trades.some(t => t.status === 'active' && !t.current_delta)) {
+        await handleUpdatePrices();
+      }
+    };
+    loadData();
   }, [statusFilter, strategyFilter, pagination.page]);
 
   useEffect(() => {
