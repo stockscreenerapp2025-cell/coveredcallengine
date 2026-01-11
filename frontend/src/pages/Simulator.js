@@ -270,6 +270,68 @@ const Simulator = () => {
     }
   };
 
+  const fetchAnalytics = async () => {
+    setAnalyticsLoading(true);
+    try {
+      const res = await simulatorApi.getPerformanceAnalytics({
+        strategy: analyticsStrategy || undefined,
+        timeframe: analyticsTimeframe
+      });
+      setAnalytics(res.data);
+    } catch (error) {
+      console.error('Error fetching analytics:', error);
+    } finally {
+      setAnalyticsLoading(false);
+    }
+  };
+
+  const fetchOptimalSettings = async () => {
+    try {
+      const res = await simulatorApi.getOptimalSettings(analyticsStrategy || 'covered_call');
+      setOptimalSettings(res.data);
+    } catch (error) {
+      console.error('Error fetching optimal settings:', error);
+    }
+  };
+
+  const fetchProfiles = async () => {
+    try {
+      const res = await simulatorApi.getProfiles();
+      setProfiles(res.data.profiles || []);
+    } catch (error) {
+      console.error('Error fetching profiles:', error);
+    }
+  };
+
+  const handleSaveProfile = async () => {
+    if (!newProfileName.trim()) {
+      toast.error('Please enter a profile name');
+      return;
+    }
+    setSavingProfile(true);
+    try {
+      await simulatorApi.saveProfile(newProfileName);
+      toast.success('Profile saved');
+      setNewProfileName('');
+      fetchProfiles();
+    } catch (error) {
+      toast.error('Failed to save profile');
+    } finally {
+      setSavingProfile(false);
+    }
+  };
+
+  const handleDeleteProfile = async (profileId) => {
+    if (!window.confirm('Delete this profile?')) return;
+    try {
+      await simulatorApi.deleteProfile(profileId);
+      toast.success('Profile deleted');
+      fetchProfiles();
+    } catch (error) {
+      toast.error('Failed to delete profile');
+    }
+  };
+
   const handleUpdatePrices = async () => {
     setUpdating(true);
     try {
