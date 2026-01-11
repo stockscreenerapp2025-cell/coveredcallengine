@@ -56,6 +56,7 @@ from routes.watchlist import watchlist_router
 from routes.news import news_router
 from routes.chatbot import chatbot_router
 from routes.ai import ai_router
+from routes.subscription import subscription_router
 
 # Create routers (still in server.py - to be refactored)
 api_router = APIRouter(prefix="/api")
