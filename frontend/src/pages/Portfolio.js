@@ -1537,19 +1537,92 @@ const Portfolio = () => {
                       value={manualTrade.expiry_date}
                       onChange={(e) => setManualTrade(prev => ({ ...prev, expiry_date: e.target.value }))}
                       className="bg-zinc-800 border-zinc-700"
+                      min={new Date().toISOString().split('T')[0]}
                     />
+                    {manualTrade.expiry_date && manualTrade.expiry_date < new Date().toISOString().split('T')[0] && (
+                      <p className="text-xs text-red-400">Expiry date cannot be in the past</p>
+                    )}
                   </div>
                   <div className="space-y-2">
                     <Label className="text-zinc-400 text-xs">
                       Contracts {manualTrade.trade_type === 'option_only' ? '*' : ''}
-                      {manualTrade.trade_type === 'covered_call' && manualTrade.stock_quantity && (
+                      {(manualTrade.trade_type === 'covered_call' || manualTrade.trade_type === 'collar') && manualTrade.stock_quantity && (
                         <span className="text-emerald-400 ml-1">(auto-calculated)</span>
+                      )}
+                      {manualTrade.trade_type === 'pmcc' && (
+                        <span className="text-violet-400 ml-1">(synced with LEAPS)</span>
                       )}
                     </Label>
                     <Input
                       type="number"
                       value={manualTrade.option_quantity}
                       onChange={(e) => setManualTrade(prev => ({ ...prev, option_quantity: e.target.value }))}
+                      placeholder="1"
+                      className="bg-zinc-800 border-zinc-700"
+                      min="1"
+                      disabled={manualTrade.trade_type === 'pmcc'}
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Protective Put Leg - Show for collar only */}
+            {manualTrade.trade_type === 'collar' && (
+              <div className="space-y-4 p-4 rounded-lg bg-amber-500/10 border border-amber-500/30">
+                <h4 className="text-sm font-medium text-amber-400 flex items-center gap-2">
+                  <Shield className="w-4 h-4" />
+                  Protective Put (Long Put)
+                </h4>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label className="text-zinc-400 text-xs">Strike Price ($) *</Label>
+                    <Input
+                      type="number"
+                      step="0.5"
+                      value={manualTrade.put_strike}
+                      onChange={(e) => setManualTrade(prev => ({ ...prev, put_strike: e.target.value }))}
+                      placeholder="145.00"
+                      className="bg-zinc-800 border-zinc-700"
+                      min="0.01"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="text-zinc-400 text-xs">Premium Paid ($) *</Label>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      value={manualTrade.put_premium}
+                      onChange={(e) => setManualTrade(prev => ({ ...prev, put_premium: e.target.value }))}
+                      placeholder="2.00"
+                      className="bg-zinc-800 border-zinc-700"
+                      min="0.01"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="text-zinc-400 text-xs">Expiry Date *</Label>
+                    <Input
+                      type="date"
+                      value={manualTrade.put_expiry}
+                      onChange={(e) => setManualTrade(prev => ({ ...prev, put_expiry: e.target.value }))}
+                      className="bg-zinc-800 border-zinc-700"
+                      min={new Date().toISOString().split('T')[0]}
+                    />
+                    {manualTrade.put_expiry && manualTrade.put_expiry < new Date().toISOString().split('T')[0] && (
+                      <p className="text-xs text-red-400">Expiry date cannot be in the past</p>
+                    )}
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="text-zinc-400 text-xs">
+                      Contracts
+                      {manualTrade.stock_quantity && (
+                        <span className="text-amber-400 ml-1">(auto-calculated)</span>
+                      )}
+                    </Label>
+                    <Input
+                      type="number"
+                      value={manualTrade.put_quantity}
+                      onChange={(e) => setManualTrade(prev => ({ ...prev, put_quantity: e.target.value }))}
                       placeholder="1"
                       className="bg-zinc-800 border-zinc-700"
                       min="1"
