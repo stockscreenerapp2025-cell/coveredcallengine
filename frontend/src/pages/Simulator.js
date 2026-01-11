@@ -703,6 +703,52 @@ const Simulator = () => {
                 </div>
               </div>
 
+              {/* Greeks Section */}
+              {selectedTrade.status === 'active' && (
+                <div className="p-4 bg-zinc-800/30 rounded-lg">
+                  <h4 className="text-sm font-medium text-zinc-400 mb-3 flex items-center gap-2">
+                    <Activity className="w-4 h-4" />
+                    Current Greeks
+                  </h4>
+                  <div className="grid grid-cols-2 md:grid-cols-5 gap-4 text-sm">
+                    <div className="text-center">
+                      <div className="text-xs text-zinc-500 mb-1">Delta</div>
+                      <div className="text-cyan-400 font-mono font-semibold">
+                        {selectedTrade.current_delta?.toFixed(3) || selectedTrade.short_call_delta?.toFixed(3) || '-'}
+                      </div>
+                    </div>
+                    <div className="text-center">
+                      <div className="text-xs text-zinc-500 mb-1">Gamma</div>
+                      <div className="text-violet-400 font-mono font-semibold">
+                        {selectedTrade.current_gamma?.toFixed(4) || '-'}
+                      </div>
+                    </div>
+                    <div className="text-center">
+                      <div className="text-xs text-zinc-500 mb-1">Theta</div>
+                      <div className="text-red-400 font-mono font-semibold">
+                        {selectedTrade.current_theta ? `$${selectedTrade.current_theta.toFixed(2)}/day` : '-'}
+                      </div>
+                    </div>
+                    <div className="text-center">
+                      <div className="text-xs text-zinc-500 mb-1">Vega</div>
+                      <div className="text-amber-400 font-mono font-semibold">
+                        {selectedTrade.current_vega?.toFixed(2) || '-'}
+                      </div>
+                    </div>
+                    <div className="text-center">
+                      <div className="text-xs text-zinc-500 mb-1">Premium Captured</div>
+                      <div className={`font-mono font-semibold ${(selectedTrade.premium_capture_pct || 0) >= 50 ? 'text-emerald-400' : 'text-zinc-400'}`}>
+                        {selectedTrade.premium_capture_pct?.toFixed(1) || 0}%
+                      </div>
+                    </div>
+                  </div>
+                  <div className="mt-3 pt-3 border-t border-zinc-700 flex justify-between text-xs">
+                    <span className="text-zinc-500">Current Option Value:</span>
+                    <span className="text-white font-mono">${selectedTrade.current_option_value?.toFixed(2) || selectedTrade.short_call_premium?.toFixed(2)}</span>
+                  </div>
+                </div>
+              )}
+
               {/* Action Log */}
               {selectedTrade.action_log && selectedTrade.action_log.length > 0 && (
                 <div>
