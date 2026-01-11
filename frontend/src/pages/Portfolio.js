@@ -1331,6 +1331,7 @@ const Portfolio = () => {
                 </SelectTrigger>
                 <SelectContent className="bg-zinc-800 border-zinc-700">
                   <SelectItem value="covered_call">Covered Call (Stock + Short Call)</SelectItem>
+                  <SelectItem value="collar">Collar (Stock + Short Call + Long Put)</SelectItem>
                   <SelectItem value="pmcc">PMCC (LEAPS + Short Call)</SelectItem>
                   <SelectItem value="stock_only">Stock Only</SelectItem>
                   <SelectItem value="option_only">Option Only</SelectItem>
@@ -1350,8 +1351,8 @@ const Portfolio = () => {
               />
             </div>
 
-            {/* Stock Leg - Show for covered_call and stock_only */}
-            {(manualTrade.trade_type === 'covered_call' || manualTrade.trade_type === 'stock_only') && (
+            {/* Stock Leg - Show for covered_call, collar, and stock_only */}
+            {(manualTrade.trade_type === 'covered_call' || manualTrade.trade_type === 'collar' || manualTrade.trade_type === 'stock_only') && (
               <div className="space-y-4 p-4 rounded-lg bg-blue-500/10 border border-blue-500/30">
                 <h4 className="text-sm font-medium text-blue-400 flex items-center gap-2">
                   <TrendingUp className="w-4 h-4" />
