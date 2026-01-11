@@ -176,6 +176,10 @@ const Simulator = () => {
       fetchActionLogs();
     } else if (activeTab === 'pmcc') {
       fetchPMCCSummary();
+    } else if (activeTab === 'analytics') {
+      fetchAnalytics();
+      fetchOptimalSettings();
+      fetchProfiles();
     }
   }, [activeTab]);
 
