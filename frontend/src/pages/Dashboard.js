@@ -97,20 +97,7 @@ const Dashboard = () => {
     }
   };
 
-  // Format option contract for display
-  const formatOptionContract = (expiry, strike) => {
-    if (!expiry || !strike) return '-';
-    try {
-      const date = new Date(expiry);
-      const day = date.getDate().toString().padStart(2, '0');
-      const months = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
-      const month = months[date.getMonth()];
-      const year = date.getFullYear().toString().slice(-2);
-      return `${day}${month}${year} $${strike} C`;
-    } catch {
-      return `$${strike} C`;
-    }
-  };
+  // Format option contract for display - already defined below, use that one
 
   useEffect(() => {
     fetchDashboardData();
