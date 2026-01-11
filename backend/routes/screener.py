@@ -312,3 +312,379 @@ async def screen_covered_calls(
     return {"opportunities": filtered, "total": len(filtered), "is_mock": True}
 
 
+
+@screener_router.get("/dashboard-opportunities")
+async def get_dashboard_opportunities(user: dict = Depends(get_current_user)):
+    """Get top 10 covered call opportunities for dashboard with advanced filters"""
+    funcs = _get_server_functions()
+    
+    cache_key = "dashboard_opportunities_v2"
+    
+    cached_data = await funcs['get_cached_data'](cache_key)
+    if cached_data:
+        cached_data["from_cache"] = True
+        cached_data["market_closed"] = funcs['is_market_closed']()
+        return cached_data
+    
+    if funcs['is_market_closed']():
+        ltd_data = await funcs['get_last_trading_day_data'](cache_key)
+        if ltd_data:
+            ltd_data["from_cache"] = True
+            ltd_data["market_closed"] = True
+            return ltd_data
+    
+    api_key = await funcs['get_massive_api_key']()
+    
+    if not api_key:
+        return {"opportunities": [], "total": 0, "message": "API key not configured", "is_mock": True}
+    
+    try:
+        symbols_to_scan = [
+            "INTC", "CSCO", "MU", "QCOM", "TXN", "ADI", "MCHP", "ON", "HPQ",
+            "BAC", "WFC", "C", "USB", "PNC", "TFC", "KEY", "RF", "CFG", "FITB",
+            "KO", "PEP", "NKE", "SBUX", "DIS", "GM", "F",
+            "VZ", "T", "TMUS",
+            "PFE", "MRK", "ABBV", "BMY", "GILD",
+            "OXY", "DVN", "APA", "HAL", "SLB", "MRO",
+            "CAT", "DE", "GE", "HON",
+            "PYPL", "SQ", "ROKU", "SNAP", "UBER", "LYFT",
+            "AAL", "DAL", "UAL", "CCL", "NCLH",
+            "PLTR", "SOFI", "HOOD", "RIVN", "LCID", "NIO",
+            "AAPL", "AMD", "DELL", "IBM", "ORCL"
+        ]
+        
+        opportunities = []
+        
+        async with httpx.AsyncClient(timeout=HTTP_TIMEOUT) as client:
+            for symbol in symbols_to_scan[:30]:  # Limit for performance
+                try:
+                    # Get stock price
+                    stock_response = await client.get(
+                        f"https://api.polygon.io/v2/aggs/ticker/{symbol}/prev",
+                        params={"apiKey": api_key}
+                    )
+                    
+                    if stock_response.status_code != 200:
+                        continue
+                    
+                    stock_data = stock_response.json()
+                    if not stock_data.get("results"):
+                        continue
+                    
+                    current_price = stock_data["results"][0].get("c", 0)
+                    
+                    if current_price < 30 or current_price > 90:
+                        continue
+                    
+                    # Get options
+                    options_results = await funcs['fetch_options_chain_yahoo'](symbol, "call", 45, min_dte=7, current_price=current_price)
+                    
+                    if not options_results:
+                        continue
+                    
+                    for opt in options_results:
+                        strike = opt.get("strike", 0)
+                        dte = opt.get("dte", 0)
+                        premium = opt.get("close", 0) or opt.get("vwap", 0)
+                        
+                        if not premium or premium <= 0:
+                            continue
+                        
+                        # Filter for OTM calls
+                        if strike <= current_price:
+                            continue
+                        
+                        strike_pct = ((strike - current_price) / current_price) * 100
+                        if strike_pct > 10:  # Max 10% OTM
+                            continue
+                        
+                        roi_pct = (premium / current_price) * 100
+                        
+                        # ROI filters
+                        if dte <= 7 and roi_pct < 0.8:
+                            continue
+                        if dte > 7 and roi_pct < 2.5:
+                            continue
+                        
+                        annualized_roi = (roi_pct / max(dte, 1)) * 365
+                        
+                        opportunities.append({
+                            "symbol": symbol,
+                            "stock_price": round(current_price, 2),
+                            "strike": strike,
+                            "expiry": opt.get("expiry", ""),
+                            "dte": dte,
+                            "premium": round(premium, 2),
+                            "roi_pct": round(roi_pct, 2),
+                            "annualized_roi": round(annualized_roi, 1),
+                            "delta": round(0.3, 2),  # Estimated
+                            "score": round(roi_pct * 10 + annualized_roi / 10, 1)
+                        })
+                        
+                except Exception as e:
+                    logging.error(f"Dashboard scan error for {symbol}: {e}")
+                    continue
+        
+        # Sort and limit
+        opportunities.sort(key=lambda x: x["score"], reverse=True)
+        
+        # Dedupe by symbol
+        best_by_symbol = {}
+        for opp in opportunities:
+            sym = opp["symbol"]
+            if sym not in best_by_symbol or opp["score"] > best_by_symbol[sym]["score"]:
+                best_by_symbol[sym] = opp
+        
+        opportunities = sorted(best_by_symbol.values(), key=lambda x: x["score"], reverse=True)[:10]
+        
+        result = {"opportunities": opportunities, "total": len(opportunities), "is_live": True}
+        await funcs['set_cached_data'](cache_key, result)
+        return result
+        
+    except Exception as e:
+        logging.error(f"Dashboard opportunities error: {e}")
+        return {"opportunities": [], "total": 0, "error": str(e), "is_mock": True}
+
+
+@screener_router.get("/pmcc")
+async def screen_pmcc(
+    min_price: float = Query(20, ge=0),
+    max_price: float = Query(150, ge=0),
+    min_leaps_dte: int = Query(180, ge=30),
+    max_leaps_dte: int = Query(730, ge=30),
+    min_short_dte: int = Query(14, ge=1),
+    max_short_dte: int = Query(60, ge=1),
+    min_leaps_delta: float = Query(0.70, ge=0, le=1),
+    max_leaps_delta: float = Query(0.90, ge=0, le=1),
+    min_short_delta: float = Query(0.15, ge=0, le=1),
+    max_short_delta: float = Query(0.35, ge=0, le=1),
+    min_roi: float = Query(2.0, ge=0),
+    min_annualized_roi: float = Query(20.0, ge=0),
+    bypass_cache: bool = Query(False),
+    user: dict = Depends(get_current_user)
+):
+    """Screen for Poor Man's Covered Call (PMCC) opportunities"""
+    funcs = _get_server_functions()
+    
+    cache_params = {
+        "min_price": min_price, "max_price": max_price,
+        "min_leaps_dte": min_leaps_dte, "max_leaps_dte": max_leaps_dte,
+        "min_short_dte": min_short_dte, "max_short_dte": max_short_dte,
+        "min_roi": min_roi, "min_annualized_roi": min_annualized_roi
+    }
+    cache_key = funcs['generate_cache_key']("pmcc_screener", cache_params)
+    
+    if not bypass_cache:
+        cached_data = await funcs['get_cached_data'](cache_key)
+        if cached_data:
+            cached_data["from_cache"] = True
+            return cached_data
+    
+    api_key = await funcs['get_massive_api_key']()
+    
+    if not api_key:
+        return {"opportunities": [], "total": 0, "message": "API key required for PMCC screening", "is_mock": True}
+    
+    try:
+        symbols_to_scan = [
+            "INTC", "AMD", "MU", "QCOM",
+            "BAC", "WFC", "C", "USB",
+            "KO", "PEP", "NKE",
+            "PFE", "MRK",
+            "OXY", "DVN",
+            "PYPL", "UBER", "SNAP",
+            "AAL", "DAL",
+            "PLTR", "SOFI"
+        ]
+        
+        opportunities = []
+        
+        async with httpx.AsyncClient(timeout=HTTP_TIMEOUT) as client:
+            for symbol in symbols_to_scan:
+                try:
+                    # Get stock price
+                    stock_response = await client.get(
+                        f"https://api.polygon.io/v2/aggs/ticker/{symbol}/prev",
+                        params={"apiKey": api_key}
+                    )
+                    
+                    if stock_response.status_code != 200:
+                        continue
+                    
+                    stock_data = stock_response.json()
+                    if not stock_data.get("results"):
+                        continue
+                    
+                    current_price = stock_data["results"][0].get("c", 0)
+                    
+                    if current_price < min_price or current_price > max_price:
+                        continue
+                    
+                    # Get LEAPS options (long leg)
+                    leaps_options = await funcs['fetch_options_chain_yahoo'](
+                        symbol, "call", max_leaps_dte, min_dte=min_leaps_dte, current_price=current_price
+                    )
+                    
+                    # Get short-term options (short leg)
+                    short_options = await funcs['fetch_options_chain_yahoo'](
+                        symbol, "call", max_short_dte, min_dte=min_short_dte, current_price=current_price
+                    )
+                    
+                    if not leaps_options or not short_options:
+                        continue
+                    
+                    # Filter LEAPS for deep ITM (high delta)
+                    filtered_leaps = []
+                    for opt in leaps_options:
+                        strike = opt.get("strike", 0)
+                        if strike < current_price * 0.85:  # Deep ITM
+                            estimated_delta = min(0.90, 0.70 + (current_price - strike) / current_price * 0.5)
+                            if min_leaps_delta <= estimated_delta <= max_leaps_delta:
+                                opt["delta"] = estimated_delta
+                                opt["cost"] = (opt.get("close", 0) or opt.get("vwap", 0)) * 100
+                                if opt["cost"] > 0:
+                                    filtered_leaps.append(opt)
+                    
+                    # Filter short options for OTM
+                    filtered_short = []
+                    for opt in short_options:
+                        strike = opt.get("strike", 0)
+                        if strike > current_price:  # OTM
+                            strike_pct = ((strike - current_price) / current_price) * 100
+                            estimated_delta = max(0.15, 0.50 - strike_pct * 0.03)
+                            if min_short_delta <= estimated_delta <= max_short_delta:
+                                opt["delta"] = estimated_delta
+                                opt["premium"] = (opt.get("close", 0) or opt.get("vwap", 0)) * 100
+                                if opt["premium"] > 0:
+                                    filtered_short.append(opt)
+                    
+                    if filtered_leaps and filtered_short:
+                        best_leaps = max(filtered_leaps, key=lambda x: x["delta"])
+                        best_short = min(filtered_short, key=lambda x: abs(x["delta"] - 0.25))
+                        
+                        if best_leaps["cost"] > 0:
+                            net_debit = best_leaps["cost"] - best_short["premium"]
+                            
+                            if net_debit <= 0:
+                                continue
+                            
+                            roi_per_cycle = (best_short["premium"] / best_leaps["cost"]) * 100
+                            cycles_per_year = 365 / max(best_short.get("dte", 30), 7)
+                            annualized_roi = roi_per_cycle * min(cycles_per_year, 52)
+                            
+                            if roi_per_cycle < min_roi or annualized_roi < min_annualized_roi:
+                                continue
+                            
+                            score = roi_per_cycle * 10 + annualized_roi / 5
+                            
+                            opportunities.append({
+                                "symbol": symbol,
+                                "stock_price": round(current_price, 2),
+                                "leaps_strike": best_leaps.get("strike"),
+                                "leaps_expiry": best_leaps.get("expiry"),
+                                "leaps_dte": best_leaps.get("dte"),
+                                "leaps_delta": round(best_leaps["delta"], 2),
+                                "leaps_cost": round(best_leaps["cost"], 2),
+                                "short_strike": best_short.get("strike"),
+                                "short_expiry": best_short.get("expiry"),
+                                "short_dte": best_short.get("dte"),
+                                "short_delta": round(best_short["delta"], 2),
+                                "short_premium": round(best_short["premium"], 2),
+                                "net_debit": round(net_debit, 2),
+                                "roi_per_cycle": round(roi_per_cycle, 2),
+                                "annualized_roi": round(annualized_roi, 1),
+                                "score": round(score, 1)
+                            })
+                    
+                except Exception as e:
+                    logging.error(f"PMCC scan error for {symbol}: {e}")
+                    continue
+        
+        opportunities.sort(key=lambda x: x["score"], reverse=True)
+        
+        result = {"opportunities": opportunities, "total": len(opportunities), "is_live": True}
+        await funcs['set_cached_data'](cache_key, result)
+        return result
+        
+    except Exception as e:
+        logging.error(f"PMCC screener error: {e}")
+        return {"opportunities": [], "total": 0, "error": str(e), "is_mock": True}
+
+
+@screener_router.get("/dashboard-pmcc")
+async def get_dashboard_pmcc(user: dict = Depends(get_current_user)):
+    """Get top PMCC opportunities for dashboard"""
+    funcs = _get_server_functions()
+    
+    cache_key = "dashboard_pmcc_v2"
+    
+    cached_data = await funcs['get_cached_data'](cache_key)
+    if cached_data:
+        cached_data["from_cache"] = True
+        return cached_data
+    
+    # Call the main PMCC screener with default params
+    result = await screen_pmcc(user=user)
+    
+    if result.get("opportunities"):
+        # Limit to top 10 for dashboard
+        result["opportunities"] = result["opportunities"][:10]
+        await funcs['set_cached_data'](cache_key, result)
+    
+    return result
+
+
+@screener_router.get("/filters")
+async def get_saved_filters(user: dict = Depends(get_current_user)):
+    """Get user's saved screener filters"""
+    filters = await db.screener_filters.find({"user_id": user["id"]}, {"_id": 0}).to_list(100)
+    return filters
+
+
+@screener_router.post("/clear-cache")
+async def clear_screener_cache(user: dict = Depends(get_current_user)):
+    """Clear all screener-related cache to force fresh data fetch"""
+    funcs = _get_server_functions()
+    
+    try:
+        prefixes_to_clear = [
+            "screener_covered_calls",
+            "pmcc_screener",
+            "dashboard_opportunities",
+            "dashboard_pmcc"
+        ]
+        total_cleared = 0
+        for prefix in prefixes_to_clear:
+            count = await funcs['clear_cache'](prefix)
+            total_cleared += count
+        
+        logging.info(f"Cache cleared by user {user.get('email')}: {total_cleared} entries")
+        return {"message": f"Cache cleared successfully", "entries_cleared": total_cleared}
+    except Exception as e:
+        logging.error(f"Error clearing cache: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to clear cache: {str(e)}")
+
+
+@screener_router.post("/filters")
+async def save_filter(filter_data: ScreenerFilterCreate, user: dict = Depends(get_current_user)):
+    """Save a screener filter preset"""
+    import uuid
+    
+    filter_doc = {
+        "id": str(uuid.uuid4()),
+        "user_id": user["id"],
+        "name": filter_data.name,
+        "filters": filter_data.filters,
+        "created_at": datetime.now(timezone.utc).isoformat()
+    }
+    await db.screener_filters.insert_one(filter_doc)
+    return {"id": filter_doc["id"], "message": "Filter saved successfully"}
+
+
+@screener_router.delete("/filters/{filter_id}")
+async def delete_filter(filter_id: str, user: dict = Depends(get_current_user)):
+    """Delete a saved filter"""
+    result = await db.screener_filters.delete_one({"id": filter_id, "user_id": user["id"]})
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Filter not found")
+    return {"message": "Filter deleted"}
