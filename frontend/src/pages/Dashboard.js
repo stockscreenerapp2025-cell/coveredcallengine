@@ -166,6 +166,19 @@ const Dashboard = () => {
     .sort((a, b) => b.pnl - a.pnl)
     .slice(0, 12);
 
+  // Prepare performance data for bar chart - open positions by unrealized P/L or ROI
+  const openPositions = openTrades
+    .filter(t => t.unrealized_pnl !== null && t.unrealized_pnl !== undefined || t.roi !== null && t.roi !== undefined)
+    .map(t => ({
+      symbol: t.symbol,
+      pnl: t.unrealized_pnl || 0,
+      roi: t.roi || 0,
+      current_price: t.current_price || 0,
+      entry_price: t.entry_price || 0
+    }))
+    .sort((a, b) => Math.abs(b.pnl) - Math.abs(a.pnl))
+    .slice(0, 12);
+
   const formatCurrency = (value) => {
     return new Intl.NumberFormat('en-US', {
       style: 'currency',
