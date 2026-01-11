@@ -3109,11 +3109,27 @@ async def add_manual_trade(trade: ManualTradeEntry, user: dict = Depends(get_cur
     # Map strategy types for display
     strategy_map = {
         "covered_call": ("COVERED_CALL", "Covered Call"),
-        "pmcc": ("PMCC", "Poor Man's CC"),
+        "pmcc": ("PMCC", "PMCC"),
         "stock_only": ("STOCK", "Stock Only"),
-        "option_only": ("OPTION", "Option Only")
     }
-    strategy_type, strategy_label = strategy_map.get(trade.trade_type, ("OTHER", "Other"))
+    
+    # For option_only, determine specific strategy based on option_type and option_action
+    if trade.trade_type == "option_only":
+        option_type = (trade.option_type or "call").lower()
+        option_action = (trade.option_action or "buy").lower()
+        
+        if option_action == "sell":
+            if option_type == "call":
+                strategy_type, strategy_label = "NAKED_CALL", "Naked Call"
+            else:
+                strategy_type, strategy_label = "NAKED_PUT", "Naked Put"
+        else:  # buy
+            if option_type == "call":
+                strategy_type, strategy_label = "LONG_CALL", "Long Call"
+            else:
+                strategy_type, strategy_label = "LONG_PUT", "Long Put"
+    else:
+        strategy_type, strategy_label = strategy_map.get(trade.trade_type, ("OTHER", "Other"))
     
     # Create trade document with proper field mapping for frontend
     trade_doc = {
