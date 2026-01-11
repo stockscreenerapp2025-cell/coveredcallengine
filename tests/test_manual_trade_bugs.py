@@ -55,19 +55,27 @@ class TestManualTradeBugFixes:
     
     def test_01_create_manual_covered_call_trade(self, api_client):
         """Create a manual covered call trade with all fields populated"""
+        # Use future dates to avoid validation errors
+        from datetime import datetime, timedelta
+        today = datetime.now()
+        stock_date = today.strftime("%Y-%m-%d")
+        expiry_date = (today + timedelta(days=30)).strftime("%Y-%m-%d")
+        
         trade_data = {
             "symbol": "AAPL",
             "trade_type": "covered_call",
             "stock_quantity": 100,
             "stock_price": 175.50,
-            "stock_date": "2025-01-01",
+            "stock_date": stock_date,
             "strike_price": 180.00,
-            "expiry_date": "2025-01-17",
+            "expiry_date": expiry_date,
             "option_premium": 2.50,
             "option_quantity": 1,
-            "option_date": "2025-01-01",
+            "option_date": stock_date,
             "notes": "Test manual trade for bug verification"
         }
+        
+        self.__class__.expected_expiry = expiry_date
         
         response = api_client.post(f"{BASE_URL}/api/portfolio/manual-trade", json=trade_data)
         
