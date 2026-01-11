@@ -131,20 +131,40 @@ Build a web-based application named "Covered Call Engine" to identify, analyze, 
 ```
 /app/
 ├── backend/
-│   ├── server.py (main API - needs refactoring)
+│   ├── server.py (main API - partially refactored, ~6518 lines)
+│   ├── database.py (MongoDB connection)
 │   ├── requirements.txt
-│   └── .env
+│   ├── .env
+│   ├── routes/
+│   │   ├── auth.py (authentication routes)
+│   │   ├── watchlist.py (watchlist CRUD)
+│   │   ├── news.py (news API)
+│   │   ├── chatbot.py (AI chatbot)
+│   │   ├── ai.py (AI analysis)
+│   │   ├── subscription.py (Stripe subscriptions)
+│   │   └── stocks.py (stock data)
+│   ├── services/
+│   │   ├── cache.py
+│   │   ├── chatbot_service.py
+│   │   └── email_service.py
+│   ├── models/
+│   │   └── schemas.py (Pydantic models)
+│   └── utils/
+│       └── auth.py (JWT utilities)
 ├── frontend/
 │   └── src/
 │       ├── pages/
 │       │   ├── Dashboard.js
 │       │   ├── Screener.js
 │       │   ├── PMCC.js
-│       │   └── Portfolio.js
+│       │   ├── Portfolio.js
+│       │   └── Simulator.js
 │       ├── components/
 │       │   └── StockDetailModal.js
 │       └── lib/
 │           └── api.js
+├── tests/
+│   └── test_refactored_routes.py (32 tests, 100% pass)
 └── memory/
     └── PRD.md
 ```
