@@ -61,6 +61,10 @@ const PMCC = () => {
     
     setSimulateLoading(true);
     try {
+      // PMCC data uses leaps_cost (total cost) - convert to per-share premium for backend
+      // leaps_cost is typically the cost for 1 contract (100 shares)
+      const leapsPremiumPerShare = simulateOpp.leaps_cost ? simulateOpp.leaps_cost / 100 : simulateOpp.leaps_premium;
+      
       const tradeData = {
         symbol: simulateOpp.symbol,
         strategy_type: 'pmcc',
@@ -72,7 +76,7 @@ const PMCC = () => {
         short_call_iv: simulateOpp.short_iv,
         leaps_strike: simulateOpp.leaps_strike,
         leaps_expiry: simulateOpp.leaps_expiry,
-        leaps_premium: simulateOpp.leaps_premium,
+        leaps_premium: leapsPremiumPerShare,
         leaps_delta: simulateOpp.leaps_delta,
         contracts: simulateContracts,
         scan_parameters: {
@@ -80,7 +84,8 @@ const PMCC = () => {
           net_debit: simulateOpp.net_debit,
           max_profit: simulateOpp.max_profit,
           leaps_dte: simulateOpp.leaps_dte,
-          short_dte: simulateOpp.short_dte
+          short_dte: simulateOpp.short_dte,
+          leaps_cost: simulateOpp.leaps_cost
         }
       };
       
