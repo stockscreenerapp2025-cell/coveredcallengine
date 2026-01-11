@@ -121,6 +121,12 @@ const Portfolio = () => {
     leaps_cost: '',
     leaps_quantity: '',
     leaps_date: '',
+    // Collar - protective put fields
+    put_strike: '',
+    put_expiry: '',
+    put_premium: '',
+    put_quantity: '',
+    put_date: '',
     notes: ''
   });
 
