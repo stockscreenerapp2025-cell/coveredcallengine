@@ -47,10 +47,23 @@ import {
   History,
   ShieldCheck,
   AlertTriangle,
-  CheckCircle2
+  CheckCircle2,
+  LineChart,
+  Lightbulb,
+  Save,
+  ExternalLink,
+  Award,
+  TrendingDown
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { PieChart, Pie, Cell, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, Legend } from 'recharts';
+import { PieChart, Pie, Cell, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, Legend, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar } from 'recharts';
+
+const STATUS_COLORS = {
+  'active': 'bg-blue-500/20 text-blue-400 border-blue-500/30',
+  'closed': 'bg-zinc-500/20 text-zinc-400 border-zinc-500/30',
+  'expired': 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30',
+  'assigned': 'bg-amber-500/20 text-amber-400 border-amber-500/30'
+};
 
 const STATUS_COLORS = {
   'active': 'bg-blue-500/20 text-blue-400 border-blue-500/30',
