@@ -92,8 +92,9 @@ class TestManualTradeBugFixes:
         assert trade["status"] == "Open", "Status should be Open"
         
         # BUG FIX VERIFICATION: These fields should now be properly stored
+        expected_expiry = getattr(self.__class__, 'expected_expiry', None)
         assert trade.get("option_strike") == 180.00, f"option_strike should be 180.00, got {trade.get('option_strike')}"
-        assert trade.get("option_expiry") == "2025-01-17", f"option_expiry should be 2025-01-17, got {trade.get('option_expiry')}"
+        assert trade.get("option_expiry") == expected_expiry, f"option_expiry should be {expected_expiry}, got {trade.get('option_expiry')}"
         assert trade.get("contracts") == 1, f"contracts should be 1, got {trade.get('contracts')}"
         assert trade.get("days_in_trade") is not None, f"days_in_trade should be calculated, got {trade.get('days_in_trade')}"
         assert trade.get("total_fees") == 0, f"total_fees should be 0 for manual trades, got {trade.get('total_fees')}"
