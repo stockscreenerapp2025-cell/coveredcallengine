@@ -186,9 +186,31 @@ Build a web-based application named "Covered Call Engine" to identify, analyze, 
 ---
 
 ## Last Updated
-January 12, 2026 - PMCC Screener Enhancement
+January 12, 2026 - Dashboard Top 10 Enhancement
 
 ## Recent Changes
+
+### Dashboard Top 10 Covered Calls Enhancement (Jan 12, 2026) ✅
+**Issues Fixed:**
+1. Strike column was showing full option contract format instead of just strike price
+2. IV, 6M, 12M columns were showing "%" with no values
+3. Only Monthly opportunities were displayed
+
+**Changes Made:**
+- **Backend (`screener.py`):**
+  - Updated `/dashboard-opportunities` to return Top 5 Weekly + Top 5 Monthly (was only Monthly before)
+  - Added `min_dte=1` query for Weekly options (1-7 DTE) and `min_dte=8` for Monthly (8-45 DTE)
+  - Added proper IV data extraction from Yahoo Finance options data
+  - Added `expiry_type`, `moneyness`, `strike_pct` fields to response
+  - Changed cache key to `dashboard_opportunities_v3`
+  
+- **Frontend (`Dashboard.js`):**
+  - Updated subtitle to "Top 5 Weekly + Top 5 Monthly"
+  - Strike column now shows just "$XX" with ATM/OTM badge (not full option contract)
+  - Removed 6M/12M trend columns (requires separate historical data API)
+  - Fixed IV display to show actual percentage values
+
+**Result:** Dashboard now displays 5 Weekly + 5 Monthly opportunities with proper IV values (40-70%) and clean Strike prices.
 
 ### PMCC Screener Enhancement (Jan 12, 2026) ✅
 **Issue 1:** PMCC screener was returning 0 results due to LEAPS detection bug.
