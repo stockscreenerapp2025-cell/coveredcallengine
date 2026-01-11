@@ -64,7 +64,6 @@ from routes.portfolio import portfolio_router
 
 # Create routers (still in server.py - to be refactored)
 api_router = APIRouter(prefix="/api")
-portfolio_router = APIRouter(prefix="/portfolio", tags=["Portfolio"])
 screener_router = APIRouter(prefix="/screener", tags=["Screener"])
 simulator_router = APIRouter(prefix="/simulator", tags=["Simulator"])
 
