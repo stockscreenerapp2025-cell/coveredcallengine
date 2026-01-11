@@ -1,10 +1,18 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { stocksApi, newsApi, screenerApi, portfolioApi } from '../lib/api';
+import { stocksApi, newsApi, screenerApi, portfolioApi, simulatorApi } from '../lib/api';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Skeleton } from '../components/ui/skeleton';
 import { Badge } from '../components/ui/badge';
+import { Input } from '../components/ui/input';
+import { Label } from '../components/ui/label';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '../components/ui/dialog';
 import {
   TrendingUp,
   TrendingDown,
@@ -22,7 +30,8 @@ import {
   PieChart,
   Clock,
   Moon,
-  Sun
+  Sun,
+  Play
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart as RechartsPie, Pie, Cell, Legend, BarChart, Bar, CartesianGrid } from 'recharts';
