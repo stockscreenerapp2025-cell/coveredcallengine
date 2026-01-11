@@ -623,8 +623,23 @@ async def get_dashboard_pmcc(user: dict = Depends(get_current_user)):
         cached_data["from_cache"] = True
         return cached_data
     
-    # Call the main PMCC screener with default params
-    result = await screen_pmcc(user=user)
+    # Call the main PMCC screener with explicit default values
+    result = await screen_pmcc(
+        min_price=20,
+        max_price=150,
+        min_leaps_dte=180,
+        max_leaps_dte=730,
+        min_short_dte=14,
+        max_short_dte=60,
+        min_leaps_delta=0.70,
+        max_leaps_delta=0.90,
+        min_short_delta=0.15,
+        max_short_delta=0.35,
+        min_roi=2.0,
+        min_annualized_roi=20.0,
+        bypass_cache=True,  # We're already caching at this level
+        user=user
+    )
     
     if result.get("opportunities"):
         # Limit to top 10 for dashboard
