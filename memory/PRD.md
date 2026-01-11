@@ -186,18 +186,24 @@ Build a web-based application named "Covered Call Engine" to identify, analyze, 
 ---
 
 ## Last Updated
-January 12, 2026 - PMCC Screener Bug Fix
+January 12, 2026 - PMCC Screener Enhancement
 
 ## Recent Changes
 
-### PMCC Screener Fix (Jan 12, 2026) ✅
-**Issue:** PMCC screener was returning 0 results despite valid options data being available.
+### PMCC Screener Enhancement (Jan 12, 2026) ✅
+**Issue 1:** PMCC screener was returning 0 results due to LEAPS detection bug.
+**Fix 1:** Changed LEAPS detection threshold from `min_dte >= 300` to `min_dte >= 150` in `server.py` line 633.
 
-**Root Cause:** In `fetch_options_chain_yahoo()` function in `server.py`, the LEAPS detection logic used `min_dte >= 300` to identify long-dated options. However, the PMCC screener passed `min_dte=180` for LEAPS, causing the filter to treat them as short-term calls. This incorrectly filtered out all deep ITM options (strikes below 95% of current price) that are essential for PMCC strategies.
+**Issue 2:** After fix, PMCC screener only returned 3-4 results (one per symbol).
+**Root Cause:** The screener only generated 1 PMCC opportunity per symbol by selecting the single "best" LEAPS and "best" short call.
 
-**Fix:** Changed LEAPS detection threshold from `min_dte >= 300` to `min_dte >= 150` in `server.py` line 633. This aligns with the standard definition of LEAPS as options with 150+ days to expiration.
+**Fix 2 (screener.py):**
+- Expanded symbol list from 22 to 47 stocks across Tech, Financials, Consumer, Healthcare, Energy, Fintech, Airlines, and High-Volatility sectors
+- Changed logic to generate **multiple combinations per symbol** (up to 3 LEAPS × 3 short calls = 9 combos per symbol)
+- Improved scoring algorithm to account for capital efficiency
+- Capped results at top 100 opportunities
 
-**Result:** PMCC screener now returns valid opportunities (e.g., INTC, SOFI, DAL with 6-7% ROI per cycle, 100%+ annualized ROI).
+**Result:** PMCC screener now returns **100 opportunities** with ROIs ranging from 7% to 14% per cycle and 100%+ annualized returns.
 
 ### Server.py Refactoring - Phase 4 Complete (Jan 11, 2026) ✅
 **Goal:** Build scalable architecture for 1000+ concurrent users
