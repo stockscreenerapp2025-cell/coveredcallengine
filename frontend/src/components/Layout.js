@@ -36,6 +36,7 @@ const Layout = ({ children }) => {
     { path: '/screener', icon: <Search className="w-5 h-5" />, label: 'Screener' },
     { path: '/pmcc', icon: <LineChart className="w-5 h-5" />, label: 'PMCC' },
     { path: '/portfolio', icon: <Wallet className="w-5 h-5" />, label: 'Portfolio' },
+    { path: '/simulator', icon: <Play className="w-5 h-5" />, label: 'Simulator' },
     { path: '/watchlist', icon: <BookmarkPlus className="w-5 h-5" />, label: 'Watchlist' },
   ];
 
