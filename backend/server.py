@@ -65,7 +65,6 @@ from routes.screener import screener_router
 
 # Create routers (still in server.py - to be refactored)
 api_router = APIRouter(prefix="/api")
-screener_router = APIRouter(prefix="/screener", tags=["Screener"])
 simulator_router = APIRouter(prefix="/simulator", tags=["Simulator"])
 
 # ==================== CACHE HELPERS ====================
