@@ -64,6 +64,7 @@ class WatchlistItem(BaseModel):
 
 class WatchlistItemCreate(BaseModel):
     symbol: str
+    target_price: Optional[float] = None
     notes: Optional[str] = None
 
 
