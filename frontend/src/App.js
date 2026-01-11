@@ -94,6 +94,13 @@ function App() {
               </Layout>
             </ProtectedRoute>
           } />
+          <Route path="/simulator" element={
+            <ProtectedRoute>
+              <Layout>
+                <Simulator />
+              </Layout>
+            </ProtectedRoute>
+          } />
           <Route path="/watchlist" element={
             <ProtectedRoute>
               <Layout>
