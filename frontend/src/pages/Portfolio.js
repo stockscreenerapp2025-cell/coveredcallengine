@@ -1369,7 +1369,7 @@ const Portfolio = () => {
                       className="bg-zinc-800 border-zinc-700"
                       min="1"
                     />
-                    {manualTrade.trade_type === 'covered_call' && manualTrade.stock_quantity && (
+                    {(manualTrade.trade_type === 'covered_call' || manualTrade.trade_type === 'collar') && manualTrade.stock_quantity && (
                       <p className="text-xs text-zinc-500">
                         = {Math.floor(parseInt(manualTrade.stock_quantity) / 100)} contracts
                       </p>
@@ -1394,7 +1394,11 @@ const Portfolio = () => {
                       value={manualTrade.stock_date}
                       onChange={(e) => setManualTrade(prev => ({ ...prev, stock_date: e.target.value }))}
                       className="bg-zinc-800 border-zinc-700"
+                      max={new Date().toISOString().split('T')[0]}
                     />
+                    {manualTrade.stock_date && manualTrade.stock_date > new Date().toISOString().split('T')[0] && (
+                      <p className="text-xs text-red-400">Purchase date cannot be in the future</p>
+                    )}
                   </div>
                 </div>
               </div>
