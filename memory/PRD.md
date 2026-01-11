@@ -176,15 +176,15 @@ Build a web-based application named "Covered Call Engine" to identify, analyze, 
 ---
 
 ## Last Updated
-January 11, 2026 - Server Refactoring Phase 2 Complete (Scalability Focus)
+January 11, 2026 - Server Refactoring Phase 3 Complete (Scalability Focus)
 
 ## Recent Changes (Jan 11, 2026)
-### Server.py Refactoring - Phase 2 Complete ✅
+### Server.py Refactoring - Phase 3 Complete ✅
 **Goal:** Build scalable architecture for 1000+ concurrent users
 
 **Results:**
-- **Line count reduced:** 7333 → 5582 lines (24% reduction, 1751 lines extracted)
-- **10 routers extracted to /app/backend/routes/:**
+- **Line count reduced:** 7333 → 4504 lines (38.6% reduction, 2829 lines extracted)
+- **11 routers extracted to /app/backend/routes/:**
   1. `auth.py` (101 lines) - Login, register, /me endpoints
   2. `watchlist.py` (64 lines) - Watchlist CRUD operations
   3. `news.py` (221 lines) - MarketAux news with rate limiting
@@ -194,18 +194,20 @@ January 11, 2026 - Server Refactoring Phase 2 Complete (Scalability Focus)
   7. `stocks.py` (297 lines) - Stock quotes, indices, details, historical
   8. `options.py` (171 lines) - Options chain, expirations
   9. `admin.py` (874 lines) - Full admin panel with user management, email automation
+  10. `portfolio.py` (887 lines) - Portfolio management, IBKR import, manual trades
 
 **Scalability Improvements:**
 - Proper async/await patterns throughout
 - Efficient database queries with projections (exclude _id, sensitive fields)
-- Pagination on all list endpoints (admin/users, audit-logs, etc.)
+- Pagination on all list endpoints (admin/users, audit-logs, trades, etc.)
 - Connection pooling for HTTP requests (httpx.Timeout config)
 - Lazy imports to avoid circular dependencies
 - Stateless API design
+- Normalized field handling for frontend compatibility
 
-**Remaining routers in server.py (Phase 3):**
-- `screener_router` (~1150 lines) - Complex business logic
-- `portfolio_router` (~1000 lines) - IBKR parser, trade management
-- `simulator_router` (~2000+ lines) - Rule engine, analytics
+**Remaining in server.py (Phase 4):**
+- `screener_router` (~1200 lines) - Complex business logic with caching
+- `simulator_router` (~1900 lines) - Rule engine, analytics, scheduler
+- Core infrastructure: Cache helpers, models, auth utilities
 
-**Testing:** All 7 core API groups verified working (Auth, Stocks, Options, Screener, Portfolio, Admin, Simulator)
+**Testing:** All 10 API groups verified working (Auth, Stocks, Options, Screener, Portfolio, Admin, Simulator, News, Watchlist, Subscription)
