@@ -1,11 +1,17 @@
 import { useState, useEffect } from 'react';
-import { screenerApi } from '../lib/api';
+import { screenerApi, simulatorApi } from '../lib/api';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { Badge } from '../components/ui/badge';
 import { Skeleton } from '../components/ui/skeleton';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '../components/ui/dialog';
 import {
   Accordion,
   AccordionContent,
@@ -26,7 +32,8 @@ import {
   Activity,
   Target,
   ChevronDown,
-  ChevronUp
+  ChevronUp,
+  Play
 } from 'lucide-react';
 import { toast } from 'sonner';
 import StockDetailModal from '../components/StockDetailModal';
