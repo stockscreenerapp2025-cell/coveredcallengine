@@ -68,6 +68,15 @@ Build a web-based application named "Covered Call Engine" to identify, analyze, 
 - [x] News API Integration with rate limiting
 - [x] ETF data via Yahoo Finance fallback
 - [x] AI Chatbot on homepage
+- [x] Trade Simulator Phase 1 - Core MVP (Jan 2026)
+- [x] Trade Simulator Phase 2 - Automation & Greeks (Jan 2026)
+- [x] Trade Simulator Phase 3 - Rule-based Trade Management (Jan 11, 2026)
+  - Rule engine with conditions (premium_capture_pct, delta, loss_pct, dte_remaining, etc.)
+  - 7 pre-built rule templates (Roll at 80% Premium, Delta Threshold, Stop Loss, etc.)
+  - Rule actions: roll (with new_dte/strike_adjustment), close, alert
+  - Action logs with timestamps for all rule-driven actions
+  - PMCC Income Tracker (cumulative income vs LEAPS decay)
+  - Automated rule evaluation in daily scheduler
 
 ### 🔄 In Progress
 - [ ] Watchlist Functionality (P1)
@@ -78,6 +87,7 @@ Build a web-based application named "Covered Call Engine" to identify, analyze, 
 - [ ] IBKR CSV Parser Validation - Waiting for user's second account CSV
 
 ### 📋 Backlog
+- [ ] Trade Simulator Phase 4 - Analytics feedback loop (P2)
 - [ ] Admin Panel - Support Ticket System (P2)
 - [ ] Admin Panel - Content Manager (P2)
 - [ ] Admin Panel - Roles & Permissions (P3)
