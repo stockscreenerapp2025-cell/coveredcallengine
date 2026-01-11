@@ -3275,25 +3275,33 @@ async def add_manual_trade(trade: ManualTradeEntry, user: dict = Depends(get_cur
         "leaps_quantity": trade.leaps_quantity,
         "leaps_date": trade.leaps_date,
         
+        # Protective Put details (for Collar)
+        "put_strike": trade.put_strike,
+        "put_expiry": trade.put_expiry,
+        "put_premium": trade.put_premium,
+        "put_quantity": trade.put_quantity,
+        "put_date": trade.put_date,
+        
         # Calculated fields for display (matching frontend expectations)
         # For stocks: shares = stock_quantity (user enters actual shares)
         # For options: shares = option_quantity * 100 (contracts to shares)
         "shares": trade.stock_quantity if trade.stock_quantity else (trade.option_quantity * 100 if trade.option_quantity else None),
         "entry_price": trade.stock_price or trade.leaps_cost,
         "premium_received": trade.option_premium,
+        "put_cost": put_cost,  # For collar - cost of protective put
         "break_even": break_even,
         "dte": dte,
         
-        # P/L fields
-        "cost_basis": cost_basis,
+        # P/L fields - For collar, net premium = call premium - put cost
+        "cost_basis": cost_basis + put_cost if trade.trade_type == "collar" else cost_basis,
         "premium_collected": premium_collected,
         "realized_pnl": realized_pnl,
         "unrealized_pnl": unrealized_pnl,
-        "roi": (premium_collected / cost_basis * 100) if cost_basis > 0 else 0,
+        "roi": ((premium_collected - put_cost) / cost_basis * 100) if cost_basis > 0 and trade.trade_type == "collar" else ((premium_collected / cost_basis * 100) if cost_basis > 0 else 0),
         
         # Metadata
         "notes": trade.notes,
-        "date_opened": trade.stock_date or trade.option_date or trade.leaps_date or now.isoformat(),
+        "date_opened": trade.stock_date or trade.option_date or trade.leaps_date or trade.put_date or now.isoformat(),
         "created_at": now.isoformat(),
         "updated_at": now.isoformat(),
     }
