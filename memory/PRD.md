@@ -137,12 +137,30 @@ Build a web-based application named "Covered Call Engine" to identify, analyze, 
 ---
 
 ## Last Updated
-January 11, 2026 - Fixed Manual Trade Detail Popup and Dashboard Bar Chart bugs
+January 11, 2026 - Trade Simulator Phase 1 MVP Complete
 
 ## Recent Changes (Jan 11, 2026)
-- Fixed trade detail popup not showing: Days in Trade, Contracts, Option Strike, Option Expiry, IBKR Fees
-- Fixed Dashboard bar chart not populating for manual trades
-- Backend: Updated field names to match frontend expectations (option_strike, option_expiry, contracts, days_in_trade, total_fees, account)
-- Backend: Added field normalization to handle old data with different field names
-- Frontend: Dashboard now shows "Open Positions - Unrealized P/L" bar chart when no closed positions exist
-- Testing: All 7 tests passing (100% success rate)
+### Trade Simulator (NEW Feature)
+- Added "Simulator" page to sidebar navigation (under Portfolio)
+- Added "SIMULATE" button on Screener page results table
+- Added "SIMULATE" button on PMCC page results table
+- Created Simulator dashboard with:
+  - Summary cards: Total P/L, Win Rate, Active Trades, Capital Deployed, Avg Return, Assignment Rate
+  - Strategy Distribution pie chart
+  - P/L by Strategy bar chart
+  - Trades table with status/strategy filters
+  - Trade detail dialog
+- Backend endpoints:
+  - POST /api/simulator/trade - Add trade from screener
+  - GET /api/simulator/trades - List trades with pagination/filters
+  - GET /api/simulator/summary - Portfolio-level metrics
+  - POST /api/simulator/update-prices - EOD price updates
+  - DELETE /api/simulator/trades/{id} - Delete trade
+  - POST /api/simulator/trades/{id}/close - Close trade manually
+- Features:
+  - Immutable entry snapshot (no repainting)
+  - Position sizing (editable contracts)
+  - Expiry handling (ITM=assigned, OTM=expired)
+  - Daily price updates via Yahoo Finance
+  - Capital tracking per trade and portfolio-level
+- Testing: 12/12 backend+frontend tests passing (100% success rate)
