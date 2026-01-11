@@ -3053,6 +3053,43 @@ class ManualTradeEntry(BaseModel):
 @portfolio_router.post("/manual-trade")
 async def add_manual_trade(trade: ManualTradeEntry, user: dict = Depends(get_current_user)):
     """Add a manually entered trade"""
+    
+    # Backend validation for required fields based on trade type
+    if not trade.symbol or trade.symbol.strip() == "":
+        raise HTTPException(status_code=400, detail="Symbol is required")
+    
+    if trade.trade_type == "covered_call":
+        if not trade.stock_quantity or not trade.stock_price:
+            raise HTTPException(status_code=400, detail="Stock quantity and price are required for covered calls")
+        if not trade.strike_price or not trade.option_premium:
+            raise HTTPException(status_code=400, detail="Strike price and premium are required for covered calls")
+        if not trade.expiry_date:
+            raise HTTPException(status_code=400, detail="Expiry date is required for covered calls")
+    
+    elif trade.trade_type == "pmcc":
+        if not trade.leaps_cost or not trade.leaps_strike:
+            raise HTTPException(status_code=400, detail="LEAPS cost and strike are required for PMCC")
+        if not trade.leaps_expiry:
+            raise HTTPException(status_code=400, detail="LEAPS expiry date is required for PMCC")
+        if not trade.strike_price or not trade.option_premium:
+            raise HTTPException(status_code=400, detail="Short call strike and premium are required for PMCC")
+        if not trade.expiry_date:
+            raise HTTPException(status_code=400, detail="Short call expiry date is required for PMCC")
+    
+    elif trade.trade_type == "stock_only":
+        if not trade.stock_quantity or not trade.stock_price:
+            raise HTTPException(status_code=400, detail="Stock quantity and price are required")
+    
+    elif trade.trade_type == "option_only":
+        if not trade.strike_price:
+            raise HTTPException(status_code=400, detail="Strike price is required")
+        if not trade.option_premium:
+            raise HTTPException(status_code=400, detail="Premium is required")
+        if not trade.expiry_date:
+            raise HTTPException(status_code=400, detail="Expiry date is required")
+        if not trade.option_quantity or trade.option_quantity < 1:
+            raise HTTPException(status_code=400, detail="Number of contracts is required")
+    
     trade_id = str(uuid.uuid4())
     now = datetime.now(timezone.utc)
     
