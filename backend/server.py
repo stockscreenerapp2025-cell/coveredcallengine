@@ -5295,6 +5295,45 @@ async def scheduled_price_update():
         
         logging.info(f"Scheduled update complete: {updated_count} updated, {expired_count} expired, {assigned_count} assigned")
         
+        # PHASE 3: After price updates, evaluate rules for all still-active trades
+        logging.info("Evaluating trade management rules...")
+        try:
+            # Get unique user IDs from active trades
+            user_ids = list(set(t["user_id"] for t in active_trades if t.get("status") == "active" or t["id"] not in [at["id"] for at in active_trades if update_doc.get("status") in ["expired", "assigned"]]))
+            
+            rules_triggered = 0
+            for user_id in user_ids:
+                # Get user's enabled rules
+                user_rules = await db.simulator_rules.find(
+                    {"user_id": user_id, "is_enabled": True},
+                    {"_id": 0}
+                ).to_list(100)
+                
+                if not user_rules:
+                    continue
+                
+                # Get user's still-active trades (need to re-fetch after updates)
+                user_active_trades = await db.simulator_trades.find(
+                    {"user_id": user_id, "status": "active"},
+                    {"_id": 0}
+                ).to_list(1000)
+                
+                for trade in user_active_trades:
+                    results = await evaluate_and_execute_rules(trade, user_rules, db)
+                    for result in results:
+                        if result.get("success"):
+                            rules_triggered += 1
+                            # Update rule trigger count
+                            await db.simulator_rules.update_one(
+                                {"id": result["rule_id"]},
+                                {"$inc": {"times_triggered": 1}}
+                            )
+            
+            logging.info(f"Rule evaluation complete: {rules_triggered} rules triggered")
+            
+        except Exception as rule_error:
+            logging.error(f"Error evaluating rules: {rule_error}")
+        
     except Exception as e:
         logging.error(f"Error in scheduled price update: {e}")
 
