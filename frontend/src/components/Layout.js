@@ -13,7 +13,8 @@ import {
   LogOut,
   Menu,
   X,
-  ChevronDown
+  ChevronDown,
+  Play
 } from 'lucide-react';
 import {
   DropdownMenu,
