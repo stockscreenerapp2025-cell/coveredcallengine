@@ -3197,7 +3197,7 @@ async def add_manual_trade(trade: ManualTradeEntry, user: dict = Depends(get_cur
     
     # Calculate DTE (days to expiration)
     dte = None
-    expiry_date_str = trade.expiry_date or trade.leaps_expiry
+    expiry_date_str = trade.expiry_date or trade.leaps_expiry or trade.put_expiry
     if expiry_date_str:
         try:
             expiry_dt = datetime.strptime(expiry_date_str, "%Y-%m-%d")
@@ -3211,12 +3211,16 @@ async def add_manual_trade(trade: ManualTradeEntry, user: dict = Depends(get_cur
     break_even = None
     if trade.trade_type == "covered_call" and trade.stock_price and trade.option_premium:
         break_even = trade.stock_price - trade.option_premium
+    elif trade.trade_type == "collar" and trade.stock_price and trade.option_premium and trade.put_premium:
+        # Collar break-even: stock price - call premium received + put premium paid
+        break_even = trade.stock_price - trade.option_premium + trade.put_premium
     elif trade.trade_type == "pmcc" and trade.leaps_cost and trade.leaps_strike and trade.option_premium:
         break_even = trade.leaps_strike + trade.leaps_cost - trade.option_premium
     
     # Map strategy types for display
     strategy_map = {
         "covered_call": ("COVERED_CALL", "Covered Call"),
+        "collar": ("COLLAR", "Collar"),
         "pmcc": ("PMCC", "PMCC"),
         "stock_only": ("STOCK", "Stock Only"),
     }
