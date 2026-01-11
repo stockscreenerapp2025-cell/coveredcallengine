@@ -131,22 +131,26 @@ Build a web-based application named "Covered Call Engine" to identify, analyze, 
 ```
 /app/
 ├── backend/
-│   ├── server.py (main API - partially refactored, ~6518 lines)
-│   ├── database.py (MongoDB connection)
+│   ├── server.py (main API - ~5582 lines, screener/portfolio/simulator)
+│   ├── database.py (MongoDB connection with pooling)
 │   ├── requirements.txt
 │   ├── .env
-│   ├── routes/
-│   │   ├── auth.py (authentication routes)
-│   │   ├── watchlist.py (watchlist CRUD)
-│   │   ├── news.py (news API)
-│   │   ├── chatbot.py (AI chatbot)
-│   │   ├── ai.py (AI analysis)
-│   │   ├── subscription.py (Stripe subscriptions)
-│   │   └── stocks.py (stock data)
+│   ├── routes/                    # Refactored modular routes
+│   │   ├── __init__.py
+│   │   ├── auth.py               (101 lines)
+│   │   ├── watchlist.py          (64 lines)
+│   │   ├── news.py               (221 lines)
+│   │   ├── chatbot.py            (64 lines)
+│   │   ├── ai.py                 (134 lines)
+│   │   ├── subscription.py       (144 lines)
+│   │   ├── stocks.py             (297 lines)
+│   │   ├── options.py            (171 lines)
+│   │   └── admin.py              (874 lines)
 │   ├── services/
 │   │   ├── cache.py
 │   │   ├── chatbot_service.py
-│   │   └── email_service.py
+│   │   ├── email_service.py
+│   │   └── email_automation.py
 │   ├── models/
 │   │   └── schemas.py (Pydantic models)
 │   └── utils/
@@ -158,13 +162,13 @@ Build a web-based application named "Covered Call Engine" to identify, analyze, 
 │       │   ├── Screener.js
 │       │   ├── PMCC.js
 │       │   ├── Portfolio.js
-│       │   └── Simulator.js
+│       │   └── Simulator.js (5 tabs: Active, Closed, Rules, Logs, Analytics)
 │       ├── components/
 │       │   └── StockDetailModal.js
 │       └── lib/
 │           └── api.js
 ├── tests/
-│   └── test_refactored_routes.py (32 tests, 100% pass)
+│   └── test_refactored_routes.py
 └── memory/
     └── PRD.md
 ```
