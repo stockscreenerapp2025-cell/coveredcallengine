@@ -424,6 +424,45 @@ const Dashboard = () => {
                           </div>
                         </div>
                       )}
+
+                      {/* Open Positions P/L Bar Chart - shows when no closed positions but has open positions */}
+                      {closedPositions.length === 0 && openPositions.length > 0 && (
+                        <div className="bg-zinc-800/30 rounded-lg p-4">
+                          <h5 className="text-xs text-zinc-400 mb-3">Open Positions - Unrealized P/L</h5>
+                          <div className="h-56">
+                            <ResponsiveContainer width="100%" height="100%">
+                              <BarChart data={openPositions} layout="vertical" margin={{ left: 5, right: 10, top: 5, bottom: 5 }} barSize={12}>
+                                <CartesianGrid strokeDasharray="3 3" stroke="#333" horizontal={false} />
+                                <XAxis type="number" tickFormatter={(v) => v >= 1000 || v <= -1000 ? `$${(v/1000).toFixed(1)}k` : `$${v.toFixed(0)}`} stroke="#666" fontSize={9} />
+                                <YAxis type="category" dataKey="symbol" stroke="#999" fontSize={10} width={40} interval={0} />
+                                <Tooltip 
+                                  contentStyle={{ background: '#18181b', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px' }}
+                                  formatter={(value, name, props) => [
+                                    <span style={{ color: value >= 0 ? '#10b981' : '#ef4444' }}>{formatCurrency(value)}</span>,
+                                    <span style={{ color: '#a1a1aa' }}>Unrealized P/L</span>
+                                  ]}
+                                  labelFormatter={(label) => <span style={{ color: '#fff' }}>{label}</span>}
+                                />
+                                <Bar dataKey="pnl" radius={[0, 3, 3, 0]} name="P/L">
+                                  {openPositions.map((entry, index) => (
+                                    <Cell key={`cell-${index}`} fill={entry.pnl >= 0 ? '#10b981' : '#ef4444'} />
+                                  ))}
+                                </Bar>
+                              </BarChart>
+                            </ResponsiveContainer>
+                          </div>
+                          <div className="flex justify-center gap-4 mt-2 text-xs">
+                            <div className="flex items-center gap-1.5">
+                              <div className="w-2.5 h-2.5 rounded-full bg-emerald-500"></div>
+                              <span className="text-zinc-400">Gain</span>
+                            </div>
+                            <div className="flex items-center gap-1.5">
+                              <div className="w-2.5 h-2.5 rounded-full bg-red-500"></div>
+                              <span className="text-zinc-400">Loss</span>
+                            </div>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   </div>
                 )}
