@@ -422,7 +422,6 @@ async def get_marketaux_client():
         return settings.marketaux_api_token
     return None
 
-import asyncio
 
 async def fetch_options_chain_polygon(symbol: str, api_key: str, contract_type: str = "call", max_dte: int = 45, min_dte: int = 1, current_price: float = 0) -> list:
     """
