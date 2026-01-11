@@ -88,8 +88,9 @@ async def login(credentials: UserLogin):
 async def get_me(user: dict = Depends(get_current_user)):
     """Get current user info"""
     created_at = user.get("created_at")
-    if isinstance(created_at, str):
-        created_at = datetime.fromisoformat(created_at)
+    # Ensure created_at is a string
+    if isinstance(created_at, datetime):
+        created_at = created_at.isoformat()
     
     return UserResponse(
         id=user["id"],
