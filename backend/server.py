@@ -3340,40 +3340,131 @@ async def update_manual_trade(trade_id: str, trade: ManualTradeEntry, user: dict
     # Recalculate values
     cost_basis = 0
     premium_collected = 0
+    put_cost = 0
     
     if trade.trade_type == "covered_call":
         if trade.stock_quantity and trade.stock_price:
-            cost_basis = trade.stock_quantity * trade.stock_price * 100
+            cost_basis = trade.stock_quantity * trade.stock_price
         if trade.option_premium and trade.option_quantity:
             premium_collected = trade.option_premium * trade.option_quantity * 100
+    elif trade.trade_type == "collar":
+        if trade.stock_quantity and trade.stock_price:
+            cost_basis = trade.stock_quantity * trade.stock_price
+        if trade.option_premium and trade.option_quantity:
+            premium_collected = trade.option_premium * trade.option_quantity * 100
+        if trade.put_premium and trade.put_quantity:
+            put_cost = trade.put_premium * trade.put_quantity * 100
     elif trade.trade_type == "pmcc":
         if trade.leaps_cost and trade.leaps_quantity:
             cost_basis = trade.leaps_cost * trade.leaps_quantity * 100
         if trade.option_premium and trade.option_quantity:
             premium_collected = trade.option_premium * trade.option_quantity * 100
+    elif trade.trade_type == "stock_only":
+        if trade.stock_quantity and trade.stock_price:
+            cost_basis = trade.stock_quantity * trade.stock_price
+    elif trade.trade_type == "option_only":
+        if trade.option_premium and trade.option_quantity:
+            if trade.option_action == "buy":
+                cost_basis = trade.option_premium * trade.option_quantity * 100
+            else:
+                premium_collected = trade.option_premium * trade.option_quantity * 100
+    
+    # Calculate DTE
+    dte = None
+    expiry_date_str = trade.expiry_date or trade.leaps_expiry or trade.put_expiry
+    if expiry_date_str:
+        try:
+            expiry_dt = datetime.strptime(expiry_date_str, "%Y-%m-%d")
+            dte = (expiry_dt - datetime.now()).days
+            if dte < 0:
+                dte = 0
+        except:
+            pass
+    
+    # Calculate days in trade
+    days_in_trade = None
+    open_date = trade.stock_date or trade.option_date or trade.leaps_date or trade.put_date
+    if open_date:
+        try:
+            open_dt = datetime.strptime(open_date, "%Y-%m-%d")
+            days_in_trade = (datetime.now() - open_dt).days
+            if days_in_trade < 0:
+                days_in_trade = 0
+        except:
+            pass
+    
+    # Calculate break-even
+    break_even = None
+    if trade.trade_type == "covered_call" and trade.stock_price and trade.option_premium:
+        break_even = trade.stock_price - trade.option_premium
+    elif trade.trade_type == "collar" and trade.stock_price and trade.option_premium and trade.put_premium:
+        break_even = trade.stock_price - trade.option_premium + trade.put_premium
+    elif trade.trade_type == "pmcc" and trade.leaps_cost and trade.leaps_strike and trade.option_premium:
+        break_even = trade.leaps_strike + trade.leaps_cost - trade.option_premium
+    
+    # Map strategy types
+    strategy_map = {
+        "covered_call": ("COVERED_CALL", "Covered Call"),
+        "collar": ("COLLAR", "Collar"),
+        "pmcc": ("PMCC", "PMCC"),
+        "stock_only": ("STOCK", "Stock Only"),
+    }
+    
+    if trade.trade_type == "option_only":
+        option_type = (trade.option_type or "call").lower()
+        option_action = (trade.option_action or "buy").lower()
+        if option_action == "sell":
+            if option_type == "call":
+                strategy_type, strategy_label = "NAKED_CALL", "Naked Call"
+            else:
+                strategy_type, strategy_label = "NAKED_PUT", "Naked Put"
+        else:
+            if option_type == "call":
+                strategy_type, strategy_label = "LONG_CALL", "Long Call"
+            else:
+                strategy_type, strategy_label = "LONG_PUT", "Long Put"
+    else:
+        strategy_type, strategy_label = strategy_map.get(trade.trade_type, ("OTHER", "Other"))
     
     update_doc = {
         "symbol": trade.symbol.upper(),
         "strategy": trade.trade_type.replace("_", " ").title(),
+        "strategy_type": strategy_type,
+        "strategy_label": strategy_label,
         "stock_quantity": trade.stock_quantity,
         "stock_price": trade.stock_price,
         "stock_date": trade.stock_date,
         "option_type": trade.option_type,
         "option_action": trade.option_action,
-        "strike": trade.strike_price,
-        "expiry": trade.expiry_date,
+        "option_strike": trade.strike_price,  # Frontend expects option_strike
+        "option_expiry": trade.expiry_date,   # Frontend expects option_expiry
         "premium": trade.option_premium,
         "option_quantity": trade.option_quantity,
+        "contracts": trade.option_quantity,  # Frontend expects contracts field
         "option_date": trade.option_date,
         "leaps_strike": trade.leaps_strike,
         "leaps_expiry": trade.leaps_expiry,
         "leaps_cost": trade.leaps_cost,
         "leaps_quantity": trade.leaps_quantity,
         "leaps_date": trade.leaps_date,
-        "cost_basis": cost_basis,
+        "protective_put_strike": trade.put_strike,
+        "protective_put_expiry": trade.put_expiry,
+        "protective_put_premium": trade.put_premium,
+        "put_quantity": trade.put_quantity,
+        "put_date": trade.put_date,
+        "shares": trade.stock_quantity if trade.stock_quantity else (trade.option_quantity * 100 if trade.option_quantity else None),
+        "entry_price": trade.stock_price or trade.leaps_cost,
+        "premium_received": trade.option_premium,
+        "break_even": break_even,
+        "dte": dte,
+        "days_in_trade": days_in_trade,
+        "total_fees": 0,
+        "cost_basis": cost_basis + put_cost if trade.trade_type == "collar" else cost_basis,
         "premium_collected": premium_collected,
-        "roi": (premium_collected / cost_basis * 100) if cost_basis > 0 else 0,
+        "put_cost": put_cost,
+        "roi": ((premium_collected - put_cost) / cost_basis * 100) if cost_basis > 0 and trade.trade_type == "collar" else ((premium_collected / cost_basis * 100) if cost_basis > 0 else 0),
         "notes": trade.notes,
+        "date_opened": trade.stock_date or trade.option_date or trade.leaps_date or trade.put_date or existing.get("date_opened"),
         "updated_at": datetime.now(timezone.utc).isoformat(),
     }
     
