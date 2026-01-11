@@ -65,7 +65,6 @@ options_router = APIRouter(prefix="/options", tags=["Options"])
 portfolio_router = APIRouter(prefix="/portfolio", tags=["Portfolio"])
 screener_router = APIRouter(prefix="/screener", tags=["Screener"])
 admin_router = APIRouter(prefix="/admin", tags=["Admin"])
-subscription_router = APIRouter(prefix="/subscription", tags=["Subscription"])
 simulator_router = APIRouter(prefix="/simulator", tags=["Simulator"])
 
 # ==================== CACHE HELPERS ====================
