@@ -65,13 +65,6 @@ const STATUS_COLORS = {
   'assigned': 'bg-amber-500/20 text-amber-400 border-amber-500/30'
 };
 
-const STATUS_COLORS = {
-  'active': 'bg-blue-500/20 text-blue-400 border-blue-500/30',
-  'closed': 'bg-zinc-500/20 text-zinc-400 border-zinc-500/30',
-  'expired': 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30',
-  'assigned': 'bg-amber-500/20 text-amber-400 border-amber-500/30'
-};
-
 const STRATEGY_COLORS = {
   'covered_call': 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30',
   'pmcc': 'bg-violet-500/20 text-violet-400 border-violet-500/30'
