@@ -3064,23 +3064,29 @@ async def add_manual_trade(trade: ManualTradeEntry, user: dict = Depends(get_cur
     
     if trade.trade_type == "covered_call":
         # Covered call: own stock + sold call
+        # stock_quantity = actual number of shares (e.g., 500 shares)
+        # option_quantity = number of contracts (1 contract = 100 shares)
         if trade.stock_quantity and trade.stock_price:
-            cost_basis = trade.stock_quantity * trade.stock_price * 100  # per 100 shares
+            cost_basis = trade.stock_quantity * trade.stock_price  # actual shares * price
         if trade.option_premium and trade.option_quantity:
-            premium_collected = trade.option_premium * trade.option_quantity * 100
+            premium_collected = trade.option_premium * trade.option_quantity * 100  # premium per share * contracts * 100
             
     elif trade.trade_type == "pmcc":
         # PMCC: LEAPS (long call) + short call
+        # leaps_quantity = number of LEAPS contracts
+        # option_quantity = number of short call contracts
         if trade.leaps_cost and trade.leaps_quantity:
-            cost_basis = trade.leaps_cost * trade.leaps_quantity * 100
+            cost_basis = trade.leaps_cost * trade.leaps_quantity * 100  # premium per share * contracts * 100
         if trade.option_premium and trade.option_quantity:
             premium_collected = trade.option_premium * trade.option_quantity * 100
             
     elif trade.trade_type == "stock_only":
+        # stock_quantity = actual number of shares
         if trade.stock_quantity and trade.stock_price:
             cost_basis = trade.stock_quantity * trade.stock_price
             
     elif trade.trade_type == "option_only":
+        # option_quantity = number of contracts
         if trade.option_premium and trade.option_quantity:
             if trade.option_action == "buy":
                 cost_basis = trade.option_premium * trade.option_quantity * 100
