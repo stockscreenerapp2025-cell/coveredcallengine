@@ -193,6 +193,18 @@ async def clear_cache(prefix: str = None) -> int:
         logging.error(f"Cache clear error: {e}")
         return 0
 
+
+def calculate_dte(expiry_date: str) -> int:
+    """Calculate days to expiration"""
+    if not expiry_date:
+        return 0
+    try:
+        exp = datetime.strptime(expiry_date, "%Y-%m-%d")
+        today = datetime.now()
+        return max(0, (exp - today).days)
+    except Exception:
+        return 0
+
 # ==================== MODELS ====================
 
 class UserCreate(BaseModel):
