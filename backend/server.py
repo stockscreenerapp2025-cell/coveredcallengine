@@ -630,10 +630,12 @@ async def fetch_options_chain_yahoo(symbol: str, contract_type: str = "call", ma
                             # Apply strike filtering if current_price provided
                             if current_price > 0:
                                 strike_pct = (strike / current_price) * 100
-                                if min_dte >= 300:  # LEAPS
+                                if min_dte >= 150:  # LEAPS (150+ days is standard threshold for long-dated options)
+                                    # For LEAPS: allow deep ITM (40% to 95% of current price)
                                     if strike_pct < 40 or strike_pct > 95:
                                         continue
                                 else:  # Short calls
+                                    # For short-term: allow near/at/OTM (95% to 150% of current price)
                                     if strike_pct < 95 or strike_pct > 150:
                                         continue
                             
