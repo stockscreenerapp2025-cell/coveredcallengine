@@ -1276,6 +1276,464 @@ const Simulator = () => {
     </div>
   );
 
+  const renderAnalyticsTab = () => (
+    <div className="space-y-6">
+      {/* Header with filters */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div>
+          <h2 className="text-xl font-semibold text-white flex items-center gap-2">
+            <LineChart className="w-5 h-5 text-cyan-400" />
+            Performance Analytics
+          </h2>
+          <p className="text-zinc-400 text-sm mt-1">
+            Analyze your trading patterns to optimize scanner parameters
+          </p>
+        </div>
+        <div className="flex gap-2">
+          <Select value={analyticsTimeframe} onValueChange={(v) => { setAnalyticsTimeframe(v); }}>
+            <SelectTrigger className="w-28 h-8 bg-zinc-800/50 border-zinc-700">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent className="bg-zinc-900 border-zinc-700">
+              <SelectItem value="all">All Time</SelectItem>
+              <SelectItem value="7d">7 Days</SelectItem>
+              <SelectItem value="30d">30 Days</SelectItem>
+              <SelectItem value="90d">90 Days</SelectItem>
+              <SelectItem value="ytd">YTD</SelectItem>
+            </SelectContent>
+          </Select>
+          <Select value={analyticsStrategy || "all"} onValueChange={(v) => { setAnalyticsStrategy(v === "all" ? "" : v); }}>
+            <SelectTrigger className="w-36 h-8 bg-zinc-800/50 border-zinc-700">
+              <SelectValue placeholder="All Strategies" />
+            </SelectTrigger>
+            <SelectContent className="bg-zinc-900 border-zinc-700">
+              <SelectItem value="all">All Strategies</SelectItem>
+              <SelectItem value="covered_call">Covered Call</SelectItem>
+              <SelectItem value="pmcc">PMCC</SelectItem>
+            </SelectContent>
+          </Select>
+          <Button
+            variant="outline"
+            onClick={fetchAnalytics}
+            className="btn-outline"
+          >
+            <RefreshCw className="w-4 h-4 mr-2" />
+            Refresh
+          </Button>
+        </div>
+      </div>
+
+      {analyticsLoading ? (
+        <div className="space-y-4">
+          {Array(4).fill(0).map((_, i) => (
+            <Skeleton key={i} className="h-32 w-full" />
+          ))}
+        </div>
+      ) : !analytics?.analytics ? (
+        <Card className="glass-card">
+          <CardContent className="py-12 text-center">
+            <BarChart3 className="w-12 h-12 text-zinc-600 mx-auto mb-4" />
+            <h3 className="text-lg font-medium text-white mb-2">Not Enough Data</h3>
+            <p className="text-zinc-400 text-sm">
+              {analytics?.message || "Close some simulated trades to see performance analytics"}
+            </p>
+          </CardContent>
+        </Card>
+      ) : (
+        <>
+          {/* Overall Stats */}
+          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
+            <Card className="glass-card">
+              <CardContent className="p-4">
+                <div className="text-xs text-zinc-500 mb-1">Total Trades</div>
+                <div className="text-xl font-bold text-white">{analytics.analytics.overall.total_trades}</div>
+              </CardContent>
+            </Card>
+            <Card className="glass-card">
+              <CardContent className="p-4">
+                <div className="text-xs text-zinc-500 mb-1">Win Rate</div>
+                <div className={`text-xl font-bold ${analytics.analytics.overall.win_rate >= 50 ? 'text-emerald-400' : 'text-amber-400'}`}>
+                  {analytics.analytics.overall.win_rate}%
+                </div>
+              </CardContent>
+            </Card>
+            <Card className="glass-card">
+              <CardContent className="p-4">
+                <div className="text-xs text-zinc-500 mb-1">Total P/L</div>
+                <div className={`text-xl font-bold ${analytics.analytics.overall.total_pnl >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                  {formatCurrency(analytics.analytics.overall.total_pnl)}
+                </div>
+              </CardContent>
+            </Card>
+            <Card className="glass-card">
+              <CardContent className="p-4">
+                <div className="text-xs text-zinc-500 mb-1">ROI</div>
+                <div className={`text-xl font-bold ${analytics.analytics.overall.roi >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                  {analytics.analytics.overall.roi}%
+                </div>
+              </CardContent>
+            </Card>
+            <Card className="glass-card">
+              <CardContent className="p-4">
+                <div className="text-xs text-zinc-500 mb-1">Avg Win</div>
+                <div className="text-xl font-bold text-emerald-400">
+                  {formatCurrency(analytics.analytics.overall.avg_win)}
+                </div>
+              </CardContent>
+            </Card>
+            <Card className="glass-card">
+              <CardContent className="p-4">
+                <div className="text-xs text-zinc-500 mb-1">Avg Loss</div>
+                <div className="text-xl font-bold text-red-400">
+                  {formatCurrency(analytics.analytics.overall.avg_loss)}
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Recommendations */}
+          {analytics.recommendations?.length > 0 && (
+            <Card className="glass-card border-cyan-500/30">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm flex items-center gap-2">
+                  <Lightbulb className="w-4 h-4 text-cyan-400" />
+                  AI Recommendations
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-3">
+                  {analytics.recommendations.map((rec, idx) => (
+                    <div key={idx} className={`p-3 rounded-lg border ${
+                      rec.priority === 'high' ? 'bg-amber-500/10 border-amber-500/30' :
+                      rec.priority === 'medium' ? 'bg-blue-500/10 border-blue-500/30' :
+                      'bg-zinc-800/50 border-zinc-700/50'
+                    }`}>
+                      <div className="flex items-start gap-2">
+                        <Badge className={
+                          rec.priority === 'high' ? 'bg-amber-500/20 text-amber-400' :
+                          rec.priority === 'medium' ? 'bg-blue-500/20 text-blue-400' :
+                          'bg-zinc-500/20 text-zinc-400'
+                        }>
+                          {rec.priority}
+                        </Badge>
+                        <div>
+                          <p className="text-white text-sm font-medium">{rec.message}</p>
+                          <p className="text-zinc-400 text-xs mt-1">{rec.suggestion}</p>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Performance Charts */}
+          <div className="grid md:grid-cols-2 gap-6">
+            {/* By Delta */}
+            {analytics.analytics.by_delta?.length > 0 && (
+              <Card className="glass-card">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm flex items-center gap-2">
+                    <Target className="w-4 h-4 text-violet-400" />
+                    Performance by Delta Range
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="h-48">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={analytics.analytics.by_delta}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#333" />
+                        <XAxis dataKey="range" stroke="#666" fontSize={10} />
+                        <YAxis stroke="#666" fontSize={10} />
+                        <Tooltip 
+                          contentStyle={{ background: '#18181b', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px' }}
+                          formatter={(value, name) => [name === 'win_rate' ? `${value}%` : formatCurrency(value), name === 'win_rate' ? 'Win Rate' : 'Avg P/L']}
+                        />
+                        <Bar dataKey="win_rate" name="Win Rate" fill="#8b5cf6" radius={[4, 4, 0, 0]} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                  <div className="mt-3 space-y-1">
+                    {analytics.analytics.by_delta.map((d, idx) => (
+                      <div key={idx} className="flex justify-between text-xs">
+                        <span className="text-zinc-400">Delta {d.range}</span>
+                        <span className={d.win_rate >= 50 ? 'text-emerald-400' : 'text-zinc-300'}>
+                          {d.trade_count} trades, {d.win_rate}% win, {formatCurrency(d.avg_pnl)} avg
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* By DTE */}
+            {analytics.analytics.by_dte?.length > 0 && (
+              <Card className="glass-card">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm flex items-center gap-2">
+                    <Clock className="w-4 h-4 text-cyan-400" />
+                    Performance by DTE Range
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="h-48">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={analytics.analytics.by_dte}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#333" />
+                        <XAxis dataKey="range" stroke="#666" fontSize={10} />
+                        <YAxis stroke="#666" fontSize={10} />
+                        <Tooltip 
+                          contentStyle={{ background: '#18181b', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px' }}
+                          formatter={(value) => [`${value}%`, 'Win Rate']}
+                        />
+                        <Bar dataKey="win_rate" name="Win Rate" fill="#06b6d4" radius={[4, 4, 0, 0]} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                  <div className="mt-3 space-y-1">
+                    {analytics.analytics.by_dte.map((d, idx) => (
+                      <div key={idx} className="flex justify-between text-xs">
+                        <span className="text-zinc-400">{d.range}</span>
+                        <span className={d.win_rate >= 50 ? 'text-emerald-400' : 'text-zinc-300'}>
+                          {d.trade_count} trades, {d.win_rate}% win
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+          </div>
+
+          {/* Symbol Performance */}
+          {analytics.analytics.by_symbol?.length > 0 && (
+            <Card className="glass-card">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm flex items-center gap-2">
+                  <Award className="w-4 h-4 text-amber-400" />
+                  Top Performing Symbols
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="text-left text-zinc-500 border-b border-zinc-800">
+                        <th className="pb-2 font-medium">Symbol</th>
+                        <th className="pb-2 font-medium">Trades</th>
+                        <th className="pb-2 font-medium">Win Rate</th>
+                        <th className="pb-2 font-medium">Total P/L</th>
+                        <th className="pb-2 font-medium">Avg P/L</th>
+                        <th className="pb-2 font-medium">ROI</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {analytics.analytics.by_symbol.slice(0, 10).map((s, idx) => (
+                        <tr key={idx} className="border-b border-zinc-800/50">
+                          <td className="py-2 font-semibold text-white">{s.symbol}</td>
+                          <td className="py-2 text-zinc-300">{s.trade_count}</td>
+                          <td className={`py-2 ${s.win_rate >= 50 ? 'text-emerald-400' : 'text-amber-400'}`}>
+                            {s.win_rate}%
+                          </td>
+                          <td className={`py-2 ${s.total_pnl >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                            {formatCurrency(s.total_pnl)}
+                          </td>
+                          <td className={`py-2 ${s.avg_pnl >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                            {formatCurrency(s.avg_pnl)}
+                          </td>
+                          <td className={`py-2 ${s.roi >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                            {s.roi}%
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Optimal Settings */}
+          {optimalSettings?.optimal_settings && (
+            <Card className="glass-card border-emerald-500/30">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm flex items-center gap-2">
+                  <Zap className="w-4 h-4 text-emerald-400" />
+                  Optimal Scanner Settings
+                  <Badge className={
+                    optimalSettings.confidence === 'high' ? 'bg-emerald-500/20 text-emerald-400' :
+                    optimalSettings.confidence === 'medium' ? 'bg-amber-500/20 text-amber-400' :
+                    'bg-zinc-500/20 text-zinc-400'
+                  }>
+                    {optimalSettings.confidence} confidence
+                  </Badge>
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="grid md:grid-cols-2 gap-6">
+                  <div>
+                    <h4 className="text-sm font-medium text-zinc-400 mb-3">Recommended Parameters</h4>
+                    <div className="space-y-2">
+                      <div className="flex justify-between p-2 bg-zinc-800/50 rounded">
+                        <span className="text-zinc-400">Min Delta</span>
+                        <span className="text-white font-mono">{optimalSettings.optimal_settings.min_delta}</span>
+                      </div>
+                      <div className="flex justify-between p-2 bg-zinc-800/50 rounded">
+                        <span className="text-zinc-400">Max Delta</span>
+                        <span className="text-white font-mono">{optimalSettings.optimal_settings.max_delta}</span>
+                      </div>
+                      <div className="flex justify-between p-2 bg-zinc-800/50 rounded">
+                        <span className="text-zinc-400">Max DTE</span>
+                        <span className="text-white font-mono">{optimalSettings.optimal_settings.max_dte} days</span>
+                      </div>
+                      <div className="flex justify-between p-2 bg-emerald-500/10 rounded border border-emerald-500/30">
+                        <span className="text-zinc-400">Expected Win Rate</span>
+                        <span className="text-emerald-400 font-mono">{optimalSettings.optimal_settings.expected_win_rate}%</span>
+                      </div>
+                    </div>
+                    <Button
+                      className="w-full mt-4 bg-emerald-600 hover:bg-emerald-700 text-white"
+                      onClick={() => window.open(optimalSettings.apply_url, '_blank')}
+                    >
+                      <ExternalLink className="w-4 h-4 mr-2" />
+                      Apply to Screener
+                    </Button>
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-medium text-zinc-400 mb-3">Symbol Recommendations</h4>
+                    {optimalSettings.symbol_recommendations?.top_performers?.length > 0 && (
+                      <div className="mb-3">
+                        <p className="text-xs text-zinc-500 mb-1">Top Performers</p>
+                        <div className="flex flex-wrap gap-1">
+                          {optimalSettings.symbol_recommendations.top_performers.map((s, idx) => (
+                            <Badge key={idx} className="bg-emerald-500/20 text-emerald-400">
+                              {s.symbol} ({s.win_rate}%)
+                            </Badge>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    {optimalSettings.symbol_recommendations?.avoid?.length > 0 && (
+                      <div>
+                        <p className="text-xs text-zinc-500 mb-1">Consider Avoiding</p>
+                        <div className="flex flex-wrap gap-1">
+                          {optimalSettings.symbol_recommendations.avoid.map((sym, idx) => (
+                            <Badge key={idx} className="bg-red-500/20 text-red-400">
+                              {sym}
+                            </Badge>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    
+                    {/* Save as Profile */}
+                    <div className="mt-4 p-3 bg-zinc-800/50 rounded-lg">
+                      <p className="text-xs text-zinc-500 mb-2">Save these settings as a profile</p>
+                      <div className="flex gap-2">
+                        <Input
+                          value={newProfileName}
+                          onChange={(e) => setNewProfileName(e.target.value)}
+                          placeholder="Profile name..."
+                          className="flex-1 h-8 bg-zinc-900 border-zinc-700"
+                        />
+                        <Button
+                          onClick={handleSaveProfile}
+                          disabled={savingProfile || !newProfileName.trim()}
+                          className="bg-violet-600 hover:bg-violet-700 text-white h-8"
+                        >
+                          <Save className="w-4 h-4" />
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Saved Profiles */}
+          {profiles.length > 0 && (
+            <Card className="glass-card">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm flex items-center gap-2">
+                  <FileText className="w-4 h-4 text-violet-400" />
+                  Saved Profiles ({profiles.length})
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-3">
+                  {profiles.map(profile => (
+                    <div key={profile.id} className="p-3 bg-zinc-800/50 rounded-lg border border-zinc-700/50">
+                      <div className="flex items-start justify-between">
+                        <div>
+                          <h4 className="font-medium text-white">{profile.name}</h4>
+                          <p className="text-xs text-zinc-500 mt-1">
+                            Created {formatDate(profile.created_at)}
+                          </p>
+                        </div>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleDeleteProfile(profile.id)}
+                          className="text-red-400 hover:text-red-300"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </Button>
+                      </div>
+                      <div className="mt-2 text-xs space-y-1">
+                        <div className="flex justify-between">
+                          <span className="text-zinc-500">Delta</span>
+                          <span className="text-zinc-300">{profile.settings.min_delta} - {profile.settings.max_delta}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-zinc-500">Max DTE</span>
+                          <span className="text-zinc-300">{profile.settings.max_dte}d</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-zinc-500">Expected Win Rate</span>
+                          <span className="text-emerald-400">{profile.settings.expected_win_rate}%</span>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Outcome Analysis */}
+          {analytics.analytics.by_outcome?.length > 0 && (
+            <Card className="glass-card">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm flex items-center gap-2">
+                  <Activity className="w-4 h-4 text-blue-400" />
+                  Performance by Outcome
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                  {analytics.analytics.by_outcome.map((outcome, idx) => (
+                    <div key={idx} className="p-3 bg-zinc-800/50 rounded-lg text-center">
+                      <div className="text-xs text-zinc-500 mb-1 capitalize">
+                        {outcome.outcome.replace(/_/g, ' ')}
+                      </div>
+                      <div className="text-lg font-bold text-white">{outcome.count}</div>
+                      <div className={`text-sm ${outcome.total_pnl >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                        {formatCurrency(outcome.total_pnl)}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+        </>
+      )}
+    </div>
+  );
+
   return (
     <div className="space-y-6" data-testid="simulator-page">
       {/* Header */}
