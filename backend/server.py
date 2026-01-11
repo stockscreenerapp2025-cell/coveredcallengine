@@ -62,7 +62,6 @@ from routes.options import options_router
 
 # Create routers (still in server.py - to be refactored)
 api_router = APIRouter(prefix="/api")
-options_router = APIRouter(prefix="/options", tags=["Options"])
 portfolio_router = APIRouter(prefix="/portfolio", tags=["Portfolio"])
 screener_router = APIRouter(prefix="/screener", tags=["Screener"])
 admin_router = APIRouter(prefix="/admin", tags=["Admin"])
