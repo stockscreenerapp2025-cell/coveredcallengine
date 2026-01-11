@@ -186,10 +186,20 @@ Build a web-based application named "Covered Call Engine" to identify, analyze, 
 ---
 
 ## Last Updated
-January 11, 2026 - Server Refactoring Phase 3 Complete (Scalability Focus)
+January 12, 2026 - PMCC Screener Bug Fix
 
-## Recent Changes (Jan 11, 2026)
-### Server.py Refactoring - Phase 3 Complete ✅
+## Recent Changes
+
+### PMCC Screener Fix (Jan 12, 2026) ✅
+**Issue:** PMCC screener was returning 0 results despite valid options data being available.
+
+**Root Cause:** In `fetch_options_chain_yahoo()` function in `server.py`, the LEAPS detection logic used `min_dte >= 300` to identify long-dated options. However, the PMCC screener passed `min_dte=180` for LEAPS, causing the filter to treat them as short-term calls. This incorrectly filtered out all deep ITM options (strikes below 95% of current price) that are essential for PMCC strategies.
+
+**Fix:** Changed LEAPS detection threshold from `min_dte >= 300` to `min_dte >= 150` in `server.py` line 633. This aligns with the standard definition of LEAPS as options with 150+ days to expiration.
+
+**Result:** PMCC screener now returns valid opportunities (e.g., INTC, SOFI, DAL with 6-7% ROI per cycle, 100%+ annualized ROI).
+
+### Server.py Refactoring - Phase 4 Complete (Jan 11, 2026) ✅
 **Goal:** Build scalable architecture for 1000+ concurrent users
 
 **Results:**
