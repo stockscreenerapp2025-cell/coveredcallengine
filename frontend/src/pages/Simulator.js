@@ -1331,6 +1331,10 @@ const Simulator = () => {
             <Layers className="w-4 h-4 mr-2" />
             PMCC Tracker
           </TabsTrigger>
+          <TabsTrigger value="analytics" className="data-[state=active]:bg-violet-600 data-[state=active]:text-white">
+            <LineChart className="w-4 h-4 mr-2" />
+            Analytics
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="trades" className="space-y-6">
@@ -1347,6 +1351,10 @@ const Simulator = () => {
 
         <TabsContent value="pmcc" className="space-y-6">
           {renderPMCCTab()}
+        </TabsContent>
+
+        <TabsContent value="analytics" className="space-y-6">
+          {renderAnalyticsTab()}
         </TabsContent>
       </Tabs>
 
