@@ -5819,6 +5819,10 @@ async def startup():
     await db.watchlist.create_index([("user_id", 1), ("symbol", 1)])
     await db.screener_filters.create_index("user_id")
     
+    # Create simulator trades index
+    await db.simulator_trades.create_index([("user_id", 1), ("status", 1)])
+    await db.simulator_trades.create_index("id", unique=True)
+    
     # Create cache index with TTL (auto-expire after 1 hour)
     await db.api_cache.create_index("cache_key", unique=True)
     await db.api_cache.create_index("cached_at", expireAfterSeconds=3600)  # Auto-delete after 1 hour
@@ -5836,7 +5840,22 @@ async def startup():
         }
         await db.users.insert_one(admin_doc)
         logger.info("Default admin user created: admin@premiumhunter.com / admin123")
+    
+    # Start the scheduler for automated price updates
+    # Run at 4:30 PM ET (after market close) on weekdays
+    scheduler.add_job(
+        scheduled_price_update,
+        CronTrigger(hour=16, minute=30, day_of_week='mon-fri', timezone='America/New_York'),
+        id='simulator_price_update',
+        replace_existing=True
+    )
+    scheduler.start()
+    logger.info("Simulator price update scheduler started - runs at 4:30 PM ET on weekdays")
 
 @app.on_event("shutdown")
 async def shutdown_db_client():
+    # Shutdown scheduler
+    if scheduler.running:
+        scheduler.shutdown()
+        logger.info("Simulator scheduler shut down")
     client.close()
