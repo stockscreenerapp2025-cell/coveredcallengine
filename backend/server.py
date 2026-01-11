@@ -61,6 +61,7 @@ from routes.stocks import stocks_router
 from routes.options import options_router
 from routes.admin import admin_router
 from routes.portfolio import portfolio_router
+from routes.screener import screener_router
 
 # Create routers (still in server.py - to be refactored)
 api_router = APIRouter(prefix="/api")
