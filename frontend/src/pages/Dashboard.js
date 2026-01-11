@@ -75,16 +75,19 @@ const Dashboard = () => {
       
       // Fetch IBKR portfolio data
       try {
-        const [ibkrSummaryRes, ibkrClosedRes] = await Promise.all([
+        const [ibkrSummaryRes, ibkrClosedRes, ibkrOpenRes] = await Promise.all([
           portfolioApi.getIBKRSummary(),
-          portfolioApi.getIBKRTrades({ status: 'Closed', limit: 15 })
+          portfolioApi.getIBKRTrades({ status: 'Closed', limit: 15 }),
+          portfolioApi.getIBKRTrades({ status: 'Open', limit: 15 })
         ]);
         setIbkrSummary(ibkrSummaryRes.data);
         setIbkrTrades(ibkrClosedRes.data.trades || []);
+        setOpenTrades(ibkrOpenRes.data.trades || []);
       } catch (ibkrError) {
         console.log('No IBKR data loaded:', ibkrError);
         setIbkrSummary(null);
         setIbkrTrades([]);
+        setOpenTrades([]);
       }
       
       // Fetch dashboard opportunities separately (may take longer)
