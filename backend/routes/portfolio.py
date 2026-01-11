@@ -857,11 +857,15 @@ async def _generate_ai_suggestion_for_trade(trade: dict) -> dict:
         elif 'PUT' in strategy.upper() or strategy == 'NAKED_PUT':
             itm_status = "ITM" if current_price < option_strike else "OTM"
     
+    # Format values for the prompt
+    current_price_str = f"${current_price:.2f}" if current_price else "N/A"
+    strike_str = f"${option_strike:.2f}" if option_strike else "N/A"
+    
     context = f"""
     Analyze this options trade:
     Symbol: {symbol}, Strategy: {trade.get('strategy_label', strategy)}
-    Entry: ${entry_price:.2f}, Current: ${current_price:.2f if current_price else 'N/A'}
-    Strike: {f'${option_strike:.2f}' if option_strike else 'N/A'}, DTE: {dte}, Status: {itm_status}
+    Entry: ${entry_price:.2f}, Current: {current_price_str}
+    Strike: {strike_str}, DTE: {dte}, Status: {itm_status}
     Premium: ${premium:.2f}, Profit: {profit_status}
     
     Recommend: HOLD, LET_EXPIRE, ROLL_UP, ROLL_DOWN, ROLL_OUT, or CLOSE
