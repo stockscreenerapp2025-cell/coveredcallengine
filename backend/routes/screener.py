@@ -315,10 +315,10 @@ async def screen_covered_calls(
 
 @screener_router.get("/dashboard-opportunities")
 async def get_dashboard_opportunities(user: dict = Depends(get_current_user)):
-    """Get top 10 covered call opportunities for dashboard with advanced filters"""
+    """Get top 10 covered call opportunities for dashboard - 5 Weekly + 5 Monthly"""
     funcs = _get_server_functions()
     
-    cache_key = "dashboard_opportunities_v2"
+    cache_key = "dashboard_opportunities_v3"
     
     cached_data = await funcs['get_cached_data'](cache_key)
     if cached_data:
@@ -353,10 +353,11 @@ async def get_dashboard_opportunities(user: dict = Depends(get_current_user)):
             "AAPL", "AMD", "DELL", "IBM", "ORCL"
         ]
         
-        opportunities = []
+        weekly_opportunities = []
+        monthly_opportunities = []
         
         async with httpx.AsyncClient(timeout=HTTP_TIMEOUT) as client:
-            for symbol in symbols_to_scan[:30]:  # Limit for performance
+            for symbol in symbols_to_scan[:35]:  # Limit for performance
                 try:
                     # Get stock price
                     stock_response = await client.get(
@@ -373,19 +374,33 @@ async def get_dashboard_opportunities(user: dict = Depends(get_current_user)):
                     
                     current_price = stock_data["results"][0].get("c", 0)
                     
-                    if current_price < 30 or current_price > 90:
+                    if current_price < 25 or current_price > 100:
                         continue
                     
-                    # Get options
-                    options_results = await funcs['fetch_options_chain_yahoo'](symbol, "call", 45, min_dte=7, current_price=current_price)
+                    # Get options for both weekly (1-7 DTE) and monthly (8-45 DTE)
+                    # Weekly options
+                    weekly_options = await funcs['fetch_options_chain_yahoo'](symbol, "call", 7, min_dte=1, current_price=current_price)
+                    # Monthly options
+                    monthly_options = await funcs['fetch_options_chain_yahoo'](symbol, "call", 45, min_dte=8, current_price=current_price)
                     
-                    if not options_results:
+                    all_options = []
+                    if weekly_options:
+                        for opt in weekly_options:
+                            opt["expiry_type"] = "Weekly"
+                        all_options.extend(weekly_options)
+                    if monthly_options:
+                        for opt in monthly_options:
+                            opt["expiry_type"] = "Monthly"
+                        all_options.extend(monthly_options)
+                    
+                    if not all_options:
                         continue
                     
-                    for opt in options_results:
+                    for opt in all_options:
                         strike = opt.get("strike", 0)
                         dte = opt.get("dte", 0)
                         premium = opt.get("close", 0) or opt.get("vwap", 0)
+                        expiry_type = opt.get("expiry_type", "Monthly")
                         
                         if not premium or premium <= 0:
                             continue
@@ -400,44 +415,88 @@ async def get_dashboard_opportunities(user: dict = Depends(get_current_user)):
                         
                         roi_pct = (premium / current_price) * 100
                         
-                        # ROI filters
-                        if dte <= 7 and roi_pct < 0.8:
+                        # ROI filters - Weekly needs at least 0.8%, Monthly needs at least 2.5%
+                        if expiry_type == "Weekly" and roi_pct < 0.8:
                             continue
-                        if dte > 7 and roi_pct < 2.5:
+                        if expiry_type == "Monthly" and roi_pct < 2.5:
                             continue
                         
                         annualized_roi = (roi_pct / max(dte, 1)) * 365
                         
-                        opportunities.append({
+                        # Estimate delta based on strike distance
+                        estimated_delta = max(0.15, min(0.50, 0.50 - strike_pct * 0.025))
+                        
+                        # Get implied volatility from the option data
+                        iv = opt.get("implied_volatility", 0)
+                        if iv and iv > 0:
+                            iv = iv * 100  # Convert to percentage
+                        else:
+                            iv = 30  # Default estimate
+                        
+                        # Determine moneyness
+                        if strike_pct >= -2 and strike_pct <= 2:
+                            moneyness = "ATM"
+                        else:
+                            moneyness = "OTM"
+                        
+                        # Calculate score
+                        score = round(roi_pct * 10 + annualized_roi / 10 + (50 - iv) / 10, 1)
+                        
+                        opp_data = {
                             "symbol": symbol,
                             "stock_price": round(current_price, 2),
                             "strike": strike,
+                            "strike_pct": round(strike_pct, 1),
+                            "moneyness": moneyness,
                             "expiry": opt.get("expiry", ""),
+                            "expiry_type": expiry_type,
                             "dte": dte,
                             "premium": round(premium, 2),
                             "roi_pct": round(roi_pct, 2),
                             "annualized_roi": round(annualized_roi, 1),
-                            "delta": round(0.3, 2),  # Estimated
-                            "score": round(roi_pct * 10 + annualized_roi / 10, 1)
-                        })
+                            "delta": round(estimated_delta, 2),
+                            "iv": round(iv, 0),
+                            "iv_rank": round(min(100, iv * 1.5), 0),  # Rough IV rank estimate
+                            "trend_6m": None,  # Would need historical data API
+                            "trend_12m": None,  # Would need historical data API
+                            "score": score
+                        }
+                        
+                        if expiry_type == "Weekly":
+                            weekly_opportunities.append(opp_data)
+                        else:
+                            monthly_opportunities.append(opp_data)
                         
                 except Exception as e:
                     logging.error(f"Dashboard scan error for {symbol}: {e}")
                     continue
         
-        # Sort and limit
-        opportunities.sort(key=lambda x: x["score"], reverse=True)
+        # Sort each list and take top 5
+        weekly_opportunities.sort(key=lambda x: x["score"], reverse=True)
+        monthly_opportunities.sort(key=lambda x: x["score"], reverse=True)
         
-        # Dedupe by symbol
-        best_by_symbol = {}
-        for opp in opportunities:
-            sym = opp["symbol"]
-            if sym not in best_by_symbol or opp["score"] > best_by_symbol[sym]["score"]:
-                best_by_symbol[sym] = opp
+        # Dedupe by symbol within each category
+        def dedupe_by_symbol(opps, limit):
+            best_by_symbol = {}
+            for opp in opps:
+                sym = opp["symbol"]
+                if sym not in best_by_symbol or opp["score"] > best_by_symbol[sym]["score"]:
+                    best_by_symbol[sym] = opp
+            return sorted(best_by_symbol.values(), key=lambda x: x["score"], reverse=True)[:limit]
         
-        opportunities = sorted(best_by_symbol.values(), key=lambda x: x["score"], reverse=True)[:10]
+        top_weekly = dedupe_by_symbol(weekly_opportunities, 5)
+        top_monthly = dedupe_by_symbol(monthly_opportunities, 5)
         
-        result = {"opportunities": opportunities, "total": len(opportunities), "is_live": True}
+        # Combine: Weekly first, then Monthly
+        opportunities = top_weekly + top_monthly
+        
+        result = {
+            "opportunities": opportunities, 
+            "total": len(opportunities), 
+            "weekly_count": len(top_weekly),
+            "monthly_count": len(top_monthly),
+            "is_live": True
+        }
         await funcs['set_cached_data'](cache_key, result)
         return result
         
