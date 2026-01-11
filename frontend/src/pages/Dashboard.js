@@ -53,6 +53,64 @@ const Dashboard = () => {
   const [loading, setLoading] = useState(true);
   const [oppsLoading, setOppsLoading] = useState(false);
   const [marketStatus, setMarketStatus] = useState(null);
+  
+  // Simulator state
+  const [simulateModalOpen, setSimulateModalOpen] = useState(false);
+  const [simulateOpp, setSimulateOpp] = useState(null);
+  const [simulateContracts, setSimulateContracts] = useState(1);
+  const [simulateLoading, setSimulateLoading] = useState(false);
+
+  // Handle adding to simulator from Top 10 Covered Calls
+  const handleSimulate = async () => {
+    if (!simulateOpp) return;
+    
+    setSimulateLoading(true);
+    try {
+      const tradeData = {
+        symbol: simulateOpp.symbol,
+        strategy_type: 'covered_call',
+        underlying_price: simulateOpp.stock_price,
+        short_call_strike: simulateOpp.strike,
+        short_call_expiry: simulateOpp.expiry,
+        short_call_premium: simulateOpp.premium,
+        short_call_delta: simulateOpp.delta,
+        short_call_iv: simulateOpp.iv,
+        contracts: simulateContracts,
+        scan_parameters: {
+          score: simulateOpp.score,
+          roi_pct: simulateOpp.roi_pct,
+          dte: simulateOpp.dte,
+          iv_rank: simulateOpp.iv_rank
+        }
+      };
+      
+      await simulatorApi.addTrade(tradeData);
+      toast.success(`Added ${simulateOpp.symbol} to Simulator!`);
+      setSimulateModalOpen(false);
+      setSimulateOpp(null);
+      setSimulateContracts(1);
+    } catch (error) {
+      const msg = error.response?.data?.detail || 'Failed to add to simulator';
+      toast.error(msg);
+    } finally {
+      setSimulateLoading(false);
+    }
+  };
+
+  // Format option contract for display
+  const formatOptionContract = (expiry, strike) => {
+    if (!expiry || !strike) return '-';
+    try {
+      const date = new Date(expiry);
+      const day = date.getDate().toString().padStart(2, '0');
+      const months = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
+      const month = months[date.getMonth()];
+      const year = date.getFullYear().toString().slice(-2);
+      return `${day}${month}${year} $${strike} C`;
+    } catch {
+      return `$${strike} C`;
+    }
+  };
 
   useEffect(() => {
     fetchDashboardData();
