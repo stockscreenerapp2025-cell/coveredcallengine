@@ -6907,17 +6907,20 @@ async def delete_scanner_profile(profile_id: str, user: dict = Depends(get_curre
 
 
 # Include all routers
-api_router.include_router(auth_router)
+# External routers (from routes/)
+api_router.include_router(auth_router, prefix="/auth")
+api_router.include_router(watchlist_router, prefix="/watchlist")
+api_router.include_router(news_router, prefix="/news")
+api_router.include_router(chatbot_router, prefix="/chatbot")
+
+# Internal routers (still in server.py - to be refactored)
 api_router.include_router(stocks_router)
 api_router.include_router(options_router)
 api_router.include_router(screener_router)
 api_router.include_router(portfolio_router)
-api_router.include_router(watchlist_router)
-api_router.include_router(news_router)
 api_router.include_router(ai_router)
 api_router.include_router(admin_router)
 api_router.include_router(subscription_router)
-api_router.include_router(chatbot_router)
 api_router.include_router(simulator_router)
 
 app.include_router(api_router)
