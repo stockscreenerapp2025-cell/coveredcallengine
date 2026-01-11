@@ -728,7 +728,7 @@ const Dashboard = () => {
               Top 10 Covered Call Opportunities
             </CardTitle>
             <p className="text-xs text-zinc-500 mt-1">
-              $25-$100 stocks • ATM/OTM strikes • Positive trends • Weekly ≥0.8% ROI, Monthly ≥2.5% ROI
+              Top 5 Weekly + Top 5 Monthly • $25-$100 stocks • ATM/OTM strikes • Weekly ≥0.8% ROI, Monthly ≥2.5% ROI
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -775,8 +775,6 @@ const Dashboard = () => {
                     <th>ROI</th>
                     <th>Delta</th>
                     <th>IV</th>
-                    <th>6M</th>
-                    <th>12M</th>
                     <th>AI Score</th>
                     <th className="text-center">Action</th>
                   </tr>
@@ -800,14 +798,14 @@ const Dashboard = () => {
                       <td>${opp.stock_price?.toFixed(2)}</td>
                       <td>
                         <div className="flex flex-col">
-                          <span className="font-mono text-sm">{formatOptionContract(opp.expiry, opp.strike?.toFixed(1))}</span>
+                          <span className="font-mono text-sm">${opp.strike?.toFixed(0)}</span>
                           <Badge className={`mt-0.5 w-fit ${opp.moneyness === 'ATM' ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30 text-xs' : 'bg-blue-500/20 text-blue-400 border-blue-500/30 text-xs'}`}>
-                            {opp.moneyness || (opp.strike_pct !== undefined ? (opp.strike_pct >= -2 && opp.strike_pct <= 2 ? 'ATM' : 'OTM') : '')}
+                            {opp.moneyness || (opp.strike_pct !== undefined ? (opp.strike_pct >= -2 && opp.strike_pct <= 2 ? 'ATM' : 'OTM') : 'OTM')}
                           </Badge>
                         </div>
                       </td>
                       <td>
-                        <Badge className={opp.expiry_type === 'weekly' ? 'bg-cyan-500/20 text-cyan-400 border-cyan-500/30' : 'bg-violet-500/20 text-violet-400 border-violet-500/30'}>
+                        <Badge className={opp.expiry_type === 'Weekly' ? 'bg-cyan-500/20 text-cyan-400 border-cyan-500/30' : 'bg-violet-500/20 text-violet-400 border-violet-500/30'}>
                           {opp.expiry_type || (opp.dte <= 7 ? 'Weekly' : 'Monthly')}
                         </Badge>
                       </td>
@@ -815,13 +813,7 @@ const Dashboard = () => {
                       <td className="text-emerald-400">${opp.premium?.toFixed(2)}</td>
                       <td className="text-cyan-400 font-medium">{opp.roi_pct?.toFixed(2)}%</td>
                       <td>{opp.delta?.toFixed(2)}</td>
-                      <td>{opp.iv?.toFixed(0)}%</td>
-                      <td className={opp.trend_6m >= 0 ? 'text-emerald-400' : 'text-red-400'}>
-                        {opp.trend_6m !== undefined ? `${opp.trend_6m >= 0 ? '+' : ''}${opp.trend_6m?.toFixed(0)}%` : '-'}
-                      </td>
-                      <td className={opp.trend_12m >= 0 ? 'text-emerald-400' : 'text-red-400'}>
-                        {opp.trend_12m !== undefined ? `${opp.trend_12m >= 0 ? '+' : ''}${opp.trend_12m?.toFixed(0)}%` : '-'}
-                      </td>
+                      <td>{opp.iv ? `${opp.iv?.toFixed(0)}%` : '-'}</td>
                       <td>
                         <Badge className={`${opp.score >= 70 ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' : opp.score >= 50 ? 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30' : 'bg-cyan-500/20 text-cyan-400 border-cyan-500/30'}`}>
                           {opp.score?.toFixed(0)}
