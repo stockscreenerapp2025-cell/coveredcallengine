@@ -5822,6 +5822,33 @@ async def clear_simulator_data(user: dict = Depends(get_current_user)):
     result = await db.simulator_trades.delete_many({"user_id": user["id"]})
     return {"message": f"Cleared {result.deleted_count} simulator trades"}
 
+
+@simulator_router.get("/scheduler-status")
+async def get_scheduler_status(user: dict = Depends(get_current_user)):
+    """Get the status of the automated price update scheduler"""
+    jobs = scheduler.get_jobs()
+    job_info = []
+    for job in jobs:
+        job_info.append({
+            "id": job.id,
+            "next_run_time": job.next_run_time.isoformat() if job.next_run_time else None,
+            "trigger": str(job.trigger)
+        })
+    
+    return {
+        "scheduler_running": scheduler.running,
+        "jobs": job_info,
+        "timezone": "America/New_York",
+        "schedule": "4:30 PM ET on weekdays (Mon-Fri)"
+    }
+
+
+@simulator_router.post("/trigger-update")
+async def trigger_manual_update(user: dict = Depends(get_current_user)):
+    """Manually trigger a price update for the current user's trades (same as Update Prices button)"""
+    # This is essentially the same as update_simulator_prices but we can add admin-only full update later
+    return await update_simulator_prices(user)
+
 # Include all routers
 api_router.include_router(auth_router)
 api_router.include_router(stocks_router)
