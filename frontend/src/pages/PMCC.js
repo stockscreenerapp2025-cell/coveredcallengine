@@ -48,6 +48,54 @@ const PMCC = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [sortField, setSortField] = useState('score');
   const [sortDirection, setSortDirection] = useState('desc');
+  
+  // Simulator state
+  const [simulateModalOpen, setSimulateModalOpen] = useState(false);
+  const [simulateOpp, setSimulateOpp] = useState(null);
+  const [simulateContracts, setSimulateContracts] = useState(1);
+  const [simulateLoading, setSimulateLoading] = useState(false);
+
+  // Handle adding to simulator
+  const handleSimulate = async () => {
+    if (!simulateOpp) return;
+    
+    setSimulateLoading(true);
+    try {
+      const tradeData = {
+        symbol: simulateOpp.symbol,
+        strategy_type: 'pmcc',
+        underlying_price: simulateOpp.stock_price,
+        short_call_strike: simulateOpp.short_strike,
+        short_call_expiry: simulateOpp.short_expiry,
+        short_call_premium: simulateOpp.short_premium,
+        short_call_delta: simulateOpp.short_delta,
+        short_call_iv: simulateOpp.short_iv,
+        leaps_strike: simulateOpp.leaps_strike,
+        leaps_expiry: simulateOpp.leaps_expiry,
+        leaps_premium: simulateOpp.leaps_premium,
+        leaps_delta: simulateOpp.leaps_delta,
+        contracts: simulateContracts,
+        scan_parameters: {
+          score: simulateOpp.score,
+          net_debit: simulateOpp.net_debit,
+          max_profit: simulateOpp.max_profit,
+          leaps_dte: simulateOpp.leaps_dte,
+          short_dte: simulateOpp.short_dte
+        }
+      };
+      
+      await simulatorApi.addTrade(tradeData);
+      toast.success(`Added ${simulateOpp.symbol} PMCC to Simulator!`);
+      setSimulateModalOpen(false);
+      setSimulateOpp(null);
+      setSimulateContracts(1);
+    } catch (error) {
+      const msg = error.response?.data?.detail || 'Failed to add to simulator';
+      toast.error(msg);
+    } finally {
+      setSimulateLoading(false);
+    }
+  };
 
   // PMCC Filters - blank by default for best opportunities
   const [filters, setFilters] = useState({
