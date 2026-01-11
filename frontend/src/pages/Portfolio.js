@@ -272,6 +272,19 @@ const Portfolio = () => {
     });
   };
 
+  // Smart handler for stock quantity changes - auto-calculate contracts
+  const handleStockQuantityChange = (value) => {
+    const shares = parseInt(value) || 0;
+    const contracts = Math.floor(shares / 100);
+    
+    setManualTrade(prev => ({
+      ...prev,
+      stock_quantity: value,
+      // Auto-populate option_quantity for covered calls (1 contract per 100 shares)
+      option_quantity: prev.trade_type === 'covered_call' && contracts > 0 ? contracts.toString() : prev.option_quantity
+    }));
+  };
+
   const handleManualTradeSubmit = async () => {
     // Validation - Symbol is always required
     if (!manualTrade.symbol || manualTrade.symbol.trim() === '') {
