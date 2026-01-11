@@ -156,17 +156,26 @@ const Simulator = () => {
     total: 0
   });
 
+  // Track if initial price update has been done
+  const [initialUpdateDone, setInitialUpdateDone] = useState(false);
+
   useEffect(() => {
-    const loadData = async () => {
-      await fetchTrades();
-      await fetchSummary();
-      // Auto-update prices for active trades on initial load
-      if (trades.some(t => t.status === 'active' && !t.current_delta)) {
-        await handleUpdatePrices();
-      }
-    };
-    loadData();
+    fetchTrades();
+    fetchSummary();
   }, [statusFilter, strategyFilter, pagination.page]);
+  
+  // Auto-update prices on first load if there are active trades without current data
+  useEffect(() => {
+    if (!initialUpdateDone && trades.length > 0 && !loading) {
+      const needsUpdate = trades.some(t => t.status === 'active' && (!t.current_delta || t.current_delta === 0));
+      if (needsUpdate) {
+        setInitialUpdateDone(true);
+        handleUpdatePrices();
+      } else {
+        setInitialUpdateDone(true);
+      }
+    }
+  }, [trades, loading, initialUpdateDone]);
 
   useEffect(() => {
     if (activeTab === 'rules') {
