@@ -1249,17 +1249,23 @@ const Portfolio = () => {
                 </h4>
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <Label className="text-zinc-400 text-xs">Quantity (shares)</Label>
+                    <Label className="text-zinc-400 text-xs">Quantity (shares) *</Label>
                     <Input
                       type="number"
                       value={manualTrade.stock_quantity}
-                      onChange={(e) => setManualTrade(prev => ({ ...prev, stock_quantity: e.target.value }))}
+                      onChange={(e) => handleStockQuantityChange(e.target.value)}
                       placeholder="100"
                       className="bg-zinc-800 border-zinc-700"
+                      min="1"
                     />
+                    {manualTrade.trade_type === 'covered_call' && manualTrade.stock_quantity && (
+                      <p className="text-xs text-zinc-500">
+                        = {Math.floor(parseInt(manualTrade.stock_quantity) / 100)} contracts
+                      </p>
+                    )}
                   </div>
                   <div className="space-y-2">
-                    <Label className="text-zinc-400 text-xs">Purchase Price ($)</Label>
+                    <Label className="text-zinc-400 text-xs">Purchase Price ($) *</Label>
                     <Input
                       type="number"
                       step="0.01"
@@ -1267,6 +1273,7 @@ const Portfolio = () => {
                       onChange={(e) => setManualTrade(prev => ({ ...prev, stock_price: e.target.value }))}
                       placeholder="150.00"
                       className="bg-zinc-800 border-zinc-700"
+                      min="0.01"
                     />
                   </div>
                   <div className="space-y-2 col-span-2">
