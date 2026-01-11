@@ -3128,77 +3128,7 @@ async def get_portfolio_summary(user: dict = Depends(get_current_user)):
 
 # ==================== AI ROUTES (Moved to routes/ai.py) ====================
 
-# ==================== ADMIN ROUTES ====================
-
-@admin_router.get("/settings")
-async def get_settings(user: dict = Depends(get_admin_user)):
-    settings = await db.admin_settings.find_one({}, {"_id": 0})
-    if settings:
-        # Mask API keys for security
-        if settings.get("massive_api_key"):
-            settings["massive_api_key"] = settings["massive_api_key"][:8] + "..." + settings["massive_api_key"][-4:] if len(settings["massive_api_key"]) > 12 else "****"
-        if settings.get("massive_access_id"):
-            settings["massive_access_id"] = settings["massive_access_id"][:8] + "..." + settings["massive_access_id"][-4:] if len(settings["massive_access_id"]) > 12 else "****"
-        if settings.get("massive_secret_key"):
-            settings["massive_secret_key"] = settings["massive_secret_key"][:8] + "..." + settings["massive_secret_key"][-4:] if len(settings["massive_secret_key"]) > 12 else "****"
-        if settings.get("marketaux_api_token"):
-            settings["marketaux_api_token"] = settings["marketaux_api_token"][:8] + "..." + settings["marketaux_api_token"][-4:] if len(settings["marketaux_api_token"]) > 12 else "****"
-        if settings.get("openai_api_key"):
-            settings["openai_api_key"] = settings["openai_api_key"][:8] + "..." + settings["openai_api_key"][-4:] if len(settings["openai_api_key"]) > 12 else "****"
-    return settings or {}
-
-@admin_router.post("/settings")
-async def update_settings(settings: AdminSettings, user: dict = Depends(get_admin_user)):
-    settings_dict = settings.model_dump(exclude_unset=True)
-    
-    # Don't update masked values
-    masked_fields = ["massive_api_key", "massive_access_id", "massive_secret_key", "marketaux_api_token", "openai_api_key"]
-    for field in masked_fields:
-        if settings_dict.get(field) and "..." in settings_dict[field]:
-            del settings_dict[field]
-    
-    await db.admin_settings.update_one({}, {"$set": settings_dict}, upsert=True)
-    return {"message": "Settings updated successfully"}
-
-@admin_router.post("/clear-cache")
-async def clear_api_cache(prefix: Optional[str] = None, admin: dict = Depends(get_admin_user)):
-    """Clear API response cache. Optionally filter by prefix."""
-    deleted_count = await clear_cache(prefix)
-    return {"message": f"Cleared {deleted_count} cache entries", "deleted_count": deleted_count}
-
-@admin_router.get("/cache-stats")
-async def get_cache_stats(admin: dict = Depends(get_admin_user)):
-    """Get cache statistics"""
-    try:
-        total_entries = await db.api_cache.count_documents({})
-        entries = await db.api_cache.find({}, {"cache_key": 1, "cached_at": 1, "_id": 0}).to_list(100)
-        
-        stats = {
-            "total_entries": total_entries,
-            "entries": []
-        }
-        
-        for entry in entries:
-            cached_at = entry.get("cached_at")
-            if isinstance(cached_at, str):
-                cached_at = datetime.fromisoformat(cached_at.replace('Z', '+00:00'))
-            age = (datetime.now(timezone.utc) - cached_at).total_seconds() if cached_at else 0
-            stats["entries"].append({
-                "cache_key": entry.get("cache_key"),
-                "age_seconds": round(age, 1)
-            })
-        
-        return stats
-    except Exception as e:
-        logging.error(f"Cache stats error: {e}")
-        return {"total_entries": 0, "error": str(e)}
-
-@admin_router.post("/make-admin/{user_id}")
-async def make_admin(user_id: str, admin: dict = Depends(get_admin_user)):
-    result = await db.users.update_one({"id": user_id}, {"$set": {"is_admin": True}})
-    if result.matched_count == 0:
-        raise HTTPException(status_code=404, detail="User not found")
-    return {"message": "User promoted to admin"}
+# ==================== ADMIN ROUTES (Moved to routes/admin.py) ====================
 
 # ==================== SUBSCRIPTION ROUTES (Moved to routes/subscription.py) ====================
 
