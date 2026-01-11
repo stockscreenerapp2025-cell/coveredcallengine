@@ -4874,7 +4874,7 @@ async def send_chatbot_message(
     
     # Generate session ID if not provided
     if not session_id:
-        session_id = str(uuid4())
+        session_id = str(uuid.uuid4())
     
     chatbot = ChatbotService(db)
     
