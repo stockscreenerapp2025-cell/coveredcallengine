@@ -439,10 +439,14 @@ async def get_trade_ai_suggestion(trade_id: str, user: dict = Depends(get_curren
 @portfolio_router.post("/ibkr/generate-suggestions")
 async def generate_all_suggestions(user: dict = Depends(get_current_user)):
     """Generate AI suggestions for all open trades"""
+    logging.info(f"Generating suggestions for user {user['id']}")
+    
     open_trades = await db.ibkr_trades.find(
         {"user_id": user["id"], "status": "Open"},
         {"_id": 0}
     ).to_list(100)
+    
+    logging.info(f"Found {len(open_trades)} open trades")
     
     if not open_trades:
         return {"message": "No open trades found", "updated": 0}
