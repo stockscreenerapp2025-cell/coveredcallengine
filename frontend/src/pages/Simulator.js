@@ -427,24 +427,24 @@ const Simulator = () => {
             Simulated Trades ({pagination.total})
           </CardTitle>
           <div className="flex gap-2">
-            <Select value={statusFilter} onValueChange={setStatusFilter}>
+            <Select value={statusFilter || "all"} onValueChange={(v) => setStatusFilter(v === "all" ? "" : v)}>
               <SelectTrigger className="w-32 h-8 bg-zinc-800/50 border-zinc-700">
                 <SelectValue placeholder="All Status" />
               </SelectTrigger>
               <SelectContent className="bg-zinc-900 border-zinc-700">
-                <SelectItem value="">All Status</SelectItem>
+                <SelectItem value="all">All Status</SelectItem>
                 <SelectItem value="active">Active</SelectItem>
                 <SelectItem value="closed">Closed</SelectItem>
                 <SelectItem value="expired">Expired</SelectItem>
                 <SelectItem value="assigned">Assigned</SelectItem>
               </SelectContent>
             </Select>
-            <Select value={strategyFilter} onValueChange={setStrategyFilter}>
+            <Select value={strategyFilter || "all"} onValueChange={(v) => setStrategyFilter(v === "all" ? "" : v)}>
               <SelectTrigger className="w-36 h-8 bg-zinc-800/50 border-zinc-700">
                 <SelectValue placeholder="All Strategies" />
               </SelectTrigger>
               <SelectContent className="bg-zinc-900 border-zinc-700">
-                <SelectItem value="">All Strategies</SelectItem>
+                <SelectItem value="all">All Strategies</SelectItem>
                 <SelectItem value="covered_call">Covered Call</SelectItem>
                 <SelectItem value="pmcc">PMCC</SelectItem>
               </SelectContent>
