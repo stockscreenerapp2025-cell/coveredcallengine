@@ -1,186 +1,138 @@
-# Covered Call Engine - Options Trading Platform PRD
+# Covered Call Engine - Product Requirements Document
 
 ## Original Problem Statement
-Build a web-based application to identify, analyse, and manage Covered Call and Poor Man's Covered Call strategies, with real-time market data, screening, portfolio tracking, and AI-assisted insights.
+Build a web-based application named "Covered Call Engine" to identify, analyze, and manage Covered Call and Poor Man's Covered Call (PMCC) strategies.
 
-## User Choices
-- **Market Data**: Polygon.io
-- **AI Provider**: OpenAI GPT-5.2
-- **Authentication**: JWT-based custom auth
-- **News Feed**: Polygon.io news API
-- **Admin Panel**: For API key configuration
-- **Deployment Domain**: coveredcallengine.com
+## Core Features
 
-## Architecture
-- **Backend**: FastAPI + MongoDB (Motor async driver)
-- **Frontend**: React + Tailwind CSS + Shadcn UI
-- **Authentication**: JWT tokens with bcrypt password hashing
-- **Data**: Polygon.io API with parallel asyncio.gather optimization
+### 1. Dashboard
+- Display new opportunities, market indices, stock data
+- Live news feed (MarketAux API with rate limiting)
+- Portfolio performance graph (mocked for new users, live for users with data)
 
-## User Personas
-1. **Options Trader**: Primary user looking to find covered call opportunities
-2. **PMCC Strategist**: User focused on Poor Man's Covered Call setups
-3. **Portfolio Manager**: User tracking multiple positions
-4. **Admin**: System administrator managing API keys and settings
+### 2. Covered Call Screener
+- Powerful screening engine with extensive filters
+- Supports stocks and ETFs
+- Uses Polygon.io for stock data, Yahoo Finance fallback for ETFs
 
-## Core Requirements (All Implemented ✅)
-- [x] Dashboard with market overview
-- [x] Comprehensive Covered Call Screener with advanced filters
-- [x] PMCC Scanner for LEAPS + short calls
-- [x] Portfolio Tracking with P/L calculations
-- [x] Watchlist Management
-- [x] Admin Panel for API credentials
-- [x] AI Analysis Integration (GPT-5.2)
-- [x] News Feed
-- [x] JWT Authentication
-- [x] CSV Import for Portfolio
-- [x] Terms & Conditions checkbox on registration
+### 3. PMCC Screener
+- Dedicated page for Poor Man's Covered Call strategies
+- Identifies suitable LEAPS and short calls
+- Refresh Data button to bypass cache
 
-## Recent Updates (January 2026)
-### Manual Trade Entry Form (New)
-- Added "Add Trade" button to Portfolio header
-- Full manual trade entry form with support for:
-  - Covered Calls (Stock + Short Call)
-  - PMCC (LEAPS + Short Call)
-  - Stock-only positions
-  - Individual options
-- Backend API endpoints: POST/PUT/DELETE `/api/portfolio/manual-trade`
-- Close trade endpoint with P/L calculation
+### 4. Stock Detail Modal
+- TradingView chart with SMA 50/200
+- News and fundamental data
+- Technical indicators
 
-### Screener/PMCC Performance Fix
-- Implemented parallel API requests using `asyncio.gather` in `fetch_options_chain_polygon`
-- Added semaphore-based rate limiting (15 concurrent requests)
-- Expanded strike price filtering for short options (95-150% of stock price)
-- Added proper ATM/OTM filtering for covered calls (97-115% of stock price)
-- Results improved from 2 PMCC opportunities to 40+ opportunities
-- Added "Refresh Data" button to bypass cache and fetch fresh market data
-- Added `/api/screener/clear-cache` endpoint for cache management
+### 5. Portfolio Tracker
+- IBKR CSV import functionality
+- **Manual Trade Entry** (Completed)
+  - Add Covered Calls, PMCC, Stock Only, Option Only trades
+  - Full data display: Symbol, Strategy, Status, DTE, Shares, Entry, Premium, B/E, Current Price, P/L, ROI
+  - Delete individual trades
+  - Clear all imported data
+- AI-powered suggestions
 
-### ETF Options Support (New)
-- Integrated Yahoo Finance (`yfinance`) as data source for ETF options
-- Added ETF symbols: SPY, QQQ, IWM, DIA, XLF, XLE, XLK and more
-- ETFs are now included in Screener results regardless of price filter
-- Yahoo Finance provides real-time options data for ETFs
-- Security Type filter (Stocks/ETFs/Index) now works correctly
+### 6. Authentication & Subscription
+- JWT-based authentication
+- Stripe integration for subscription management
+- 7-day free trial support
 
-### MarketAux News Rate Limiting & Filtering
-- Implemented 100 requests/day rate limit for free tier
-- Added `/api/news/rate-limit` endpoint to check usage status
-- Filtered news to only show relevant stock/options trading content
-- News now includes ticker symbols and excludes irrelevant content (concerts, entertainment, etc.)
-- Keywords filter for options-related terms: volatility, earnings, dividend, Fed, etc.
+### 7. Admin Panel
+- User management
+- API key configuration (Polygon.io, MarketAux, OpenAI)
+- Cache management
 
-### Dashboard Portfolio Mockup
-- Enhanced mockup section with colorful sample charts
-- Sample Strategy Distribution pie chart (Covered Calls, PMCC, Stocks)
-- Sample Realized P/L bar chart by position
-- Clear "Sample Data Preview" banner explaining import process
-- Call-to-action button to import IBKR data
+### 8. Legal & Contact
+- Terms & Conditions page
+- Privacy Policy page
+- Contact Us form
 
-### Portfolio Onboarding Page
-- Three-option onboarding: IBKR Import, New Account, Manual Entry (coming soon)
-- Step-by-step IBKR export instructions
-- Clear "bonus feature" messaging to manage expectations
-- Affiliate link placeholder for IBKR account opening (admin configurable)
+---
 
-### Screener Filter UI Fix
-- All filter fields now show as blank/empty placeholders by default
-- Removed pre-populated default values (no more 10-100, 1-45, etc.)
-- Filters only apply when user explicitly sets values
+## Implementation Status
 
-### Terms & Conditions
-- Added mandatory checkbox on registration page
-- Links to Terms & Conditions and Privacy Policy pages
-- Validation prevents registration without acceptance
+### ✅ Completed
+- [x] Dashboard with opportunities display
+- [x] Covered Call Screener with filters
+- [x] PMCC Screener with LEAPS selection
+- [x] Stock Detail Modal with TradingView
+- [x] Portfolio Tracker - IBKR CSV Import
+- [x] Portfolio Tracker - Manual Trade Entry (Jan 2026)
+- [x] Authentication (JWT)
+- [x] Stripe Integration
+- [x] Admin Panel - Basic
+- [x] News API Integration with rate limiting
+- [x] ETF data via Yahoo Finance fallback
+- [x] AI Chatbot on homepage
 
-## Screener Filters (All Implemented ✅)
+### 🔄 In Progress
+- [ ] Watchlist Functionality (P1)
 
-### Days to Expiration
-- [x] DTE Range (min/max)
-- [x] Weekly Expirations Only
-- [x] Monthly Expirations Only
+### 🔴 Blocked
+- [ ] Stripe Webhook Configuration - Requires user action
+- [ ] Resend Domain Verification - Requires user action
+- [ ] IBKR CSV Parser Validation - Waiting for user's second account CSV
 
-### Stock Filters
-- [x] Stock Price Range
-- [x] Security Type (Stock/ETF/Index)
+### 📋 Backlog
+- [ ] Admin Panel - Support Ticket System (P2)
+- [ ] Admin Panel - Content Manager (P2)
+- [ ] Admin Panel - Roles & Permissions (P3)
+- [ ] Generic CSV Import with field mapping (P3)
+- [ ] Refactor server.py into modular structure (P3)
 
-### Options Filters
-- [x] Option Volume
-- [x] Open Interest
-- [x] Moneyness (ITM/ATM/OTM)
+---
 
-### Greeks
-- [x] Delta Range
-- [x] Theta
+## Tech Stack
+- **Frontend:** React, Tailwind CSS, Shadcn/UI
+- **Backend:** FastAPI (Python)
+- **Database:** MongoDB
+- **APIs:** Polygon.io, Yahoo Finance, MarketAux, Stripe, Resend
+- **Charting:** TradingView (iframe), Recharts
 
-### Probability
-- [x] Probability of Assignment
-- [x] Probability of NOT Assignment
+---
 
-### Technicals
-- [x] Price Above SMA 50
-- [x] Price Above SMA 200
-- [x] RSI Range
-- [x] MACD Signal (Bullish/Bearish)
-- [x] Min ADX (Trend Strength)
-- [x] Signal Strength (Bullish/Bearish/Neutral)
+## Key API Endpoints
 
-### Fundamentals
-- [x] Analyst Coverage
-- [x] Buy/Strong Buy Ratings
-- [x] P/E Ratio Range
-- [x] ROE
+### Portfolio
+- `GET /api/portfolio/ibkr/trades` - Get all trades
+- `POST /api/portfolio/manual-trade` - Add manual trade
+- `DELETE /api/portfolio/manual-trade/{id}` - Delete manual trade
+- `DELETE /api/portfolio/ibkr/clear` - Clear all imported data
 
-### ROI
-- [x] Min ROI %
-- [x] Min Annualized ROI
+### Screeners
+- `GET /api/screener/covered-calls` - Screener data
+- `GET /api/screener/pmcc` - PMCC data
 
-## What's Been Implemented (December 2024)
+### Admin
+- `POST /api/admin/clear-cache` - Clear server cache
 
-### Backend (FastAPI)
-- JWT Authentication (register, login, me endpoints)
-- Stocks API (quotes, indices, historical data)
-- Options API (chains, expirations)
-- Enhanced Screener API with all filters
-- Portfolio API (CRUD, CSV import, summary)
-- Watchlist API (CRUD operations)
-- News API (Polygon integration ready)
-- AI API (OpenAI GPT analysis)
-- Admin API (settings management)
-- Default admin user created on startup
+---
 
-### Frontend (React)
-- Landing page with emerald green branding
-- Login/Register with JWT
-- Dashboard with indices, chart, news, opportunities
-- **Comprehensive Covered Call Screener** with accordion filters
-- PMCC Scanner with AI analysis panel
-- Portfolio Management with add/delete/CSV import
-- Watchlist with price tracking
-- Admin Settings for API keys
-- Responsive sidebar navigation
+## File Structure
+```
+/app/
+├── backend/
+│   ├── server.py (main API - needs refactoring)
+│   ├── requirements.txt
+│   └── .env
+├── frontend/
+│   └── src/
+│       ├── pages/
+│       │   ├── Dashboard.js
+│       │   ├── Screener.js
+│       │   ├── PMCC.js
+│       │   └── Portfolio.js
+│       ├── components/
+│       │   └── StockDetailModal.js
+│       └── lib/
+│           └── api.js
+└── memory/
+    └── PRD.md
+```
 
-## Branding
-- **App Name**: Covered Call Engine
-- **Primary Color**: Emerald (#10b981)
-- **Theme**: Dark professional trading terminal
+---
 
-## Deployment
-- **Target Domain**: coveredcallengine.com
-- **Status**: Ready for deployment
-- **Cost**: 50 credits/month
-
-## Next Action Items
-1. Configure Stripe webhook URL in Stripe dashboard: `https://optionsflow-3.preview.emergentagent.com/api/webhooks/stripe`
-2. Verify domain in Resend for email delivery
-3. Validate portfolio parser with user's second IBKR account CSV
-4. Implement Watchlist functionality
-
-## Pending User Actions
-- Stripe webhook configuration (required for subscription management)
-- Resend domain verification (required for email notifications)
-
-## Future Tasks
-- Admin Panel - Support Ticket System
-- Admin Panel - Content & Announcement Manager
-- Admin Panel - Roles & Permissions and Audit Logs
+## Last Updated
+January 10, 2026 - Manual Trade Entry verified working
