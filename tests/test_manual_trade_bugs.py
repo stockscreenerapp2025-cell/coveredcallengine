@@ -138,8 +138,9 @@ class TestManualTradeBugFixes:
         assert trade.get("account") is not None, "account should be populated"
         
         # Verify specific values
+        expected_expiry = getattr(self.__class__, 'expected_expiry', None)
         assert trade.get("option_strike") == 180.00, f"option_strike should be 180.00"
-        assert trade.get("option_expiry") == "2025-01-17", f"option_expiry should be 2025-01-17"
+        assert trade.get("option_expiry") == expected_expiry, f"option_expiry should be {expected_expiry}"
         assert trade.get("contracts") == 1, f"contracts should be 1"
         assert trade.get("total_fees") == 0, f"total_fees should be 0 for manual trades"
         assert trade.get("account") == "Manual", f"account should be Manual"
