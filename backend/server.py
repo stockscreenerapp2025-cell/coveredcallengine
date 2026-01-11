@@ -849,27 +849,7 @@ MOCK_NEWS = [
 
 # ==================== OPTIONS ROUTES (Moved to routes/options.py) ====================
 
-# ==================== SCREENER ROUTES ====================
-
-@screener_router.get("/covered-calls")
-async def screen_covered_calls(
-    min_roi: float = Query(0.5, ge=0),
-    max_dte: int = Query(45, ge=1),
-    min_delta: float = Query(0.15, ge=0, le=1),
-    max_delta: float = Query(0.45, ge=0, le=1),
-    min_iv_rank: float = Query(0, ge=0, le=100),
-    min_price: float = Query(10, ge=0),
-    max_price: float = Query(500, ge=0),
-    min_volume: int = Query(0, ge=0),
-    min_open_interest: int = Query(0, ge=0),
-    weekly_only: bool = Query(False),
-    monthly_only: bool = Query(False),
-    include_stocks: bool = Query(True),
-    include_etfs: bool = Query(True),
-    include_index: bool = Query(False),
-    bypass_cache: bool = Query(False),
-    user: dict = Depends(get_current_user)
-):
+# ==================== SCREENER ROUTES (Moved to routes/screener.py) ====================
     # Generate cache key based on all filter parameters
     cache_params = {
         "min_roi": min_roi, "max_dte": max_dte, "min_delta": min_delta, "max_delta": max_delta,
