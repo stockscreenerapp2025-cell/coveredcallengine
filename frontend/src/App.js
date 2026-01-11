@@ -8,6 +8,7 @@ import Dashboard from "./pages/Dashboard";
 import Screener from "./pages/Screener";
 import PMCC from "./pages/PMCC";
 import Portfolio from "./pages/Portfolio";
+import Simulator from "./pages/Simulator";
 import Watchlist from "./pages/Watchlist";
 import Admin from "./pages/Admin";
 import Pricing from "./pages/Pricing";
