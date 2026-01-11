@@ -5849,6 +5849,827 @@ async def trigger_manual_update(user: dict = Depends(get_current_user)):
     # This is essentially the same as update_simulator_prices but we can add admin-only full update later
     return await update_simulator_prices(user)
 
+
+# ==================== PHASE 3: RULE-BASED TRADE MANAGEMENT ====================
+
+# Pydantic Models for Trade Rules
+class TradeRuleCondition(BaseModel):
+    """Individual condition for a rule"""
+    field: str  # premium_capture_pct, current_delta, loss_pct, dte_remaining, etc.
+    operator: str  # gte, lte, gt, lt, eq
+    value: float
+    
+class TradeRuleAction(BaseModel):
+    """Action to take when rule conditions are met"""
+    action_type: str  # roll, close, alert
+    parameters: Optional[Dict[str, Any]] = None  # e.g., new_dte for roll
+
+class TradeRuleCreate(BaseModel):
+    """Model for creating a trade rule"""
+    name: str
+    description: Optional[str] = None
+    strategy_type: Optional[str] = None  # covered_call, pmcc, or None for both
+    is_enabled: bool = True
+    priority: int = 10  # Lower number = higher priority
+    conditions: List[TradeRuleCondition]
+    action: TradeRuleAction
+    
+class TradeRuleUpdate(BaseModel):
+    """Model for updating a trade rule"""
+    name: Optional[str] = None
+    description: Optional[str] = None
+    strategy_type: Optional[str] = None
+    is_enabled: Optional[bool] = None
+    priority: Optional[int] = None
+    conditions: Optional[List[TradeRuleCondition]] = None
+    action: Optional[TradeRuleAction] = None
+
+
+# ==================== RULE EVALUATION ENGINE ====================
+
+def evaluate_condition(trade: dict, condition: dict) -> bool:
+    """Evaluate a single condition against a trade"""
+    field = condition["field"]
+    operator = condition["operator"]
+    target_value = condition["value"]
+    
+    # Get the actual value from trade
+    actual_value = None
+    
+    if field == "premium_capture_pct":
+        actual_value = trade.get("premium_capture_pct", 0)
+    elif field == "current_delta":
+        actual_value = trade.get("current_delta") or trade.get("short_call_delta", 0)
+    elif field == "loss_pct":
+        # Calculate loss as percentage of capital deployed
+        unrealized = trade.get("unrealized_pnl", 0)
+        capital = trade.get("capital_deployed", 1)
+        actual_value = (unrealized / capital) * 100 if capital > 0 else 0
+    elif field == "profit_pct":
+        # Calculate profit as percentage of capital deployed
+        unrealized = trade.get("unrealized_pnl", 0)
+        capital = trade.get("capital_deployed", 1)
+        actual_value = (unrealized / capital) * 100 if capital > 0 else 0
+    elif field == "dte_remaining":
+        actual_value = trade.get("dte_remaining", 999)
+    elif field == "days_held":
+        actual_value = trade.get("days_held", 0)
+    elif field == "current_theta":
+        actual_value = abs(trade.get("current_theta", 0))
+    elif field == "current_gamma":
+        actual_value = trade.get("current_gamma", 0)
+    elif field == "unrealized_pnl":
+        actual_value = trade.get("unrealized_pnl", 0)
+    elif field == "leaps_decay_pct":
+        # For PMCC: estimate LEAPS time decay
+        if trade.get("strategy_type") == "pmcc":
+            leaps_cost = trade.get("leaps_premium", 0) * 100 * trade.get("contracts", 1)
+            # Simplified decay estimate based on days held
+            days_held = trade.get("days_held", 0)
+            initial_dte = trade.get("initial_dte", 30)
+            decay_rate = days_held / max(initial_dte * 4, 1)  # Rough estimate
+            actual_value = decay_rate * 100
+        else:
+            actual_value = 0
+    elif field == "cumulative_income_ratio":
+        # For PMCC: cumulative premium income vs LEAPS cost
+        if trade.get("strategy_type") == "pmcc":
+            leaps_cost = trade.get("capital_deployed", 1)
+            premium = trade.get("premium_received", 0)
+            cumulative = trade.get("cumulative_premium", premium)
+            actual_value = (cumulative / leaps_cost) * 100 if leaps_cost > 0 else 0
+        else:
+            actual_value = 0
+    else:
+        actual_value = trade.get(field, 0)
+    
+    if actual_value is None:
+        return False
+    
+    # Compare based on operator
+    if operator == "gte":
+        return actual_value >= target_value
+    elif operator == "lte":
+        return actual_value <= target_value
+    elif operator == "gt":
+        return actual_value > target_value
+    elif operator == "lt":
+        return actual_value < target_value
+    elif operator == "eq":
+        return abs(actual_value - target_value) < 0.001
+    
+    return False
+
+
+def evaluate_rule(trade: dict, rule: dict) -> bool:
+    """Evaluate all conditions of a rule against a trade"""
+    conditions = rule.get("conditions", [])
+    if not conditions:
+        return False
+    
+    # All conditions must be true (AND logic)
+    for condition in conditions:
+        if not evaluate_condition(trade, condition):
+            return False
+    
+    return True
+
+
+async def execute_rule_action(trade: dict, rule: dict, db_instance) -> dict:
+    """Execute the action defined in a rule"""
+    action = rule.get("action", {})
+    action_type = action.get("action_type", "alert")
+    params = action.get("parameters", {})
+    
+    now = datetime.now(timezone.utc)
+    trade_id = trade["id"]
+    
+    result = {
+        "success": False,
+        "action_type": action_type,
+        "message": "",
+        "new_trade_id": None
+    }
+    
+    if action_type == "close":
+        # Close the trade early
+        current_price = trade.get("current_underlying_price", trade["entry_underlying_price"])
+        
+        if trade["strategy_type"] == "covered_call":
+            stock_pnl = (current_price - trade["entry_underlying_price"]) * 100 * trade["contracts"]
+            final_pnl = stock_pnl + trade["premium_received"] - (trade.get("current_option_value", 0) * 100 * trade["contracts"])
+        else:  # PMCC
+            final_pnl = trade.get("unrealized_pnl", 0)
+        
+        roi_percent = (final_pnl / trade["capital_deployed"]) * 100 if trade["capital_deployed"] > 0 else 0
+        close_reason = params.get("reason", f"rule_close_{rule['id'][:8]}")
+        
+        update_doc = {
+            "status": "closed",
+            "close_date": now.strftime("%Y-%m-%d"),
+            "close_price": current_price,
+            "close_reason": close_reason,
+            "final_pnl": round(final_pnl, 2),
+            "roi_percent": round(roi_percent, 2),
+            "realized_pnl": round(final_pnl, 2),
+            "updated_at": now.isoformat()
+        }
+        
+        await db_instance.simulator_trades.update_one(
+            {"id": trade_id},
+            {
+                "$set": update_doc,
+                "$push": {"action_log": {
+                    "action": "rule_closed",
+                    "timestamp": now.isoformat(),
+                    "rule_id": rule["id"],
+                    "rule_name": rule["name"],
+                    "details": f"Auto-closed by rule '{rule['name']}' at ${current_price:.2f}, P/L: ${final_pnl:.2f}"
+                }}
+            }
+        )
+        
+        result["success"] = True
+        result["message"] = f"Trade closed by rule '{rule['name']}', Final P/L: ${final_pnl:.2f}"
+        
+    elif action_type == "roll":
+        # Roll the call - close current position and open new one with new expiry
+        current_price = trade.get("current_underlying_price", trade["entry_underlying_price"])
+        current_option_value = trade.get("current_option_value", 0)
+        
+        # Calculate P&L from closing current short call (buying to close)
+        buyback_cost = current_option_value * 100 * trade["contracts"]
+        original_premium = trade["premium_received"]
+        roll_pnl = original_premium - buyback_cost
+        
+        # New expiry parameters
+        new_dte = params.get("new_dte", 30)  # Default 30 DTE
+        new_strike_adjustment = params.get("strike_adjustment", 0)  # 0 = same strike, positive = higher
+        
+        new_expiry_dt = datetime.now() + timedelta(days=new_dte)
+        new_expiry = new_expiry_dt.strftime("%Y-%m-%d")
+        new_strike = trade["short_call_strike"] + new_strike_adjustment
+        
+        # Estimate new premium (simplified - use same ratio)
+        estimated_new_premium = trade.get("short_call_premium", 0) * 0.8  # Conservative estimate
+        
+        # Update current trade as rolled
+        await db_instance.simulator_trades.update_one(
+            {"id": trade_id},
+            {
+                "$set": {
+                    "status": "closed",
+                    "close_date": now.strftime("%Y-%m-%d"),
+                    "close_price": current_price,
+                    "close_reason": "rolled",
+                    "final_pnl": round(roll_pnl, 2),
+                    "roi_percent": round((roll_pnl / trade["capital_deployed"]) * 100, 2) if trade["capital_deployed"] > 0 else 0,
+                    "realized_pnl": round(roll_pnl, 2),
+                    "updated_at": now.isoformat()
+                },
+                "$push": {"action_log": {
+                    "action": "rolled",
+                    "timestamp": now.isoformat(),
+                    "rule_id": rule["id"],
+                    "rule_name": rule["name"],
+                    "details": f"Rolled by rule '{rule['name']}': closed ${trade['short_call_strike']} call, P/L: ${roll_pnl:.2f}"
+                }}
+            }
+        )
+        
+        # Create new trade for the rolled position
+        new_trade_id = str(uuid.uuid4())
+        cumulative_premium = trade.get("cumulative_premium", trade["premium_received"]) + (estimated_new_premium * 100 * trade["contracts"])
+        roll_count = trade.get("roll_count", 0) + 1
+        
+        new_trade_doc = {
+            "id": new_trade_id,
+            "user_id": trade["user_id"],
+            "symbol": trade["symbol"],
+            "strategy_type": trade["strategy_type"],
+            "status": "active",
+            
+            # Entry snapshot (carry forward stock/LEAPS position)
+            "entry_date": trade["entry_date"],  # Original entry date
+            "entry_underlying_price": trade["entry_underlying_price"],  # Original entry price
+            
+            # New short call details
+            "short_call_strike": new_strike,
+            "short_call_expiry": new_expiry,
+            "short_call_premium": estimated_new_premium,
+            "short_call_delta": trade.get("short_call_delta"),
+            "short_call_iv": trade.get("short_call_iv"),
+            
+            # LEAPS details (for PMCC) - carried forward
+            "leaps_strike": trade.get("leaps_strike"),
+            "leaps_expiry": trade.get("leaps_expiry"),
+            "leaps_premium": trade.get("leaps_premium"),
+            "leaps_delta": trade.get("leaps_delta"),
+            
+            # Position sizing
+            "contracts": trade["contracts"],
+            
+            # Capital (carry forward)
+            "capital_deployed": trade["capital_deployed"],
+            "premium_received": estimated_new_premium * 100 * trade["contracts"],
+            "cumulative_premium": cumulative_premium,  # Track total premium across rolls
+            "max_profit": trade["max_profit"],
+            "max_loss": trade["max_loss"],
+            "breakeven": trade["breakeven"],
+            "initial_dte": new_dte,
+            
+            # Live tracking
+            "current_underlying_price": current_price,
+            "current_option_value": estimated_new_premium,
+            "unrealized_pnl": 0,
+            "realized_pnl": roll_pnl,  # Carry forward realized P&L from roll
+            "days_held": trade.get("days_held", 0),
+            "dte_remaining": new_dte,
+            "last_updated": now.isoformat(),
+            
+            # Roll tracking
+            "roll_count": roll_count,
+            "rolled_from_trade_id": trade_id,
+            "original_trade_id": trade.get("original_trade_id", trade_id),
+            
+            # Audit
+            "created_at": now.isoformat(),
+            "updated_at": now.isoformat(),
+            "action_log": [{
+                "action": "rolled_open",
+                "timestamp": now.isoformat(),
+                "rule_id": rule["id"],
+                "rule_name": rule["name"],
+                "details": f"New position from roll: ${new_strike} call exp {new_expiry}, Roll #{roll_count}"
+            }]
+        }
+        
+        await db_instance.simulator_trades.insert_one(new_trade_doc)
+        
+        result["success"] = True
+        result["new_trade_id"] = new_trade_id
+        result["message"] = f"Rolled to ${new_strike} strike, exp {new_expiry} (Roll #{roll_count})"
+        
+    elif action_type == "alert":
+        # Just log an alert/notification (no trade changes)
+        await db_instance.simulator_trades.update_one(
+            {"id": trade_id},
+            {"$push": {"action_log": {
+                "action": "rule_alert",
+                "timestamp": now.isoformat(),
+                "rule_id": rule["id"],
+                "rule_name": rule["name"],
+                "details": f"Alert from rule '{rule['name']}': {params.get('message', 'Condition triggered')}"
+            }}}
+        )
+        
+        result["success"] = True
+        result["message"] = f"Alert logged for rule '{rule['name']}'"
+    
+    return result
+
+
+async def evaluate_and_execute_rules(trade: dict, rules: list, db_instance) -> list:
+    """Evaluate all applicable rules for a trade and execute matching ones"""
+    results = []
+    
+    # Sort rules by priority (lower number = higher priority)
+    sorted_rules = sorted(rules, key=lambda r: r.get("priority", 10))
+    
+    for rule in sorted_rules:
+        # Check if rule applies to this strategy type
+        rule_strategy = rule.get("strategy_type")
+        if rule_strategy and rule_strategy != trade["strategy_type"]:
+            continue
+        
+        # Check if rule is enabled
+        if not rule.get("is_enabled", True):
+            continue
+        
+        # Evaluate rule conditions
+        if evaluate_rule(trade, rule):
+            # Execute the action
+            result = await execute_rule_action(trade, rule, db_instance)
+            results.append({
+                "rule_id": rule["id"],
+                "rule_name": rule["name"],
+                **result
+            })
+            
+            # If action was close or roll, stop evaluating more rules for this trade
+            if result["success"] and rule["action"]["action_type"] in ["close", "roll"]:
+                break
+    
+    return results
+
+
+# ==================== RULE ENDPOINTS ====================
+
+@simulator_router.post("/rules")
+async def create_trade_rule(rule: TradeRuleCreate, user: dict = Depends(get_current_user)):
+    """Create a new trade management rule"""
+    
+    rule_id = str(uuid.uuid4())
+    now = datetime.now(timezone.utc)
+    
+    rule_doc = {
+        "id": rule_id,
+        "user_id": user["id"],
+        "name": rule.name,
+        "description": rule.description,
+        "strategy_type": rule.strategy_type,
+        "is_enabled": rule.is_enabled,
+        "priority": rule.priority,
+        "conditions": [c.model_dump() for c in rule.conditions],
+        "action": rule.action.model_dump(),
+        "created_at": now.isoformat(),
+        "updated_at": now.isoformat(),
+        "times_triggered": 0
+    }
+    
+    await db.simulator_rules.insert_one(rule_doc)
+    
+    # Remove _id for response
+    if "_id" in rule_doc:
+        del rule_doc["_id"]
+    
+    return {"message": "Rule created", "rule": rule_doc}
+
+
+@simulator_router.get("/rules")
+async def get_trade_rules(
+    user: dict = Depends(get_current_user),
+    strategy: Optional[str] = Query(None, description="Filter by strategy type"),
+    enabled_only: bool = Query(False, description="Only return enabled rules")
+):
+    """Get all trade management rules for the user"""
+    
+    query = {"user_id": user["id"]}
+    if strategy:
+        query["strategy_type"] = {"$in": [strategy, None]}  # Match specific or applies to all
+    if enabled_only:
+        query["is_enabled"] = True
+    
+    rules = await db.simulator_rules.find(query, {"_id": 0}).sort("priority", 1).to_list(100)
+    
+    return {"rules": rules, "total": len(rules)}
+
+
+@simulator_router.get("/rules/{rule_id}")
+async def get_trade_rule(rule_id: str, user: dict = Depends(get_current_user)):
+    """Get a specific trade rule"""
+    
+    rule = await db.simulator_rules.find_one(
+        {"id": rule_id, "user_id": user["id"]},
+        {"_id": 0}
+    )
+    
+    if not rule:
+        raise HTTPException(status_code=404, detail="Rule not found")
+    
+    return rule
+
+
+@simulator_router.put("/rules/{rule_id}")
+async def update_trade_rule(
+    rule_id: str,
+    update: TradeRuleUpdate,
+    user: dict = Depends(get_current_user)
+):
+    """Update a trade rule"""
+    
+    rule = await db.simulator_rules.find_one({"id": rule_id, "user_id": user["id"]})
+    if not rule:
+        raise HTTPException(status_code=404, detail="Rule not found")
+    
+    update_doc = {"updated_at": datetime.now(timezone.utc).isoformat()}
+    
+    if update.name is not None:
+        update_doc["name"] = update.name
+    if update.description is not None:
+        update_doc["description"] = update.description
+    if update.strategy_type is not None:
+        update_doc["strategy_type"] = update.strategy_type
+    if update.is_enabled is not None:
+        update_doc["is_enabled"] = update.is_enabled
+    if update.priority is not None:
+        update_doc["priority"] = update.priority
+    if update.conditions is not None:
+        update_doc["conditions"] = [c.model_dump() for c in update.conditions]
+    if update.action is not None:
+        update_doc["action"] = update.action.model_dump()
+    
+    await db.simulator_rules.update_one(
+        {"id": rule_id, "user_id": user["id"]},
+        {"$set": update_doc}
+    )
+    
+    updated_rule = await db.simulator_rules.find_one({"id": rule_id}, {"_id": 0})
+    return {"message": "Rule updated", "rule": updated_rule}
+
+
+@simulator_router.delete("/rules/{rule_id}")
+async def delete_trade_rule(rule_id: str, user: dict = Depends(get_current_user)):
+    """Delete a trade rule"""
+    
+    result = await db.simulator_rules.delete_one({"id": rule_id, "user_id": user["id"]})
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Rule not found")
+    
+    return {"message": "Rule deleted"}
+
+
+@simulator_router.post("/rules/evaluate")
+async def evaluate_rules_manually(
+    user: dict = Depends(get_current_user),
+    dry_run: bool = Query(True, description="If true, only show what would happen without executing")
+):
+    """Manually evaluate and optionally execute all rules against active trades"""
+    
+    # Get user's active trades
+    active_trades = await db.simulator_trades.find(
+        {"user_id": user["id"], "status": "active"},
+        {"_id": 0}
+    ).to_list(1000)
+    
+    if not active_trades:
+        return {"message": "No active trades to evaluate", "results": []}
+    
+    # Get user's enabled rules
+    rules = await db.simulator_rules.find(
+        {"user_id": user["id"], "is_enabled": True},
+        {"_id": 0}
+    ).to_list(100)
+    
+    if not rules:
+        return {"message": "No enabled rules found", "results": []}
+    
+    all_results = []
+    
+    for trade in active_trades:
+        trade_results = []
+        
+        for rule in sorted(rules, key=lambda r: r.get("priority", 10)):
+            # Check if rule applies to this strategy
+            if rule.get("strategy_type") and rule["strategy_type"] != trade["strategy_type"]:
+                continue
+            
+            # Evaluate conditions
+            if evaluate_rule(trade, rule):
+                if dry_run:
+                    trade_results.append({
+                        "rule_id": rule["id"],
+                        "rule_name": rule["name"],
+                        "action_type": rule["action"]["action_type"],
+                        "would_execute": True,
+                        "dry_run": True
+                    })
+                    # In dry run, continue checking all rules
+                else:
+                    # Actually execute
+                    result = await execute_rule_action(trade, rule, db)
+                    trade_results.append({
+                        "rule_id": rule["id"],
+                        "rule_name": rule["name"],
+                        **result
+                    })
+                    
+                    # Update trigger count
+                    await db.simulator_rules.update_one(
+                        {"id": rule["id"]},
+                        {"$inc": {"times_triggered": 1}}
+                    )
+                    
+                    if result["success"] and rule["action"]["action_type"] in ["close", "roll"]:
+                        break
+        
+        if trade_results:
+            all_results.append({
+                "trade_id": trade["id"],
+                "symbol": trade["symbol"],
+                "strategy": trade["strategy_type"],
+                "matched_rules": trade_results
+            })
+    
+    return {
+        "dry_run": dry_run,
+        "trades_evaluated": len(active_trades),
+        "rules_count": len(rules),
+        "results": all_results
+    }
+
+
+@simulator_router.get("/rules/templates")
+async def get_rule_templates(user: dict = Depends(get_current_user)):
+    """Get pre-defined rule templates for common strategies"""
+    
+    templates = [
+        {
+            "id": "premium_capture_80",
+            "name": "Roll at 80% Premium Capture",
+            "description": "Roll the call when 80% of the premium has been captured",
+            "strategy_type": None,
+            "conditions": [
+                {"field": "premium_capture_pct", "operator": "gte", "value": 80}
+            ],
+            "action": {
+                "action_type": "roll",
+                "parameters": {"new_dte": 30, "strike_adjustment": 0}
+            }
+        },
+        {
+            "id": "delta_threshold",
+            "name": "Roll at High Delta",
+            "description": "Roll when delta exceeds 0.70 (high probability of assignment)",
+            "strategy_type": None,
+            "conditions": [
+                {"field": "current_delta", "operator": "gte", "value": 0.70}
+            ],
+            "action": {
+                "action_type": "roll",
+                "parameters": {"new_dte": 30, "strike_adjustment": 5}
+            }
+        },
+        {
+            "id": "stop_loss_10",
+            "name": "Stop Loss at 10%",
+            "description": "Close trade if loss exceeds 10% of capital deployed",
+            "strategy_type": None,
+            "conditions": [
+                {"field": "loss_pct", "operator": "lte", "value": -10}
+            ],
+            "action": {
+                "action_type": "close",
+                "parameters": {"reason": "stop_loss"}
+            }
+        },
+        {
+            "id": "time_decay_exit",
+            "name": "Exit Near Expiry",
+            "description": "Close 5 days before expiry to avoid gamma risk",
+            "strategy_type": "covered_call",
+            "conditions": [
+                {"field": "dte_remaining", "operator": "lte", "value": 5},
+                {"field": "premium_capture_pct", "operator": "gte", "value": 50}
+            ],
+            "action": {
+                "action_type": "close",
+                "parameters": {"reason": "time_exit"}
+            }
+        },
+        {
+            "id": "pmcc_weekly_roll",
+            "name": "PMCC Weekly Roll",
+            "description": "Roll PMCC short leg when DTE <= 7 and premium capture >= 60%",
+            "strategy_type": "pmcc",
+            "conditions": [
+                {"field": "dte_remaining", "operator": "lte", "value": 7},
+                {"field": "premium_capture_pct", "operator": "gte", "value": 60}
+            ],
+            "action": {
+                "action_type": "roll",
+                "parameters": {"new_dte": 14, "strike_adjustment": 0}
+            }
+        },
+        {
+            "id": "pmcc_leaps_decay_alert",
+            "name": "PMCC LEAPS Decay Alert",
+            "description": "Alert when cumulative premium hasn't offset LEAPS decay",
+            "strategy_type": "pmcc",
+            "conditions": [
+                {"field": "cumulative_income_ratio", "operator": "lt", "value": 20},
+                {"field": "days_held", "operator": "gte", "value": 30}
+            ],
+            "action": {
+                "action_type": "alert",
+                "parameters": {"message": "LEAPS decay outpacing premium income"}
+            }
+        },
+        {
+            "id": "profit_target_5",
+            "name": "Take Profit at 5%",
+            "description": "Close trade when profit reaches 5% of capital",
+            "strategy_type": None,
+            "conditions": [
+                {"field": "profit_pct", "operator": "gte", "value": 5}
+            ],
+            "action": {
+                "action_type": "close",
+                "parameters": {"reason": "profit_target"}
+            }
+        }
+    ]
+    
+    return {"templates": templates}
+
+
+@simulator_router.post("/rules/from-template/{template_id}")
+async def create_rule_from_template(template_id: str, user: dict = Depends(get_current_user)):
+    """Create a new rule from a template"""
+    
+    # Get templates
+    templates_response = await get_rule_templates(user)
+    templates = templates_response["templates"]
+    
+    template = next((t for t in templates if t["id"] == template_id), None)
+    if not template:
+        raise HTTPException(status_code=404, detail="Template not found")
+    
+    # Create rule from template
+    rule_data = TradeRuleCreate(
+        name=template["name"],
+        description=template["description"],
+        strategy_type=template["strategy_type"],
+        is_enabled=True,
+        priority=10,
+        conditions=[TradeRuleCondition(**c) for c in template["conditions"]],
+        action=TradeRuleAction(**template["action"])
+    )
+    
+    return await create_trade_rule(rule_data, user)
+
+
+# ==================== ACTION LOG ENDPOINTS ====================
+
+@simulator_router.get("/action-logs")
+async def get_action_logs(
+    user: dict = Depends(get_current_user),
+    trade_id: Optional[str] = Query(None, description="Filter by trade ID"),
+    action_type: Optional[str] = Query(None, description="Filter by action type"),
+    limit: int = Query(50, ge=1, le=200),
+    page: int = Query(1, ge=1)
+):
+    """Get action logs from all trades"""
+    
+    # Query for trades with action logs
+    query = {"user_id": user["id"]}
+    if trade_id:
+        query["id"] = trade_id
+    
+    trades = await db.simulator_trades.find(
+        query,
+        {"id": 1, "symbol": 1, "strategy_type": 1, "action_log": 1, "_id": 0}
+    ).to_list(1000)
+    
+    # Flatten and sort all action logs
+    all_logs = []
+    for trade in trades:
+        for log in trade.get("action_log", []):
+            if action_type and log.get("action") != action_type:
+                continue
+            all_logs.append({
+                "trade_id": trade["id"],
+                "symbol": trade["symbol"],
+                "strategy_type": trade["strategy_type"],
+                **log
+            })
+    
+    # Sort by timestamp descending
+    all_logs.sort(key=lambda x: x.get("timestamp", ""), reverse=True)
+    
+    # Paginate
+    skip = (page - 1) * limit
+    paginated_logs = all_logs[skip:skip + limit]
+    
+    return {
+        "logs": paginated_logs,
+        "total": len(all_logs),
+        "page": page,
+        "pages": (len(all_logs) + limit - 1) // limit
+    }
+
+
+@simulator_router.get("/pmcc-summary")
+async def get_pmcc_summary(user: dict = Depends(get_current_user)):
+    """Get PMCC-specific summary: cumulative income vs LEAPS decay tracking"""
+    
+    # Get all PMCC trades (active and closed)
+    pmcc_trades = await db.simulator_trades.find(
+        {"user_id": user["id"], "strategy_type": "pmcc"},
+        {"_id": 0}
+    ).to_list(1000)
+    
+    if not pmcc_trades:
+        return {"message": "No PMCC trades found", "summary": None}
+    
+    # Group by original trade (to track rolls)
+    trade_chains = {}
+    for trade in pmcc_trades:
+        original_id = trade.get("original_trade_id", trade["id"])
+        if original_id not in trade_chains:
+            trade_chains[original_id] = []
+        trade_chains[original_id].append(trade)
+    
+    summaries = []
+    for original_id, chain in trade_chains.items():
+        # Sort by entry date to get chronological order
+        chain.sort(key=lambda t: t.get("created_at", ""))
+        
+        first_trade = chain[0]
+        latest_trade = chain[-1]
+        
+        # Calculate totals
+        total_premium_received = sum(t.get("premium_received", 0) for t in chain)
+        total_realized_pnl = sum(t.get("realized_pnl", 0) or 0 for t in chain if t["status"] != "active")
+        leaps_cost = first_trade.get("capital_deployed", 0)
+        roll_count = len(chain) - 1
+        
+        # Calculate LEAPS decay estimate
+        if first_trade.get("leaps_expiry"):
+            try:
+                leaps_expiry_dt = datetime.strptime(first_trade["leaps_expiry"], "%Y-%m-%d")
+                days_to_leaps_expiry = (leaps_expiry_dt - datetime.now()).days
+                original_leaps_dte = first_trade.get("initial_dte", 365) * 4  # Rough estimate
+                decay_pct = ((original_leaps_dte - days_to_leaps_expiry) / original_leaps_dte) * 100 if original_leaps_dte > 0 else 0
+            except:
+                decay_pct = 0
+                days_to_leaps_expiry = 365
+        else:
+            decay_pct = 0
+            days_to_leaps_expiry = 365
+        
+        # Income to cost ratio
+        income_ratio = (total_premium_received / leaps_cost) * 100 if leaps_cost > 0 else 0
+        
+        summaries.append({
+            "original_trade_id": original_id,
+            "symbol": first_trade["symbol"],
+            "leaps_strike": first_trade.get("leaps_strike"),
+            "leaps_expiry": first_trade.get("leaps_expiry"),
+            "leaps_cost": leaps_cost,
+            "days_to_leaps_expiry": days_to_leaps_expiry,
+            "roll_count": roll_count,
+            "status": latest_trade["status"],
+            
+            # Income tracking
+            "total_premium_received": round(total_premium_received, 2),
+            "total_realized_pnl": round(total_realized_pnl, 2),
+            "unrealized_pnl": latest_trade.get("unrealized_pnl", 0) if latest_trade["status"] == "active" else 0,
+            
+            # Ratios
+            "income_to_cost_ratio": round(income_ratio, 2),
+            "estimated_leaps_decay_pct": round(decay_pct, 1),
+            
+            # Health indicator
+            "health": "good" if income_ratio > decay_pct else "warning" if income_ratio > decay_pct * 0.5 else "critical"
+        })
+    
+    # Overall PMCC stats
+    total_leaps_cost = sum(s["leaps_cost"] for s in summaries)
+    total_income = sum(s["total_premium_received"] for s in summaries)
+    
+    return {
+        "summary": summaries,
+        "overall": {
+            "total_pmcc_positions": len(summaries),
+            "active_positions": len([s for s in summaries if s["status"] == "active"]),
+            "total_leaps_investment": round(total_leaps_cost, 2),
+            "total_premium_income": round(total_income, 2),
+            "overall_income_ratio": round((total_income / total_leaps_cost) * 100, 2) if total_leaps_cost > 0 else 0
+        }
+    }
+
+
 # Include all routers
 api_router.include_router(auth_router)
 api_router.include_router(stocks_router)
