@@ -4426,10 +4426,10 @@ api_router.include_router(subscription_router, prefix="/subscription")
 api_router.include_router(stocks_router, prefix="/stocks")
 api_router.include_router(options_router, prefix="/options")
 api_router.include_router(admin_router, prefix="/admin")
+api_router.include_router(portfolio_router, prefix="/portfolio")
 
 # Internal routers (still in server.py - to be refactored)
 api_router.include_router(screener_router)
-api_router.include_router(portfolio_router)
 api_router.include_router(simulator_router)
 
 app.include_router(api_router)
