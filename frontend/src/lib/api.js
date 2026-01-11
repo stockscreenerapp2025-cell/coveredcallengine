@@ -120,6 +120,26 @@ export const watchlistApi = {
   remove: (id) => api.delete(`/watchlist/${id}`),
 };
 
+// Simulator API
+export const simulatorApi = {
+  addTrade: (data) => api.post('/simulator/trade', data),
+  getTrades: (params = {}) => {
+    const queryParams = new URLSearchParams();
+    if (params.status) queryParams.append('status', params.status);
+    if (params.strategy) queryParams.append('strategy', params.strategy);
+    if (params.page) queryParams.append('page', params.page);
+    if (params.limit) queryParams.append('limit', params.limit);
+    return api.get(`/simulator/trades?${queryParams.toString()}`);
+  },
+  getTradeDetail: (tradeId) => api.get(`/simulator/trades/${tradeId}`),
+  deleteTrade: (tradeId) => api.delete(`/simulator/trades/${tradeId}`),
+  closeTrade: (tradeId, closePrice, closeReason = 'early_close') => 
+    api.post(`/simulator/trades/${tradeId}/close?close_price=${closePrice}&close_reason=${closeReason}`),
+  updatePrices: () => api.post('/simulator/update-prices'),
+  getSummary: () => api.get('/simulator/summary'),
+  clearAll: () => api.delete('/simulator/clear'),
+};
+
 export const newsApi = {
   getNews: (params) => api.get('/news/', { params }),
 };
