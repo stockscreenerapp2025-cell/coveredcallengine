@@ -787,6 +787,7 @@ const Dashboard = () => {
                     <th>6M</th>
                     <th>12M</th>
                     <th>AI Score</th>
+                    <th className="text-center">Action</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -835,6 +836,22 @@ const Dashboard = () => {
                           {opp.score?.toFixed(0)}
                         </Badge>
                       </td>
+                      <td className="text-center">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSimulateOpp(opp);
+                            setSimulateModalOpen(true);
+                          }}
+                          className="bg-violet-500/10 border-violet-500/30 text-violet-400 hover:bg-violet-500/20 hover:text-violet-300"
+                          data-testid={`dashboard-simulate-btn-${opp.symbol}`}
+                        >
+                          <Play className="w-3 h-3 mr-1" />
+                          Simulate
+                        </Button>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -843,6 +860,84 @@ const Dashboard = () => {
           )}
         </CardContent>
       </Card>
+
+      {/* Simulate Trade Modal */}
+      <Dialog open={simulateModalOpen} onOpenChange={setSimulateModalOpen}>
+        <DialogContent className="bg-zinc-900 border-zinc-800 max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Play className="w-5 h-5 text-violet-400" />
+              Add to Simulator
+            </DialogTitle>
+          </DialogHeader>
+          {simulateOpp && (
+            <div className="space-y-4 pt-4">
+              <div className="p-4 bg-zinc-800/50 rounded-lg space-y-2">
+                <div className="flex justify-between">
+                  <span className="text-zinc-400">Symbol</span>
+                  <span className="font-semibold text-white">{simulateOpp.symbol}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-zinc-400">Strategy</span>
+                  <Badge className="bg-emerald-500/20 text-emerald-400">Covered Call</Badge>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-zinc-400">Entry Price</span>
+                  <span className="text-white">${simulateOpp.stock_price?.toFixed(2)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-zinc-400">Strike</span>
+                  <span className="text-white">${simulateOpp.strike?.toFixed(2)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-zinc-400">Expiry</span>
+                  <span className="text-white">{formatOptionContract(simulateOpp.expiry, simulateOpp.strike)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-zinc-400">Premium</span>
+                  <span className="text-emerald-400">${simulateOpp.premium?.toFixed(2)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-zinc-400">DTE</span>
+                  <span className="text-white">{simulateOpp.dte} days</span>
+                </div>
+              </div>
+              
+              <div>
+                <Label>Number of Contracts</Label>
+                <Input
+                  type="number"
+                  min={1}
+                  max={100}
+                  value={simulateContracts}
+                  onChange={(e) => setSimulateContracts(parseInt(e.target.value) || 1)}
+                  className="input-dark mt-2"
+                />
+                <p className="text-xs text-zinc-500 mt-1">
+                  Capital required: ${((simulateOpp.stock_price || 0) * 100 * simulateContracts).toLocaleString()}
+                </p>
+              </div>
+              
+              <div className="flex gap-2 pt-2">
+                <Button
+                  variant="outline"
+                  onClick={() => setSimulateModalOpen(false)}
+                  className="flex-1 btn-outline"
+                >
+                  Cancel
+                </Button>
+                <Button
+                  onClick={handleSimulate}
+                  disabled={simulateLoading}
+                  className="flex-1 bg-violet-600 hover:bg-violet-700 text-white"
+                >
+                  {simulateLoading ? 'Adding...' : 'Add to Simulator'}
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
 
       {/* Stock Detail Modal */}
       <StockDetailModal 
