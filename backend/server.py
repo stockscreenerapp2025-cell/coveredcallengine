@@ -1241,9 +1241,7 @@ api_router.include_router(options_router, prefix="/options")
 api_router.include_router(admin_router, prefix="/admin")
 api_router.include_router(portfolio_router, prefix="/portfolio")
 api_router.include_router(screener_router, prefix="/screener")
-
-# Internal routers (still in server.py - to be refactored)
-api_router.include_router(simulator_router)
+api_router.include_router(simulator_router, prefix="/simulator")
 
 app.include_router(api_router)
 
