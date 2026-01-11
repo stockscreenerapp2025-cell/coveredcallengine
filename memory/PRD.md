@@ -131,11 +131,11 @@ Build a web-based application named "Covered Call Engine" to identify, analyze, 
 ```
 /app/
 ├── backend/
-│   ├── server.py (main API - ~5582 lines, screener/portfolio/simulator)
+│   ├── server.py (main API - ~4504 lines, screener/simulator + core infra)
 │   ├── database.py (MongoDB connection with pooling)
 │   ├── requirements.txt
 │   ├── .env
-│   ├── routes/                    # Refactored modular routes
+│   ├── routes/                    # Refactored modular routes (2960 lines total)
 │   │   ├── __init__.py
 │   │   ├── auth.py               (101 lines)
 │   │   ├── watchlist.py          (64 lines)
@@ -145,12 +145,14 @@ Build a web-based application named "Covered Call Engine" to identify, analyze, 
 │   │   ├── subscription.py       (144 lines)
 │   │   ├── stocks.py             (297 lines)
 │   │   ├── options.py            (171 lines)
-│   │   └── admin.py              (874 lines)
+│   │   ├── admin.py              (874 lines)
+│   │   └── portfolio.py          (887 lines)
 │   ├── services/
 │   │   ├── cache.py
 │   │   ├── chatbot_service.py
 │   │   ├── email_service.py
-│   │   └── email_automation.py
+│   │   ├── email_automation.py
+│   │   └── ibkr_parser.py
 │   ├── models/
 │   │   └── schemas.py (Pydantic models)
 │   └── utils/
