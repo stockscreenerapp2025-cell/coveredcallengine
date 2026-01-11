@@ -53,7 +53,7 @@ async def register(user_data: UserCreate):
             email=user_data.email,
             name=user_data.name,
             is_admin=False,
-            created_at=datetime.fromisoformat(user["created_at"])
+            created_at=user["created_at"]  # Already a string (isoformat)
         )
     )
 
@@ -68,8 +68,9 @@ async def login(credentials: UserLogin):
     token = create_token(user["id"], user["email"], user.get("is_admin", False))
     
     created_at = user.get("created_at")
-    if isinstance(created_at, str):
-        created_at = datetime.fromisoformat(created_at)
+    # Ensure created_at is a string
+    if isinstance(created_at, datetime):
+        created_at = created_at.isoformat()
     
     return TokenResponse(
         access_token=token,
