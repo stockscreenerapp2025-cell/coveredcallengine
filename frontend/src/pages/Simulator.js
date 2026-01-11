@@ -4,11 +4,16 @@ import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
 import { Button } from '../components/ui/button';
 import { Badge } from '../components/ui/badge';
 import { Skeleton } from '../components/ui/skeleton';
+import { Input } from '../components/ui/input';
+import { Label } from '../components/ui/label';
+import { Switch } from '../components/ui/switch';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogFooter,
 } from '../components/ui/dialog';
 import {
   Select,
@@ -18,33 +23,31 @@ import {
   SelectValue,
 } from '../components/ui/select';
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '../components/ui/table';
-import {
   Play,
   RefreshCw,
   Trash2,
   TrendingUp,
-  TrendingDown,
   DollarSign,
   BarChart3,
   Target,
   Clock,
-  CheckCircle,
-  XCircle,
   AlertCircle,
   ChevronLeft,
   ChevronRight,
   Activity,
   Percent,
-  Calendar,
   Layers,
-  X
+  Settings,
+  Plus,
+  Zap,
+  FileText,
+  Edit,
+  Copy,
+  PlayCircle,
+  History,
+  ShieldCheck,
+  AlertTriangle,
+  CheckCircle2
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { PieChart, Pie, Cell, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, Legend } from 'recharts';
@@ -68,13 +71,63 @@ const CHART_COLORS = {
   loss: '#ef4444'
 };
 
+const ACTION_COLORS = {
+  'opened': 'bg-blue-500/20 text-blue-400',
+  'closed': 'bg-zinc-500/20 text-zinc-400',
+  'rolled': 'bg-violet-500/20 text-violet-400',
+  'rolled_open': 'bg-cyan-500/20 text-cyan-400',
+  'rule_closed': 'bg-amber-500/20 text-amber-400',
+  'rule_alert': 'bg-yellow-500/20 text-yellow-400',
+  'expired': 'bg-emerald-500/20 text-emerald-400',
+  'assigned': 'bg-red-500/20 text-red-400'
+};
+
+const CONDITION_FIELDS = [
+  { value: 'premium_capture_pct', label: 'Premium Captured %' },
+  { value: 'current_delta', label: 'Delta' },
+  { value: 'loss_pct', label: 'Loss %' },
+  { value: 'profit_pct', label: 'Profit %' },
+  { value: 'dte_remaining', label: 'DTE Remaining' },
+  { value: 'days_held', label: 'Days Held' },
+  { value: 'current_theta', label: 'Theta (abs)' },
+  { value: 'cumulative_income_ratio', label: 'Cumulative Income Ratio (PMCC)' }
+];
+
+const OPERATORS = [
+  { value: 'gte', label: '>=' },
+  { value: 'lte', label: '<=' },
+  { value: 'gt', label: '>' },
+  { value: 'lt', label: '<' },
+  { value: 'eq', label: '=' }
+];
+
 const Simulator = () => {
+  const [activeTab, setActiveTab] = useState('trades');
   const [trades, setTrades] = useState([]);
   const [summary, setSummary] = useState(null);
   const [loading, setLoading] = useState(true);
   const [updating, setUpdating] = useState(false);
   const [selectedTrade, setSelectedTrade] = useState(null);
   const [detailOpen, setDetailOpen] = useState(false);
+  
+  // Rules state
+  const [rules, setRules] = useState([]);
+  const [templates, setTemplates] = useState([]);
+  const [rulesLoading, setRulesLoading] = useState(false);
+  const [ruleDialogOpen, setRuleDialogOpen] = useState(false);
+  const [editingRule, setEditingRule] = useState(null);
+  const [evaluating, setEvaluating] = useState(false);
+  const [evaluationResults, setEvaluationResults] = useState(null);
+  const [evalResultsOpen, setEvalResultsOpen] = useState(false);
+  
+  // Action Logs state
+  const [actionLogs, setActionLogs] = useState([]);
+  const [logsLoading, setLogsLoading] = useState(false);
+  const [logsPagination, setLogsPagination] = useState({ page: 1, pages: 1, total: 0 });
+  
+  // PMCC Summary state
+  const [pmccSummary, setPmccSummary] = useState(null);
+  const [pmccLoading, setPmccLoading] = useState(false);
   
   // Filters
   const [statusFilter, setStatusFilter] = useState('');
@@ -91,6 +144,17 @@ const Simulator = () => {
     fetchTrades();
     fetchSummary();
   }, [statusFilter, strategyFilter, pagination.page]);
+
+  useEffect(() => {
+    if (activeTab === 'rules') {
+      fetchRules();
+      fetchTemplates();
+    } else if (activeTab === 'logs') {
+      fetchActionLogs();
+    } else if (activeTab === 'pmcc') {
+      fetchPMCCSummary();
+    }
+  }, [activeTab]);
 
   const fetchTrades = async () => {
     setLoading(true);
@@ -121,6 +185,61 @@ const Simulator = () => {
       setSummary(res.data);
     } catch (error) {
       console.error('Error fetching summary:', error);
+    }
+  };
+
+  const fetchRules = async () => {
+    setRulesLoading(true);
+    try {
+      const res = await simulatorApi.getRules();
+      setRules(res.data.rules || []);
+    } catch (error) {
+      console.error('Error fetching rules:', error);
+      toast.error('Failed to load rules');
+    } finally {
+      setRulesLoading(false);
+    }
+  };
+
+  const fetchTemplates = async () => {
+    try {
+      const res = await simulatorApi.getRuleTemplates();
+      setTemplates(res.data.templates || []);
+    } catch (error) {
+      console.error('Error fetching templates:', error);
+    }
+  };
+
+  const fetchActionLogs = async () => {
+    setLogsLoading(true);
+    try {
+      const res = await simulatorApi.getActionLogs({
+        limit: 50,
+        page: logsPagination.page
+      });
+      setActionLogs(res.data.logs || []);
+      setLogsPagination(prev => ({
+        ...prev,
+        pages: res.data.pages || 1,
+        total: res.data.total || 0
+      }));
+    } catch (error) {
+      console.error('Error fetching action logs:', error);
+      toast.error('Failed to load action logs');
+    } finally {
+      setLogsLoading(false);
+    }
+  };
+
+  const fetchPMCCSummary = async () => {
+    setPmccLoading(true);
+    try {
+      const res = await simulatorApi.getPMCCSummary();
+      setPmccSummary(res.data);
+    } catch (error) {
+      console.error('Error fetching PMCC summary:', error);
+    } finally {
+      setPmccLoading(false);
     }
   };
 
@@ -165,6 +284,56 @@ const Simulator = () => {
     }
   };
 
+  const handleCreateFromTemplate = async (templateId) => {
+    try {
+      await simulatorApi.createFromTemplate(templateId);
+      toast.success('Rule created from template');
+      fetchRules();
+    } catch (error) {
+      toast.error('Failed to create rule');
+    }
+  };
+
+  const handleToggleRule = async (rule) => {
+    try {
+      await simulatorApi.updateRule(rule.id, { is_enabled: !rule.is_enabled });
+      toast.success(`Rule ${!rule.is_enabled ? 'enabled' : 'disabled'}`);
+      fetchRules();
+    } catch (error) {
+      toast.error('Failed to update rule');
+    }
+  };
+
+  const handleDeleteRule = async (ruleId) => {
+    if (!window.confirm('Delete this rule?')) return;
+    try {
+      await simulatorApi.deleteRule(ruleId);
+      toast.success('Rule deleted');
+      fetchRules();
+    } catch (error) {
+      toast.error('Failed to delete rule');
+    }
+  };
+
+  const handleEvaluateRules = async (dryRun = true) => {
+    setEvaluating(true);
+    try {
+      const res = await simulatorApi.evaluateRules(dryRun);
+      setEvaluationResults(res.data);
+      setEvalResultsOpen(true);
+      if (!dryRun && res.data.results.length > 0) {
+        toast.success(`Executed rules on ${res.data.results.length} trades`);
+        fetchTrades();
+        fetchSummary();
+        fetchActionLogs();
+      }
+    } catch (error) {
+      toast.error('Failed to evaluate rules');
+    } finally {
+      setEvaluating(false);
+    }
+  };
+
   const formatCurrency = (value) => {
     if (value === null || value === undefined) return '-';
     return new Intl.NumberFormat('en-US', {
@@ -185,6 +354,17 @@ const Simulator = () => {
     if (!dateStr) return '-';
     try {
       return new Date(dateStr).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' });
+    } catch {
+      return dateStr;
+    }
+  };
+
+  const formatDateTime = (dateStr) => {
+    if (!dateStr) return '-';
+    try {
+      return new Date(dateStr).toLocaleString('en-US', { 
+        month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
+      });
     } catch {
       return dateStr;
     }
@@ -217,42 +397,10 @@ const Simulator = () => {
     unrealized: value.unrealized_pnl
   })) : [];
 
-  return (
-    <div className="space-y-6" data-testid="simulator-page">
-      {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl md:text-3xl font-bold text-white flex items-center gap-3">
-            <Play className="w-8 h-8 text-violet-500" />
-            Trade Simulator
-          </h1>
-          <p className="text-zinc-400 mt-1">
-            Forward-running simulation engine for strategy validation
-          </p>
-        </div>
-        <div className="flex gap-2">
-          <Button
-            variant="outline"
-            onClick={handleUpdatePrices}
-            disabled={updating}
-            className="btn-outline"
-            data-testid="update-prices-btn"
-          >
-            <RefreshCw className={`w-4 h-4 mr-2 ${updating ? 'animate-spin' : ''}`} />
-            {updating ? 'Updating...' : 'Update Prices'}
-          </Button>
-          <Button
-            variant="outline"
-            onClick={handleClearAll}
-            className="btn-outline text-red-400 hover:text-red-300"
-            data-testid="clear-all-btn"
-          >
-            <Trash2 className="w-4 h-4 mr-2" />
-            Clear All
-          </Button>
-        </div>
-      </div>
+  // ==================== RENDER FUNCTIONS ====================
 
+  const renderTradesTab = () => (
+    <>
       {/* Summary Cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
         {loading && !summary ? (
@@ -339,7 +487,6 @@ const Simulator = () => {
       {/* Charts Row */}
       {summary && (summary.total_trades > 0) && (
         <div className="grid md:grid-cols-2 gap-6">
-          {/* Strategy Distribution */}
           {strategyDistribution.length > 0 && (
             <Card className="glass-card">
               <CardHeader className="pb-2">
@@ -387,7 +534,6 @@ const Simulator = () => {
             </Card>
           )}
 
-          {/* P&L by Strategy */}
           {pnlByStrategy.some(d => d.realized !== 0 || d.unrealized !== 0) && (
             <Card className="glass-card">
               <CardHeader className="pb-2">
@@ -419,7 +565,7 @@ const Simulator = () => {
         </div>
       )}
 
-      {/* Filters & Trades Table */}
+      {/* Trades Table */}
       <Card className="glass-card" data-testid="trades-table-card">
         <CardHeader className="flex flex-row items-center justify-between pb-2">
           <CardTitle className="text-lg flex items-center gap-2">
@@ -498,7 +644,12 @@ const Simulator = () => {
                         }}
                         data-testid={`simulator-row-${trade.symbol}`}
                       >
-                        <td className="py-3 font-semibold text-white">{trade.symbol}</td>
+                        <td className="py-3 font-semibold text-white">
+                          {trade.symbol}
+                          {trade.roll_count > 0 && (
+                            <Badge className="ml-1 bg-cyan-500/20 text-cyan-400 text-xs">R{trade.roll_count}</Badge>
+                          )}
+                        </td>
                         <td>
                           <Badge className={STRATEGY_COLORS[trade.strategy_type]}>
                             {trade.strategy_type === 'covered_call' ? 'CC' : 'PMCC'}
@@ -602,10 +753,517 @@ const Simulator = () => {
           )}
         </CardContent>
       </Card>
+    </>
+  );
+
+  const renderRulesTab = () => (
+    <div className="space-y-6">
+      {/* Rules Header */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div>
+          <h2 className="text-xl font-semibold text-white flex items-center gap-2">
+            <Settings className="w-5 h-5 text-violet-400" />
+            Trade Management Rules
+          </h2>
+          <p className="text-zinc-400 text-sm mt-1">
+            Automate trade decisions based on conditions like premium capture, delta, or loss thresholds
+          </p>
+        </div>
+        <div className="flex gap-2">
+          <Button
+            variant="outline"
+            onClick={() => handleEvaluateRules(true)}
+            disabled={evaluating}
+            className="btn-outline"
+            data-testid="dry-run-rules-btn"
+          >
+            <PlayCircle className={`w-4 h-4 mr-2 ${evaluating ? 'animate-spin' : ''}`} />
+            Dry Run
+          </Button>
+          <Button
+            onClick={() => handleEvaluateRules(false)}
+            disabled={evaluating}
+            className="bg-violet-600 hover:bg-violet-700 text-white"
+            data-testid="execute-rules-btn"
+          >
+            <Zap className="w-4 h-4 mr-2" />
+            Execute Rules
+          </Button>
+        </div>
+      </div>
+
+      {/* Templates Section */}
+      <Card className="glass-card">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm flex items-center gap-2">
+            <Copy className="w-4 h-4 text-cyan-400" />
+            Quick Start Templates
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-3">
+            {templates.map(template => (
+              <div 
+                key={template.id}
+                className="p-3 bg-zinc-800/50 rounded-lg border border-zinc-700/50 hover:border-violet-500/50 transition-colors"
+              >
+                <div className="flex items-start justify-between">
+                  <div>
+                    <h4 className="font-medium text-white text-sm">{template.name}</h4>
+                    <p className="text-xs text-zinc-400 mt-1">{template.description}</p>
+                    <div className="flex items-center gap-2 mt-2">
+                      <Badge className={template.action.action_type === 'roll' ? 'bg-violet-500/20 text-violet-400' : template.action.action_type === 'close' ? 'bg-amber-500/20 text-amber-400' : 'bg-blue-500/20 text-blue-400'}>
+                        {template.action.action_type}
+                      </Badge>
+                      {template.strategy_type && (
+                        <Badge className={STRATEGY_COLORS[template.strategy_type]}>
+                          {template.strategy_type === 'covered_call' ? 'CC' : 'PMCC'}
+                        </Badge>
+                      )}
+                    </div>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => handleCreateFromTemplate(template.id)}
+                    className="text-cyan-400 hover:text-cyan-300"
+                  >
+                    <Plus className="w-4 h-4" />
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Active Rules */}
+      <Card className="glass-card" data-testid="rules-list-card">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm flex items-center gap-2">
+            <ShieldCheck className="w-4 h-4 text-emerald-400" />
+            Your Rules ({rules.length})
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          {rulesLoading ? (
+            <div className="space-y-2">
+              {Array(3).fill(0).map((_, i) => (
+                <Skeleton key={i} className="h-16 w-full" />
+              ))}
+            </div>
+          ) : rules.length === 0 ? (
+            <div className="text-center py-8">
+              <Settings className="w-10 h-10 text-zinc-600 mx-auto mb-3" />
+              <p className="text-zinc-400 text-sm">No rules configured yet</p>
+              <p className="text-zinc-500 text-xs mt-1">Use templates above to get started</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {rules.map(rule => (
+                <div 
+                  key={rule.id}
+                  className={`p-4 rounded-lg border transition-colors ${
+                    rule.is_enabled 
+                      ? 'bg-zinc-800/50 border-zinc-700/50' 
+                      : 'bg-zinc-900/50 border-zinc-800/50 opacity-60'
+                  }`}
+                  data-testid={`rule-${rule.id}`}
+                >
+                  <div className="flex items-start justify-between">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2">
+                        <h4 className="font-medium text-white">{rule.name}</h4>
+                        <Badge className={rule.action.action_type === 'roll' ? 'bg-violet-500/20 text-violet-400' : rule.action.action_type === 'close' ? 'bg-amber-500/20 text-amber-400' : 'bg-blue-500/20 text-blue-400'}>
+                          {rule.action.action_type}
+                        </Badge>
+                        {rule.strategy_type && (
+                          <Badge className={STRATEGY_COLORS[rule.strategy_type]}>
+                            {rule.strategy_type === 'covered_call' ? 'CC Only' : 'PMCC Only'}
+                          </Badge>
+                        )}
+                        {rule.times_triggered > 0 && (
+                          <span className="text-xs text-zinc-500">
+                            Triggered {rule.times_triggered}x
+                          </span>
+                        )}
+                      </div>
+                      {rule.description && (
+                        <p className="text-xs text-zinc-400 mt-1">{rule.description}</p>
+                      )}
+                      <div className="flex flex-wrap gap-2 mt-2">
+                        {rule.conditions.map((cond, idx) => (
+                          <span key={idx} className="text-xs bg-zinc-700/50 px-2 py-1 rounded text-zinc-300">
+                            {CONDITION_FIELDS.find(f => f.value === cond.field)?.label || cond.field} {OPERATORS.find(o => o.value === cond.operator)?.label} {cond.value}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Switch
+                        checked={rule.is_enabled}
+                        onCheckedChange={() => handleToggleRule(rule)}
+                      />
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleDeleteRule(rule.id)}
+                        className="text-red-400 hover:text-red-300"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+
+  const renderLogsTab = () => (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <h2 className="text-xl font-semibold text-white flex items-center gap-2">
+          <History className="w-5 h-5 text-cyan-400" />
+          Action Logs
+        </h2>
+        <Button
+          variant="outline"
+          onClick={fetchActionLogs}
+          className="btn-outline"
+        >
+          <RefreshCw className="w-4 h-4 mr-2" />
+          Refresh
+        </Button>
+      </div>
+
+      <Card className="glass-card" data-testid="action-logs-card">
+        <CardContent className="pt-6">
+          {logsLoading ? (
+            <div className="space-y-2">
+              {Array(5).fill(0).map((_, i) => (
+                <Skeleton key={i} className="h-12 w-full" />
+              ))}
+            </div>
+          ) : actionLogs.length === 0 ? (
+            <div className="text-center py-8">
+              <FileText className="w-10 h-10 text-zinc-600 mx-auto mb-3" />
+              <p className="text-zinc-400 text-sm">No action logs yet</p>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {actionLogs.map((log, idx) => (
+                <div 
+                  key={idx}
+                  className="flex items-start gap-3 p-3 bg-zinc-800/30 rounded-lg"
+                >
+                  <Badge className={ACTION_COLORS[log.action] || 'bg-zinc-500/20 text-zinc-400'}>
+                    {log.action}
+                  </Badge>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 text-sm">
+                      <span className="font-semibold text-white">{log.symbol}</span>
+                      <Badge className={STRATEGY_COLORS[log.strategy_type]} variant="outline">
+                        {log.strategy_type === 'covered_call' ? 'CC' : 'PMCC'}
+                      </Badge>
+                      {log.rule_name && (
+                        <span className="text-xs text-violet-400">via "{log.rule_name}"</span>
+                      )}
+                    </div>
+                    <p className="text-xs text-zinc-400 mt-1">{log.details}</p>
+                  </div>
+                  <span className="text-xs text-zinc-500 whitespace-nowrap">
+                    {formatDateTime(log.timestamp)}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Logs Pagination */}
+          {logsPagination.pages > 1 && (
+            <div className="flex items-center justify-between mt-4 pt-4 border-t border-zinc-800">
+              <span className="text-sm text-zinc-500">
+                Page {logsPagination.page} of {logsPagination.pages}
+              </span>
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    setLogsPagination(p => ({ ...p, page: p.page - 1 }));
+                    fetchActionLogs();
+                  }}
+                  disabled={logsPagination.page === 1}
+                  className="btn-outline"
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    setLogsPagination(p => ({ ...p, page: p.page + 1 }));
+                    fetchActionLogs();
+                  }}
+                  disabled={logsPagination.page === logsPagination.pages}
+                  className="btn-outline"
+                >
+                  <ChevronRight className="w-4 h-4" />
+                </Button>
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+
+  const renderPMCCTab = () => (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-xl font-semibold text-white flex items-center gap-2">
+            <Layers className="w-5 h-5 text-violet-400" />
+            PMCC Income Tracker
+          </h2>
+          <p className="text-zinc-400 text-sm mt-1">
+            Track cumulative premium income vs LEAPS decay for your PMCC positions
+          </p>
+        </div>
+        <Button
+          variant="outline"
+          onClick={fetchPMCCSummary}
+          className="btn-outline"
+        >
+          <RefreshCw className="w-4 h-4 mr-2" />
+          Refresh
+        </Button>
+      </div>
+
+      {pmccLoading ? (
+        <div className="space-y-4">
+          {Array(3).fill(0).map((_, i) => (
+            <Skeleton key={i} className="h-32 w-full" />
+          ))}
+        </div>
+      ) : !pmccSummary?.summary || pmccSummary.summary.length === 0 ? (
+        <Card className="glass-card">
+          <CardContent className="py-12 text-center">
+            <Layers className="w-12 h-12 text-zinc-600 mx-auto mb-4" />
+            <h3 className="text-lg font-medium text-white mb-2">No PMCC Positions</h3>
+            <p className="text-zinc-400 text-sm">
+              Add PMCC trades from the PMCC screener to track income vs LEAPS decay
+            </p>
+          </CardContent>
+        </Card>
+      ) : (
+        <>
+          {/* Overall Summary */}
+          <div className="grid md:grid-cols-4 gap-4">
+            <Card className="glass-card">
+              <CardContent className="p-4">
+                <div className="text-xs text-zinc-500 mb-1">Total LEAPS Investment</div>
+                <div className="text-xl font-bold font-mono text-white">
+                  {formatCurrency(pmccSummary.overall.total_leaps_investment)}
+                </div>
+              </CardContent>
+            </Card>
+            <Card className="glass-card">
+              <CardContent className="p-4">
+                <div className="text-xs text-zinc-500 mb-1">Total Premium Income</div>
+                <div className="text-xl font-bold font-mono text-emerald-400">
+                  {formatCurrency(pmccSummary.overall.total_premium_income)}
+                </div>
+              </CardContent>
+            </Card>
+            <Card className="glass-card">
+              <CardContent className="p-4">
+                <div className="text-xs text-zinc-500 mb-1">Income / Cost Ratio</div>
+                <div className={`text-xl font-bold font-mono ${pmccSummary.overall.overall_income_ratio >= 20 ? 'text-emerald-400' : 'text-amber-400'}`}>
+                  {pmccSummary.overall.overall_income_ratio.toFixed(1)}%
+                </div>
+              </CardContent>
+            </Card>
+            <Card className="glass-card">
+              <CardContent className="p-4">
+                <div className="text-xs text-zinc-500 mb-1">Active Positions</div>
+                <div className="text-xl font-bold font-mono text-blue-400">
+                  {pmccSummary.overall.active_positions} / {pmccSummary.overall.total_pmcc_positions}
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Individual Position Cards */}
+          <div className="space-y-4">
+            {pmccSummary.summary.map(position => (
+              <Card key={position.original_trade_id} className="glass-card">
+                <CardContent className="p-4">
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-lg font-bold text-white">{position.symbol}</span>
+                        <Badge className={STATUS_COLORS[position.status]}>{position.status}</Badge>
+                        {position.roll_count > 0 && (
+                          <Badge className="bg-cyan-500/20 text-cyan-400">
+                            {position.roll_count} rolls
+                          </Badge>
+                        )}
+                        <Badge className={
+                          position.health === 'good' ? 'bg-emerald-500/20 text-emerald-400' :
+                          position.health === 'warning' ? 'bg-amber-500/20 text-amber-400' :
+                          'bg-red-500/20 text-red-400'
+                        }>
+                          {position.health === 'good' ? <CheckCircle2 className="w-3 h-3 mr-1" /> :
+                           position.health === 'warning' ? <AlertTriangle className="w-3 h-3 mr-1" /> :
+                           <AlertCircle className="w-3 h-3 mr-1" />}
+                          {position.health}
+                        </Badge>
+                      </div>
+                      <div className="text-xs text-zinc-400 mt-1">
+                        LEAPS: ${position.leaps_strike} exp {formatDate(position.leaps_expiry)} • {position.days_to_leaps_expiry}d remaining
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mt-4">
+                    <div>
+                      <div className="text-xs text-zinc-500">LEAPS Cost</div>
+                      <div className="text-sm font-mono text-white">{formatCurrency(position.leaps_cost)}</div>
+                    </div>
+                    <div>
+                      <div className="text-xs text-zinc-500">Premium Income</div>
+                      <div className="text-sm font-mono text-emerald-400">{formatCurrency(position.total_premium_received)}</div>
+                    </div>
+                    <div>
+                      <div className="text-xs text-zinc-500">Realized P/L</div>
+                      <div className={`text-sm font-mono ${position.total_realized_pnl >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                        {formatCurrency(position.total_realized_pnl)}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-xs text-zinc-500">Income / Cost</div>
+                      <div className={`text-sm font-mono ${position.income_to_cost_ratio >= 20 ? 'text-emerald-400' : 'text-amber-400'}`}>
+                        {position.income_to_cost_ratio.toFixed(1)}%
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-xs text-zinc-500">Est. LEAPS Decay</div>
+                      <div className="text-sm font-mono text-red-400">
+                        ~{position.estimated_leaps_decay_pct.toFixed(1)}%
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Progress bar showing income vs decay */}
+                  <div className="mt-4">
+                    <div className="flex justify-between text-xs text-zinc-500 mb-1">
+                      <span>Income vs LEAPS Decay</span>
+                      <span>{position.income_to_cost_ratio.toFixed(1)}% income / {position.estimated_leaps_decay_pct.toFixed(1)}% decay</span>
+                    </div>
+                    <div className="h-2 bg-zinc-800 rounded-full overflow-hidden">
+                      <div 
+                        className={`h-full transition-all ${
+                          position.income_to_cost_ratio >= position.estimated_leaps_decay_pct 
+                            ? 'bg-emerald-500' 
+                            : position.income_to_cost_ratio >= position.estimated_leaps_decay_pct * 0.5
+                            ? 'bg-amber-500'
+                            : 'bg-red-500'
+                        }`}
+                        style={{ width: `${Math.min(100, (position.income_to_cost_ratio / Math.max(position.estimated_leaps_decay_pct, 1)) * 100)}%` }}
+                      />
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+
+  return (
+    <div className="space-y-6" data-testid="simulator-page">
+      {/* Header */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-2xl md:text-3xl font-bold text-white flex items-center gap-3">
+            <Play className="w-8 h-8 text-violet-500" />
+            Trade Simulator
+          </h1>
+          <p className="text-zinc-400 mt-1">
+            Forward-running simulation engine for strategy validation
+          </p>
+        </div>
+        <div className="flex gap-2">
+          <Button
+            variant="outline"
+            onClick={handleUpdatePrices}
+            disabled={updating}
+            className="btn-outline"
+            data-testid="update-prices-btn"
+          >
+            <RefreshCw className={`w-4 h-4 mr-2 ${updating ? 'animate-spin' : ''}`} />
+            {updating ? 'Updating...' : 'Update Prices'}
+          </Button>
+          <Button
+            variant="outline"
+            onClick={handleClearAll}
+            className="btn-outline text-red-400 hover:text-red-300"
+            data-testid="clear-all-btn"
+          >
+            <Trash2 className="w-4 h-4 mr-2" />
+            Clear All
+          </Button>
+        </div>
+      </div>
+
+      {/* Tabs */}
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
+        <TabsList className="bg-zinc-800/50 border border-zinc-700/50">
+          <TabsTrigger value="trades" className="data-[state=active]:bg-violet-600 data-[state=active]:text-white">
+            <Activity className="w-4 h-4 mr-2" />
+            Trades
+          </TabsTrigger>
+          <TabsTrigger value="rules" className="data-[state=active]:bg-violet-600 data-[state=active]:text-white">
+            <Settings className="w-4 h-4 mr-2" />
+            Rules
+          </TabsTrigger>
+          <TabsTrigger value="logs" className="data-[state=active]:bg-violet-600 data-[state=active]:text-white">
+            <History className="w-4 h-4 mr-2" />
+            Logs
+          </TabsTrigger>
+          <TabsTrigger value="pmcc" className="data-[state=active]:bg-violet-600 data-[state=active]:text-white">
+            <Layers className="w-4 h-4 mr-2" />
+            PMCC Tracker
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="trades" className="space-y-6">
+          {renderTradesTab()}
+        </TabsContent>
+
+        <TabsContent value="rules" className="space-y-6">
+          {renderRulesTab()}
+        </TabsContent>
+
+        <TabsContent value="logs" className="space-y-6">
+          {renderLogsTab()}
+        </TabsContent>
+
+        <TabsContent value="pmcc" className="space-y-6">
+          {renderPMCCTab()}
+        </TabsContent>
+      </Tabs>
 
       {/* Trade Detail Dialog */}
       <Dialog open={detailOpen} onOpenChange={setDetailOpen}>
-        <DialogContent className="bg-zinc-900 border-zinc-800 max-w-2xl">
+        <DialogContent className="bg-zinc-900 border-zinc-800 max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <span className="text-white">{selectedTrade?.symbol}</span>
@@ -615,6 +1273,11 @@ const Simulator = () => {
               <Badge className={STATUS_COLORS[selectedTrade?.status]}>
                 {selectedTrade?.status}
               </Badge>
+              {selectedTrade?.roll_count > 0 && (
+                <Badge className="bg-cyan-500/20 text-cyan-400">
+                  Roll #{selectedTrade.roll_count}
+                </Badge>
+              )}
             </DialogTitle>
           </DialogHeader>
           
@@ -701,6 +1364,12 @@ const Simulator = () => {
                     {selectedTrade.status === 'active' ? `${selectedTrade.dte_remaining}d` : '-'}
                   </span>
                 </div>
+                {selectedTrade.cumulative_premium && (
+                  <div className="col-span-2">
+                    <span className="text-zinc-500">Cumulative Premium (incl. rolls):</span>
+                    <span className="ml-2 text-emerald-400">{formatCurrency(selectedTrade.cumulative_premium)}</span>
+                  </div>
+                )}
               </div>
 
               {/* Greeks Section */}
@@ -756,14 +1425,17 @@ const Simulator = () => {
                     <Clock className="w-4 h-4" />
                     Action Log
                   </h4>
-                  <div className="bg-zinc-800/50 rounded-lg p-3 space-y-2 max-h-32 overflow-y-auto">
-                    {selectedTrade.action_log.map((log, idx) => (
+                  <div className="bg-zinc-800/50 rounded-lg p-3 space-y-2 max-h-48 overflow-y-auto">
+                    {selectedTrade.action_log.slice().reverse().map((log, idx) => (
                       <div key={idx} className="text-xs flex items-start gap-2">
-                        <span className="text-zinc-500">{formatDate(log.timestamp)}</span>
-                        <Badge className={log.action === 'opened' ? 'bg-blue-500/20 text-blue-400' : 'bg-emerald-500/20 text-emerald-400'}>
+                        <span className="text-zinc-500 whitespace-nowrap">{formatDateTime(log.timestamp)}</span>
+                        <Badge className={ACTION_COLORS[log.action] || 'bg-zinc-500/20 text-zinc-400'}>
                           {log.action}
                         </Badge>
                         <span className="text-zinc-300">{log.details}</span>
+                        {log.rule_name && (
+                          <span className="text-violet-400">(Rule: {log.rule_name})</span>
+                        )}
                       </div>
                     ))}
                   </div>
@@ -788,6 +1460,85 @@ const Simulator = () => {
                   Close
                 </Button>
               </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Evaluation Results Dialog */}
+      <Dialog open={evalResultsOpen} onOpenChange={setEvalResultsOpen}>
+        <DialogContent className="bg-zinc-900 border-zinc-800 max-w-2xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Zap className="w-5 h-5 text-violet-400" />
+              Rule Evaluation Results
+              {evaluationResults?.dry_run && (
+                <Badge className="bg-amber-500/20 text-amber-400">Dry Run</Badge>
+              )}
+            </DialogTitle>
+          </DialogHeader>
+          
+          {evaluationResults && (
+            <div className="space-y-4 pt-4">
+              <div className="text-sm text-zinc-400">
+                Evaluated {evaluationResults.trades_evaluated} trades against {evaluationResults.rules_count} rules
+              </div>
+              
+              {evaluationResults.results.length === 0 ? (
+                <div className="text-center py-8">
+                  <CheckCircle2 className="w-10 h-10 text-emerald-500 mx-auto mb-3" />
+                  <p className="text-zinc-300">No rules triggered</p>
+                  <p className="text-zinc-500 text-sm">All trades are within defined thresholds</p>
+                </div>
+              ) : (
+                <div className="space-y-3 max-h-96 overflow-y-auto">
+                  {evaluationResults.results.map((result, idx) => (
+                    <div key={idx} className="p-3 bg-zinc-800/50 rounded-lg">
+                      <div className="flex items-center gap-2 mb-2">
+                        <span className="font-semibold text-white">{result.symbol}</span>
+                        <Badge className={STRATEGY_COLORS[result.strategy]}>
+                          {result.strategy === 'covered_call' ? 'CC' : 'PMCC'}
+                        </Badge>
+                      </div>
+                      <div className="space-y-1">
+                        {result.matched_rules.map((rule, ruleIdx) => (
+                          <div key={ruleIdx} className="text-sm flex items-center gap-2">
+                            <Badge className={rule.action_type === 'roll' ? 'bg-violet-500/20 text-violet-400' : rule.action_type === 'close' ? 'bg-amber-500/20 text-amber-400' : 'bg-blue-500/20 text-blue-400'}>
+                              {rule.action_type}
+                            </Badge>
+                            <span className="text-zinc-300">{rule.rule_name}</span>
+                            {rule.dry_run ? (
+                              <span className="text-amber-400 text-xs">(would execute)</span>
+                            ) : rule.success ? (
+                              <span className="text-emerald-400 text-xs">✓ {rule.message}</span>
+                            ) : (
+                              <span className="text-red-400 text-xs">✗ Failed</span>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+              
+              <DialogFooter>
+                {evaluationResults.dry_run && evaluationResults.results.length > 0 && (
+                  <Button
+                    onClick={() => {
+                      setEvalResultsOpen(false);
+                      handleEvaluateRules(false);
+                    }}
+                    className="bg-violet-600 hover:bg-violet-700 text-white"
+                  >
+                    <Zap className="w-4 h-4 mr-2" />
+                    Execute Now
+                  </Button>
+                )}
+                <Button variant="outline" onClick={() => setEvalResultsOpen(false)} className="btn-outline">
+                  Close
+                </Button>
+              </DialogFooter>
             </div>
           )}
         </DialogContent>
