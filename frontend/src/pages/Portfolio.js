@@ -481,6 +481,12 @@ const Portfolio = () => {
         leaps_cost: manualTrade.leaps_cost ? parseFloat(manualTrade.leaps_cost) : null,
         leaps_quantity: manualTrade.leaps_quantity ? parseInt(manualTrade.leaps_quantity) : 1,
         leaps_date: manualTrade.leaps_date || null,
+        // Collar - protective put fields
+        put_strike: manualTrade.put_strike ? parseFloat(manualTrade.put_strike) : null,
+        put_expiry: manualTrade.put_expiry || null,
+        put_premium: manualTrade.put_premium ? parseFloat(manualTrade.put_premium) : null,
+        put_quantity: manualTrade.put_quantity ? parseInt(manualTrade.put_quantity) : 1,
+        put_date: manualTrade.put_date || null,
         notes: manualTrade.notes || null
       };
 
