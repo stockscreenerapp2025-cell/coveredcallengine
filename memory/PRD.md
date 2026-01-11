@@ -77,6 +77,12 @@ Build a web-based application named "Covered Call Engine" to identify, analyze, 
   - Action logs with timestamps for all rule-driven actions
   - PMCC Income Tracker (cumulative income vs LEAPS decay)
   - Automated rule evaluation in daily scheduler
+- [x] Trade Simulator Phase 4 - Analytics Feedback Loop (Jan 11, 2026)
+  - Performance analytics by delta range, DTE, symbol, and outcome type
+  - AI-powered recommendations for scanner parameter optimization
+  - Optimal settings calculator based on winning trade patterns
+  - Scanner profile save/load functionality
+  - Scanner comparison to identify best parameter combinations
 
 ### 🔄 In Progress
 - [ ] Watchlist Functionality (P1)
