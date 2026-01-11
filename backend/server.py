@@ -65,7 +65,6 @@ from routes.admin import admin_router
 api_router = APIRouter(prefix="/api")
 portfolio_router = APIRouter(prefix="/portfolio", tags=["Portfolio"])
 screener_router = APIRouter(prefix="/screener", tags=["Screener"])
-admin_router = APIRouter(prefix="/admin", tags=["Admin"])
 simulator_router = APIRouter(prefix="/simulator", tags=["Simulator"])
 
 # ==================== CACHE HELPERS ====================
