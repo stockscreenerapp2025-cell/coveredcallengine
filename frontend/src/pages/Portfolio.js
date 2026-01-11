@@ -51,7 +51,8 @@ import {
   Loader2,
   Plus,
   Edit,
-  X
+  X,
+  Shield
 } from 'lucide-react';
 import { toast } from 'sonner';
 
