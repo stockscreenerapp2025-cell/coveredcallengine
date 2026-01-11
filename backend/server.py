@@ -6709,6 +6709,544 @@ async def get_pmcc_summary(user: dict = Depends(get_current_user)):
     }
 
 
+# ==================== PHASE 4: ANALYTICS FEEDBACK LOOP ====================
+
+@simulator_router.get("/analytics/performance")
+async def get_performance_analytics(
+    user: dict = Depends(get_current_user),
+    strategy: Optional[str] = Query(None, description="Filter by strategy: covered_call, pmcc"),
+    timeframe: str = Query("all", description="Timeframe: 7d, 30d, 90d, ytd, all")
+):
+    """
+    Analyze simulator trade performance to identify winning patterns.
+    Returns metrics by delta range, DTE, premium captured, symbol performance, etc.
+    """
+    
+    # Build query
+    query = {"user_id": user["id"], "status": {"$in": ["closed", "expired", "assigned"]}}
+    if strategy:
+        query["strategy_type"] = strategy
+    
+    # Apply timeframe filter
+    if timeframe != "all":
+        now = datetime.now(timezone.utc)
+        if timeframe == "7d":
+            cutoff = now - timedelta(days=7)
+        elif timeframe == "30d":
+            cutoff = now - timedelta(days=30)
+        elif timeframe == "90d":
+            cutoff = now - timedelta(days=90)
+        elif timeframe == "ytd":
+            cutoff = datetime(now.year, 1, 1, tzinfo=timezone.utc)
+        else:
+            cutoff = None
+        
+        if cutoff:
+            query["created_at"] = {"$gte": cutoff.isoformat()}
+    
+    trades = await db.simulator_trades.find(query, {"_id": 0}).to_list(10000)
+    
+    if not trades:
+        return {
+            "message": "No closed trades found for analysis",
+            "analytics": None,
+            "recommendations": []
+        }
+    
+    # Calculate overall metrics
+    total_trades = len(trades)
+    winning_trades = [t for t in trades if (t.get("final_pnl", 0) or 0) > 0]
+    losing_trades = [t for t in trades if (t.get("final_pnl", 0) or 0) < 0]
+    
+    total_pnl = sum(t.get("final_pnl", 0) or 0 for t in trades)
+    total_capital = sum(t.get("capital_deployed", 0) for t in trades)
+    win_rate = (len(winning_trades) / total_trades * 100) if total_trades > 0 else 0
+    avg_win = sum(t.get("final_pnl", 0) or 0 for t in winning_trades) / len(winning_trades) if winning_trades else 0
+    avg_loss = sum(t.get("final_pnl", 0) or 0 for t in losing_trades) / len(losing_trades) if losing_trades else 0
+    
+    # Performance by Delta Range
+    delta_ranges = {
+        "0.10-0.20": {"min": 0.10, "max": 0.20, "trades": [], "wins": 0, "total_pnl": 0},
+        "0.20-0.30": {"min": 0.20, "max": 0.30, "trades": [], "wins": 0, "total_pnl": 0},
+        "0.30-0.40": {"min": 0.30, "max": 0.40, "trades": [], "wins": 0, "total_pnl": 0},
+        "0.40-0.50": {"min": 0.40, "max": 0.50, "trades": [], "wins": 0, "total_pnl": 0},
+        "0.50+": {"min": 0.50, "max": 1.0, "trades": [], "wins": 0, "total_pnl": 0}
+    }
+    
+    for trade in trades:
+        delta = trade.get("short_call_delta") or 0.30
+        pnl = trade.get("final_pnl", 0) or 0
+        
+        for range_name, range_data in delta_ranges.items():
+            if range_data["min"] <= delta < range_data["max"]:
+                range_data["trades"].append(trade)
+                range_data["total_pnl"] += pnl
+                if pnl > 0:
+                    range_data["wins"] += 1
+                break
+    
+    delta_analysis = []
+    for range_name, data in delta_ranges.items():
+        count = len(data["trades"])
+        if count > 0:
+            delta_analysis.append({
+                "range": range_name,
+                "trade_count": count,
+                "win_rate": round(data["wins"] / count * 100, 1),
+                "total_pnl": round(data["total_pnl"], 2),
+                "avg_pnl": round(data["total_pnl"] / count, 2)
+            })
+    
+    # Performance by DTE Range
+    dte_ranges = {
+        "7d or less": {"min": 0, "max": 7, "trades": [], "wins": 0, "total_pnl": 0},
+        "8-14d": {"min": 8, "max": 14, "trades": [], "wins": 0, "total_pnl": 0},
+        "15-30d": {"min": 15, "max": 30, "trades": [], "wins": 0, "total_pnl": 0},
+        "31-45d": {"min": 31, "max": 45, "trades": [], "wins": 0, "total_pnl": 0},
+        "45d+": {"min": 46, "max": 365, "trades": [], "wins": 0, "total_pnl": 0}
+    }
+    
+    for trade in trades:
+        dte = trade.get("initial_dte", 30)
+        pnl = trade.get("final_pnl", 0) or 0
+        
+        for range_name, range_data in dte_ranges.items():
+            if range_data["min"] <= dte <= range_data["max"]:
+                range_data["trades"].append(trade)
+                range_data["total_pnl"] += pnl
+                if pnl > 0:
+                    range_data["wins"] += 1
+                break
+    
+    dte_analysis = []
+    for range_name, data in dte_ranges.items():
+        count = len(data["trades"])
+        if count > 0:
+            dte_analysis.append({
+                "range": range_name,
+                "trade_count": count,
+                "win_rate": round(data["wins"] / count * 100, 1),
+                "total_pnl": round(data["total_pnl"], 2),
+                "avg_pnl": round(data["total_pnl"] / count, 2)
+            })
+    
+    # Performance by Symbol
+    symbol_performance = {}
+    for trade in trades:
+        symbol = trade["symbol"]
+        if symbol not in symbol_performance:
+            symbol_performance[symbol] = {"trades": 0, "wins": 0, "total_pnl": 0, "capital": 0}
+        
+        symbol_performance[symbol]["trades"] += 1
+        symbol_performance[symbol]["total_pnl"] += trade.get("final_pnl", 0) or 0
+        symbol_performance[symbol]["capital"] += trade.get("capital_deployed", 0)
+        if (trade.get("final_pnl", 0) or 0) > 0:
+            symbol_performance[symbol]["wins"] += 1
+    
+    symbol_analysis = sorted([
+        {
+            "symbol": sym,
+            "trade_count": data["trades"],
+            "win_rate": round(data["wins"] / data["trades"] * 100, 1) if data["trades"] > 0 else 0,
+            "total_pnl": round(data["total_pnl"], 2),
+            "avg_pnl": round(data["total_pnl"] / data["trades"], 2) if data["trades"] > 0 else 0,
+            "roi": round(data["total_pnl"] / data["capital"] * 100, 2) if data["capital"] > 0 else 0
+        }
+        for sym, data in symbol_performance.items()
+    ], key=lambda x: x["total_pnl"], reverse=True)
+    
+    # Performance by Outcome Type
+    outcome_analysis = {
+        "expired_otm": {"count": 0, "total_pnl": 0},
+        "assigned": {"count": 0, "total_pnl": 0},
+        "early_close": {"count": 0, "total_pnl": 0},
+        "rolled": {"count": 0, "total_pnl": 0},
+        "rule_closed": {"count": 0, "total_pnl": 0},
+        "other": {"count": 0, "total_pnl": 0}
+    }
+    
+    for trade in trades:
+        reason = trade.get("close_reason", "other") or "other"
+        pnl = trade.get("final_pnl", 0) or 0
+        
+        if reason in outcome_analysis:
+            outcome_analysis[reason]["count"] += 1
+            outcome_analysis[reason]["total_pnl"] += pnl
+        else:
+            outcome_analysis["other"]["count"] += 1
+            outcome_analysis["other"]["total_pnl"] += pnl
+    
+    outcomes = [
+        {"outcome": k, "count": v["count"], "total_pnl": round(v["total_pnl"], 2), 
+         "avg_pnl": round(v["total_pnl"] / v["count"], 2) if v["count"] > 0 else 0}
+        for k, v in outcome_analysis.items() if v["count"] > 0
+    ]
+    
+    # Generate recommendations
+    recommendations = []
+    
+    # Find best performing delta range
+    if delta_analysis:
+        best_delta = max(delta_analysis, key=lambda x: x["win_rate"] if x["trade_count"] >= 3 else 0)
+        if best_delta["trade_count"] >= 3 and best_delta["win_rate"] > win_rate:
+            recommendations.append({
+                "type": "delta_optimization",
+                "priority": "high",
+                "message": f"Delta range {best_delta['range']} has {best_delta['win_rate']}% win rate vs {win_rate:.1f}% overall",
+                "suggestion": f"Consider focusing on delta {best_delta['range']} for better results",
+                "data": best_delta
+            })
+    
+    # Find best performing DTE range
+    if dte_analysis:
+        best_dte = max(dte_analysis, key=lambda x: x["win_rate"] if x["trade_count"] >= 3 else 0)
+        if best_dte["trade_count"] >= 3 and best_dte["win_rate"] > win_rate:
+            recommendations.append({
+                "type": "dte_optimization",
+                "priority": "high",
+                "message": f"DTE range {best_dte['range']} has {best_dte['win_rate']}% win rate",
+                "suggestion": f"Consider targeting {best_dte['range']} expiration cycles",
+                "data": best_dte
+            })
+    
+    # Identify underperforming symbols
+    poor_symbols = [s for s in symbol_analysis if s["trade_count"] >= 2 and s["win_rate"] < 40]
+    if poor_symbols:
+        recommendations.append({
+            "type": "symbol_warning",
+            "priority": "medium",
+            "message": f"{len(poor_symbols)} symbol(s) have win rate below 40%",
+            "suggestion": f"Consider avoiding: {', '.join([s['symbol'] for s in poor_symbols[:5]])}",
+            "data": poor_symbols[:5]
+        })
+    
+    # Identify top performing symbols
+    top_symbols = [s for s in symbol_analysis if s["trade_count"] >= 2 and s["win_rate"] >= 70]
+    if top_symbols:
+        recommendations.append({
+            "type": "symbol_recommendation",
+            "priority": "high",
+            "message": f"{len(top_symbols)} symbol(s) have 70%+ win rate",
+            "suggestion": f"Top performers: {', '.join([s['symbol'] for s in top_symbols[:5]])}",
+            "data": top_symbols[:5]
+        })
+    
+    # Assignment rate warning
+    assigned = outcome_analysis["assigned"]["count"]
+    if total_trades > 0 and assigned / total_trades > 0.30:
+        recommendations.append({
+            "type": "assignment_warning",
+            "priority": "high",
+            "message": f"High assignment rate: {assigned / total_trades * 100:.1f}%",
+            "suggestion": "Consider selecting lower delta strikes or rolling earlier",
+            "data": {"assigned_count": assigned, "rate": round(assigned / total_trades * 100, 1)}
+        })
+    
+    return {
+        "timeframe": timeframe,
+        "strategy": strategy or "all",
+        "analytics": {
+            "overall": {
+                "total_trades": total_trades,
+                "win_rate": round(win_rate, 1),
+                "total_pnl": round(total_pnl, 2),
+                "total_capital": round(total_capital, 2),
+                "roi": round(total_pnl / total_capital * 100, 2) if total_capital > 0 else 0,
+                "avg_win": round(avg_win, 2),
+                "avg_loss": round(avg_loss, 2),
+                "profit_factor": round(abs(avg_win / avg_loss), 2) if avg_loss != 0 else 0
+            },
+            "by_delta": delta_analysis,
+            "by_dte": dte_analysis,
+            "by_symbol": symbol_analysis[:15],  # Top 15
+            "by_outcome": outcomes
+        },
+        "recommendations": recommendations
+    }
+
+
+@simulator_router.get("/analytics/scanner-comparison")
+async def compare_scanner_parameters(
+    user: dict = Depends(get_current_user)
+):
+    """
+    Compare performance of trades that came from different scanner parameter sets.
+    Helps identify which scanner configurations produce the best results.
+    """
+    
+    # Get all closed trades with scan parameters
+    trades = await db.simulator_trades.find(
+        {
+            "user_id": user["id"],
+            "status": {"$in": ["closed", "expired", "assigned"]},
+            "scan_parameters": {"$exists": True, "$ne": None}
+        },
+        {"_id": 0}
+    ).to_list(10000)
+    
+    if not trades:
+        return {
+            "message": "No trades with scan parameters found. Add trades from screener to track parameter performance.",
+            "comparisons": []
+        }
+    
+    # Group by scan parameter configurations
+    param_groups = {}
+    
+    for trade in trades:
+        params = trade.get("scan_parameters", {})
+        if not params:
+            continue
+        
+        # Create a key from key parameters
+        key_params = {
+            "min_roi": params.get("min_roi"),
+            "min_delta": params.get("min_delta"),
+            "max_delta": params.get("max_delta"),
+            "max_dte": params.get("max_dte")
+        }
+        
+        # Skip if no meaningful params
+        if all(v is None for v in key_params.values()):
+            continue
+        
+        param_key = json.dumps(key_params, sort_keys=True)
+        
+        if param_key not in param_groups:
+            param_groups[param_key] = {
+                "params": key_params,
+                "trades": [],
+                "wins": 0,
+                "total_pnl": 0,
+                "capital": 0
+            }
+        
+        pnl = trade.get("final_pnl", 0) or 0
+        param_groups[param_key]["trades"].append(trade)
+        param_groups[param_key]["total_pnl"] += pnl
+        param_groups[param_key]["capital"] += trade.get("capital_deployed", 0)
+        if pnl > 0:
+            param_groups[param_key]["wins"] += 1
+    
+    # Convert to sorted list
+    comparisons = []
+    for key, data in param_groups.items():
+        count = len(data["trades"])
+        if count >= 2:  # Only show configs with at least 2 trades
+            comparisons.append({
+                "parameters": data["params"],
+                "trade_count": count,
+                "win_rate": round(data["wins"] / count * 100, 1),
+                "total_pnl": round(data["total_pnl"], 2),
+                "avg_pnl": round(data["total_pnl"] / count, 2),
+                "roi": round(data["total_pnl"] / data["capital"] * 100, 2) if data["capital"] > 0 else 0
+            })
+    
+    # Sort by ROI
+    comparisons.sort(key=lambda x: x["roi"], reverse=True)
+    
+    # Generate optimal parameters recommendation
+    optimal_params = None
+    if comparisons:
+        best = comparisons[0]
+        if best["win_rate"] >= 50 and best["roi"] > 0:
+            optimal_params = {
+                "recommendation": "Based on your trading history, these parameters perform best:",
+                "parameters": best["parameters"],
+                "expected_win_rate": best["win_rate"],
+                "expected_roi": best["roi"],
+                "sample_size": best["trade_count"]
+            }
+    
+    return {
+        "total_configurations": len(comparisons),
+        "comparisons": comparisons[:10],  # Top 10
+        "optimal_parameters": optimal_params
+    }
+
+
+@simulator_router.get("/analytics/optimal-settings")
+async def get_optimal_scanner_settings(
+    user: dict = Depends(get_current_user),
+    strategy: str = Query("covered_call", description="Strategy: covered_call or pmcc"),
+    confidence_threshold: int = Query(5, ge=3, description="Minimum trades needed for recommendation")
+):
+    """
+    Analyze closed trades and recommend optimal scanner settings.
+    Returns suggested min_delta, max_delta, max_dte, and symbols based on historical performance.
+    """
+    
+    # Get closed trades
+    trades = await db.simulator_trades.find(
+        {
+            "user_id": user["id"],
+            "strategy_type": strategy,
+            "status": {"$in": ["closed", "expired", "assigned"]}
+        },
+        {"_id": 0}
+    ).to_list(10000)
+    
+    if len(trades) < confidence_threshold:
+        return {
+            "message": f"Need at least {confidence_threshold} closed trades for reliable recommendations. Currently have {len(trades)}.",
+            "optimal_settings": None,
+            "confidence": "low"
+        }
+    
+    # Analyze winning trades specifically
+    winning_trades = [t for t in trades if (t.get("final_pnl", 0) or 0) > 0]
+    
+    if len(winning_trades) < 3:
+        return {
+            "message": "Not enough winning trades to determine optimal settings",
+            "optimal_settings": None,
+            "confidence": "low"
+        }
+    
+    # Calculate optimal delta range from winners
+    winning_deltas = [t.get("short_call_delta", 0.30) for t in winning_trades if t.get("short_call_delta")]
+    if winning_deltas:
+        avg_winning_delta = sum(winning_deltas) / len(winning_deltas)
+        delta_std = (sum((d - avg_winning_delta) ** 2 for d in winning_deltas) / len(winning_deltas)) ** 0.5
+        optimal_min_delta = max(0.10, round(avg_winning_delta - delta_std, 2))
+        optimal_max_delta = min(0.50, round(avg_winning_delta + delta_std, 2))
+    else:
+        optimal_min_delta = 0.20
+        optimal_max_delta = 0.40
+    
+    # Calculate optimal DTE from winners
+    winning_dtes = [t.get("initial_dte", 30) for t in winning_trades]
+    avg_winning_dte = sum(winning_dtes) / len(winning_dtes) if winning_dtes else 30
+    optimal_max_dte = min(60, max(14, round(avg_winning_dte * 1.2)))  # Add 20% buffer
+    
+    # Find best performing symbols
+    symbol_stats = {}
+    for trade in trades:
+        symbol = trade["symbol"]
+        pnl = trade.get("final_pnl", 0) or 0
+        
+        if symbol not in symbol_stats:
+            symbol_stats[symbol] = {"wins": 0, "total": 0, "pnl": 0}
+        
+        symbol_stats[symbol]["total"] += 1
+        symbol_stats[symbol]["pnl"] += pnl
+        if pnl > 0:
+            symbol_stats[symbol]["wins"] += 1
+    
+    # Sort symbols by win rate (minimum 2 trades)
+    recommended_symbols = sorted([
+        {"symbol": s, "win_rate": d["wins"] / d["total"] * 100, "trades": d["total"], "total_pnl": d["pnl"]}
+        for s, d in symbol_stats.items() if d["total"] >= 2
+    ], key=lambda x: (x["win_rate"], x["total_pnl"]), reverse=True)
+    
+    # Symbols to avoid
+    avoid_symbols = [s for s in recommended_symbols if s["win_rate"] < 40 and s["trades"] >= 2]
+    top_symbols = [s for s in recommended_symbols if s["win_rate"] >= 60][:10]
+    
+    # Determine confidence level
+    total_trades = len(trades)
+    if total_trades >= 50:
+        confidence = "high"
+    elif total_trades >= 20:
+        confidence = "medium"
+    else:
+        confidence = "low"
+    
+    # Calculate expected performance with optimal settings
+    trades_matching_optimal = [
+        t for t in winning_trades
+        if optimal_min_delta <= (t.get("short_call_delta") or 0.30) <= optimal_max_delta
+        and (t.get("initial_dte") or 30) <= optimal_max_dte
+    ]
+    
+    expected_win_rate = len(winning_trades) / len(trades) * 100 if trades else 0
+    
+    return {
+        "strategy": strategy,
+        "sample_size": total_trades,
+        "winning_trades": len(winning_trades),
+        "confidence": confidence,
+        "optimal_settings": {
+            "min_delta": optimal_min_delta,
+            "max_delta": optimal_max_delta,
+            "max_dte": optimal_max_dte,
+            "expected_win_rate": round(expected_win_rate, 1),
+            "reasoning": {
+                "delta": f"Winners averaged {avg_winning_delta:.2f} delta",
+                "dte": f"Winners averaged {avg_winning_dte:.0f} DTE"
+            }
+        },
+        "symbol_recommendations": {
+            "top_performers": top_symbols[:5],
+            "avoid": [s["symbol"] for s in avoid_symbols[:5]]
+        },
+        "apply_url": f"/screener/covered-calls?min_delta={optimal_min_delta}&max_delta={optimal_max_delta}&max_dte={optimal_max_dte}"
+    }
+
+
+@simulator_router.post("/analytics/save-profile")
+async def save_scanner_profile(
+    profile_name: str = Query(..., description="Name for this scanner profile"),
+    user: dict = Depends(get_current_user)
+):
+    """
+    Save current optimal settings as a named scanner profile for future use.
+    """
+    
+    # Get optimal settings
+    optimal = await get_optimal_scanner_settings(user, strategy="covered_call")
+    
+    if not optimal.get("optimal_settings"):
+        raise HTTPException(status_code=400, detail="Not enough data to create profile")
+    
+    profile_id = str(uuid.uuid4())
+    now = datetime.now(timezone.utc)
+    
+    profile_doc = {
+        "id": profile_id,
+        "user_id": user["id"],
+        "name": profile_name,
+        "settings": optimal["optimal_settings"],
+        "sample_size": optimal["sample_size"],
+        "confidence": optimal["confidence"],
+        "created_at": now.isoformat(),
+        "performance_at_creation": {
+            "expected_win_rate": optimal["optimal_settings"]["expected_win_rate"],
+            "winning_trades": optimal["winning_trades"]
+        }
+    }
+    
+    await db.scanner_profiles.insert_one(profile_doc)
+    
+    if "_id" in profile_doc:
+        del profile_doc["_id"]
+    
+    return {"message": "Profile saved", "profile": profile_doc}
+
+
+@simulator_router.get("/analytics/profiles")
+async def get_scanner_profiles(user: dict = Depends(get_current_user)):
+    """Get all saved scanner profiles for the user"""
+    
+    profiles = await db.scanner_profiles.find(
+        {"user_id": user["id"]},
+        {"_id": 0}
+    ).sort("created_at", -1).to_list(50)
+    
+    return {"profiles": profiles}
+
+
+@simulator_router.delete("/analytics/profiles/{profile_id}")
+async def delete_scanner_profile(profile_id: str, user: dict = Depends(get_current_user)):
+    """Delete a scanner profile"""
+    
+    result = await db.scanner_profiles.delete_one({"id": profile_id, "user_id": user["id"]})
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Profile not found")
+    
+    return {"message": "Profile deleted"}
+
+
 # Include all routers
 api_router.include_router(auth_router)
 api_router.include_router(stocks_router)
