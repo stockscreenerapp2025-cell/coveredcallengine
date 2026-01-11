@@ -137,4 +137,12 @@ Build a web-based application named "Covered Call Engine" to identify, analyze, 
 ---
 
 ## Last Updated
-January 10, 2026 - Manual Trade Entry verified working
+January 11, 2026 - Fixed Manual Trade Detail Popup and Dashboard Bar Chart bugs
+
+## Recent Changes (Jan 11, 2026)
+- Fixed trade detail popup not showing: Days in Trade, Contracts, Option Strike, Option Expiry, IBKR Fees
+- Fixed Dashboard bar chart not populating for manual trades
+- Backend: Updated field names to match frontend expectations (option_strike, option_expiry, contracts, days_in_trade, total_fees, account)
+- Backend: Added field normalization to handle old data with different field names
+- Frontend: Dashboard now shows "Open Positions - Unrealized P/L" bar chart when no closed positions exist
+- Testing: All 7 tests passing (100% success rate)
