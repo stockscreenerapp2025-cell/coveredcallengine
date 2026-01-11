@@ -63,6 +63,9 @@ const STRATEGY_COLORS = {
   'COVERED_CALL': 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30',
   'PMCC': 'bg-violet-500/20 text-violet-400 border-violet-500/30',
   'NAKED_PUT': 'bg-amber-500/20 text-amber-400 border-amber-500/30',
+  'NAKED_CALL': 'bg-red-500/20 text-red-400 border-red-500/30',
+  'LONG_CALL': 'bg-teal-500/20 text-teal-400 border-teal-500/30',
+  'LONG_PUT': 'bg-rose-500/20 text-rose-400 border-rose-500/30',
   'COLLAR': 'bg-pink-500/20 text-pink-400 border-pink-500/30',
   'OPTION': 'bg-orange-500/20 text-orange-400 border-orange-500/30',
   'OTHER': 'bg-zinc-500/20 text-zinc-400 border-zinc-500/30'
