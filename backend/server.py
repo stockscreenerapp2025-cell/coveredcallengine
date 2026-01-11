@@ -62,10 +62,10 @@ from routes.options import options_router
 from routes.admin import admin_router
 from routes.portfolio import portfolio_router
 from routes.screener import screener_router
+from routes.simulator import simulator_router
 
 # Create routers (still in server.py - to be refactored)
 api_router = APIRouter(prefix="/api")
-simulator_router = APIRouter(prefix="/simulator", tags=["Simulator"])
 
 # ==================== CACHE HELPERS ====================
 
