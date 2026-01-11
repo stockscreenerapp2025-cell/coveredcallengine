@@ -260,6 +260,17 @@ const PMCC = () => {
         <div className="flex flex-wrap gap-3">
           <Button
             variant="outline"
+            onClick={handleRefreshData}
+            disabled={refreshing || loading}
+            className="btn-outline"
+            data-testid="refresh-pmcc-btn"
+            title="Fetch fresh data from market (bypasses cache)"
+          >
+            <RefreshCw className={`w-4 h-4 mr-2 ${refreshing ? 'animate-spin' : ''}`} />
+            {refreshing ? 'Refreshing...' : 'Refresh Data'}
+          </Button>
+          <Button
+            variant="outline"
             onClick={() => setFiltersOpen(!filtersOpen)}
             className="btn-outline"
           >
