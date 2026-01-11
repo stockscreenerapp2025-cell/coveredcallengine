@@ -1002,6 +1002,232 @@ async def get_market_status():
         logging.error(f"Market status error: {e}")
         return {"status": "unknown", "is_open": False, "error": str(e)}
 
+
+# ==================== SCHEDULER FOR AUTOMATED UPDATES ====================
+
+# Import simulator functions for scheduled updates
+from routes.simulator import calculate_greeks, evaluate_and_execute_rules
+
+# Scheduler for automated daily price updates
+scheduler = AsyncIOScheduler()
+
+async def scheduled_price_update():
+    """
+    Automated daily price update for all active simulator trades.
+    Runs at market close (4:00 PM ET) on weekdays.
+    """
+    logging.info("Starting scheduled simulator price update...")
+    
+    try:
+        # Get all active trades across all users
+        active_trades = await db.simulator_trades.find({"status": "active"}).to_list(10000)
+        
+        if not active_trades:
+            logging.info("No active simulator trades to update")
+            return
+        
+        # Get unique symbols
+        symbols = list(set(t["symbol"] for t in active_trades))
+        logging.info(f"Updating prices for {len(symbols)} symbols across {len(active_trades)} trades")
+        
+        # Fetch current prices
+        price_cache = {}
+        for symbol in symbols:
+            try:
+                quote = await fetch_stock_quote(symbol)
+                if quote and quote.get("price"):
+                    price_cache[symbol] = quote["price"]
+            except Exception as e:
+                logging.warning(f"Could not fetch price for {symbol}: {e}")
+        
+        now = datetime.now(timezone.utc)
+        risk_free_rate = 0.05  # 5% risk-free rate
+        
+        updated_count = 0
+        expired_count = 0
+        assigned_count = 0
+        
+        for trade in active_trades:
+            symbol = trade["symbol"]
+            if symbol not in price_cache:
+                continue
+            
+            current_price = price_cache[symbol]
+            
+            # Calculate DTE remaining
+            try:
+                expiry_dt = datetime.strptime(trade["short_call_expiry"], "%Y-%m-%d")
+                dte_remaining = (expiry_dt - datetime.now()).days
+                time_to_expiry = max(dte_remaining / 365, 0.001)
+            except:
+                dte_remaining = trade.get("dte_remaining", 0)
+                time_to_expiry = max(dte_remaining / 365, 0.001)
+            
+            # Calculate days held
+            try:
+                entry_dt = datetime.strptime(trade["entry_date"], "%Y-%m-%d")
+                days_held = (datetime.now() - entry_dt).days
+            except:
+                days_held = trade.get("days_held", 0)
+            
+            # Calculate current Greeks and option value
+            iv = trade.get("short_call_iv") or 0.30
+            greeks = calculate_greeks(
+                S=current_price,
+                K=trade["short_call_strike"],
+                T=time_to_expiry,
+                r=risk_free_rate,
+                sigma=iv
+            )
+            
+            # Calculate unrealized P&L
+            entry_premium = trade.get("short_call_premium", 0)
+            current_option_value = greeks["option_value"]
+            
+            if trade["strategy_type"] == "covered_call":
+                stock_pnl = (current_price - trade["entry_underlying_price"]) * 100 * trade["contracts"]
+                option_pnl = (entry_premium - current_option_value) * 100 * trade["contracts"]
+                unrealized_pnl = stock_pnl + option_pnl
+            else:  # PMCC
+                leaps_iv = trade.get("leaps_iv") or iv
+                leaps_dte = trade.get("leaps_dte_remaining") or 365
+                leaps_time_to_expiry = max(leaps_dte / 365, 0.001)
+                
+                leaps_greeks = calculate_greeks(
+                    S=current_price,
+                    K=trade.get("leaps_strike", current_price * 0.8),
+                    T=leaps_time_to_expiry,
+                    r=risk_free_rate,
+                    sigma=leaps_iv
+                )
+                
+                leaps_value_change = (leaps_greeks["option_value"] - (trade.get("leaps_premium", 0))) * 100 * trade["contracts"]
+                short_call_pnl = (entry_premium - current_option_value) * 100 * trade["contracts"]
+                unrealized_pnl = leaps_value_change + short_call_pnl
+            
+            # Calculate premium capture percentage
+            if entry_premium > 0 and current_option_value >= 0:
+                premium_capture_pct = ((entry_premium - current_option_value) / entry_premium) * 100
+            else:
+                premium_capture_pct = 0
+            
+            update_doc = {
+                "current_underlying_price": current_price,
+                "current_option_value": current_option_value,
+                "unrealized_pnl": round(unrealized_pnl, 2),
+                "days_held": days_held,
+                "dte_remaining": dte_remaining,
+                "premium_capture_pct": round(premium_capture_pct, 1),
+                "last_updated": now.isoformat(),
+                "updated_at": now.isoformat(),
+                "current_delta": greeks["delta"],
+                "current_gamma": greeks["gamma"],
+                "current_theta": greeks["theta"],
+                "current_vega": greeks["vega"],
+            }
+            
+            # Check for expiry (DTE <= 0)
+            if dte_remaining <= 0:
+                if current_price >= trade["short_call_strike"]:
+                    # ITM - Assigned
+                    if trade["strategy_type"] == "covered_call":
+                        final_pnl = ((trade["short_call_strike"] - trade["entry_underlying_price"]) * 100 + entry_premium * 100) * trade["contracts"]
+                    else:  # PMCC
+                        short_call_loss = (current_price - trade["short_call_strike"]) * 100 * trade["contracts"]
+                        leaps_gain = max(0, current_price - trade.get("leaps_strike", 0)) * 100 * trade["contracts"]
+                        final_pnl = leaps_gain - trade["capital_deployed"] + trade["premium_received"] - short_call_loss
+                    
+                    update_doc.update({
+                        "status": "assigned",
+                        "close_date": now.strftime("%Y-%m-%d"),
+                        "close_price": current_price,
+                        "close_reason": "assigned_itm",
+                        "final_pnl": round(final_pnl, 2),
+                        "roi_percent": round((final_pnl / trade["capital_deployed"]) * 100, 2) if trade["capital_deployed"] > 0 else 0,
+                        "realized_pnl": round(final_pnl, 2)
+                    })
+                    assigned_count += 1
+                    
+                    await db.simulator_trades.update_one(
+                        {"id": trade["id"]},
+                        {"$push": {"action_log": {
+                            "action": "assigned",
+                            "timestamp": now.isoformat(),
+                            "details": f"Short call ITM at ${current_price:.2f}, assigned at strike ${trade['short_call_strike']:.2f}"
+                        }}}
+                    )
+                else:
+                    # OTM - Option expires worthless
+                    if trade["strategy_type"] == "covered_call":
+                        final_pnl = (current_price - trade["entry_underlying_price"]) * 100 * trade["contracts"] + trade["premium_received"]
+                    else:
+                        final_pnl = trade["premium_received"]
+                    
+                    update_doc.update({
+                        "status": "expired",
+                        "close_date": now.strftime("%Y-%m-%d"),
+                        "close_price": current_price,
+                        "close_reason": "expired_otm",
+                        "final_pnl": round(final_pnl, 2),
+                        "roi_percent": round((final_pnl / trade["capital_deployed"]) * 100, 2) if trade["capital_deployed"] > 0 else 0,
+                        "realized_pnl": round(final_pnl, 2),
+                        "premium_capture_pct": 100
+                    })
+                    expired_count += 1
+                    
+                    await db.simulator_trades.update_one(
+                        {"id": trade["id"]},
+                        {"$push": {"action_log": {
+                            "action": "expired",
+                            "timestamp": now.isoformat(),
+                            "details": f"Short call expired OTM at ${current_price:.2f}, kept full premium ${trade['premium_received']:.2f}"
+                        }}}
+                    )
+            
+            await db.simulator_trades.update_one({"id": trade["id"]}, {"$set": update_doc})
+            updated_count += 1
+        
+        logging.info(f"Scheduled update complete: {updated_count} updated, {expired_count} expired, {assigned_count} assigned")
+        
+        # Evaluate rules for all still-active trades
+        logging.info("Evaluating trade management rules...")
+        try:
+            user_ids = list(set(t["user_id"] for t in active_trades))
+            
+            rules_triggered = 0
+            for user_id in user_ids:
+                user_rules = await db.simulator_rules.find(
+                    {"user_id": user_id, "is_enabled": True},
+                    {"_id": 0}
+                ).to_list(100)
+                
+                if not user_rules:
+                    continue
+                
+                user_active_trades = await db.simulator_trades.find(
+                    {"user_id": user_id, "status": "active"},
+                    {"_id": 0}
+                ).to_list(1000)
+                
+                for trade in user_active_trades:
+                    results = await evaluate_and_execute_rules(trade, user_rules, db)
+                    for result in results:
+                        if result.get("success"):
+                            rules_triggered += 1
+                            await db.simulator_rules.update_one(
+                                {"id": result["rule_id"]},
+                                {"$inc": {"times_triggered": 1}}
+                            )
+            
+            logging.info(f"Rule evaluation complete: {rules_triggered} rules triggered")
+            
+        except Exception as rule_error:
+            logging.error(f"Error evaluating rules: {rule_error}")
+        
+    except Exception as e:
+        logging.error(f"Error in scheduled price update: {e}")
+
+
 # Include all routers
 # External routers (from routes/)
 api_router.include_router(auth_router, prefix="/auth")
