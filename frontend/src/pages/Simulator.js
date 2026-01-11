@@ -476,9 +476,12 @@ const Simulator = () => {
                       <th className="pb-3 font-medium">Strategy</th>
                       <th className="pb-3 font-medium">Status</th>
                       <th className="pb-3 font-medium">Entry</th>
+                      <th className="pb-3 font-medium">Current</th>
                       <th className="pb-3 font-medium">Contract</th>
                       <th className="pb-3 font-medium">DTE</th>
-                      <th className="pb-3 font-medium">Capital</th>
+                      <th className="pb-3 font-medium">Delta</th>
+                      <th className="pb-3 font-medium">Theta</th>
+                      <th className="pb-3 font-medium">Prem %</th>
                       <th className="pb-3 font-medium">P/L</th>
                       <th className="pb-3 font-medium">ROI</th>
                       <th className="pb-3 font-medium">Actions</th>
@@ -507,13 +510,27 @@ const Simulator = () => {
                           </Badge>
                         </td>
                         <td className="text-zinc-300">${trade.entry_underlying_price?.toFixed(2)}</td>
+                        <td className={`font-mono ${
+                          (trade.current_underlying_price || 0) >= (trade.entry_underlying_price || 0) 
+                            ? 'text-emerald-400' : 'text-red-400'
+                        }`}>
+                          ${trade.current_underlying_price?.toFixed(2) || '-'}
+                        </td>
                         <td className="font-mono text-xs text-zinc-400">
                           {formatOptionContract(trade.short_call_expiry, trade.short_call_strike)}
                         </td>
                         <td className={`${trade.dte_remaining <= 7 ? 'text-amber-400' : 'text-zinc-300'}`}>
                           {trade.status === 'active' ? `${trade.dte_remaining}d` : '-'}
                         </td>
-                        <td className="text-zinc-300">{formatCurrency(trade.capital_deployed)}</td>
+                        <td className="text-cyan-400 font-mono">
+                          {trade.current_delta?.toFixed(2) || trade.short_call_delta?.toFixed(2) || '-'}
+                        </td>
+                        <td className="text-red-400 font-mono">
+                          {trade.current_theta ? `$${Math.abs(trade.current_theta).toFixed(2)}` : '-'}
+                        </td>
+                        <td className={`font-mono ${(trade.premium_capture_pct || 0) >= 50 ? 'text-emerald-400' : 'text-zinc-400'}`}>
+                          {trade.premium_capture_pct?.toFixed(0) || 0}%
+                        </td>
                         <td className={`font-mono ${
                           trade.status === 'active' 
                             ? (trade.unrealized_pnl >= 0 ? 'text-emerald-400' : 'text-red-400')
