@@ -38,6 +38,7 @@ const Dashboard = () => {
   const [portfolio, setPortfolio] = useState(null);
   const [ibkrSummary, setIbkrSummary] = useState(null);
   const [ibkrTrades, setIbkrTrades] = useState([]);
+  const [openTrades, setOpenTrades] = useState([]);
   const [selectedStock, setSelectedStock] = useState(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [loading, setLoading] = useState(true);
