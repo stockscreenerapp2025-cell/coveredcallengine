@@ -27,12 +27,14 @@ Build a web-based application named "Covered Call Engine" to identify, analyze, 
 
 ### 5. Portfolio Tracker
 - IBKR CSV import functionality
-- **Manual Trade Entry** (Completed)
-  - Add Covered Calls, PMCC, Stock Only, Option Only trades
-  - Full data display: Symbol, Strategy, Status, DTE, Shares, Entry, Premium, B/E, Current Price, P/L, ROI
+- **Manual Trade Entry** (Completed - Jan 11, 2026)
+  - Add Covered Calls, PMCC, Stock Only, Option Only, Collar trades
+  - Full data display: Symbol, Strategy, Status, DTE, Days in Trade, Shares, Contracts, Entry, Premium, B/E, Current Price, P/L, ROI
+  - Trade detail popup with all fields properly populated
   - Delete individual trades
   - Clear all imported data
 - AI-powered suggestions
+- Dashboard Integration: Strategy Distribution pie chart and P/L bar charts (open/closed positions)
 
 ### 6. Authentication & Subscription
 - JWT-based authentication
