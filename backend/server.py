@@ -3024,14 +3024,14 @@ async def clear_ibkr_data(user: dict = Depends(get_current_user)):
 # Manual Trade Entry Models
 class ManualTradeEntry(BaseModel):
     symbol: str = Field(..., min_length=1, max_length=10)
-    trade_type: str = Field(..., description="covered_call, pmcc, stock_only, option_only")
+    trade_type: str = Field(..., description="covered_call, collar, pmcc, stock_only, option_only")
     
     # Stock leg
     stock_quantity: Optional[int] = None
     stock_price: Optional[float] = None
     stock_date: Optional[str] = None
     
-    # Option leg (for covered calls / PMCC)
+    # Option leg (for covered calls / collar / PMCC)
     option_type: Optional[str] = None  # call, put
     option_action: Optional[str] = None  # sell, buy
     strike_price: Optional[float] = None
@@ -3046,6 +3046,13 @@ class ManualTradeEntry(BaseModel):
     leaps_cost: Optional[float] = None
     leaps_quantity: Optional[int] = None
     leaps_date: Optional[str] = None
+    
+    # For Collar - Protective Put leg
+    put_strike: Optional[float] = None
+    put_expiry: Optional[str] = None
+    put_premium: Optional[float] = None
+    put_quantity: Optional[int] = None
+    put_date: Optional[str] = None
     
     notes: Optional[str] = None
 
