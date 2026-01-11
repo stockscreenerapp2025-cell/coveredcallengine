@@ -5,6 +5,10 @@ from fastapi import APIRouter, HTTPException, Depends
 from datetime import datetime, timezone
 import uuid
 
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
 from database import db
 from models.schemas import UserCreate, UserResponse, TokenResponse
 from utils.auth import hash_password, verify_password, create_token, get_current_user
@@ -16,7 +20,7 @@ class UserLogin(BaseModel):
     email: EmailStr
     password: str
 
-auth_router = APIRouter(prefix="/auth", tags=["Authentication"])
+auth_router = APIRouter(tags=["Authentication"])
 
 
 @auth_router.post("/register", response_model=TokenResponse)
