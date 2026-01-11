@@ -142,6 +142,16 @@ const Simulator = () => {
   const [pmccSummary, setPmccSummary] = useState(null);
   const [pmccLoading, setPmccLoading] = useState(false);
   
+  // Analytics state (Phase 4)
+  const [analytics, setAnalytics] = useState(null);
+  const [analyticsLoading, setAnalyticsLoading] = useState(false);
+  const [analyticsTimeframe, setAnalyticsTimeframe] = useState('all');
+  const [analyticsStrategy, setAnalyticsStrategy] = useState('');
+  const [optimalSettings, setOptimalSettings] = useState(null);
+  const [profiles, setProfiles] = useState([]);
+  const [newProfileName, setNewProfileName] = useState('');
+  const [savingProfile, setSavingProfile] = useState(false);
+  
   // Filters
   const [statusFilter, setStatusFilter] = useState('');
   const [strategyFilter, setStrategyFilter] = useState('');
