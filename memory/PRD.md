@@ -152,18 +152,28 @@ Build a web-based application named "Covered Call Engine" to identify, analyze, 
 ---
 
 ## Last Updated
-January 11, 2026 - Trade Simulator Phase 2 Complete
+January 11, 2026 - Server Refactoring Phase 1 Complete
 
 ## Recent Changes (Jan 11, 2026)
-### Trade Simulator Phase 2: Live Monitoring & Greeks
-- **Automated Daily Updates:** APScheduler runs at 4:30 PM ET (after market close) on weekdays
-- **Black-Scholes Greeks Calculations:** Delta, Gamma, Theta, Vega computed for each trade
-- **Premium Capture Tracking:** Shows percentage of premium captured (target: 50%+)
-- **Mark-to-Market Option Values:** Current option value calculated using Black-Scholes
-- **Enhanced P&L:** Unrealized P&L now accounts for option value changes, not just premium received
-- **Scheduler Status Endpoint:** GET /api/simulator/scheduler-status shows next run time
-- **Frontend Updates:**
-  - New columns in trades table: Current Price, Delta, Theta, Premium %
-  - Greeks section in trade detail dialog: Delta, Gamma, Theta, Vega, Premium Captured
-  - Current Option Value displayed
-- **Testing:** Backend verified with curl, frontend verified with screenshots
+### Server.py Refactoring - Phase 1 Complete
+- **Line count reduced:** 7333 → 6518 lines (11% reduction, ~815 lines extracted)
+- **7 routers extracted to /app/backend/routes/:**
+  - `auth.py` - Login, register, /me endpoints
+  - `watchlist.py` - Watchlist CRUD operations
+  - `news.py` - MarketAux news with rate limiting
+  - `chatbot.py` - AI chatbot endpoints
+  - `ai.py` - AI analysis and opportunities
+  - `subscription.py` - Stripe subscription management
+  - `stocks.py` - Stock quotes, indices, details, historical
+- **All 32 backend tests passed (100% success rate)**
+- **Remaining routers to extract (Phase 2):**
+  - `options_router` (~120 lines)
+  - `portfolio_router` (~1000 lines)
+  - `admin_router` (~800 lines)
+  - `screener_router` (~1150 lines)
+  - `simulator_router` (~2000+ lines)
+
+### Trade Simulator Phase 4 - Analytics Feedback Loop (PENDING VERIFICATION)
+- Performance analytics by delta range, DTE, symbol, and outcome type
+- AI-powered recommendations for scanner parameter optimization
+- Optimal settings calculator based on winning trade patterns
