@@ -263,10 +263,6 @@ class ScreenerFilter(BaseModel):
     filters: Dict[str, Any]
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
-class ScreenerFilterCreate(BaseModel):
-    name: str
-    filters: Dict[str, Any]
-
 class AdminSettings(BaseModel):
     # Massive.com API credentials for stock/options data
     massive_api_key: Optional[str] = None
