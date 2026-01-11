@@ -232,7 +232,8 @@ class TestManualTradeBugFixes:
         if not trade_id:
             pytest.skip("No trade ID to clean up")
         
-        response = api_client.delete(f"{BASE_URL}/api/portfolio/ibkr/trades/{trade_id}")
+        # Use the correct endpoint for manual trade deletion
+        response = api_client.delete(f"{BASE_URL}/api/portfolio/manual-trade/{trade_id}")
         
         # Accept both 200 and 404 (if already deleted)
         assert response.status_code in [200, 404], f"Unexpected status: {response.status_code}"
