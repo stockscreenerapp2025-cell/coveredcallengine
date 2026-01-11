@@ -1162,7 +1162,7 @@ const Portfolio = () => {
                 )}
                 <div>
                   <span className="text-zinc-500">Days in Trade:</span>
-                  <span className="ml-2 text-white">{selectedTrade.days_in_trade || '-'}</span>
+                  <span className="ml-2 text-white">{selectedTrade.days_in_trade ?? '-'}</span>
                 </div>
                 <div>
                   <span className="text-zinc-500">DTE:</span>
