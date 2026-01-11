@@ -609,7 +609,7 @@ const Simulator = () => {
               <Play className="w-12 h-12 text-zinc-600 mx-auto mb-4" />
               <h3 className="text-lg font-medium text-white mb-2">No Simulated Trades Yet</h3>
               <p className="text-zinc-400 text-sm mb-4">
-                Add trades from the Screener or PMCC pages using the "SIMULATE" button
+                Add trades from the Screener or PMCC pages using the &quot;SIMULATE&quot; button
               </p>
             </div>
           ) : (
@@ -970,7 +970,7 @@ const Simulator = () => {
                         {log.strategy_type === 'covered_call' ? 'CC' : 'PMCC'}
                       </Badge>
                       {log.rule_name && (
-                        <span className="text-xs text-violet-400">via "{log.rule_name}"</span>
+                        <span className="text-xs text-violet-400">via &quot;{log.rule_name}&quot;</span>
                       )}
                     </div>
                     <p className="text-xs text-zinc-400 mt-1">{log.details}</p>
