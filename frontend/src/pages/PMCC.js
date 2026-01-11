@@ -344,18 +344,6 @@ const PMCC = () => {
                     <Search className="w-3 h-3 mr-1" />
                     Scan
                   </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={handleRefreshData}
-                    disabled={refreshing || loading}
-                    className="btn-outline h-8 px-3"
-                    data-testid="refresh-pmcc-btn"
-                    title="Fetch fresh data from market (bypasses cache)"
-                  >
-                    <RefreshCw className={`w-3 h-3 mr-1 ${refreshing ? 'animate-spin' : ''}`} />
-                    {refreshing ? 'Refreshing...' : 'Refresh Data'}
-                  </Button>
                 </div>
               </div>
             </CardHeader>
