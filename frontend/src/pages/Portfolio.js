@@ -273,12 +273,13 @@ const Portfolio = () => {
   };
 
   const handleManualTradeSubmit = async () => {
-    // Validation
-    if (!manualTrade.symbol) {
+    // Validation - Symbol is always required
+    if (!manualTrade.symbol || manualTrade.symbol.trim() === '') {
       toast.error('Symbol is required');
       return;
     }
 
+    // Covered Call validation
     if (manualTrade.trade_type === 'covered_call') {
       if (!manualTrade.stock_quantity || !manualTrade.stock_price) {
         toast.error('Stock quantity and price are required for covered calls');
@@ -288,15 +289,56 @@ const Portfolio = () => {
         toast.error('Strike price and premium are required for covered calls');
         return;
       }
+      if (!manualTrade.expiry_date) {
+        toast.error('Expiry date is required for covered calls');
+        return;
+      }
     }
 
+    // PMCC validation
     if (manualTrade.trade_type === 'pmcc') {
       if (!manualTrade.leaps_cost || !manualTrade.leaps_strike) {
         toast.error('LEAPS cost and strike are required for PMCC');
         return;
       }
+      if (!manualTrade.leaps_expiry) {
+        toast.error('LEAPS expiry date is required for PMCC');
+        return;
+      }
       if (!manualTrade.strike_price || !manualTrade.option_premium) {
         toast.error('Short call strike and premium are required for PMCC');
+        return;
+      }
+      if (!manualTrade.expiry_date) {
+        toast.error('Short call expiry date is required for PMCC');
+        return;
+      }
+    }
+
+    // Stock Only validation
+    if (manualTrade.trade_type === 'stock_only') {
+      if (!manualTrade.stock_quantity || !manualTrade.stock_price) {
+        toast.error('Stock quantity and price are required');
+        return;
+      }
+    }
+
+    // Option Only validation
+    if (manualTrade.trade_type === 'option_only') {
+      if (!manualTrade.strike_price) {
+        toast.error('Strike price is required');
+        return;
+      }
+      if (!manualTrade.option_premium) {
+        toast.error('Premium is required');
+        return;
+      }
+      if (!manualTrade.expiry_date) {
+        toast.error('Expiry date is required');
+        return;
+      }
+      if (!manualTrade.option_quantity || parseInt(manualTrade.option_quantity) < 1) {
+        toast.error('Number of contracts is required');
         return;
       }
     }
