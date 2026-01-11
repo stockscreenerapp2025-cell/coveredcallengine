@@ -5572,7 +5572,7 @@ async def close_simulator_trade(
 
 @simulator_router.post("/update-prices")
 async def update_simulator_prices(user: dict = Depends(get_current_user)):
-    """Update all active simulator trades with current EOD prices"""
+    """Update all active simulator trades with current EOD prices and Greeks"""
     
     # Get all active trades for user
     active_trades = await db.simulator_trades.find(
@@ -5597,6 +5597,7 @@ async def update_simulator_prices(user: dict = Depends(get_current_user)):
             logging.warning(f"Could not fetch price for {symbol}: {e}")
     
     now = datetime.now(timezone.utc)
+    risk_free_rate = 0.05  # 5% risk-free rate
     updated_count = 0
     expired_count = 0
     assigned_count = 0
@@ -5612,8 +5613,10 @@ async def update_simulator_prices(user: dict = Depends(get_current_user)):
         try:
             expiry_dt = datetime.strptime(trade["short_call_expiry"], "%Y-%m-%d")
             dte_remaining = (expiry_dt - datetime.now()).days
+            time_to_expiry = max(dte_remaining / 365, 0.001)
         except:
             dte_remaining = trade.get("dte_remaining", 0)
+            time_to_expiry = max(dte_remaining / 365, 0.001)
         
         # Calculate days held
         try:
@@ -5622,21 +5625,61 @@ async def update_simulator_prices(user: dict = Depends(get_current_user)):
         except:
             days_held = trade.get("days_held", 0)
         
-        # Calculate unrealized P&L
+        # Calculate current Greeks and option value
+        iv = trade.get("short_call_iv") or 0.30
+        greeks = calculate_greeks(
+            S=current_price,
+            K=trade["short_call_strike"],
+            T=time_to_expiry,
+            r=risk_free_rate,
+            sigma=iv
+        )
+        
+        # Calculate unrealized P&L with option value
+        entry_premium = trade.get("short_call_premium", 0)
+        current_option_value = greeks["option_value"]
+        
         if trade["strategy_type"] == "covered_call":
             stock_pnl = (current_price - trade["entry_underlying_price"]) * 100 * trade["contracts"]
-            unrealized_pnl = stock_pnl + trade["premium_received"]
+            option_pnl = (entry_premium - current_option_value) * 100 * trade["contracts"]
+            unrealized_pnl = stock_pnl + option_pnl
         else:  # PMCC
-            leaps_value_est = max(0, current_price - trade["leaps_strike"]) * 100 * trade["contracts"]
-            unrealized_pnl = leaps_value_est - trade["capital_deployed"] + trade["premium_received"]
+            leaps_iv = trade.get("leaps_iv") or iv
+            leaps_dte = 365  # Assume 1 year remaining for LEAPS
+            leaps_time_to_expiry = max(leaps_dte / 365, 0.001)
+            
+            leaps_greeks = calculate_greeks(
+                S=current_price,
+                K=trade.get("leaps_strike", current_price * 0.8),
+                T=leaps_time_to_expiry,
+                r=risk_free_rate,
+                sigma=leaps_iv
+            )
+            
+            leaps_value_change = (leaps_greeks["option_value"] - trade.get("leaps_premium", 0)) * 100 * trade["contracts"]
+            short_call_pnl = (entry_premium - current_option_value) * 100 * trade["contracts"]
+            unrealized_pnl = leaps_value_change + short_call_pnl
+        
+        # Calculate premium capture percentage
+        if entry_premium > 0 and current_option_value >= 0:
+            premium_capture_pct = ((entry_premium - current_option_value) / entry_premium) * 100
+        else:
+            premium_capture_pct = 0
         
         update_doc = {
             "current_underlying_price": current_price,
+            "current_option_value": round(current_option_value, 2),
             "unrealized_pnl": round(unrealized_pnl, 2),
             "days_held": days_held,
             "dte_remaining": dte_remaining,
+            "premium_capture_pct": round(premium_capture_pct, 1),
             "last_updated": now.isoformat(),
-            "updated_at": now.isoformat()
+            "updated_at": now.isoformat(),
+            # Greeks
+            "current_delta": greeks["delta"],
+            "current_gamma": greeks["gamma"],
+            "current_theta": greeks["theta"],
+            "current_vega": greeks["vega"],
         }
         
         # Check for expiry (DTE <= 0)
@@ -5645,10 +5688,8 @@ async def update_simulator_prices(user: dict = Depends(get_current_user)):
             if current_price >= trade["short_call_strike"]:
                 # ITM - Assigned
                 if trade["strategy_type"] == "covered_call":
-                    # Shares called away at strike
-                    final_pnl = ((trade["short_call_strike"] - trade["entry_underlying_price"]) * 100 + trade["short_call_premium"] * 100) * trade["contracts"]
+                    final_pnl = ((trade["short_call_strike"] - trade["entry_underlying_price"]) * 100 + entry_premium * 100) * trade["contracts"]
                 else:  # PMCC
-                    # Close both legs at intrinsic
                     short_call_loss = (current_price - trade["short_call_strike"]) * 100 * trade["contracts"]
                     leaps_gain = max(0, current_price - trade["leaps_strike"]) * 100 * trade["contracts"]
                     final_pnl = leaps_gain - trade["capital_deployed"] + trade["premium_received"] - short_call_loss
@@ -5660,15 +5701,16 @@ async def update_simulator_prices(user: dict = Depends(get_current_user)):
                     "close_reason": "assigned_itm",
                     "final_pnl": round(final_pnl, 2),
                     "roi_percent": round((final_pnl / trade["capital_deployed"]) * 100, 2) if trade["capital_deployed"] > 0 else 0,
-                    "realized_pnl": round(final_pnl, 2)
+                    "realized_pnl": round(final_pnl, 2),
+                    "premium_capture_pct": 100
                 })
                 assigned_count += 1
             else:
                 # OTM - Option expires worthless, keep premium
-                final_pnl = trade["premium_received"]
                 if trade["strategy_type"] == "covered_call":
-                    # Still hold shares, mark to market
                     final_pnl = (current_price - trade["entry_underlying_price"]) * 100 * trade["contracts"] + trade["premium_received"]
+                else:
+                    final_pnl = trade["premium_received"]
                 
                 update_doc.update({
                     "status": "expired",
@@ -5677,7 +5719,8 @@ async def update_simulator_prices(user: dict = Depends(get_current_user)):
                     "close_reason": "expired_otm",
                     "final_pnl": round(final_pnl, 2),
                     "roi_percent": round((final_pnl / trade["capital_deployed"]) * 100, 2) if trade["capital_deployed"] > 0 else 0,
-                    "realized_pnl": round(final_pnl, 2)
+                    "realized_pnl": round(final_pnl, 2),
+                    "premium_capture_pct": 100
                 })
                 expired_count += 1
             
