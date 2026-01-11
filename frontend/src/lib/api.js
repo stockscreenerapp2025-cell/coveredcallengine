@@ -166,6 +166,21 @@ export const simulatorApi = {
   
   // PMCC Summary
   getPMCCSummary: () => api.get('/simulator/pmcc-summary'),
+  
+  // Phase 4: Analytics
+  getPerformanceAnalytics: (params = {}) => {
+    const queryParams = new URLSearchParams();
+    if (params.strategy) queryParams.append('strategy', params.strategy);
+    if (params.timeframe) queryParams.append('timeframe', params.timeframe);
+    return api.get(`/simulator/analytics/performance?${queryParams.toString()}`);
+  },
+  getScannerComparison: () => api.get('/simulator/analytics/scanner-comparison'),
+  getOptimalSettings: (strategy = 'covered_call') => 
+    api.get(`/simulator/analytics/optimal-settings?strategy=${strategy}`),
+  saveProfile: (profileName) => 
+    api.post(`/simulator/analytics/save-profile?profile_name=${encodeURIComponent(profileName)}`),
+  getProfiles: () => api.get('/simulator/analytics/profiles'),
+  deleteProfile: (profileId) => api.delete(`/simulator/analytics/profiles/${profileId}`),
 };
 
 export const newsApi = {
