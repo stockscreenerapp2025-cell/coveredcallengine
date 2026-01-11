@@ -1355,7 +1355,7 @@ const Portfolio = () => {
                 {manualTrade.trade_type === 'option_only' && (
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2">
-                      <Label className="text-zinc-400 text-xs">Option Type</Label>
+                      <Label className="text-zinc-400 text-xs">Option Type *</Label>
                       <Select
                         value={manualTrade.option_type}
                         onValueChange={(value) => setManualTrade(prev => ({ ...prev, option_type: value }))}
@@ -1370,7 +1370,7 @@ const Portfolio = () => {
                       </Select>
                     </div>
                     <div className="space-y-2">
-                      <Label className="text-zinc-400 text-xs">Action</Label>
+                      <Label className="text-zinc-400 text-xs">Action *</Label>
                       <Select
                         value={manualTrade.option_action}
                         onValueChange={(value) => setManualTrade(prev => ({ ...prev, option_action: value }))}
@@ -1379,8 +1379,8 @@ const Portfolio = () => {
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent className="bg-zinc-800 border-zinc-700">
-                          <SelectItem value="buy">Buy</SelectItem>
-                          <SelectItem value="sell">Sell</SelectItem>
+                          <SelectItem value="buy">Buy (Long)</SelectItem>
+                          <SelectItem value="sell">Sell (Short/Naked)</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
@@ -1388,7 +1388,7 @@ const Portfolio = () => {
                 )}
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <Label className="text-zinc-400 text-xs">Strike Price ($)</Label>
+                    <Label className="text-zinc-400 text-xs">Strike Price ($) *</Label>
                     <Input
                       type="number"
                       step="0.5"
@@ -1396,10 +1396,11 @@ const Portfolio = () => {
                       onChange={(e) => setManualTrade(prev => ({ ...prev, strike_price: e.target.value }))}
                       placeholder="155.00"
                       className="bg-zinc-800 border-zinc-700"
+                      min="0.01"
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label className="text-zinc-400 text-xs">Premium ($)</Label>
+                    <Label className="text-zinc-400 text-xs">Premium ($) *</Label>
                     <Input
                       type="number"
                       step="0.01"
@@ -1407,10 +1408,11 @@ const Portfolio = () => {
                       onChange={(e) => setManualTrade(prev => ({ ...prev, option_premium: e.target.value }))}
                       placeholder="3.50"
                       className="bg-zinc-800 border-zinc-700"
+                      min="0.01"
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label className="text-zinc-400 text-xs">Expiry Date</Label>
+                    <Label className="text-zinc-400 text-xs">Expiry Date *</Label>
                     <Input
                       type="date"
                       value={manualTrade.expiry_date}
@@ -1419,13 +1421,19 @@ const Portfolio = () => {
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label className="text-zinc-400 text-xs">Contracts</Label>
+                    <Label className="text-zinc-400 text-xs">
+                      Contracts {manualTrade.trade_type === 'option_only' ? '*' : ''}
+                      {manualTrade.trade_type === 'covered_call' && manualTrade.stock_quantity && (
+                        <span className="text-emerald-400 ml-1">(auto-calculated)</span>
+                      )}
+                    </Label>
                     <Input
                       type="number"
                       value={manualTrade.option_quantity}
                       onChange={(e) => setManualTrade(prev => ({ ...prev, option_quantity: e.target.value }))}
                       placeholder="1"
                       className="bg-zinc-800 border-zinc-700"
+                      min="1"
                     />
                   </div>
                 </div>
