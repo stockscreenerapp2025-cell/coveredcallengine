@@ -2734,6 +2734,24 @@ async def get_ibkr_trade_detail(trade_id: str, user: dict = Depends(get_current_
     if not trade:
         raise HTTPException(status_code=404, detail="Trade not found")
     
+    # Normalize field names for frontend compatibility (handle old data)
+    if trade.get('strike') and not trade.get('option_strike'):
+        trade['option_strike'] = trade.get('strike')
+    if trade.get('expiry') and not trade.get('option_expiry'):
+        trade['option_expiry'] = trade.get('expiry')
+    if trade.get('option_quantity') and not trade.get('contracts'):
+        trade['contracts'] = trade.get('option_quantity')
+    if not trade.get('days_in_trade') and trade.get('date_opened'):
+        try:
+            open_dt = datetime.fromisoformat(trade['date_opened'].replace('Z', '+00:00')) if 'T' in trade['date_opened'] else datetime.strptime(trade['date_opened'], "%Y-%m-%d")
+            trade['days_in_trade'] = (datetime.now(timezone.utc).replace(tzinfo=None) - open_dt.replace(tzinfo=None)).days
+        except:
+            pass
+    if trade.get('total_fees') is None:
+        trade['total_fees'] = 0
+    if not trade.get('account'):
+        trade['account'] = 'Manual' if trade.get('source') == 'manual' else 'IBKR'
+    
     # Fetch related transactions
     tx_ids = trade.get('transaction_ids', [])
     transactions = await db.ibkr_transactions.find(
