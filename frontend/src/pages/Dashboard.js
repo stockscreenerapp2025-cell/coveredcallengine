@@ -420,7 +420,9 @@ const Dashboard = () => {
                                   ))}
                                 </Pie>
                                 <Tooltip 
-                                  contentStyle={{ background: '#18181b', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px' }}
+                                  contentStyle={{ background: '#18181b', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', color: '#fff' }}
+                                  itemStyle={{ color: '#fff' }}
+                                  labelStyle={{ color: '#fff' }}
                                   formatter={(value, name, props) => [
                                     `${value} trades | Invested: ${formatCurrency(props.payload.invested)} | Premium: ${formatCurrency(props.payload.premium)}`,
                                     props.payload.name
