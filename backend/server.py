@@ -6714,6 +6714,10 @@ async def startup():
     await db.simulator_trades.create_index([("user_id", 1), ("status", 1)])
     await db.simulator_trades.create_index("id", unique=True)
     
+    # Create simulator rules index
+    await db.simulator_rules.create_index([("user_id", 1), ("is_enabled", 1)])
+    await db.simulator_rules.create_index("id", unique=True)
+    
     # Create cache index with TTL (auto-expire after 1 hour)
     await db.api_cache.create_index("cache_key", unique=True)
     await db.api_cache.create_index("cached_at", expireAfterSeconds=3600)  # Auto-delete after 1 hour
