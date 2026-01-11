@@ -1443,14 +1443,18 @@ const Portfolio = () => {
                       value={manualTrade.leaps_expiry}
                       onChange={(e) => setManualTrade(prev => ({ ...prev, leaps_expiry: e.target.value }))}
                       className="bg-zinc-800 border-zinc-700"
+                      min={new Date().toISOString().split('T')[0]}
                     />
+                    {manualTrade.leaps_expiry && manualTrade.leaps_expiry < new Date().toISOString().split('T')[0] && (
+                      <p className="text-xs text-red-400">Expiry date cannot be in the past</p>
+                    )}
                   </div>
                   <div className="space-y-2">
-                    <Label className="text-zinc-400 text-xs">Contracts</Label>
+                    <Label className="text-zinc-400 text-xs">Contracts * <span className="text-violet-400">(synced with short call)</span></Label>
                     <Input
                       type="number"
                       value={manualTrade.leaps_quantity}
-                      onChange={(e) => setManualTrade(prev => ({ ...prev, leaps_quantity: e.target.value }))}
+                      onChange={(e) => handleLeapsQuantityChange(e.target.value)}
                       placeholder="1"
                       className="bg-zinc-800 border-zinc-700"
                       min="1"
@@ -1460,8 +1464,8 @@ const Portfolio = () => {
               </div>
             )}
 
-            {/* Short Call Leg - Show for covered_call, pmcc, option_only */}
-            {(manualTrade.trade_type === 'covered_call' || manualTrade.trade_type === 'pmcc' || manualTrade.trade_type === 'option_only') && (
+            {/* Short Call Leg - Show for covered_call, collar, pmcc, option_only */}
+            {(manualTrade.trade_type === 'covered_call' || manualTrade.trade_type === 'collar' || manualTrade.trade_type === 'pmcc' || manualTrade.trade_type === 'option_only') && (
               <div className="space-y-4 p-4 rounded-lg bg-emerald-500/10 border border-emerald-500/30">
                 <h4 className="text-sm font-medium text-emerald-400 flex items-center gap-2">
                   <DollarSign className="w-4 h-4" />
