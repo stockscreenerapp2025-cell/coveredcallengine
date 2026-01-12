@@ -251,6 +251,7 @@ async def resend_invitation(
         to_email=invitation["email"],
         name=invitation["name"],
         role=invitation["role"],
+        environment=invitation.get("environment", "production"),
         token=invitation["token"],
         message=invitation.get("message"),
         invited_by=admin.get("name", admin.get("email"))
