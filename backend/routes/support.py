@@ -13,7 +13,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from database import db
-from utils.auth import get_current_user, get_admin_user
+from utils.auth import get_current_user, get_admin_user, get_support_user
 from services.support_service import SupportService
 from models.support import (
     CreateTicketRequest, AdminCreateTicketRequest, TicketReplyRequest, UpdateTicketRequest,
