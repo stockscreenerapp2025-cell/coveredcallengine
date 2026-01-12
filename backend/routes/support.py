@@ -202,8 +202,8 @@ async def update_ticket(
     success = await service.update_ticket(
         ticket_id=ticket_id,
         updates=updates,
-        admin_id=admin["id"],
-        admin_email=admin.get("email")
+        admin_id=user.get("id"),
+        admin_email=user.get("email")
     )
     
     if not success:
@@ -228,10 +228,10 @@ async def add_admin_reply(
         ticket_id=ticket_id,
         message=message,
         sender_type="admin",
-        sender_name=admin.get("name", admin.get("email", "Support Team")),
-        sender_email=admin.get("email"),
+        sender_name=user.get("name", admin.get("email", "Support Team")),
+        sender_email=user.get("email"),
         send_email=send_email,
-        admin_id=admin["id"]
+        admin_id=user.get("id")
     )
     
     if not result:
@@ -274,10 +274,10 @@ async def approve_ai_draft(
         ticket_id=ticket_id,
         message=message,
         sender_type="admin",
-        sender_name=admin.get("name", admin.get("email", "Support Team")),
-        sender_email=admin.get("email"),
+        sender_name=user.get("name", admin.get("email", "Support Team")),
+        sender_email=user.get("email"),
         send_email=send_email,
-        admin_id=admin["id"]
+        admin_id=user.get("id")
     )
     
     if not result:
@@ -287,14 +287,14 @@ async def approve_ai_draft(
     await service.update_ticket(
         ticket_id=ticket_id,
         updates={"status": TicketStatus.AWAITING_USER.value},
-        admin_id=admin["id"]
+        admin_id=user.get("id")
     )
     
     # Log for AI learning
     await db.audit_logs.insert_one({
         "action": "ai_draft_approved",
-        "admin_id": admin["id"],
-        "admin_email": admin.get("email"),
+        "admin_id": user.get("id"),
+        "admin_email": user.get("email"),
         "ticket_id": ticket_id,
         "was_edited": was_edited,
         "ai_confidence": ticket.get("ai_draft_confidence"),
@@ -348,8 +348,8 @@ async def escalate_ticket(
             "status": TicketStatus.ESCALATED.value,
             "internal_notes": f"[ESCALATED by {admin.get('email')}] {reason}"
         },
-        admin_id=admin["id"],
-        admin_email=admin.get("email")
+        admin_id=user.get("id"),
+        admin_email=user.get("email")
     )
     
     if not success:
@@ -378,8 +378,8 @@ async def resolve_ticket(
     success = await service.update_ticket(
         ticket_id=ticket_id,
         updates=updates,
-        admin_id=admin["id"],
-        admin_email=admin.get("email")
+        admin_id=user.get("id"),
+        admin_email=user.get("email")
     )
     
     if not success:
@@ -400,8 +400,8 @@ async def close_ticket(
     success = await service.update_ticket(
         ticket_id=ticket_id,
         updates={"status": TicketStatus.CLOSED.value},
-        admin_id=admin["id"],
-        admin_email=admin.get("email")
+        admin_id=user.get("id"),
+        admin_email=user.get("email")
     )
     
     if not success:
@@ -440,7 +440,7 @@ async def admin_create_ticket(
         await service.update_ticket(
             ticket_id=result["ticket_id"],
             updates=updates,
-            admin_id=admin["id"]
+            admin_id=user.get("id")
         )
     
     return result
@@ -502,8 +502,8 @@ async def create_kb_article(
     # Log action
     await db.audit_logs.insert_one({
         "action": "kb_article_created",
-        "admin_id": admin["id"],
-        "admin_email": admin.get("email"),
+        "admin_id": user.get("id"),
+        "admin_email": user.get("email"),
         "article_id": article["id"],
         "timestamp": datetime.now(timezone.utc).isoformat()
     })
@@ -545,8 +545,8 @@ async def update_kb_article(
     # Log action
     await db.audit_logs.insert_one({
         "action": "kb_article_updated",
-        "admin_id": admin["id"],
-        "admin_email": admin.get("email"),
+        "admin_id": user.get("id"),
+        "admin_email": user.get("email"),
         "article_id": article_id,
         "updates": list(updates.keys()),
         "timestamp": datetime.now(timezone.utc).isoformat()
@@ -572,8 +572,8 @@ async def delete_kb_article(
     # Log action
     await db.audit_logs.insert_one({
         "action": "kb_article_deleted",
-        "admin_id": admin["id"],
-        "admin_email": admin.get("email"),
+        "admin_id": user.get("id"),
+        "admin_email": user.get("email"),
         "article_id": article_id,
         "timestamp": datetime.now(timezone.utc).isoformat()
     })
@@ -751,7 +751,7 @@ async def update_auto_response_settings(
         "excluded_categories": ["billing", "bug_report", "technical"],  # Always excluded
         "allowed_sentiments": ["positive", "neutral"],  # Negative always requires human
         "updated_at": datetime.now(timezone.utc).isoformat(),
-        "updated_by": admin.get("email")
+        "updated_by": user.get("email")
     }
     
     await db.admin_settings.update_one(
