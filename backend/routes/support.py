@@ -228,7 +228,7 @@ async def add_admin_reply(
         ticket_id=ticket_id,
         message=message,
         sender_type="admin",
-        sender_name=user.get("name", admin.get("email", "Support Team")),
+        sender_name=user.get("name", user.get("email", "Support Team")),
         sender_email=user.get("email"),
         send_email=send_email,
         admin_id=user.get("id")
@@ -274,7 +274,7 @@ async def approve_ai_draft(
         ticket_id=ticket_id,
         message=message,
         sender_type="admin",
-        sender_name=user.get("name", admin.get("email", "Support Team")),
+        sender_name=user.get("name", user.get("email", "Support Team")),
         sender_email=user.get("email"),
         send_email=send_email,
         admin_id=user.get("id")
@@ -346,7 +346,7 @@ async def escalate_ticket(
         ticket_id=ticket_id,
         updates={
             "status": TicketStatus.ESCALATED.value,
-            "internal_notes": f"[ESCALATED by {admin.get('email')}] {reason}"
+            "internal_notes": f"[ESCALATED by {user.get("email")}] {reason}"
         },
         admin_id=user.get("id"),
         admin_email=user.get("email")
@@ -758,7 +758,7 @@ async def update_auto_response_settings(
         upsert=True
     )
     
-    logger.info(f"Auto-response settings updated by {admin.get('email')}: enabled={enabled}, delay={delay_minutes}min")
+    logger.info(f"Auto-response settings updated by {user.get("email")}: enabled={enabled}, delay={delay_minutes}min")
     
     return {"success": True, "settings": settings}
 
