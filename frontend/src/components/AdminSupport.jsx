@@ -824,7 +824,24 @@ const AdminSupport = () => {
                             )}
                             {editingDraft ? 'Send Edited Response' : 'Approve & Send'}
                           </Button>
+                          {selectedTicket.ai_suggest_resolution && (
+                            <Button
+                              onClick={() => handleApproveDraft(editingDraft, true)}
+                              disabled={sendingReply}
+                              className="bg-violet-600 hover:bg-violet-700"
+                              data-testid="approve-resolve-btn"
+                            >
+                              <CheckCircle className="w-4 h-4 mr-2" />
+                              Send & Resolve
+                            </Button>
+                          )}
                         </div>
+                        {selectedTicket.ai_suggest_resolution && (
+                          <p className="text-xs text-emerald-400 mt-2 flex items-center gap-1">
+                            <CheckCircle className="w-3 h-3" />
+                            AI suggests resolving this ticket - customer indicated issue is fixed
+                          </p>
+                        )}
                         <p className="text-xs text-zinc-500 mt-2">
                           ⚠️ Phase 1: All responses are reviewed before sending. Click to approve and email the user.
                         </p>
