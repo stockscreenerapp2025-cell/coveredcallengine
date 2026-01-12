@@ -1023,6 +1023,158 @@ const AdminSupport = () => {
             </CardContent>
           </Card>
         </TabsContent>
+        
+        {/* Auto-Response Settings Tab */}
+        <TabsContent value="settings" className="mt-4">
+          <Card className="glass-card">
+            <CardHeader>
+              <CardTitle className="text-lg flex items-center gap-2">
+                <Zap className="w-5 h-5 text-yellow-400" />
+                Auto-Response Settings
+              </CardTitle>
+              <CardDescription>
+                Configure AI auto-response behavior. When enabled, eligible tickets will receive automatic responses after the configured delay.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              {/* Enable/Disable Toggle */}
+              <div className="flex items-center justify-between p-4 rounded-lg bg-zinc-800/50 border border-zinc-700">
+                <div>
+                  <Label className="text-white font-medium">Enable Auto-Response</Label>
+                  <p className="text-sm text-zinc-500 mt-1">
+                    When enabled, AI will automatically respond to eligible tickets after the delay period
+                  </p>
+                </div>
+                <Switch
+                  checked={autoResponseSettings.enabled}
+                  onCheckedChange={(v) => setAutoResponseSettings(s => ({ ...s, enabled: v }))}
+                />
+              </div>
+              
+              {/* Delay Setting */}
+              <div className="p-4 rounded-lg bg-zinc-800/50 border border-zinc-700">
+                <Label className="text-white font-medium">Response Delay (minutes)</Label>
+                <p className="text-sm text-zinc-500 mt-1 mb-3">
+                  How long to wait before sending auto-responses. Recommended: 60 minutes.
+                </p>
+                <div className="flex items-center gap-4">
+                  <Input
+                    type="number"
+                    min="0"
+                    max="1440"
+                    value={autoResponseSettings.delay_minutes}
+                    onChange={(e) => setAutoResponseSettings(s => ({ ...s, delay_minutes: parseInt(e.target.value) || 60 }))}
+                    className="input-dark w-32"
+                  />
+                  <span className="text-zinc-400">minutes ({Math.floor(autoResponseSettings.delay_minutes / 60)}h {autoResponseSettings.delay_minutes % 60}m)</span>
+                </div>
+              </div>
+              
+              {/* Confidence Threshold */}
+              <div className="p-4 rounded-lg bg-zinc-800/50 border border-zinc-700">
+                <Label className="text-white font-medium">Minimum AI Confidence</Label>
+                <p className="text-sm text-zinc-500 mt-1 mb-3">
+                  Only auto-respond when AI confidence is at or above this threshold.
+                </p>
+                <div className="flex items-center gap-4">
+                  <Input
+                    type="number"
+                    min="50"
+                    max="100"
+                    value={autoResponseSettings.min_confidence}
+                    onChange={(e) => setAutoResponseSettings(s => ({ ...s, min_confidence: parseInt(e.target.value) || 85 }))}
+                    className="input-dark w-32"
+                  />
+                  <span className="text-zinc-400">%</span>
+                </div>
+              </div>
+              
+              {/* Allowed Categories */}
+              <div className="p-4 rounded-lg bg-zinc-800/50 border border-zinc-700">
+                <Label className="text-white font-medium">Allowed Categories</Label>
+                <p className="text-sm text-zinc-500 mt-1 mb-3">
+                  Auto-response only for these categories. Billing, bug reports, and technical issues always require human review.
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {['general', 'how_it_works', 'educational', 'screener', 'pmcc', 'simulator', 'portfolio'].map(cat => (
+                    <Badge
+                      key={cat}
+                      className={`cursor-pointer transition-colors ${
+                        autoResponseSettings.allowed_categories?.includes(cat)
+                          ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30'
+                          : 'bg-zinc-700/50 text-zinc-400 hover:bg-zinc-600/50'
+                      }`}
+                      onClick={() => {
+                        const current = autoResponseSettings.allowed_categories || [];
+                        if (current.includes(cat)) {
+                          setAutoResponseSettings(s => ({
+                            ...s,
+                            allowed_categories: current.filter(c => c !== cat)
+                          }));
+                        } else {
+                          setAutoResponseSettings(s => ({
+                            ...s,
+                            allowed_categories: [...current, cat]
+                          }));
+                        }
+                      }}
+                    >
+                      {cat.replace(/_/g, ' ')}
+                    </Badge>
+                  ))}
+                </div>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <span className="text-xs text-zinc-500">Always require human review:</span>
+                  {['billing', 'bug_report', 'technical'].map(cat => (
+                    <Badge key={cat} className="bg-red-500/20 text-red-400 border-red-500/30">
+                      {cat.replace(/_/g, ' ')}
+                    </Badge>
+                  ))}
+                </div>
+              </div>
+              
+              {/* Sentiment Rules */}
+              <div className="p-4 rounded-lg bg-zinc-800/50 border border-zinc-700">
+                <Label className="text-white font-medium">Sentiment Rules</Label>
+                <p className="text-sm text-zinc-500 mt-1">
+                  Auto-response is only sent for <span className="text-emerald-400">positive</span> or <span className="text-zinc-300">neutral</span> sentiment.
+                  <span className="text-red-400"> Negative</span> sentiment always requires human review.
+                </p>
+              </div>
+              
+              {/* Inbound Email Webhook Info */}
+              <div className="p-4 rounded-lg bg-violet-500/10 border border-violet-500/30">
+                <Label className="text-violet-300 font-medium flex items-center gap-2">
+                  <Mail className="w-4 h-4" />
+                  Inbound Email Webhook (Phase 2)
+                </Label>
+                <p className="text-sm text-zinc-400 mt-2">
+                  To receive customer replies via email, configure Resend inbound webhook:
+                </p>
+                <div className="mt-2 p-2 bg-zinc-900/50 rounded text-xs font-mono text-zinc-300 break-all">
+                  {window.location.origin.replace('3000', '8001')}/api/support/inbound-email
+                </div>
+                <p className="text-xs text-zinc-500 mt-2">
+                  Set this URL in Resend Dashboard → Webhooks → Add Webhook → Select "email.received" event
+                </p>
+              </div>
+              
+              {/* Save Button */}
+              <Button
+                onClick={handleSaveAutoResponseSettings}
+                disabled={savingAutoResponse}
+                className="w-full bg-emerald-600 hover:bg-emerald-700"
+              >
+                {savingAutoResponse ? (
+                  <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                ) : (
+                  <CheckCircle className="w-4 h-4 mr-2" />
+                )}
+                Save Auto-Response Settings
+              </Button>
+            </CardContent>
+          </Card>
+        </TabsContent>
       </Tabs>
     </div>
   );
