@@ -78,6 +78,13 @@ const Admin = () => {
   const [userFilters, setUserFilters] = useState({ status: '', plan: '', search: '' });
   const [selectedUser, setSelectedUser] = useState(null);
   
+  // Invitations
+  const [invitations, setInvitations] = useState([]);
+  const [invitationsLoading, setInvitationsLoading] = useState(false);
+  const [showInviteModal, setShowInviteModal] = useState(false);
+  const [inviteForm, setInviteForm] = useState({ email: '', name: '', role: 'tester', message: '' });
+  const [sendingInvite, setSendingInvite] = useState(false);
+  
   // Subscription settings
   const [subscriptionSettings, setSubscriptionSettings] = useState({
     active_mode: 'test',
