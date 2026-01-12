@@ -28,7 +28,15 @@ class InvitationRequest(BaseModel):
     email: EmailStr
     name: str
     role: str  # 'support_staff' or 'tester'
+    environment: str = "production"  # 'test' or 'production'
     message: Optional[str] = None
+
+
+# Environment URLs
+ENVIRONMENT_URLS = {
+    "test": "https://optiontrader-9.preview.emergentagent.com",
+    "production": "https://coveredcallengine.com"
+}
 
 
 class InvitationResponse(BaseModel):
