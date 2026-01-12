@@ -362,6 +362,32 @@ January 12, 2026 - Centralized Data Sourcing Implementation
 | Tester | Full (no Admin) | App features | /dashboard |
 | Support Staff | Support only | Support Panel | /support |
 
+### IMAP Email Sync Implementation (Jan 12, 2026) ✅
+**Automated email reply import from Hostinger mailbox:**
+
+**Features:**
+- Connects to Hostinger IMAP (`imap.hostinger.com:993`)
+- Scans for unread emails and matches to tickets by ticket number in subject (e.g., `[CCE-0014]`)
+- Automatically adds replies to existing tickets
+- Creates new tickets for emails without ticket references
+- Marks processed emails as read
+- Runs automatically every 6 hours (4 times daily)
+- Manual "Sync Now" button in Admin panel
+
+**Files Created/Modified:**
+- `/app/backend/services/imap_service.py` - IMAP connection and email processing
+- `/app/backend/routes/admin.py` - Added IMAP settings endpoints
+- `/app/backend/server.py` - Added scheduler job for IMAP sync
+- `/app/frontend/src/pages/Admin.js` - Added "Email Sync" tab with settings, history, and sync controls
+
+**Key Endpoints:**
+- `GET /api/admin/imap/settings` - Get IMAP settings (password masked)
+- `POST /api/admin/imap/settings` - Save IMAP settings
+- `POST /api/admin/imap/test-connection` - Test IMAP connection
+- `POST /api/admin/imap/sync-now` - Trigger manual sync
+- `GET /api/admin/imap/sync-history` - Get sync history
+- `GET /api/admin/imap/status` - Get IMAP status
+
 ### Invitation System Architecture (Jan 12, 2026) ✅
 **Key Files:**
 - `/app/backend/routes/invitations.py` - Invitation CRUD, email sending, token verification
