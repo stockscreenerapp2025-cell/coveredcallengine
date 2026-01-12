@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { Button } from '../components/ui/button';
@@ -11,18 +11,25 @@ const APP_NAME = "Covered Call Engine";
 
 const Login = () => {
   const navigate = useNavigate();
-  const { login, isAuthenticated } = useAuth();
+  const { login, isAuthenticated, user, isSupportStaff, isAdmin } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [justLoggedIn, setJustLoggedIn] = useState(false);
 
-  // Redirect if already authenticated
-  if (isAuthenticated) {
-    navigate('/dashboard');
-    return null;
-  }
+  // Handle redirect after login based on role
+  useEffect(() => {
+    if (isAuthenticated && user) {
+      // Determine redirect destination based on role
+      if (isSupportStaff && !isAdmin) {
+        navigate('/support', { replace: true });
+      } else {
+        navigate('/dashboard', { replace: true });
+      }
+    }
+  }, [isAuthenticated, user, isSupportStaff, isAdmin, navigate]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -30,17 +37,10 @@ const Login = () => {
     setLoading(true);
 
     try {
-      const userData = await login(email, password);
+      await login(email, password);
+      setJustLoggedIn(true);
       toast.success('Welcome back!');
-      
-      // Redirect based on user role
-      if (userData.is_support_staff && !userData.is_admin) {
-        // Support staff goes to support panel only
-        navigate('/support');
-      } else {
-        // Everyone else goes to dashboard
-        navigate('/dashboard');
-      }
+      // Redirect will happen via useEffect when auth state updates
     } catch (err) {
       const message = err.response?.data?.detail || 'Invalid email or password';
       setError(message);
