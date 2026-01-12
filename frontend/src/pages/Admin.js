@@ -474,7 +474,7 @@ const Admin = () => {
 
       {/* Main Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid w-full grid-cols-6 bg-zinc-800/50 p-1">
+        <TabsList className="grid w-full grid-cols-7 bg-zinc-800/50 p-1">
           <TabsTrigger value="dashboard" className="flex items-center gap-2">
             <BarChart3 className="w-4 h-4" />
             Dashboard
@@ -482,6 +482,10 @@ const Admin = () => {
           <TabsTrigger value="users" className="flex items-center gap-2" onClick={() => fetchUsers(1)}>
             <Users className="w-4 h-4" />
             Users
+          </TabsTrigger>
+          <TabsTrigger value="support" className="flex items-center gap-2">
+            <MessageSquare className="w-4 h-4" />
+            Support
           </TabsTrigger>
           <TabsTrigger value="email-automation" className="flex items-center gap-2" onClick={() => { fetchEmailTemplates(); fetchAutomationRules(); fetchEmailLogs(); fetchEmailStats(); }}>
             <Mail className="w-4 h-4" />
