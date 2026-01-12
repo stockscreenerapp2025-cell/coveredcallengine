@@ -80,7 +80,13 @@ async def screen_covered_calls(
     bypass_cache: bool = Query(False),
     user: dict = Depends(get_current_user)
 ):
-    """Screen for covered call opportunities with advanced filters"""
+    """
+    Screen for covered call opportunities with advanced filters.
+    
+    DATA SOURCES:
+    - Options: Polygon/Massive ONLY
+    - Stock prices: Polygon primary, Yahoo fallback
+    """
     funcs = _get_server_functions()
     
     # Generate cache key based on all filter parameters
@@ -91,7 +97,7 @@ async def screen_covered_calls(
         "min_volume": min_volume, "min_open_interest": min_open_interest,
         "weekly_only": weekly_only, "monthly_only": monthly_only
     }
-    cache_key = funcs['generate_cache_key']("screener_covered_calls", cache_params)
+    cache_key = funcs['generate_cache_key']("screener_covered_calls_v2", cache_params)
     
     # Check cache first (unless bypassed)
     if not bypass_cache:
@@ -109,215 +115,189 @@ async def screen_covered_calls(
                 ltd_data["market_closed"] = True
                 return ltd_data
     
-    # Check if we have Massive.com credentials for live data
+    # Get API key for Polygon/Massive
     api_key = await funcs['get_massive_api_key']()
     
-    logging.info(f"Screener called: api_key={'present' if api_key else 'missing'}, min_roi={min_roi}, max_dte={max_dte}")
+    logging.info(f"Covered Calls Screener: api_key={'present' if api_key else 'missing'}, min_roi={min_roi}, max_dte={max_dte}")
     
-    if api_key:
-        try:
-            opportunities = []
-            
-            # Tiered symbol scanning - prioritize stocks under $100
-            tier1_symbols = [
-                "INTC", "AMD", "BAC", "WFC", "C", "F", "GM", "T", "VZ",
-                "PFE", "MRK", "KO", "PEP", "NKE", "DIS",
-                "PYPL", "UBER", "SNAP", "PLTR", "SOFI",
-                "AAL", "DAL", "CCL",
-                "USB", "PNC", "CFG",
-                "DVN", "APA", "HAL", "OXY"
-            ]
-            
-            tier2_symbols = [
-                "AAPL", "MSFT", "META", "AMD",
-                "JPM", "GS", "V", "MA",
-                "HD", "COST",
-                "XOM", "CVX"
-            ]
-            
-            etf_symbols = ["SPY", "QQQ", "IWM", "DIA", "XLF", "XLE", "XLK"]
-            
-            # Build symbols list based on security type filters
-            symbols_to_scan = []
-            
-            if include_stocks:
-                if max_price <= 100:
-                    symbols_to_scan.extend(tier1_symbols)
-                elif min_price >= 100:
-                    symbols_to_scan.extend(tier2_symbols)
-                else:
-                    symbols_to_scan.extend(tier1_symbols + tier2_symbols)
-            
-            if include_etfs:
-                symbols_to_scan.extend(etf_symbols)
-            
-            logging.info(f"Symbols to scan: {len(symbols_to_scan)} symbols")
-            
-            async with httpx.AsyncClient(timeout=HTTP_TIMEOUT) as client:
-                for symbol in symbols_to_scan:
-                    try:
-                        # Get current stock price
-                        stock_response = await client.get(
-                            f"https://api.polygon.io/v2/aggs/ticker/{symbol}/prev",
-                            params={"apiKey": api_key}
-                        )
-                        
-                        underlying_price = 0
-                        if stock_response.status_code == 200:
-                            stock_data = stock_response.json()
-                            if stock_data.get("results"):
-                                underlying_price = stock_data["results"][0].get("c", 0)
-                        
-                        if underlying_price == 0:
+    if not api_key:
+        # No API key - return mock data
+        opportunities = funcs['generate_mock_covered_call_opportunities']()
+        filtered = [o for o in opportunities if o["roi_pct"] >= min_roi and o["dte"] <= max_dte]
+        return {"opportunities": filtered[:20], "total": len(filtered), "is_mock": True, "message": "API key required for live data"}
+    
+    try:
+        opportunities = []
+        
+        # Symbol lists for scanning
+        tier1_symbols = [
+            "INTC", "AMD", "BAC", "WFC", "C", "F", "GM", "T", "VZ",
+            "PFE", "MRK", "KO", "PEP", "NKE", "DIS",
+            "PYPL", "UBER", "SNAP", "PLTR", "SOFI",
+            "AAL", "DAL", "CCL",
+            "USB", "PNC", "CFG",
+            "DVN", "APA", "HAL", "OXY"
+        ]
+        
+        tier2_symbols = [
+            "AAPL", "MSFT", "META",
+            "JPM", "GS", "V", "MA",
+            "HD", "COST",
+            "XOM", "CVX"
+        ]
+        
+        etf_symbols = ["SPY", "QQQ", "IWM", "DIA", "XLF", "XLE", "XLK"]
+        
+        # Build symbols list based on filters
+        symbols_to_scan = []
+        
+        if include_stocks:
+            if max_price <= 100:
+                symbols_to_scan.extend(tier1_symbols)
+            elif min_price >= 100:
+                symbols_to_scan.extend(tier2_symbols)
+            else:
+                symbols_to_scan.extend(tier1_symbols + tier2_symbols)
+        
+        if include_etfs:
+            symbols_to_scan.extend(etf_symbols)
+        
+        logging.info(f"Scanning {len(symbols_to_scan)} symbols for covered calls")
+        
+        for symbol in symbols_to_scan:
+            try:
+                # Get stock price using centralized data provider
+                stock_data = await fetch_stock_quote(symbol, api_key)
+                
+                if not stock_data or stock_data.get("price", 0) == 0:
+                    continue
+                
+                underlying_price = stock_data["price"]
+                
+                is_etf = symbol.upper() in ETF_SYMBOLS
+                if not is_etf and (underlying_price < min_price or underlying_price > max_price):
+                    continue
+                
+                # Get options chain from Polygon ONLY (no Yahoo fallback for options)
+                options_results = await fetch_options_chain(
+                    symbol, api_key, "call", max_dte, min_dte=1, current_price=underlying_price
+                )
+                
+                if not options_results:
+                    logging.debug(f"No options data from Polygon for {symbol}")
+                    continue
+                
+                for opt in options_results:
+                    strike = opt.get("strike", 0)
+                    expiry = opt.get("expiry", "")
+                    dte = opt.get("dte", 0)
+                    
+                    strike_pct = (strike / underlying_price) * 100 if underlying_price > 0 else 0
+                    if is_etf:
+                        if strike_pct < 95 or strike_pct > 108:
                             continue
-                            
-                        is_etf = symbol.upper() in ETF_SYMBOLS
-                        if not is_etf and (underlying_price < min_price or underlying_price > max_price):
+                    else:
+                        if strike_pct < 97 or strike_pct > 115:
                             continue
-                        
-                        # Get options chain
-                        if is_etf:
-                            options_results = await funcs['fetch_options_chain_yahoo'](symbol, "call", max_dte, min_dte=1, current_price=underlying_price)
-                        else:
-                            options_results = await funcs['fetch_options_chain_polygon'](symbol, api_key, "call", max_dte, min_dte=1, current_price=underlying_price)
-                        
-                        if not options_results and not is_etf:
-                            options_results = await funcs['fetch_options_chain_yahoo'](symbol, "call", max_dte, min_dte=1, current_price=underlying_price)
-                        
-                        if not options_results:
-                            continue
-                        
-                        for opt in options_results:
-                            strike = opt.get("strike", 0)
-                            expiry = opt.get("expiry", "")
-                            dte = opt.get("dte", 0)
-                            
-                            strike_pct = (strike / underlying_price) * 100 if underlying_price > 0 else 0
-                            if is_etf:
-                                if strike_pct < 95 or strike_pct > 108:
-                                    continue
-                            else:
-                                if strike_pct < 97 or strike_pct > 115:
-                                    continue
-                            
-                            if dte > max_dte or dte < 1:
-                                continue
-                            if weekly_only and dte > 7:
-                                continue
-                            if monthly_only and dte <= 7:
-                                continue
-                            
-                            # Estimate delta based on moneyness
-                            strike_pct_diff = ((strike - underlying_price) / underlying_price) * 100
-                            if strike_pct_diff <= 0:
-                                estimated_delta = 0.55 - (abs(strike_pct_diff) * 0.02)
-                            else:
-                                estimated_delta = 0.50 - (strike_pct_diff * 0.03)
-                            estimated_delta = max(0.15, min(0.60, estimated_delta))
-                            
-                            if not is_etf and (estimated_delta < min_delta or estimated_delta > max_delta):
-                                continue
-                            
-                            premium = opt.get("close", 0) or opt.get("vwap", 0)
-                            
-                            if premium <= 0:
-                                continue
-                            
-                            roi_pct = (premium / underlying_price) * 100
-                            
-                            if roi_pct < min_roi:
-                                continue
-                            
-                            volume = opt.get("volume", 0) or 0
-                            
-                            if volume < min_volume:
-                                continue
-                            
-                            iv = 0.25
-                            iv_rank = min(100, iv * 100)
-                            
-                            if iv_rank < min_iv_rank:
-                                continue
-                            
-                            # Calculate downside protection
-                            if strike > underlying_price:
-                                protection = (premium / underlying_price) * 100
-                            else:
-                                protection = ((strike - underlying_price + premium) / underlying_price * 100)
-                            
-                            # Calculate score
-                            roi_score = min(roi_pct * 15, 40)
-                            iv_score = min(iv_rank / 100 * 20, 20)
-                            delta_score = max(0, 20 - abs(estimated_delta - 0.3) * 50)
-                            protection_score = min(abs(protection), 10) * 2
-                            
-                            score = round(roi_score + iv_score + delta_score + protection_score, 1)
-                            
-                            opportunities.append({
-                                "symbol": symbol,
-                                "stock_price": round(underlying_price, 2),
-                                "strike": strike,
-                                "expiry": expiry,
-                                "dte": dte,
-                                "premium": round(premium, 2),
-                                "roi_pct": round(roi_pct, 2),
-                                "delta": round(estimated_delta, 3),
-                                "theta": 0,
-                                "iv": round(iv, 4),
-                                "iv_rank": round(iv_rank, 1),
-                                "downside_protection": round(protection, 2),
-                                "volume": volume,
-                                "open_interest": 0,
-                                "score": score
-                            })
-                    except Exception as e:
-                        logging.error(f"Error scanning {symbol}: {e}")
+                    
+                    if dte > max_dte or dte < 1:
                         continue
-            
-            # Sort and dedupe
-            opportunities.sort(key=lambda x: x["score"], reverse=True)
-            best_by_symbol = {}
-            for opp in opportunities:
-                sym = opp["symbol"]
-                if sym not in best_by_symbol or opp["score"] > best_by_symbol[sym]["score"]:
-                    best_by_symbol[sym] = opp
-            
-            opportunities = sorted(best_by_symbol.values(), key=lambda x: x["score"], reverse=True)
-            
-            result = {"opportunities": opportunities[:100], "total": len(opportunities), "is_live": True, "from_cache": False}
-            await funcs['set_cached_data'](cache_key, result)
-            return result
-            
-        except Exception as e:
-            logging.error(f"Screener error with Polygon.io: {e}")
-    
-    # Fallback to mock data
-    opportunities = funcs['generate_mock_covered_call_opportunities']()
-    
-    filtered = [
-        o for o in opportunities
-        if o["roi_pct"] >= min_roi
-        and o["dte"] <= max_dte
-        and min_delta <= o["delta"] <= max_delta
-        and o["iv_rank"] >= min_iv_rank
-        and min_price <= o["stock_price"] <= max_price
-        and o["volume"] >= min_volume
-    ]
-    
-    if weekly_only:
-        filtered = [o for o in filtered if o["dte"] <= 7]
-    elif monthly_only:
-        filtered = [o for o in filtered if o["dte"] > 7]
-    
-    best_by_symbol = {}
-    for opp in filtered:
-        sym = opp["symbol"]
-        if sym not in best_by_symbol or opp["score"] > best_by_symbol[sym]["score"]:
-            best_by_symbol[sym] = opp
-    
-    filtered = sorted(best_by_symbol.values(), key=lambda x: x["score"], reverse=True)
-    
-    return {"opportunities": filtered, "total": len(filtered), "is_mock": True}
+                    if weekly_only and dte > 7:
+                        continue
+                    if monthly_only and dte <= 7:
+                        continue
+                    
+                    # Estimate delta based on moneyness
+                    strike_pct_diff = ((strike - underlying_price) / underlying_price) * 100
+                    if strike_pct_diff <= 0:
+                        estimated_delta = 0.55 - (abs(strike_pct_diff) * 0.02)
+                    else:
+                        estimated_delta = 0.50 - (strike_pct_diff * 0.03)
+                    estimated_delta = max(0.15, min(0.60, estimated_delta))
+                    
+                    if not is_etf and (estimated_delta < min_delta or estimated_delta > max_delta):
+                        continue
+                    
+                    premium = opt.get("close", 0) or opt.get("vwap", 0)
+                    
+                    if premium <= 0:
+                        continue
+                    
+                    roi_pct = (premium / underlying_price) * 100
+                    
+                    if roi_pct < min_roi:
+                        continue
+                    
+                    volume = opt.get("volume", 0) or 0
+                    
+                    if volume < min_volume:
+                        continue
+                    
+                    iv = opt.get("implied_volatility", 0.25)
+                    iv_rank = min(100, iv * 100)
+                    
+                    if iv_rank < min_iv_rank:
+                        continue
+                    
+                    # Calculate downside protection
+                    if strike > underlying_price:
+                        protection = (premium / underlying_price) * 100
+                    else:
+                        protection = ((strike - underlying_price + premium) / underlying_price * 100)
+                    
+                    # Calculate score
+                    roi_score = min(roi_pct * 15, 40)
+                    iv_score = min(iv_rank / 100 * 20, 20)
+                    delta_score = max(0, 20 - abs(estimated_delta - 0.3) * 50)
+                    protection_score = min(abs(protection), 10) * 2
+                    
+                    score = round(roi_score + iv_score + delta_score + protection_score, 1)
+                    
+                    opportunities.append({
+                        "symbol": symbol,
+                        "stock_price": round(underlying_price, 2),
+                        "strike": strike,
+                        "expiry": expiry,
+                        "dte": dte,
+                        "premium": round(premium, 2),
+                        "roi_pct": round(roi_pct, 2),
+                        "delta": round(estimated_delta, 3),
+                        "theta": 0,
+                        "iv": round(iv, 4),
+                        "iv_rank": round(iv_rank, 1),
+                        "downside_protection": round(protection, 2),
+                        "volume": volume,
+                        "open_interest": opt.get("open_interest", 0),
+                        "score": score,
+                        "data_source": "polygon"
+                    })
+            except Exception as e:
+                logging.error(f"Error scanning {symbol}: {e}")
+                continue
+        
+        # Sort and dedupe
+        opportunities.sort(key=lambda x: x["score"], reverse=True)
+        best_by_symbol = {}
+        for opp in opportunities:
+            sym = opp["symbol"]
+            if sym not in best_by_symbol or opp["score"] > best_by_symbol[sym]["score"]:
+                best_by_symbol[sym] = opp
+        
+        opportunities = sorted(best_by_symbol.values(), key=lambda x: x["score"], reverse=True)
+        
+        result = {
+            "opportunities": opportunities[:100], 
+            "total": len(opportunities), 
+            "is_live": True, 
+            "from_cache": False,
+            "data_source": "polygon"
+        }
+        await funcs['set_cached_data'](cache_key, result)
+        return result
+        
+    except Exception as e:
+        logging.error(f"Screener error: {e}")
+        return {"opportunities": [], "total": 0, "error": str(e), "is_live": False}
 
 
 
