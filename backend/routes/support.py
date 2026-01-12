@@ -328,7 +328,8 @@ async def regenerate_draft(
         "success": True,
         "draft": result["draft"],
         "confidence": result["confidence"],
-        "rationale": result["rationale"]
+        "rationale": result["rationale"],
+        "suggest_resolution": result.get("suggest_resolution", False)
     }
 
 
