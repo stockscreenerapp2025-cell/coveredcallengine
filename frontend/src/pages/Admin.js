@@ -1004,6 +1004,23 @@ const Admin = () => {
                     </Select>
                   </div>
                   <div>
+                    <Label className="text-zinc-400">Environment</Label>
+                    <Select value={inviteForm.environment} onValueChange={(v) => setInviteForm(f => ({ ...f, environment: v }))}>
+                      <SelectTrigger className="input-dark mt-2">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="test">🧪 Test Environment - For testing and preview</SelectItem>
+                        <SelectItem value="production">🚀 Production - Live platform</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-zinc-500 mt-1">
+                      {inviteForm.environment === 'test' 
+                        ? 'User will be invited to the test/preview environment' 
+                        : 'User will be invited to the live production site'}
+                    </p>
+                  </div>
+                  <div>
                     <Label className="text-zinc-400">Personal Message (optional)</Label>
                     <textarea
                       value={inviteForm.message}
