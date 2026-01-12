@@ -18,7 +18,7 @@ from services.support_service import SupportService
 from models.support import (
     CreateTicketRequest, AdminCreateTicketRequest, TicketReplyRequest, UpdateTicketRequest,
     CreateKBArticleRequest, UpdateKBArticleRequest,
-    TicketStatus, TicketCategory, TicketPriority
+    TicketStatus, TicketCategory, TicketPriority, TicketSource
 )
 
 logger = logging.getLogger(__name__)
