@@ -197,6 +197,80 @@ const Admin = () => {
     }
   };
   
+  // IMAP Functions
+  const fetchImapStatus = async () => {
+    setImapLoading(true);
+    try {
+      const [statusRes, settingsRes, historyRes] = await Promise.all([
+        api.get('/admin/imap/status'),
+        api.get('/admin/imap/settings'),
+        api.get('/admin/imap/sync-history?limit=10')
+      ]);
+      setImapStatus(statusRes.data);
+      if (settingsRes.data.username) {
+        setImapSettings(prev => ({
+          ...prev,
+          imap_server: settingsRes.data.imap_server || 'imap.hostinger.com',
+          imap_port: settingsRes.data.imap_port || 993,
+          username: settingsRes.data.username || '',
+          password: settingsRes.data.password || ''
+        }));
+      }
+      setImapHistory(historyRes.data.history || []);
+    } catch (error) {
+      console.error('IMAP status error:', error);
+    } finally {
+      setImapLoading(false);
+    }
+  };
+  
+  const saveImapSettings = async () => {
+    setImapSaving(true);
+    try {
+      const response = await api.post('/admin/imap/settings', imapSettings);
+      if (response.data.connection_test?.success) {
+        toast.success('IMAP settings saved and connection verified!');
+        fetchImapStatus();
+      } else {
+        toast.error(response.data.connection_test?.message || 'Settings saved but connection test failed');
+      }
+    } catch (error) {
+      toast.error(error.response?.data?.detail || 'Failed to save IMAP settings');
+    } finally {
+      setImapSaving(false);
+    }
+  };
+  
+  const testImapConnection = async () => {
+    try {
+      const response = await api.post('/admin/imap/test-connection');
+      if (response.data.success) {
+        toast.success(response.data.message);
+      } else {
+        toast.error(response.data.message);
+      }
+    } catch (error) {
+      toast.error(error.response?.data?.detail || 'Connection test failed');
+    }
+  };
+  
+  const syncImapNow = async () => {
+    setImapSyncing(true);
+    try {
+      const response = await api.post('/admin/imap/sync-now');
+      if (response.data.success) {
+        toast.success(`Sync complete: ${response.data.processed} emails processed, ${response.data.matched} matched to tickets`);
+        fetchImapStatus();
+      } else {
+        toast.error(response.data.errors?.[0] || 'Sync failed');
+      }
+    } catch (error) {
+      toast.error(error.response?.data?.detail || 'Sync failed');
+    } finally {
+      setImapSyncing(false);
+    }
+  };
+  
   const fetchEmailTemplates = async () => {
     setEmailLoading(true);
     try {
