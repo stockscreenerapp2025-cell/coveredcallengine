@@ -1216,6 +1216,7 @@ api_router.include_router(portfolio_router, prefix="/portfolio")
 api_router.include_router(screener_router, prefix="/screener")
 api_router.include_router(simulator_router, prefix="/simulator")
 api_router.include_router(support_router)
+api_router.include_router(invitation_router)
 
 app.include_router(api_router)
 
