@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../contexts/AuthContext';
 import { stocksApi, newsApi, screenerApi, portfolioApi, simulatorApi } from '../lib/api';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
@@ -40,6 +41,7 @@ import api from '../lib/api';
 
 const Dashboard = () => {
   const navigate = useNavigate();
+  const { isSupportStaff, isAdmin } = useAuth();
   const [indices, setIndices] = useState({});
   const [news, setNews] = useState([]);
   const [opportunities, setOpportunities] = useState([]);
@@ -48,6 +50,13 @@ const Dashboard = () => {
   const [ibkrSummary, setIbkrSummary] = useState(null);
   const [ibkrTrades, setIbkrTrades] = useState([]);
   const [openTrades, setOpenTrades] = useState([]);
+  
+  // Redirect support-only staff away from dashboard
+  useEffect(() => {
+    if (isSupportStaff && !isAdmin) {
+      navigate('/support', { replace: true });
+    }
+  }, [isSupportStaff, isAdmin, navigate]);
   const [selectedStock, setSelectedStock] = useState(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [loading, setLoading] = useState(true);
