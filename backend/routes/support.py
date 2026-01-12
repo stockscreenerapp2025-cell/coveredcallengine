@@ -709,6 +709,8 @@ async def handle_inbound_email(
 
 @support_router.get("/admin/auto-response-settings")
 async def get_auto_response_settings(
+    admin: dict = Depends(get_admin_user)
+):
     user: dict = Depends(get_support_user)
 ):
     """Get auto-response configuration"""
