@@ -22,6 +22,10 @@ class UserResponse(BaseModel):
     email: str
     name: str
     is_admin: bool = False
+    role: Optional[str] = None  # 'admin', 'support_staff', 'tester', or None
+    is_support_staff: bool = False
+    is_tester: bool = False
+    permissions: List[str] = []
     created_at: Optional[str] = None
 
 class TokenResponse(BaseModel):
