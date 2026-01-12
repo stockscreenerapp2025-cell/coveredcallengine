@@ -43,7 +43,9 @@ import {
   AlertTriangle,
   ThumbsUp,
   ThumbsDown,
-  RotateCw
+  RotateCw,
+  Zap,
+  Settings
 } from 'lucide-react';
 import { toast } from 'sonner';
 
