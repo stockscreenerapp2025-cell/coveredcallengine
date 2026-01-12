@@ -14,7 +14,8 @@ import {
   Menu,
   X,
   ChevronDown,
-  Play
+  Play,
+  Headphones
 } from 'lucide-react';
 import {
   DropdownMenu,
@@ -27,21 +28,31 @@ import {
 const APP_NAME = "Covered Call Engine";
 
 const Layout = ({ children }) => {
-  const { user, logout, isAdmin } = useAuth();
+  const { user, logout, isAdmin, isSupportStaff, hasSupportAccess } = useAuth();
   const navigate = useNavigate();
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
-  const navItems = [
-    { path: '/dashboard', icon: <LayoutDashboard className="w-5 h-5" />, label: 'Dashboard' },
-    { path: '/screener', icon: <Search className="w-5 h-5" />, label: 'Screener' },
-    { path: '/pmcc', icon: <LineChart className="w-5 h-5" />, label: 'PMCC' },
-    { path: '/portfolio', icon: <Wallet className="w-5 h-5" />, label: 'Portfolio' },
-    { path: '/simulator', icon: <Play className="w-5 h-5" />, label: 'Simulator' },
-    { path: '/watchlist', icon: <BookmarkPlus className="w-5 h-5" />, label: 'Watchlist' },
-  ];
-
-  if (isAdmin) {
-    navItems.push({ path: '/admin', icon: <Settings className="w-5 h-5" />, label: 'Admin' });
+  // Build navigation based on user role
+  const navItems = [];
+  
+  // Support staff ONLY sees the Support panel
+  if (isSupportStaff && !isAdmin) {
+    navItems.push({ path: '/support', icon: <Headphones className="w-5 h-5" />, label: 'Support' });
+  } else {
+    // Regular users and admins see the full navigation
+    navItems.push(
+      { path: '/dashboard', icon: <LayoutDashboard className="w-5 h-5" />, label: 'Dashboard' },
+      { path: '/screener', icon: <Search className="w-5 h-5" />, label: 'Screener' },
+      { path: '/pmcc', icon: <LineChart className="w-5 h-5" />, label: 'PMCC' },
+      { path: '/portfolio', icon: <Wallet className="w-5 h-5" />, label: 'Portfolio' },
+      { path: '/simulator', icon: <Play className="w-5 h-5" />, label: 'Simulator' },
+      { path: '/watchlist', icon: <BookmarkPlus className="w-5 h-5" />, label: 'Watchlist' },
+    );
+    
+    // Only full admins see the Admin panel
+    if (isAdmin) {
+      navItems.push({ path: '/admin', icon: <Settings className="w-5 h-5" />, label: 'Admin' });
+    }
   }
 
   const handleLogout = () => {
