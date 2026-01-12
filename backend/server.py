@@ -1263,6 +1263,11 @@ async def startup():
     await db.knowledge_base.create_index("id", unique=True)
     await db.knowledge_base.create_index([("category", 1), ("active", 1)])
     
+    # Create invitations indexes
+    await db.invitations.create_index("id", unique=True)
+    await db.invitations.create_index("token", unique=True)
+    await db.invitations.create_index([("email", 1), ("status", 1)])
+    
     # Create default admin if not exists
     admin = await db.users.find_one({"email": "admin@premiumhunter.com"})
     if not admin:
