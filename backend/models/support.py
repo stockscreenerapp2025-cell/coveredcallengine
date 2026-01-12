@@ -109,6 +109,7 @@ class AIDraftResponse(BaseModel):
     needs_human_review: bool = True
     flagged_for_escalation: bool = False
     escalation_reason: Optional[str] = None
+    suggest_resolution: bool = False  # True if customer indicated issue is resolved
 
 
 # ==================== RESPONSE MODELS ====================
