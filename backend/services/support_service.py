@@ -820,6 +820,9 @@ The Covered Call Engine Team"""
         }
         
         await self.db.knowledge_base.insert_one(article)
+        
+        # Return without _id
+        article.pop("_id", None)
         return article
     
     async def get_kb_articles(
