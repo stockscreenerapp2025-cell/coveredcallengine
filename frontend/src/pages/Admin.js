@@ -856,6 +856,146 @@ const Admin = () => {
               )}
             </CardContent>
           </Card>
+
+          {/* Invitations Section */}
+          <Card className="glass-card">
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle className="text-lg flex items-center gap-2">
+                    <Mail className="w-5 h-5 text-emerald-400" />
+                    Invitations
+                  </CardTitle>
+                  <CardDescription>Invite support staff and testers</CardDescription>
+                </div>
+                <div className="flex gap-2">
+                  <Button variant="outline" size="sm" onClick={fetchInvitations}>
+                    <RefreshCw className="w-4 h-4" />
+                  </Button>
+                  <Button onClick={() => setShowInviteModal(true)} className="bg-emerald-600 hover:bg-emerald-700">
+                    <Mail className="w-4 h-4 mr-2" />
+                    Send Invite
+                  </Button>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent>
+              {invitationsLoading ? (
+                <div className="space-y-2">
+                  {[...Array(3)].map((_, i) => <Skeleton key={i} className="h-16 rounded-lg" />)}
+                </div>
+              ) : invitations.length === 0 ? (
+                <div className="text-center py-8 text-zinc-500">
+                  <Mail className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                  <p>No invitations sent yet</p>
+                  <Button onClick={() => setShowInviteModal(true)} className="mt-4" variant="outline">
+                    Send First Invite
+                  </Button>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {invitations.map(inv => (
+                    <div key={inv.id} className="flex items-center justify-between p-3 rounded-lg bg-zinc-800/50 border border-zinc-700">
+                      <div className="flex items-center gap-4">
+                        <div>
+                          <p className="text-white font-medium">{inv.name}</p>
+                          <p className="text-sm text-zinc-400">{inv.email}</p>
+                        </div>
+                        <Badge className={inv.role === 'support_staff' ? 'bg-violet-500/20 text-violet-400' : 'bg-cyan-500/20 text-cyan-400'}>
+                          {inv.role === 'support_staff' ? 'Support Staff' : 'Tester'}
+                        </Badge>
+                        <Badge className={
+                          inv.status === 'pending' ? 'bg-yellow-500/20 text-yellow-400' :
+                          inv.status === 'accepted' ? 'bg-emerald-500/20 text-emerald-400' :
+                          'bg-red-500/20 text-red-400'
+                        }>
+                          {inv.status}
+                        </Badge>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-zinc-500">
+                          {new Date(inv.created_at).toLocaleDateString()}
+                        </span>
+                        {inv.status === 'pending' && (
+                          <>
+                            <Button size="sm" variant="ghost" onClick={() => resendInvitation(inv.id)} className="text-zinc-400 hover:text-white">
+                              Resend
+                            </Button>
+                            <Button size="sm" variant="ghost" onClick={() => revokeInvitation(inv.id)} className="text-red-400 hover:text-red-300">
+                              Revoke
+                            </Button>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Invite Modal */}
+          {showInviteModal && (
+            <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
+              <div className="bg-zinc-900 rounded-xl max-w-md w-full">
+                <div className="p-4 border-b border-zinc-800 flex items-center justify-between">
+                  <h3 className="font-semibold text-white">Send Invitation</h3>
+                  <Button variant="ghost" size="sm" onClick={() => setShowInviteModal(false)}>
+                    <XCircle className="w-5 h-5" />
+                  </Button>
+                </div>
+                <div className="p-4 space-y-4">
+                  <div>
+                    <Label className="text-zinc-400">Email</Label>
+                    <Input
+                      type="email"
+                      value={inviteForm.email}
+                      onChange={(e) => setInviteForm(f => ({ ...f, email: e.target.value }))}
+                      className="input-dark mt-2"
+                      placeholder="user@example.com"
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-zinc-400">Name</Label>
+                    <Input
+                      value={inviteForm.name}
+                      onChange={(e) => setInviteForm(f => ({ ...f, name: e.target.value }))}
+                      className="input-dark mt-2"
+                      placeholder="Full name"
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-zinc-400">Role</Label>
+                    <Select value={inviteForm.role} onValueChange={(v) => setInviteForm(f => ({ ...f, role: v }))}>
+                      <SelectTrigger className="input-dark mt-2">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="support_staff">Support Staff - Access to Support System only</SelectItem>
+                        <SelectItem value="tester">Beta Tester - Access to test platform features</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <Label className="text-zinc-400">Personal Message (optional)</Label>
+                    <textarea
+                      value={inviteForm.message}
+                      onChange={(e) => setInviteForm(f => ({ ...f, message: e.target.value }))}
+                      className="w-full h-24 mt-2 px-3 py-2 rounded-lg bg-zinc-800/50 border border-zinc-700 text-white text-sm resize-none focus:outline-none focus:border-emerald-500"
+                      placeholder="Add a personal welcome message..."
+                    />
+                  </div>
+                </div>
+                <div className="p-4 border-t border-zinc-800 flex justify-end gap-2">
+                  <Button variant="outline" onClick={() => setShowInviteModal(false)}>Cancel</Button>
+                  <Button onClick={sendInvitation} disabled={sendingInvite} className="bg-emerald-600 hover:bg-emerald-700">
+                    {sendingInvite ? <RefreshCw className="w-4 h-4 mr-2 animate-spin" /> : <Mail className="w-4 h-4 mr-2" />}
+                    Send Invitation
+                  </Button>
+                </div>
+              </div>
+            </div>
+          )}
         </TabsContent>
 
         {/* Support Tab */}
