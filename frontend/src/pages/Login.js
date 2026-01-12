@@ -123,13 +123,6 @@ const Login = () => {
               Sign up
             </Link>
           </div>
-
-          {/* Demo credentials hint */}
-          <div className="mt-6 p-4 rounded-lg bg-zinc-800/50 border border-zinc-700">
-            <p className="text-xs text-zinc-500 text-center">
-              Demo admin: <span className="text-zinc-400">admin@premiumhunter.com</span> / <span className="text-zinc-400">admin123</span>
-            </p>
-          </div>
         </div>
       </div>
     </div>
