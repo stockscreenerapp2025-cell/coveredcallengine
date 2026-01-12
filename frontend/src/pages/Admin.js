@@ -300,6 +300,59 @@ const Admin = () => {
     }
   };
 
+  const fetchInvitations = async () => {
+    setInvitationsLoading(true);
+    try {
+      const response = await api.get('/invitations/list');
+      setInvitations(response.data.invitations || []);
+    } catch (error) {
+      console.error('Invitations fetch error:', error);
+    } finally {
+      setInvitationsLoading(false);
+    }
+  };
+
+  const sendInvitation = async () => {
+    if (!inviteForm.email || !inviteForm.name) {
+      toast.error('Please fill in email and name');
+      return;
+    }
+    
+    setSendingInvite(true);
+    try {
+      await api.post('/invitations/send', inviteForm);
+      toast.success(`Invitation sent to ${inviteForm.email}`);
+      setShowInviteModal(false);
+      setInviteForm({ email: '', name: '', role: 'tester', message: '' });
+      fetchInvitations();
+    } catch (error) {
+      toast.error(error.response?.data?.detail || 'Failed to send invitation');
+    } finally {
+      setSendingInvite(false);
+    }
+  };
+
+  const revokeInvitation = async (invitationId) => {
+    if (!window.confirm('Are you sure you want to revoke this invitation?')) return;
+    
+    try {
+      await api.delete(`/invitations/${invitationId}`);
+      toast.success('Invitation revoked');
+      fetchInvitations();
+    } catch (error) {
+      toast.error('Failed to revoke invitation');
+    }
+  };
+
+  const resendInvitation = async (invitationId) => {
+    try {
+      await api.post(`/invitations/${invitationId}/resend`);
+      toast.success('Invitation resent');
+    } catch (error) {
+      toast.error('Failed to resend invitation');
+    }
+  };
+
   const saveSettings = async () => {
     setSaving(true);
     try {
