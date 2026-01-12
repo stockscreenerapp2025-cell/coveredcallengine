@@ -808,6 +808,8 @@ The Covered Call Engine Team"""
                 "ai_draft_response": draft.draft_content,
                 "ai_draft_confidence": draft.confidence_score,
                 "ai_draft_rationale": draft.rationale,
+                "ai_suggest_resolution": draft.suggest_resolution,
+                "status": TicketStatus.AI_DRAFTED.value,
                 "updated_at": now
             }}
         )
@@ -815,7 +817,8 @@ The Covered Call Engine Team"""
         return {
             "draft": draft.draft_content,
             "confidence": draft.confidence_score,
-            "rationale": draft.rationale
+            "rationale": draft.rationale,
+            "suggest_resolution": draft.suggest_resolution
         }
     
     async def get_stats(self) -> Dict:
