@@ -129,10 +129,19 @@ Respond with JSON:
 class SupportService:
     """Service for managing support tickets with AI assistance"""
     
+    # Support email configuration - uses subdomain for inbound email routing
+    # Replies to this address will be received by Resend and forwarded to our webhook
+    SUPPORT_EMAIL = "support@tickets.coveredcallengine.com"
+    SUPPORT_NAME = "CCE Support"
+    
     def __init__(self, db):
         self.db = db
         self.llm_key = os.environ.get("EMERGENT_LLM_KEY")
         self._ticket_counter = None
+    
+    def get_support_from_address(self) -> str:
+        """Get the formatted support from address"""
+        return f"{self.SUPPORT_NAME} <{self.SUPPORT_EMAIL}>"
     
     async def _get_next_ticket_number(self) -> str:
         """Generate sequential ticket number like CCE-0001"""
