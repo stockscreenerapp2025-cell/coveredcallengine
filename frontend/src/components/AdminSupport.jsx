@@ -205,10 +205,40 @@ const AdminSupport = () => {
       setKbLoading(false);
     }
   };
+  
+  // Fetch auto-response settings
+  const fetchAutoResponseSettings = async () => {
+    try {
+      const response = await api.get('/support/admin/auto-response-settings');
+      setAutoResponseSettings(response.data);
+    } catch (error) {
+      console.error('Auto-response settings error:', error);
+    }
+  };
+  
+  // Save auto-response settings
+  const handleSaveAutoResponseSettings = async () => {
+    setSavingAutoResponse(true);
+    try {
+      const params = new URLSearchParams({
+        enabled: autoResponseSettings.enabled.toString(),
+        delay_minutes: autoResponseSettings.delay_minutes.toString(),
+        min_confidence: autoResponseSettings.min_confidence.toString(),
+        allowed_categories: autoResponseSettings.allowed_categories.join(',')
+      });
+      await api.put(`/support/admin/auto-response-settings?${params.toString()}`);
+      toast.success('Auto-response settings saved');
+    } catch (error) {
+      toast.error('Failed to save settings');
+    } finally {
+      setSavingAutoResponse(false);
+    }
+  };
 
   useEffect(() => {
     fetchTickets(1);
     fetchStats();
+    fetchAutoResponseSettings();
   }, []);
 
   // Send admin reply
