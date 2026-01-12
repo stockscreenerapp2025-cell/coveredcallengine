@@ -575,6 +575,10 @@ const Admin = () => {
             <Zap className="w-4 h-4" />
             Integrations
           </TabsTrigger>
+          <TabsTrigger value="imap" className="flex items-center gap-2" onClick={() => fetchImapStatus()}>
+            <Mail className="w-4 h-4" />
+            Email Sync
+          </TabsTrigger>
           <TabsTrigger value="api-keys" className="flex items-center gap-2">
             <Key className="w-4 h-4" />
             API Keys
