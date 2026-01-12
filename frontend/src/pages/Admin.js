@@ -833,6 +833,17 @@ const Admin = () => {
                                     Reactivate
                                   </Button>
                                 )}
+                                {!user.is_admin && (
+                                  <Button 
+                                    size="sm" 
+                                    variant="ghost" 
+                                    className="text-xs px-2 py-1 h-7 text-red-400 hover:text-red-300 hover:bg-red-500/10" 
+                                    onClick={() => deleteUser(user.id, user.email)}
+                                    title="Delete user"
+                                  >
+                                    <Trash2 className="w-3 h-3" />
+                                  </Button>
+                                )}
                               </div>
                             </td>
                           </tr>
