@@ -11,6 +11,7 @@ import Portfolio from "./pages/Portfolio";
 import Simulator from "./pages/Simulator";
 import Watchlist from "./pages/Watchlist";
 import Admin from "./pages/Admin";
+import SupportPanel from "./pages/SupportPanel";
 import Pricing from "./pages/Pricing";
 import Terms from "./pages/Terms";
 import Privacy from "./pages/Privacy";
@@ -18,7 +19,7 @@ import AcceptInvitation from "./pages/AcceptInvitation";
 import Layout from "./components/Layout";
 import "@/App.css";
 
-// Protected Route wrapper
+// Protected Route wrapper - for authenticated users
 const ProtectedRoute = ({ children }) => {
   const { user, loading } = useAuth();
   
@@ -37,9 +38,9 @@ const ProtectedRoute = ({ children }) => {
   return children;
 };
 
-// Admin Route wrapper
+// Admin Route wrapper - ONLY for full admins
 const AdminRoute = ({ children }) => {
-  const { user, loading } = useAuth();
+  const { user, loading, isAdmin } = useAuth();
   
   if (loading) {
     return (
@@ -49,7 +50,26 @@ const AdminRoute = ({ children }) => {
     );
   }
   
-  if (!user || !user.is_admin) {
+  if (!user || !isAdmin) {
+    return <Navigate to="/dashboard" replace />;
+  }
+  
+  return children;
+};
+
+// Support Route wrapper - for support staff (limited admin access)
+const SupportRoute = ({ children }) => {
+  const { user, loading, hasSupportAccess } = useAuth();
+  
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-[#09090b] flex items-center justify-center">
+        <div className="loading-spinner" />
+      </div>
+    );
+  }
+  
+  if (!user || !hasSupportAccess) {
     return <Navigate to="/dashboard" replace />;
   }
   
@@ -109,6 +129,8 @@ function App() {
               </Layout>
             </ProtectedRoute>
           } />
+          
+          {/* Admin only route - full admin panel */}
           <Route path="/admin" element={
             <AdminRoute>
               <Layout>
@@ -116,6 +138,16 @@ function App() {
               </Layout>
             </AdminRoute>
           } />
+          
+          {/* Support staff route - limited support panel */}
+          <Route path="/support" element={
+            <SupportRoute>
+              <Layout>
+                <SupportPanel />
+              </Layout>
+            </SupportRoute>
+          } />
+          
           <Route path="/pricing" element={
             <ProtectedRoute>
               <Layout>
