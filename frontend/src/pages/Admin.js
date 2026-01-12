@@ -456,6 +456,21 @@ const Admin = () => {
     }
   };
 
+  const deleteUser = async (userId, userEmail) => {
+    if (!window.confirm(`Are you sure you want to delete user "${userEmail}"?\n\nThis action cannot be undone.`)) {
+      return;
+    }
+    
+    try {
+      await api.delete(`/admin/users/${userId}`);
+      toast.success(`User ${userEmail} deleted`);
+      fetchUsers(usersPagination.page);
+      fetchDashboardStats();
+    } catch (error) {
+      toast.error(error.response?.data?.detail || 'Failed to delete user');
+    }
+  };
+
   const PasswordInput = ({ value, onChange, show, onToggle, placeholder, label }) => (
     <div className="space-y-2">
       <Label className="text-zinc-400">{label}</Label>
