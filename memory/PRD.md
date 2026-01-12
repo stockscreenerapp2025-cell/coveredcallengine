@@ -339,6 +339,29 @@ January 12, 2026 - Centralized Data Sourcing Implementation
    - Complete account creation flow verified working
    - File: `/app/frontend/src/pages/AcceptInvitation.js`
 
+### Role-Based Access Control (RBAC) Implementation (Jan 12, 2026) ✅
+**Complete role-based security system:**
+
+**Backend Changes:**
+- Updated `/app/backend/models/schemas.py` - UserResponse now includes role, is_support_staff, is_tester, permissions
+- Updated `/app/backend/routes/auth.py` - Login and /me endpoints return full role information
+- JWT tokens now include role information for backend authorization
+
+**Frontend Changes:**
+- Updated `/app/frontend/src/contexts/AuthContext.js` - Added role helpers: isAdmin, isSupportStaff, isTester, hasSupportAccess, hasPermission()
+- Updated `/app/frontend/src/App.js` - Added SupportRoute wrapper, imported SupportPanel
+- Updated `/app/frontend/src/components/Layout.js` - Dynamic navigation based on user role
+- Updated `/app/frontend/src/pages/Login.js` - Role-based redirect after login
+- Updated `/app/frontend/src/pages/Dashboard.js` - Redirect support-only staff to /support
+- Created `/app/frontend/src/pages/SupportPanel.js` - Dedicated support panel for support staff
+
+**Role Access Matrix:**
+| Role | Navigation | Access | Redirect |
+|------|-----------|--------|----------|
+| Admin | Full + Admin | Everything | /dashboard |
+| Tester | Full (no Admin) | App features | /dashboard |
+| Support Staff | Support only | Support Panel | /support |
+
 ### Invitation System Architecture (Jan 12, 2026) ✅
 **Key Files:**
 - `/app/backend/routes/invitations.py` - Invitation CRUD, email sending, token verification
