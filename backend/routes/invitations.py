@@ -489,7 +489,7 @@ async def send_invitation_email(
         return False
 
 
-async def send_welcome_email(email: str, name: str, role: str) -> bool:
+async def send_welcome_email(email: str, name: str, role: str, environment: str = "production") -> bool:
     """Send welcome email after invitation is accepted"""
     try:
         from services.email_service import EmailService
@@ -500,6 +500,9 @@ async def send_welcome_email(email: str, name: str, role: str) -> bool:
         
         role_label = ROLES.get(role, {}).get("label", role)
         logo_url = "https://customer-assets.emergentagent.com/job_optiontrader-9/artifacts/cg2ri3n1_Logo%20CCE.JPG"
+        
+        # Get environment-specific login URL
+        login_url = ENVIRONMENT_URLS.get(environment, ENVIRONMENT_URLS["production"]) + "/login"
         
         # Role-specific content
         if role == "support_staff":
