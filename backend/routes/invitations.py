@@ -97,24 +97,30 @@ async def send_invitation(
     if request.role not in ["support_staff", "tester"]:
         raise HTTPException(status_code=400, detail="Invalid role. Must be 'support_staff' or 'tester'")
     
-    # Check if email already has a pending invitation
+    # Validate environment
+    if request.environment not in ["test", "production"]:
+        raise HTTPException(status_code=400, detail="Invalid environment. Must be 'test' or 'production'")
+    
+    # Check if email already has a pending invitation for this environment
     existing = await db.invitations.find_one({
         "email": request.email.lower(),
+        "environment": request.environment,
         "status": "pending"
     })
     if existing:
-        raise HTTPException(status_code=400, detail="An invitation is already pending for this email")
+        raise HTTPException(status_code=400, detail=f"An invitation is already pending for this email in {request.environment}")
     
     # Check if user already exists
     existing_user = await db.users.find_one({"email": request.email.lower()})
     if existing_user:
         raise HTTPException(status_code=400, detail="A user with this email already exists")
     
-    # Check invitation limits (5 testers max)
+    # Check invitation limits (5 testers max per environment)
     if request.role == "tester":
         tester_count = await db.users.count_documents({"role": "tester"})
         pending_tester_invites = await db.invitations.count_documents({
             "role": "tester",
+            "environment": request.environment,
             "status": "pending"
         })
         if tester_count + pending_tester_invites >= 5:
@@ -131,6 +137,7 @@ async def send_invitation(
         "email": request.email.lower(),
         "name": request.name,
         "role": request.role,
+        "environment": request.environment,
         "token": token,
         "status": "pending",
         "message": request.message,
