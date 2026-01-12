@@ -536,6 +536,19 @@ const AdminSupport = () => {
                 <Button onClick={() => { fetchTickets(1); fetchStats(); }} variant="outline" className="btn-outline">
                   <RefreshCw className="w-4 h-4" />
                 </Button>
+                <Button 
+                  onClick={importEmailResponses} 
+                  variant="outline" 
+                  className="border-emerald-500 text-emerald-400 hover:bg-emerald-500/10"
+                  disabled={importingEmails}
+                >
+                  {importingEmails ? (
+                    <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                  ) : (
+                    <Mail className="w-4 h-4 mr-2" />
+                  )}
+                  Import Responses
+                </Button>
               </div>
             </CardContent>
           </Card>
