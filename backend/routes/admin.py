@@ -336,6 +336,49 @@ async def cancel_user_subscription(
     return {"message": "Subscription cancelled"}
 
 
+@admin_router.delete("/users/{user_id}")
+async def delete_user(
+    user_id: str,
+    admin: dict = Depends(get_admin_user)
+):
+    """Delete a user account (admin action). Cannot delete admin users."""
+    user = await db.users.find_one({"id": user_id}, {"_id": 0})
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    # Prevent deleting admin users
+    if user.get("is_admin"):
+        raise HTTPException(status_code=403, detail="Cannot delete admin users")
+    
+    # Prevent self-deletion
+    if user_id == admin["id"]:
+        raise HTTPException(status_code=403, detail="Cannot delete your own account")
+    
+    now = datetime.now(timezone.utc)
+    
+    # Delete the user
+    result = await db.users.delete_one({"id": user_id})
+    
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=500, detail="Failed to delete user")
+    
+    # Also delete related data (optional - you may want to keep some for records)
+    # Delete user's invitations if any
+    await db.invitations.delete_many({"email": user.get("email")})
+    
+    # Log action
+    await db.audit_logs.insert_one({
+        "action": "admin_delete_user",
+        "admin_id": admin["id"],
+        "admin_email": admin.get("email"),
+        "deleted_user_id": user_id,
+        "deleted_user_email": user.get("email"),
+        "timestamp": now.isoformat()
+    })
+    
+    return {"message": f"User {user.get('email')} deleted successfully"}
+
+
 @admin_router.post("/users/{user_id}/set-subscription")
 async def set_user_subscription(
     user_id: str,
