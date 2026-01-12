@@ -321,3 +321,38 @@ January 12, 2026 - Centralized Data Sourcing Implementation
 - Core infrastructure: Cache helpers, models, auth utilities
 
 **Testing:** All 10 API groups verified working (Auth, Stocks, Options, Screener, Portfolio, Admin, Simulator, News, Watchlist, Subscription)
+
+### Invitation System & Security Fixes (Jan 12, 2026) ✅
+**Three critical bugs fixed:**
+
+1. **Security Vulnerability - Demo Credentials Removed**
+   - Removed hardcoded demo credentials from Login.js that were visible on the production login page
+   - File: `/app/frontend/src/pages/Login.js` - Removed lines 127-132
+
+2. **Invitation URL Environment Logic**
+   - Test environment invitations now correctly use: `https://options-engine.preview.emergentagent.com`
+   - Production environment invitations use: `https://coveredcallengine.com`
+   - File: `/app/backend/routes/invitations.py` - Lines 36-39
+
+3. **AcceptInvitation Page Working**
+   - Page renders correctly with invitation details, role badge, and password form
+   - Complete account creation flow verified working
+   - File: `/app/frontend/src/pages/AcceptInvitation.js`
+
+### Invitation System Architecture (Jan 12, 2026) ✅
+**Key Files:**
+- `/app/backend/routes/invitations.py` - Invitation CRUD, email sending, token verification
+- `/app/frontend/src/pages/AcceptInvitation.js` - Public invitation acceptance page
+- `/app/frontend/src/pages/Admin.js` - Admin UI for invitations
+
+**Key Endpoints:**
+- `POST /api/invitations/send` - Send invitation (admin only)
+- `GET /api/invitations/list` - List all invitations (admin only)
+- `DELETE /api/invitations/{id}` - Delete/revoke invitation (admin only)
+- `POST /api/invitations/{id}/resend` - Resend invitation email (admin only)
+- `GET /api/invitations/verify/{token}` - Verify invitation token (public)
+- `POST /api/invitations/accept/{token}` - Accept invitation and create account (public)
+
+**Roles Supported:**
+- `support_staff` - Access to Support Ticket System only
+- `tester` - Access to main application features (Beta Tester)
