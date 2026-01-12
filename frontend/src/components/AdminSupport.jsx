@@ -444,6 +444,10 @@ const AdminSupport = () => {
             <BookOpen className="w-4 h-4" />
             Knowledge Base
           </TabsTrigger>
+          <TabsTrigger value="settings" className="flex items-center gap-2" onClick={() => fetchAutoResponseSettings()}>
+            <Zap className="w-4 h-4" />
+            Auto-Response
+          </TabsTrigger>
         </TabsList>
 
         {/* Tickets Tab */}
