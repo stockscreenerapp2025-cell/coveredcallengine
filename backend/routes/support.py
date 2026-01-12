@@ -738,9 +738,10 @@ async def update_auto_response_settings(
     delay_minutes: int = Query(60, ge=0, le=1440),
     min_confidence: int = Query(85, ge=50, le=100),
     allowed_categories: str = Query("general,how_it_works,educational"),
-    user: dict = Depends(get_support_user)
+    admin: dict = Depends(get_admin_user)
 ):
-    """Update auto-response configuration"""
+    """Update auto-response configuration (admin only)"""
+    admin_email = admin.get("email", "unknown")
     settings = {
         "type": "support_auto_response",
         "enabled": enabled,
@@ -750,7 +751,7 @@ async def update_auto_response_settings(
         "excluded_categories": ["billing", "bug_report", "technical"],  # Always excluded
         "allowed_sentiments": ["positive", "neutral"],  # Negative always requires human
         "updated_at": datetime.now(timezone.utc).isoformat(),
-        "updated_by": user.get("email")
+        "updated_by": admin_email
     }
     
     await db.admin_settings.update_one(
@@ -759,19 +760,20 @@ async def update_auto_response_settings(
         upsert=True
     )
     
-    logger.info(f"Auto-response settings updated by {user.get("email")}: enabled={enabled}, delay={delay_minutes}min")
+    logger.info(f"Auto-response settings updated by {admin_email}: enabled={enabled}, delay={delay_minutes}min")
     
     return {"success": True, "settings": settings}
 
 
 @support_router.post("/admin/process-auto-responses")
 async def trigger_auto_response_processing(
-    user: dict = Depends(get_support_user),
+    admin: dict = Depends(get_admin_user),
     service: SupportService = Depends(get_support_service)
 ):
     """
     Manually trigger auto-response processing (for testing).
-    In production, this runs via scheduler.
+    In production, this runs via scheduler. Admin only.
     """
     result = await service.process_pending_auto_responses()
     return result
+
