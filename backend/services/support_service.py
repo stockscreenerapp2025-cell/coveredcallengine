@@ -363,7 +363,8 @@ The Covered Call Engine Team"""
             kb_articles_used=result.get("kb_articles_used", []),
             needs_human_review=result.get("needs_human_review", True),
             flagged_for_escalation=result.get("flagged_for_escalation", False),
-            escalation_reason=result.get("escalation_reason")
+            escalation_reason=result.get("escalation_reason"),
+            suggest_resolution=result.get("suggest_resolution", False)
         )
     
     async def create_ticket(
