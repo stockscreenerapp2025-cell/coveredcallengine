@@ -186,9 +186,34 @@ Build a web-based application named "Covered Call Engine" to identify, analyze, 
 ---
 
 ## Last Updated
-January 12, 2026 - Dashboard Top 10 Enhancement
+January 12, 2026 - Centralized Data Sourcing Implementation
 
 ## Recent Changes
+
+### Centralized Data Sourcing Architecture (Jan 12, 2026) ✅
+**Implemented a clean, consistent data sourcing strategy:**
+
+**Data Sourcing Rules (PERMANENT - DO NOT CHANGE):**
+- **OPTIONS DATA**: Polygon/Massive ONLY (paid subscription)
+- **STOCK DATA**: Polygon/Massive primary, Yahoo fallback (until subscription upgrade)
+- **Future-proof**: Set `USE_POLYGON_FOR_STOCKS = True` in `data_provider.py` when upgrading
+
+**New File Created:**
+- `/app/backend/services/data_provider.py` - Centralized data sourcing service
+  - `fetch_options_chain()` - Polygon only for options
+  - `fetch_stock_quote()` - Polygon primary, Yahoo fallback
+  - `fetch_historical_prices()` - Polygon primary, Yahoo fallback
+  - `is_market_closed()` - Market hours detection
+  - `get_data_source_status()` - Admin diagnostic tool
+
+**Updated Screeners:**
+- `/app/backend/routes/screener.py` - All three screeners now use centralized data provider
+  - Covered Calls screener: Polygon for options, hybrid for stocks
+  - PMCC screener: Polygon for options, hybrid for stocks
+  - Dashboard opportunities: Polygon for options, hybrid for stocks
+  - All responses now include `data_source: "polygon"` field
+
+**Result:** Consistent data sourcing across all screeners. Options always from Polygon, stock prices with graceful fallback.
 
 ### Dashboard Top 10 Covered Calls Enhancement (Jan 12, 2026) ✅
 **Issues Fixed:**
