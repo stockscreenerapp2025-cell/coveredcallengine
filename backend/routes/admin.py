@@ -921,4 +921,132 @@ async def test_send_email(
         "success": result.get("success", False),
         "message": f"Test email sent to {recipient_email}" if result.get("success") else result.get("error"),
         "message_id": result.get("message_id")
+
+
+# ==================== IMAP EMAIL SYNC ROUTES ====================
+
+@admin_router.get("/imap/settings")
+async def get_imap_settings(admin: dict = Depends(get_admin_user)):
+    """Get IMAP settings (password masked)"""
+    settings = await db.admin_settings.find_one({"type": "imap_settings"}, {"_id": 0})
+    
+    if settings:
+        # Mask password for security
+        if settings.get("password"):
+            settings["password"] = "••••••••"
+        return settings
+    
+    return {
+        "type": "imap_settings",
+        "imap_server": "imap.hostinger.com",
+        "imap_port": 993,
+        "username": "",
+        "password": "",
+        "configured": False
+    }
+
+
+@admin_router.post("/imap/settings")
+async def update_imap_settings(settings: IMAPSettings, admin: dict = Depends(get_admin_user)):
+    """Save or update IMAP settings"""
+    settings_dict = {
+        "type": "imap_settings",
+        "imap_server": settings.imap_server,
+        "imap_port": settings.imap_port,
+        "username": settings.username,
+        "password": settings.password,
+        "configured": True,
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+        "updated_by": admin["email"]
+    }
+    
+    await db.admin_settings.update_one(
+        {"type": "imap_settings"},
+        {"$set": settings_dict},
+        upsert=True
+    )
+    
+    # Test connection immediately
+    from services.imap_service import IMAPService
+    imap_service = IMAPService(db)
+    success, message = await imap_service.test_connection()
+    
+    return {
+        "message": "IMAP settings saved",
+        "connection_test": {
+            "success": success,
+            "message": message
+        }
+    }
+
+
+@admin_router.post("/imap/test-connection")
+async def test_imap_connection(admin: dict = Depends(get_admin_user)):
+    """Test IMAP connection with current settings"""
+    from services.imap_service import IMAPService
+    
+    imap_service = IMAPService(db)
+    success, message = await imap_service.test_connection()
+    
+    return {
+        "success": success,
+        "message": message
+    }
+
+
+@admin_router.post("/imap/sync-now")
+async def sync_emails_now(admin: dict = Depends(get_admin_user)):
+    """Manually trigger email sync"""
+    from services.imap_service import IMAPService
+    
+    imap_service = IMAPService(db)
+    result = await imap_service.process_incoming_emails()
+    
+    # Log admin action
+    await db.audit_logs.insert_one({
+        "action": "manual_email_sync",
+        "admin_id": admin["id"],
+        "admin_email": admin["email"],
+        "result": result,
+        "timestamp": datetime.now(timezone.utc).isoformat()
+    })
+    
+    return result
+
+
+@admin_router.get("/imap/sync-history")
+async def get_sync_history(
+    limit: int = Query(default=20, ge=1, le=100),
+    admin: dict = Depends(get_admin_user)
+):
+    """Get IMAP sync history"""
+    from services.imap_service import IMAPService
+    
+    imap_service = IMAPService(db)
+    history = await imap_service.get_sync_history(limit)
+    
+    return {"history": history}
+
+
+@admin_router.get("/imap/status")
+async def get_imap_status(admin: dict = Depends(get_admin_user)):
+    """Get current IMAP configuration status"""
+    settings = await db.admin_settings.find_one({"type": "imap_settings"}, {"_id": 0})
+    
+    if not settings or not settings.get("configured"):
+        return {
+            "configured": False,
+            "message": "IMAP not configured. Please add your email credentials."
+        }
+    
+    return {
+        "configured": True,
+        "imap_server": settings.get("imap_server"),
+        "username": settings.get("username"),
+        "last_sync": settings.get("last_sync"),
+        "last_sync_success": settings.get("last_sync_success"),
+        "last_sync_error": settings.get("last_sync_error"),
+        "last_sync_processed": settings.get("last_sync_processed", 0)
+    }
+
     }
