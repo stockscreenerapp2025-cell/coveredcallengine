@@ -46,7 +46,8 @@ import {
   CheckCircle,
   XCircle,
   Calendar,
-  MessageSquare
+  MessageSquare,
+  Trash2
 } from 'lucide-react';
 import { toast } from 'sonner';
 import AdminSupport from '../components/AdminSupport';
