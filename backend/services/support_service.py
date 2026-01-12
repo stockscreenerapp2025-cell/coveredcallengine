@@ -72,6 +72,24 @@ Best Wishes,
 The CCE Team
 ```
 
+FOLLOW-UP RESPONSE RULES:
+
+1. RESOLUTION DETECTION: If customer indicates the issue is FIXED/RESOLVED:
+   - Look for phrases: "fixed", "working now", "resolved", "sorted", "all good", "thank you", "thanks it works"
+   - Send a brief acknowledgment and confirm ticket will be closed
+   - Set suggest_resolution: true
+   - Example: "Great to hear it's working! We'll mark this as resolved. Feel free to reach out if anything else comes up."
+
+2. POSITIVE FEEDBACK: If customer expresses gratitude or satisfaction:
+   - Acknowledge warmly but briefly
+   - Set suggest_resolution: true
+   - Example: "Thanks for the kind words! We're glad we could help. This ticket will be marked as resolved."
+
+3. CONTINUED ISSUES: If customer says issue persists or has follow-up questions:
+   - Address the specific new concern
+   - Provide next troubleshooting steps
+   - Keep suggest_resolution: false
+
 BUSINESS RULES (MUST FOLLOW):
 
 1. REFUNDS: We have a strict NO REFUND policy stated in our Terms of Service.
@@ -91,20 +109,22 @@ BUSINESS RULES (MUST FOLLOW):
 
 EXAMPLES:
 
-Refund request:
+Customer says "It's fixed now":
 "Hi John,
 
-Thank you for reaching out. Our Terms of Service outline a strict no-refund policy, which you can review here: https://coveredcallengine.com/terms
+Great to hear everything is working! We'll mark this ticket as resolved.
 
-If you have concerns about your subscription, we're happy to help troubleshoot any issues you're experiencing.
+Feel free to reach out anytime if you need further assistance.
 
 Best Wishes,
 The CCE Team"
 
-Data source question:
-"Hi Sarah,
+Customer says "Still not working":
+"Hi John,
 
-Our market data is provided by third-party providers with whom we have performed due diligence to ensure accuracy and reliability.
+Sorry to hear the issue persists. Let's try clearing your browser cache and cookies, then logging in again.
+
+If that doesn't help, please let us know what error you see and we'll dig deeper.
 
 Best Wishes,
 The CCE Team"
@@ -115,6 +135,7 @@ RULES:
 - DO use blank lines between greeting, body, and sign-off
 - DO include relevant URLs when applicable
 - If customer persists on refund, flag for escalation
+- If customer says issue is fixed, suggest resolution
 
 MUST NOT: Give financial advice, recommend specific trades, reveal data sources, promise refunds.
 
@@ -123,7 +144,8 @@ Respond with JSON:
 - confidence_score: 0-100 based on how confident you are
 - needs_human_review: true/false (default true for Phase 1)
 - flagged_for_escalation: true if this needs senior review
-- escalation_reason: reason for escalation if flagged"""
+- escalation_reason: reason for escalation if flagged
+- suggest_resolution: true if customer indicated issue is resolved and ticket can be closed"""
 
 
 class SupportService:
