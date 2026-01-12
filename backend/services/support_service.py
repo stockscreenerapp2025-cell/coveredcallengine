@@ -739,12 +739,15 @@ The Covered Call Engine Team"""
                 </div>
                 """
                 
+                # Send from support subdomain so replies route back to Resend webhook
                 result = await email_service.send_raw_email(
                     to_email=to_email,
                     subject=f"Re: [{ticket_number}] {subject}",
-                    html_content=html_content
+                    html_content=html_content,
+                    from_email=self.get_support_from_address(),
+                    reply_to=self.SUPPORT_EMAIL
                 )
-                logger.info(f"Reply email sent to {to_email}: {result}")
+                logger.info(f"Reply email sent to {to_email} from {self.SUPPORT_EMAIL}: {result}")
                 return result
             else:
                 logger.warning("Email service not initialized - email not sent")
@@ -752,8 +755,6 @@ The Covered Call Engine Team"""
         except Exception as e:
             logger.error(f"Failed to send reply email: {e}")
             raise  # Re-raise to surface the error
-        except Exception as e:
-            logger.warning(f"Failed to send reply email: {e}")
     
     async def regenerate_ai_draft(self, ticket_id: str) -> Optional[Dict]:
         """Regenerate AI draft for a ticket"""
