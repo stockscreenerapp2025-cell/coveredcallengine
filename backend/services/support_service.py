@@ -919,3 +919,107 @@ The Covered Call Engine Team"""
         """Delete a KB article"""
         result = await self.db.knowledge_base.delete_one({"id": article_id})
         return result.deleted_count > 0
+    
+    # ==================== PHASE 2: AUTO-RESPONSE ====================
+    
+    async def process_pending_auto_responses(self) -> Dict:
+        """
+        Process tickets eligible for auto-response.
+        Called by scheduler every few minutes.
+        Returns count of processed tickets.
+        """
+        # Get auto-response settings
+        settings = await self.db.admin_settings.find_one(
+            {"type": "support_auto_response"},
+            {"_id": 0}
+        )
+        
+        if not settings or not settings.get("enabled", False):
+            return {"processed": 0, "reason": "Auto-response disabled"}
+        
+        delay_minutes = settings.get("delay_minutes", 60)
+        min_confidence = settings.get("min_confidence", 85)
+        allowed_categories = settings.get("allowed_categories", ["general", "how_it_works", "educational"])
+        allowed_sentiments = settings.get("allowed_sentiments", ["positive", "neutral"])
+        
+        # Calculate cutoff time (tickets older than delay_minutes)
+        from datetime import timedelta
+        cutoff_time = (datetime.now(timezone.utc) - timedelta(minutes=delay_minutes)).isoformat()
+        
+        # Find eligible tickets
+        query = {
+            "status": {"$in": [TicketStatus.AI_DRAFTED.value, TicketStatus.NEW.value]},
+            "auto_response_eligible": True,
+            "ai_draft_confidence": {"$gte": min_confidence},
+            "category": {"$in": allowed_categories},
+            "sentiment": {"$in": allowed_sentiments},
+            "created_at": {"$lte": cutoff_time},
+            "auto_response_sent": {"$ne": True}  # Not already auto-responded
+        }
+        
+        eligible_tickets = await self.db.support_tickets.find(
+            query, {"_id": 0}
+        ).limit(10).to_list(10)  # Process max 10 at a time
+        
+        processed = 0
+        errors = []
+        
+        for ticket in eligible_tickets:
+            try:
+                # Send the AI draft as response
+                message = ticket.get("ai_draft_response")
+                if not message:
+                    continue
+                
+                # Add reply and send email
+                await self.add_reply(
+                    ticket_id=ticket["id"],
+                    message=message,
+                    sender_type="admin",  # Appears as from support team
+                    sender_name="CCE Support",
+                    sender_email=None,
+                    is_ai_draft=True,
+                    send_email=True
+                )
+                
+                # Mark as auto-responded
+                await self.db.support_tickets.update_one(
+                    {"id": ticket["id"]},
+                    {"$set": {
+                        "status": TicketStatus.AI_RESPONDED.value,
+                        "auto_response_sent": True,
+                        "auto_response_at": datetime.now(timezone.utc).isoformat()
+                    }}
+                )
+                
+                processed += 1
+                logger.info(f"Auto-response sent for ticket {ticket['ticket_number']}")
+                
+            except Exception as e:
+                errors.append({"ticket": ticket.get("ticket_number"), "error": str(e)})
+                logger.error(f"Failed to auto-respond to {ticket.get('ticket_number')}: {e}")
+        
+        return {
+            "processed": processed,
+            "errors": errors,
+            "settings": {
+                "delay_minutes": delay_minutes,
+                "min_confidence": min_confidence,
+                "allowed_categories": allowed_categories
+            }
+        }
+    
+    async def check_repeat_refund_request(self, email: str) -> bool:
+        """
+        Check if this email has made previous refund requests.
+        Used to auto-escalate repeat requests.
+        """
+        count = await self.db.support_tickets.count_documents({
+            "user_email": {"$regex": f"^{email}$", "$options": "i"},
+            "category": "billing",
+            "$or": [
+                {"subject": {"$regex": "refund", "$options": "i"}},
+                {"original_message": {"$regex": "refund", "$options": "i"}}
+            ]
+        })
+        return count > 1  # More than 1 means repeat request
