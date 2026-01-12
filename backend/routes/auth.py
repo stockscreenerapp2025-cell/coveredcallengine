@@ -107,5 +107,9 @@ async def get_me(user: dict = Depends(get_current_user)):
         email=user["email"],
         name=user["name"],
         is_admin=user.get("is_admin", False),
+        role=user.get("role"),
+        is_support_staff=user.get("is_support_staff", False),
+        is_tester=user.get("is_tester", False),
+        permissions=user.get("permissions", []),
         created_at=created_at
     )
