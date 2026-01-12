@@ -171,7 +171,7 @@ Build a web-based application named "Covered Call Engine" to identify, analyze, 
 │   ├── database.py (MongoDB connection with pooling)
 │   ├── requirements.txt
 │   ├── .env
-│   ├── routes/                    # Fully modular routes (5294 lines total)
+│   ├── routes/                    # Fully modular routes (6000+ lines total)
 │   │   ├── __init__.py
 │   │   ├── auth.py               (101 lines)
 │   │   ├── watchlist.py          (64 lines)
@@ -183,16 +183,21 @@ Build a web-based application named "Covered Call Engine" to identify, analyze, 
 │   │   ├── options.py            (171 lines)
 │   │   ├── admin.py              (874 lines)
 │   │   ├── portfolio.py          (887 lines)
-│   │   ├── screener.py           (705 lines) - NEW
-│   │   └── simulator.py          (1629 lines) - NEW
+│   │   ├── screener.py           (705 lines)
+│   │   ├── simulator.py          (1629 lines)
+│   │   └── support.py            (616 lines) - NEW Jan 12, 2026
 │   ├── services/
 │   │   ├── cache.py
 │   │   ├── chatbot_service.py
+│   │   ├── data_provider.py      (centralized market data service)
 │   │   ├── email_service.py
 │   │   ├── email_automation.py
-│   │   └── ibkr_parser.py
+│   │   ├── ibkr_parser.py
+│   │   ├── stripe_webhook.py
+│   │   └── support_service.py    (877 lines) - NEW Jan 12, 2026
 │   ├── models/
-│   │   └── schemas.py (Pydantic models)
+│   │   ├── schemas.py (Pydantic models)
+│   │   └── support.py (237 lines) - NEW Jan 12, 2026
 │   └── utils/
 │       └── auth.py (JWT utilities)
 ├── frontend/
@@ -202,9 +207,11 @@ Build a web-based application named "Covered Call Engine" to identify, analyze, 
 │       │   ├── Screener.js
 │       │   ├── PMCC.js
 │       │   ├── Portfolio.js
-│       │   └── Simulator.js (5 tabs: Active, Closed, Rules, Logs, Analytics)
+│       │   ├── Simulator.js (5 tabs: Active, Closed, Rules, Logs, Analytics)
+│       │   └── Admin.js (7 tabs: Dashboard, Users, Support, Email, Billing, Integrations, API Keys)
 │       ├── components/
-│       │   └── StockDetailModal.js
+│       │   ├── StockDetailModal.js
+│       │   └── AdminSupport.jsx (986 lines) - NEW Jan 12, 2026
 │       └── lib/
 │           └── api.js
 ├── tests/
