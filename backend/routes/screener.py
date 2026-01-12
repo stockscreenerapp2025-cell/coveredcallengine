@@ -666,18 +666,19 @@ async def screen_pmcc(
                                     "net_debit": round(net_debit, 2),
                                     "roi_per_cycle": round(roi_per_cycle, 2),
                                     "annualized_roi": round(annualized_roi, 1),
-                                    "score": round(score, 1)
+                                    "score": round(score, 1),
+                                    "data_source": "polygon"
                                 })
                     
-                except Exception as e:
-                    logging.error(f"PMCC scan error for {symbol}: {e}")
-                    continue
+            except Exception as e:
+                logging.error(f"PMCC scan error for {symbol}: {e}")
+                continue
         
         # Sort by score and limit to top 100
         opportunities.sort(key=lambda x: x["score"], reverse=True)
         opportunities = opportunities[:100]
         
-        result = {"opportunities": opportunities, "total": len(opportunities), "is_live": True}
+        result = {"opportunities": opportunities, "total": len(opportunities), "is_live": True, "data_source": "polygon"}
         await funcs['set_cached_data'](cache_key, result)
         return result
         
