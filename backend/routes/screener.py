@@ -484,7 +484,8 @@ async def get_dashboard_opportunities(user: dict = Depends(get_current_user)):
             "total": len(opportunities), 
             "weekly_count": len(top_weekly),
             "monthly_count": len(top_monthly),
-            "is_live": True
+            "is_live": True,
+            "data_source": "polygon"
         }
         await funcs['set_cached_data'](cache_key, result)
         return result
@@ -511,7 +512,14 @@ async def screen_pmcc(
     bypass_cache: bool = Query(False),
     user: dict = Depends(get_current_user)
 ):
-    """Screen for Poor Man's Covered Call (PMCC) opportunities - generates multiple combinations per symbol"""
+    """
+    Screen for Poor Man's Covered Call (PMCC) opportunities.
+    Generates multiple combinations per symbol for better coverage.
+    
+    DATA SOURCES:
+    - Options: Polygon/Massive ONLY
+    - Stock prices: Polygon primary, Yahoo fallback
+    """
     funcs = _get_server_functions()
     
     cache_params = {
