@@ -418,6 +418,9 @@ async def send_invitation_email(
             <div style="text-align: center; padding: 30px 0;">
                 <img src="{logo_url}" alt="Covered Call Engine" style="height: 50px; margin-bottom: 20px;" />
                 <h1 style="color: #10b981; margin: 0; font-size: 24px;">You're Invited!</h1>
+                <span style="display: inline-block; margin-top: 10px; padding: 4px 12px; background-color: {env_badge_color}20; color: {env_badge_color}; border-radius: 4px; font-size: 12px; font-weight: bold;">
+                    {env_label}
+                </span>
             </div>
             
             <div style="padding: 30px 20px;">
@@ -426,7 +429,7 @@ async def send_invitation_email(
                 </p>
                 
                 <p style="color: #a1a1aa; line-height: 1.6;">
-                    You've been invited to join <strong style="color: #10b981;">Covered Call Engine</strong> as a <strong style="color: #ffffff;">{role_label}</strong>.
+                    You've been invited to join <strong style="color: #10b981;">Covered Call Engine</strong> ({env_label}) as a <strong style="color: #ffffff;">{role_label}</strong>.
                 </p>
                 
                 {custom_message_html}
@@ -462,7 +465,7 @@ async def send_invitation_email(
         
         result = await email_service.send_raw_email(
             to_email=to_email,
-            subject=f"You're invited to join Covered Call Engine as {role_label}",
+            subject=f"You're invited to join Covered Call Engine ({env_label}) as {role_label}",
             html_content=html_content
         )
         
