@@ -931,6 +931,9 @@ const Admin = () => {
                         <Badge className={inv.role === 'support_staff' ? 'bg-violet-500/20 text-violet-400' : 'bg-cyan-500/20 text-cyan-400'}>
                           {inv.role === 'support_staff' ? 'Support Staff' : 'Tester'}
                         </Badge>
+                        <Badge className={inv.environment === 'test' ? 'bg-amber-500/20 text-amber-400' : 'bg-emerald-500/20 text-emerald-400'}>
+                          {inv.environment === 'test' ? '🧪 Test' : '🚀 Prod'}
+                        </Badge>
                         <Badge className={
                           inv.status === 'pending' ? 'bg-yellow-500/20 text-yellow-400' :
                           inv.status === 'accepted' ? 'bg-emerald-500/20 text-emerald-400' :
@@ -953,6 +956,15 @@ const Admin = () => {
                             </Button>
                           </>
                         )}
+                        <Button 
+                          size="sm" 
+                          variant="ghost" 
+                          onClick={() => revokeInvitation(inv.id)} 
+                          className="text-red-400 hover:text-red-300 hover:bg-red-500/10"
+                          title="Delete invitation"
+                        >
+                          <Trash2 className="w-3 h-3" />
+                        </Button>
                       </div>
                     </div>
                   ))}
