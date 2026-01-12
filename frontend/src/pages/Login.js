@@ -30,9 +30,17 @@ const Login = () => {
     setLoading(true);
 
     try {
-      await login(email, password);
+      const userData = await login(email, password);
       toast.success('Welcome back!');
-      navigate('/dashboard');
+      
+      // Redirect based on user role
+      if (userData.is_support_staff && !userData.is_admin) {
+        // Support staff goes to support panel only
+        navigate('/support');
+      } else {
+        // Everyone else goes to dashboard
+        navigate('/dashboard');
+      }
     } catch (err) {
       const message = err.response?.data?.detail || 'Invalid email or password';
       setError(message);
