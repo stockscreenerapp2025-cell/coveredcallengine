@@ -798,6 +798,11 @@ const Admin = () => {
           </Card>
         </TabsContent>
 
+        {/* Support Tab */}
+        <TabsContent value="support" className="space-y-6 mt-6">
+          <AdminSupport />
+        </TabsContent>
+
         {/* Email Automation Tab */}
         <TabsContent value="email-automation" className="space-y-6 mt-6">
           {/* Email Stats Overview */}
