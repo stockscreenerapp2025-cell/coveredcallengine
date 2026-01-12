@@ -382,18 +382,33 @@ class EmailService:
         }
         return await self.send_email(user["email"], "subscription_cancelled", variables)
     
-    async def send_raw_email(self, to_email: str, subject: str, html_content: str) -> dict:
-        """Send a raw email without using templates"""
+    async def send_raw_email(self, to_email: str, subject: str, html_content: str, from_email: str = None, reply_to: str = None) -> dict:
+        """Send a raw email without using templates
+        
+        Args:
+            to_email: Recipient email address
+            subject: Email subject
+            html_content: HTML content of the email
+            from_email: Optional custom from address (defaults to sender_email)
+            reply_to: Optional reply-to address (for support tickets)
+        """
         if not await self.initialize():
             logger.warning("Email service not configured - skipping email")
             return {"status": "skipped", "reason": "Email service not configured"}
         
+        # Use custom from_email if provided, otherwise use default
+        sender = from_email or self.sender_email
+        
         params = {
-            "from": self.sender_email,
+            "from": sender,
             "to": [to_email],
             "subject": subject,
             "html": html_content
         }
+        
+        # Add reply-to header if provided
+        if reply_to:
+            params["reply_to"] = reply_to
         
         try:
             email_result = await asyncio.to_thread(resend.Emails.send, params)
@@ -401,6 +416,7 @@ class EmailService:
             # Log email send
             await self.db.email_logs.insert_one({
                 "to": to_email,
+                "from": sender,
                 "template": "raw_email",
                 "subject": subject,
                 "status": "sent",
@@ -415,6 +431,7 @@ class EmailService:
             # Log failure
             await self.db.email_logs.insert_one({
                 "to": to_email,
+                "from": sender,
                 "template": "raw_email",
                 "subject": subject,
                 "status": "failed",
