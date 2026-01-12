@@ -127,6 +127,7 @@ function App() {
           {/* Public pages */}
           <Route path="/terms" element={<Terms />} />
           <Route path="/privacy" element={<Privacy />} />
+          <Route path="/accept-invitation" element={<AcceptInvitation />} />
           
           {/* Fallback */}
           <Route path="*" element={<Navigate to="/" replace />} />
