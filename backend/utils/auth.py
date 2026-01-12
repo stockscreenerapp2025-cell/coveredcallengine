@@ -19,11 +19,12 @@ def hash_password(password: str) -> str:
 def verify_password(password: str, hashed: str) -> bool:
     return bcrypt.checkpw(password.encode('utf-8'), hashed.encode('utf-8'))
 
-def create_token(user_id: str, email: str, is_admin: bool = False) -> str:
+def create_token(user_id: str, email: str, is_admin: bool = False, role: str = None) -> str:
     payload = {
         "sub": user_id,
         "email": email,
         "is_admin": is_admin,
+        "role": role,
         "exp": datetime.now(timezone.utc) + timedelta(days=7)
     }
     return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
@@ -55,3 +56,22 @@ async def get_admin_user(user: dict = Depends(get_current_user)):
     if not user.get("is_admin"):
         raise HTTPException(status_code=403, detail="Admin access required")
     return user
+
+
+async def get_support_user(user: dict = Depends(get_current_user)):
+    """Check if user has support access (admin or support_staff)"""
+    if user.get("is_admin") or user.get("is_support_staff") or user.get("role") == "support_staff":
+        return user
+    raise HTTPException(status_code=403, detail="Support access required")
+
+
+def has_permission(user: dict, permission: str) -> bool:
+    """Check if user has a specific permission"""
+    if user.get("is_admin"):
+        return True
+    
+    permissions = user.get("permissions", [])
+    if "*" in permissions:
+        return True
+    
+    return permission in permissions
