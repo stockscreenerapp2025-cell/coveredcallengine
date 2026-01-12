@@ -614,3 +614,163 @@ async def get_priorities():
             for p in TicketPriority
         ]
     }
+
+
+# ==================== PHASE 2: INBOUND EMAIL WEBHOOK ====================
+
+@support_router.post("/inbound-email")
+async def handle_inbound_email(
+    request: dict,
+    service: SupportService = Depends(get_support_service)
+):
+    """
+    Webhook endpoint for Resend inbound emails.
+    Parses incoming email and adds to existing ticket or creates new one.
+    
+    Resend sends: { type: "email.received", data: { from, to, subject, text, html, ... } }
+    """
+    import re
+    
+    try:
+        event_type = request.get("type")
+        
+        if event_type != "email.received":
+            logger.info(f"Ignoring non-inbound event: {event_type}")
+            return {"status": "ignored", "reason": f"Event type {event_type} not handled"}
+        
+        data = request.get("data", {})
+        
+        # Extract email details
+        from_email = data.get("from", "")
+        # Handle format: "Name <email@example.com>" or just "email@example.com"
+        email_match = re.search(r'[\w\.-]+@[\w\.-]+', from_email)
+        sender_email = email_match.group(0) if email_match else from_email
+        
+        # Try to extract name from "Name <email>" format
+        name_match = re.match(r'^([^<]+)<', from_email)
+        sender_name = name_match.group(1).strip() if name_match else sender_email.split('@')[0]
+        
+        subject = data.get("subject", "")
+        message_text = data.get("text", "") or data.get("html", "")
+        
+        # Try to match to existing ticket via ticket number in subject
+        # Format: Re: [CCE-0001] Original Subject
+        ticket_match = re.search(r'\[?(CCE-\d+)\]?', subject)
+        
+        if ticket_match:
+            ticket_number = ticket_match.group(1)
+            ticket = await service.get_ticket(ticket_number)
+            
+            if ticket and ticket["user_email"].lower() == sender_email.lower():
+                # Add reply to existing ticket
+                result = await service.add_reply(
+                    ticket_id=ticket["id"],
+                    message=message_text,
+                    sender_type="user",
+                    sender_name=sender_name,
+                    sender_email=sender_email,
+                    send_email=False
+                )
+                
+                logger.info(f"Added user reply to ticket {ticket_number} from {sender_email}")
+                return {
+                    "status": "reply_added",
+                    "ticket_number": ticket_number,
+                    "message_id": result["id"] if result else None
+                }
+        
+        # No matching ticket found - create new ticket
+        # Clean subject (remove Re:, Fwd:, ticket numbers)
+        clean_subject = re.sub(r'^(Re:|Fwd:|FW:)\s*', '', subject, flags=re.IGNORECASE)
+        clean_subject = re.sub(r'\[CCE-\d+\]\s*', '', clean_subject).strip()
+        
+        result = await service.create_ticket(
+            name=sender_name,
+            email=sender_email,
+            subject=clean_subject or "Email Inquiry",
+            message=message_text,
+            source=TicketSource.EMAIL
+        )
+        
+        logger.info(f"Created new ticket {result['ticket_number']} from inbound email {sender_email}")
+        return {
+            "status": "ticket_created",
+            "ticket_number": result["ticket_number"],
+            "ticket_id": result["ticket_id"]
+        }
+        
+    except Exception as e:
+        logger.error(f"Error processing inbound email: {e}")
+        # Return 200 to prevent Resend from retrying
+        return {"status": "error", "reason": str(e)}
+
+
+# ==================== PHASE 2: AUTO-RESPONSE SETTINGS ====================
+
+@support_router.get("/admin/auto-response-settings")
+async def get_auto_response_settings(
+    admin: dict = Depends(get_admin_user)
+):
+    """Get auto-response configuration"""
+    settings = await db.admin_settings.find_one(
+        {"type": "support_auto_response"},
+        {"_id": 0}
+    )
+    
+    if not settings:
+        # Return defaults
+        return {
+            "enabled": False,
+            "delay_minutes": 60,
+            "min_confidence": 85,
+            "allowed_sentiments": ["positive", "neutral"],
+            "allowed_categories": ["general", "how_it_works", "educational"],
+            "excluded_categories": ["billing", "bug_report", "technical"]
+        }
+    
+    return settings
+
+
+@support_router.put("/admin/auto-response-settings")
+async def update_auto_response_settings(
+    enabled: bool = Query(...),
+    delay_minutes: int = Query(60, ge=0, le=1440),
+    min_confidence: int = Query(85, ge=50, le=100),
+    allowed_categories: str = Query("general,how_it_works,educational"),
+    admin: dict = Depends(get_admin_user)
+):
+    """Update auto-response configuration"""
+    settings = {
+        "type": "support_auto_response",
+        "enabled": enabled,
+        "delay_minutes": delay_minutes,
+        "min_confidence": min_confidence,
+        "allowed_categories": allowed_categories.split(","),
+        "excluded_categories": ["billing", "bug_report", "technical"],  # Always excluded
+        "allowed_sentiments": ["positive", "neutral"],  # Negative always requires human
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+        "updated_by": admin.get("email")
+    }
+    
+    await db.admin_settings.update_one(
+        {"type": "support_auto_response"},
+        {"$set": settings},
+        upsert=True
+    )
+    
+    logger.info(f"Auto-response settings updated by {admin.get('email')}: enabled={enabled}, delay={delay_minutes}min")
+    
+    return {"success": True, "settings": settings}
+
+
+@support_router.post("/admin/process-auto-responses")
+async def trigger_auto_response_processing(
+    admin: dict = Depends(get_admin_user),
+    service: SupportService = Depends(get_support_service)
+):
+    """
+    Manually trigger auto-response processing (for testing).
+    In production, this runs via scheduler.
+    """
+    result = await service.process_pending_auto_responses()
+    return result
