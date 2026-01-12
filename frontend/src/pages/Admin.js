@@ -1845,6 +1845,213 @@ const Admin = () => {
           </div>
         </TabsContent>
 
+        {/* IMAP Email Sync Tab */}
+        <TabsContent value="imap" className="space-y-6 mt-6">
+          {/* Status Cards */}
+          <div className="grid md:grid-cols-3 gap-4">
+            <Card className={`glass-card border-l-4 ${imapStatus?.configured ? 'border-emerald-500' : 'border-yellow-500'}`}>
+              <CardContent className="p-4">
+                <div className="flex items-center gap-3">
+                  {imapStatus?.configured ? (
+                    <CheckCircle className="w-8 h-8 text-emerald-400" />
+                  ) : (
+                    <AlertCircle className="w-8 h-8 text-yellow-400" />
+                  )}
+                  <div>
+                    <p className="font-medium text-white">IMAP Connection</p>
+                    <p className="text-xs text-zinc-500">
+                      {imapStatus?.configured ? 'Configured' : 'Not configured'}
+                    </p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+            
+            <Card className={`glass-card border-l-4 ${imapStatus?.last_sync_success ? 'border-emerald-500' : imapStatus?.last_sync_error ? 'border-red-500' : 'border-zinc-600'}`}>
+              <CardContent className="p-4">
+                <div className="flex items-center gap-3">
+                  {imapStatus?.last_sync_success ? (
+                    <CheckCircle className="w-8 h-8 text-emerald-400" />
+                  ) : imapStatus?.last_sync_error ? (
+                    <XCircle className="w-8 h-8 text-red-400" />
+                  ) : (
+                    <Clock className="w-8 h-8 text-zinc-400" />
+                  )}
+                  <div>
+                    <p className="font-medium text-white">Last Sync</p>
+                    <p className="text-xs text-zinc-500">
+                      {imapStatus?.last_sync 
+                        ? new Date(imapStatus.last_sync).toLocaleString() 
+                        : 'Never synced'}
+                    </p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+            
+            <Card className="glass-card border-l-4 border-violet-500">
+              <CardContent className="p-4">
+                <div className="flex items-center gap-3">
+                  <Mail className="w-8 h-8 text-violet-400" />
+                  <div>
+                    <p className="font-medium text-white">Emails Processed</p>
+                    <p className="text-xs text-zinc-500">
+                      {imapStatus?.last_sync_processed ?? 0} in last sync
+                    </p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+          
+          {/* Error Alert */}
+          {imapStatus?.last_sync_error && (
+            <Card className="glass-card border-red-500/50 bg-red-500/5">
+              <CardContent className="p-4">
+                <div className="flex items-start gap-3">
+                  <AlertTriangle className="w-5 h-5 text-red-400 mt-0.5" />
+                  <div>
+                    <p className="font-medium text-red-400">Sync Error</p>
+                    <p className="text-sm text-zinc-400 mt-1">{imapStatus.last_sync_error}</p>
+                    {imapStatus.last_sync_error.includes('authentication') && (
+                      <p className="text-xs text-yellow-400 mt-2">
+                        Please update your IMAP password below if you changed it in Hostinger.
+                      </p>
+                    )}
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+          
+          {/* IMAP Settings */}
+          <Card className="glass-card">
+            <CardHeader>
+              <CardTitle className="text-lg flex items-center gap-2">
+                <Settings className="w-5 h-5 text-emerald-400" />
+                IMAP Email Settings
+              </CardTitle>
+              <CardDescription>
+                Configure connection to your Hostinger mailbox for automatic email sync. Syncs run automatically every 6 hours.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid md:grid-cols-2 gap-4">
+                <div className="form-group">
+                  <Label className="form-label">IMAP Server</Label>
+                  <Input 
+                    value={imapSettings.imap_server}
+                    onChange={(e) => setImapSettings(prev => ({ ...prev, imap_server: e.target.value }))}
+                    placeholder="imap.hostinger.com"
+                    className="input-dark"
+                  />
+                </div>
+                <div className="form-group">
+                  <Label className="form-label">Port</Label>
+                  <Input 
+                    type="number"
+                    value={imapSettings.imap_port}
+                    onChange={(e) => setImapSettings(prev => ({ ...prev, imap_port: parseInt(e.target.value) || 993 }))}
+                    placeholder="993"
+                    className="input-dark"
+                  />
+                </div>
+              </div>
+              <div className="grid md:grid-cols-2 gap-4">
+                <div className="form-group">
+                  <Label className="form-label">Email Address (Username)</Label>
+                  <Input 
+                    value={imapSettings.username}
+                    onChange={(e) => setImapSettings(prev => ({ ...prev, username: e.target.value }))}
+                    placeholder="support@coveredcallengine.com"
+                    className="input-dark"
+                  />
+                </div>
+                <div className="form-group">
+                  <Label className="form-label">Password</Label>
+                  <div className="relative">
+                    <Input 
+                      type={showImapPassword ? 'text' : 'password'}
+                      value={imapSettings.password}
+                      onChange={(e) => setImapSettings(prev => ({ ...prev, password: e.target.value }))}
+                      placeholder="Enter new password to update"
+                      className="input-dark pr-10"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowImapPassword(!showImapPassword)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-300"
+                    >
+                      {showImapPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
+                  <p className="text-xs text-zinc-500 mt-1">Leave blank to keep existing password</p>
+                </div>
+              </div>
+              
+              <div className="flex gap-3">
+                <Button onClick={testImapConnection} variant="outline" className="border-zinc-700">
+                  <Activity className="w-4 h-4 mr-2" />
+                  Test Connection
+                </Button>
+                <Button onClick={saveImapSettings} className="bg-emerald-600 hover:bg-emerald-700" disabled={imapSaving}>
+                  {imapSaving ? <RefreshCw className="w-4 h-4 mr-2 animate-spin" /> : <Save className="w-4 h-4 mr-2" />}
+                  Save Settings
+                </Button>
+                <Button onClick={syncImapNow} variant="outline" className="border-violet-500 text-violet-400 hover:bg-violet-500/10" disabled={imapSyncing}>
+                  {imapSyncing ? <RefreshCw className="w-4 h-4 mr-2 animate-spin" /> : <RefreshCw className="w-4 h-4 mr-2" />}
+                  Sync Now
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+          
+          {/* Sync History */}
+          <Card className="glass-card">
+            <CardHeader>
+              <CardTitle className="text-lg flex items-center gap-2">
+                <Clock className="w-5 h-5 text-violet-400" />
+                Sync History
+              </CardTitle>
+              <CardDescription>
+                Recent email sync attempts and results
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {imapHistory.length === 0 ? (
+                <p className="text-sm text-zinc-500 text-center py-4">No sync history yet</p>
+              ) : (
+                <div className="space-y-2">
+                  {imapHistory.map((log, idx) => (
+                    <div key={idx} className={`flex items-center justify-between p-3 rounded-lg ${log.success ? 'bg-emerald-500/5' : 'bg-red-500/5'}`}>
+                      <div className="flex items-center gap-3">
+                        {log.success ? (
+                          <CheckCircle className="w-5 h-5 text-emerald-400" />
+                        ) : (
+                          <XCircle className="w-5 h-5 text-red-400" />
+                        )}
+                        <div>
+                          <p className="text-sm text-white">
+                            {log.emails_processed} emails processed
+                            {log.matched_to_tickets > 0 && `, ${log.matched_to_tickets} matched`}
+                            {log.new_tickets_created > 0 && `, ${log.new_tickets_created} new tickets`}
+                          </p>
+                          <p className="text-xs text-zinc-500">
+                            {new Date(log.timestamp).toLocaleString()}
+                          </p>
+                        </div>
+                      </div>
+                      {log.error && (
+                        <span className="text-xs text-red-400 max-w-xs truncate">{log.error}</span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
         {/* API Keys Tab */}
         <TabsContent value="api-keys" className="space-y-6 mt-6">
           <Card className="glass-card">
