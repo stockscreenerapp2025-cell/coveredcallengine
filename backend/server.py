@@ -1284,8 +1284,29 @@ async def startup():
         id='simulator_price_update',
         replace_existing=True
     )
+    
+    # Auto-response scheduler - runs every 5 minutes to check for eligible tickets
+    async def process_support_auto_responses():
+        """Process pending auto-responses for support tickets"""
+        try:
+            from services.support_service import SupportService
+            service = SupportService(db)
+            result = await service.process_pending_auto_responses()
+            if result.get("processed", 0) > 0:
+                logger.info(f"Support auto-response: processed {result['processed']} tickets")
+        except Exception as e:
+            logger.error(f"Support auto-response error: {e}")
+    
+    scheduler.add_job(
+        process_support_auto_responses,
+        'interval',
+        minutes=5,
+        id='support_auto_response',
+        replace_existing=True
+    )
+    
     scheduler.start()
-    logger.info("Simulator price update scheduler started - runs at 4:30 PM ET on weekdays")
+    logger.info("Schedulers started - Simulator: 4:30 PM ET weekdays, Support auto-response: every 5 min")
 
 @app.on_event("shutdown")
 async def shutdown_db_client():
