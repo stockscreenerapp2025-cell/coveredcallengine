@@ -539,7 +539,7 @@ const Admin = () => {
             <BarChart3 className="w-4 h-4" />
             Dashboard
           </TabsTrigger>
-          <TabsTrigger value="users" className="flex items-center gap-2" onClick={() => fetchUsers(1)}>
+          <TabsTrigger value="users" className="flex items-center gap-2" onClick={() => { fetchUsers(1); fetchInvitations(); }}>
             <Users className="w-4 h-4" />
             Users
           </TabsTrigger>
