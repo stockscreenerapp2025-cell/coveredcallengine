@@ -65,7 +65,13 @@ async def login(credentials: UserLogin):
     if not user or not verify_password(credentials.password, user["password"]):
         raise HTTPException(status_code=401, detail="Invalid email or password")
     
-    token = create_token(user["id"], user["email"], user.get("is_admin", False))
+    # Include role in token for backend authorization
+    token = create_token(
+        user["id"], 
+        user["email"], 
+        user.get("is_admin", False),
+        user.get("role")
+    )
     
     created_at = user.get("created_at")
     # Ensure created_at is a string
@@ -79,6 +85,10 @@ async def login(credentials: UserLogin):
             email=user["email"],
             name=user["name"],
             is_admin=user.get("is_admin", False),
+            role=user.get("role"),
+            is_support_staff=user.get("is_support_staff", False),
+            is_tester=user.get("is_tester", False),
+            permissions=user.get("permissions", []),
             created_at=created_at
         )
     )
