@@ -750,7 +750,7 @@ async def clear_screener_cache(user: dict = Depends(get_current_user)):
             total_cleared += count
         
         logging.info(f"Cache cleared by user {user.get('email')}: {total_cleared} entries")
-        return {"message": f"Cache cleared successfully", "entries_cleared": total_cleared}
+        return {"message": "Cache cleared successfully", "entries_cleared": total_cleared}
     except Exception as e:
         logging.error(f"Error clearing cache: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to clear cache: {str(e)}")
