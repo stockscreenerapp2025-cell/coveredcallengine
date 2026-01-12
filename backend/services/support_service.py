@@ -692,40 +692,57 @@ The Covered Call Engine Team"""
         subject: str,
         message: str
     ):
-        """Send reply email to user"""
+        """Send reply email to user with proper formatting and logo"""
         try:
             from services.email_service import EmailService
             email_service = EmailService(self.db)
             
             if await email_service.initialize():
-                # Convert line breaks to HTML
-                html_message = message.replace("\n", "<br>")
+                # Convert line breaks to HTML paragraphs for proper spacing
+                paragraphs = message.split('\n\n')
+                html_paragraphs = []
+                for p in paragraphs:
+                    if p.strip():
+                        # Convert single line breaks within paragraphs
+                        p_html = p.replace('\n', '<br>')
+                        html_paragraphs.append(f'<p style="margin: 0 0 16px 0; line-height: 1.6;">{p_html}</p>')
+                html_message = ''.join(html_paragraphs)
+                
+                # Logo URL
+                logo_url = "https://customer-assets.emergentagent.com/job_optiontrader-9/artifacts/cg2ri3n1_Logo%20CCE.JPG"
                 
                 html_content = f"""
                 <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #09090b; color: #ffffff;">
-                    <div style="text-align: center; padding: 20px 0; border-bottom: 1px solid #27272a;">
-                        <h1 style="color: #10b981; margin: 0;">Covered Call Engine</h1>
-                    </div>
                     <div style="padding: 30px 20px;">
                         <p style="color: #71717a; font-size: 12px; margin-bottom: 20px;">
                             Reference: {ticket_number}
                         </p>
-                        <div style="color: #e4e4e7; line-height: 1.8;">
+                        <div style="color: #e4e4e7;">
                             {html_message}
                         </div>
-                    </div>
-                    <div style="text-align: center; padding: 20px; border-top: 1px solid #27272a; color: #71717a; font-size: 12px;">
-                        © 2025 Covered Call Engine. All rights reserved.<br>
-                        <a href="https://coveredcallengine.com" style="color: #10b981; text-decoration: none;">coveredcallengine.com</a>
+                        <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #27272a;">
+                            <img src="{logo_url}" alt="Covered Call Engine" style="height: 40px; margin-bottom: 10px;" />
+                            <p style="color: #71717a; font-size: 12px; margin: 0;">
+                                <a href="https://coveredcallengine.com" style="color: #10b981; text-decoration: none;">coveredcallengine.com</a>
+                            </p>
+                        </div>
                     </div>
                 </div>
                 """
                 
-                await email_service.send_raw_email(
+                result = await email_service.send_raw_email(
                     to_email=to_email,
                     subject=f"Re: [{ticket_number}] {subject}",
                     html_content=html_content
                 )
+                logger.info(f"Reply email sent to {to_email}: {result}")
+                return result
+            else:
+                logger.warning("Email service not initialized - email not sent")
+                return None
+        except Exception as e:
+            logger.error(f"Failed to send reply email: {e}")
+            raise  # Re-raise to surface the error
         except Exception as e:
             logger.warning(f"Failed to send reply email: {e}")
     
