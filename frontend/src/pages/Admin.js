@@ -45,9 +45,11 @@ import {
   AlertCircle,
   CheckCircle,
   XCircle,
-  Calendar
+  Calendar,
+  MessageSquare
 } from 'lucide-react';
 import { toast } from 'sonner';
+import AdminSupport from '../components/AdminSupport';
 
 const Admin = () => {
   const [activeTab, setActiveTab] = useState('dashboard');
