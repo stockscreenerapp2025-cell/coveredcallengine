@@ -350,8 +350,15 @@ class IMAPService:
                             send_email=False
                         )
                         
+                        # Trigger AI to generate a new draft response based on the customer's reply
+                        try:
+                            await support_service.generate_ai_draft(ticket["id"])
+                            result["details"].append(f"Added reply to {ticket_number} from {sender_email} + AI draft generated")
+                        except Exception as ai_err:
+                            logger.warning(f"Failed to generate AI draft for {ticket_number}: {ai_err}")
+                            result["details"].append(f"Added reply to {ticket_number} from {sender_email} (AI draft failed)")
+                        
                         result["matched"] += 1
-                        result["details"].append(f"Added reply to {ticket_number} from {sender_email}")
                     else:
                         # Ticket not found or email mismatch - create new ticket
                         clean_subject = re.sub(r'^(Re:|Fwd:|FW:)\s*', '', subject, flags=re.IGNORECASE)
