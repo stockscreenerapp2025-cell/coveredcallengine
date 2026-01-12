@@ -342,14 +342,15 @@ async def escalate_ticket(
     """
     Escalate a ticket for senior review.
     """
+    user_email = user.get("email", "unknown")
     success = await service.update_ticket(
         ticket_id=ticket_id,
         updates={
             "status": TicketStatus.ESCALATED.value,
-            "internal_notes": f"[ESCALATED by {user.get("email")}] {reason}"
+            "internal_notes": f"[ESCALATED by {user_email}] {reason}"
         },
         admin_id=user.get("id"),
-        admin_email=user.get("email")
+        admin_email=user_email
     )
     
     if not success:
