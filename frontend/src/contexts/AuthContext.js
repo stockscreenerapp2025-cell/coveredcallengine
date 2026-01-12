@@ -67,6 +67,20 @@ export const AuthProvider = ({ children }) => {
     setUser(null);
   };
 
+  // Role-based access helpers
+  const isAdmin = user?.is_admin || false;
+  const isSupportStaff = user?.is_support_staff || user?.role === 'support_staff';
+  const isTester = user?.is_tester || user?.role === 'tester';
+  const hasSupportAccess = isAdmin || isSupportStaff;
+  
+  // Check if user has a specific permission
+  const hasPermission = (permission) => {
+    if (isAdmin) return true;
+    const permissions = user?.permissions || [];
+    if (permissions.includes('*')) return true;
+    return permissions.includes(permission);
+  };
+
   const value = {
     user,
     token,
@@ -75,7 +89,11 @@ export const AuthProvider = ({ children }) => {
     register,
     logout,
     isAuthenticated: !!user,
-    isAdmin: user?.is_admin || false
+    isAdmin,
+    isSupportStaff,
+    isTester,
+    hasSupportAccess,
+    hasPermission
   };
 
   return (
