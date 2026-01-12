@@ -327,7 +327,8 @@ Respond with JSON in this exact format:
     "kb_articles_used": ["list of KB article IDs used"],
     "needs_human_review": true,
     "flagged_for_escalation": boolean,
-    "escalation_reason": "string or null"
+    "escalation_reason": "string or null",
+    "suggest_resolution": boolean (true if customer said issue is fixed/resolved)
 }}"""
         
         result = await self._call_llm(DRAFT_RESPONSE_SYSTEM_PROMPT, user_prompt)
