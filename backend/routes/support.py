@@ -711,8 +711,6 @@ async def handle_inbound_email(
 async def get_auto_response_settings(
     admin: dict = Depends(get_admin_user)
 ):
-    user: dict = Depends(get_support_user)
-):
     """Get auto-response configuration"""
     settings = await db.admin_settings.find_one(
         {"type": "support_auto_response"},
