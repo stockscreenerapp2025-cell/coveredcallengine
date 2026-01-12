@@ -921,6 +921,7 @@ async def test_send_email(
         "success": result.get("success", False),
         "message": f"Test email sent to {recipient_email}" if result.get("success") else result.get("error"),
         "message_id": result.get("message_id")
+    }
 
 
 # ==================== IMAP EMAIL SYNC ROUTES ====================
