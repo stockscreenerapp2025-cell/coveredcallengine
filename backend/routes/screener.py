@@ -559,105 +559,98 @@ async def screen_pmcc(
             # Airlines/Travel
             "AAL", "DAL", "UAL", "CCL", "NCLH",
             # High volatility
-            "PLTR", "SOFI", "RIVN", "LCID", "NIO"
+            "PLTR", "SOFI"
         ]
         
         opportunities = []
         
-        async with httpx.AsyncClient(timeout=HTTP_TIMEOUT) as client:
-            for symbol in symbols_to_scan:
-                try:
-                    # Get stock price
-                    stock_response = await client.get(
-                        f"https://api.polygon.io/v2/aggs/ticker/{symbol}/prev",
-                        params={"apiKey": api_key}
-                    )
+        for symbol in symbols_to_scan:
+            try:
+                # Get stock price using centralized data provider
+                stock_data = await fetch_stock_quote(symbol, api_key)
+                
+                if not stock_data or stock_data.get("price", 0) == 0:
+                    continue
+                
+                current_price = stock_data["price"]
+                
+                if current_price < min_price or current_price > max_price:
+                    continue
+                
+                # Get LEAPS options from Polygon ONLY (long leg)
+                leaps_options = await fetch_options_chain(
+                    symbol, api_key, "call", max_leaps_dte, min_dte=min_leaps_dte, current_price=current_price
+                )
+                
+                # Get short-term options from Polygon ONLY (short leg)
+                short_options = await fetch_options_chain(
+                    symbol, api_key, "call", max_short_dte, min_dte=min_short_dte, current_price=current_price
+                )
+                
+                if not leaps_options or not short_options:
+                    logging.debug(f"No LEAPS or short options from Polygon for {symbol}")
+                    continue
+                
+                # Filter LEAPS for deep ITM (high delta)
+                filtered_leaps = []
+                for opt in leaps_options:
+                    strike = opt.get("strike", 0)
+                    if strike < current_price * 0.85:  # Deep ITM
+                        estimated_delta = min(0.90, 0.70 + (current_price - strike) / current_price * 0.5)
+                        if min_leaps_delta <= estimated_delta <= max_leaps_delta:
+                            opt["delta"] = estimated_delta
+                            opt["cost"] = (opt.get("close", 0) or opt.get("vwap", 0)) * 100
+                            if opt["cost"] > 0:
+                                filtered_leaps.append(opt)
+                
+                # Filter short options for OTM
+                filtered_short = []
+                for opt in short_options:
+                    strike = opt.get("strike", 0)
+                    if strike > current_price:  # OTM
+                        strike_pct = ((strike - current_price) / current_price) * 100
+                        estimated_delta = max(0.15, 0.50 - strike_pct * 0.03)
+                        if min_short_delta <= estimated_delta <= max_short_delta:
+                            opt["delta"] = estimated_delta
+                            opt["premium"] = (opt.get("close", 0) or opt.get("vwap", 0)) * 100
+                            if opt["premium"] > 0:
+                                filtered_short.append(opt)
+                
+                # Generate multiple combinations per symbol (up to top 3 LEAPS x top 3 shorts)
+                if filtered_leaps and filtered_short:
+                    # Sort LEAPS by delta (highest first - deepest ITM)
+                    filtered_leaps.sort(key=lambda x: x["delta"], reverse=True)
+                    # Sort shorts by delta closest to 0.25 (ideal short delta)
+                    filtered_short.sort(key=lambda x: abs(x["delta"] - 0.25))
                     
-                    if stock_response.status_code != 200:
-                        continue
+                    # Take top 3 of each for combinations
+                    top_leaps = filtered_leaps[:3]
+                    top_shorts = filtered_short[:3]
                     
-                    stock_data = stock_response.json()
-                    if not stock_data.get("results"):
-                        continue
-                    
-                    current_price = stock_data["results"][0].get("c", 0)
-                    
-                    if current_price < min_price or current_price > max_price:
-                        continue
-                    
-                    # Get LEAPS options (long leg)
-                    leaps_options = await funcs['fetch_options_chain_yahoo'](
-                        symbol, "call", max_leaps_dte, min_dte=min_leaps_dte, current_price=current_price
-                    )
-                    
-                    # Get short-term options (short leg)
-                    short_options = await funcs['fetch_options_chain_yahoo'](
-                        symbol, "call", max_short_dte, min_dte=min_short_dte, current_price=current_price
-                    )
-                    
-                    if not leaps_options or not short_options:
-                        continue
-                    
-                    # Filter LEAPS for deep ITM (high delta)
-                    filtered_leaps = []
-                    for opt in leaps_options:
-                        strike = opt.get("strike", 0)
-                        if strike < current_price * 0.85:  # Deep ITM
-                            estimated_delta = min(0.90, 0.70 + (current_price - strike) / current_price * 0.5)
-                            if min_leaps_delta <= estimated_delta <= max_leaps_delta:
-                                opt["delta"] = estimated_delta
-                                opt["cost"] = (opt.get("close", 0) or opt.get("vwap", 0)) * 100
-                                if opt["cost"] > 0:
-                                    filtered_leaps.append(opt)
-                    
-                    # Filter short options for OTM
-                    filtered_short = []
-                    for opt in short_options:
-                        strike = opt.get("strike", 0)
-                        if strike > current_price:  # OTM
-                            strike_pct = ((strike - current_price) / current_price) * 100
-                            estimated_delta = max(0.15, 0.50 - strike_pct * 0.03)
-                            if min_short_delta <= estimated_delta <= max_short_delta:
-                                opt["delta"] = estimated_delta
-                                opt["premium"] = (opt.get("close", 0) or opt.get("vwap", 0)) * 100
-                                if opt["premium"] > 0:
-                                    filtered_short.append(opt)
-                    
-                    # Generate multiple combinations per symbol (up to top 3 LEAPS x top 3 shorts)
-                    if filtered_leaps and filtered_short:
-                        # Sort LEAPS by delta (highest first - deepest ITM)
-                        filtered_leaps.sort(key=lambda x: x["delta"], reverse=True)
-                        # Sort shorts by delta closest to 0.25 (ideal short delta)
-                        filtered_short.sort(key=lambda x: abs(x["delta"] - 0.25))
-                        
-                        # Take top 3 of each for combinations
-                        top_leaps = filtered_leaps[:3]
-                        top_shorts = filtered_short[:3]
-                        
-                        for leaps in top_leaps:
-                            for short in top_shorts:
-                                if leaps["cost"] <= 0:
-                                    continue
-                                    
-                                net_debit = leaps["cost"] - short["premium"]
+                    for leaps in top_leaps:
+                        for short in top_shorts:
+                            if leaps["cost"] <= 0:
+                                continue
                                 
-                                if net_debit <= 0:
-                                    continue
-                                
-                                roi_per_cycle = (short["premium"] / leaps["cost"]) * 100
-                                cycles_per_year = 365 / max(short.get("dte", 30), 7)
-                                annualized_roi = roi_per_cycle * min(cycles_per_year, 52)
-                                
-                                if roi_per_cycle < min_roi or annualized_roi < min_annualized_roi:
-                                    continue
-                                
-                                # Score based on ROI, delta quality, and capital efficiency
-                                roi_score = roi_per_cycle * 10
-                                delta_score = (leaps["delta"] - 0.7) * 50  # Bonus for higher LEAPS delta
-                                efficiency_score = (1 - net_debit / (current_price * 100)) * 20  # Lower cost = better
-                                score = round(roi_score + delta_score + efficiency_score + annualized_roi / 5, 1)
-                                
-                                opportunities.append({
+                            net_debit = leaps["cost"] - short["premium"]
+                            
+                            if net_debit <= 0:
+                                continue
+                            
+                            roi_per_cycle = (short["premium"] / leaps["cost"]) * 100
+                            cycles_per_year = 365 / max(short.get("dte", 30), 7)
+                            annualized_roi = roi_per_cycle * min(cycles_per_year, 52)
+                            
+                            if roi_per_cycle < min_roi or annualized_roi < min_annualized_roi:
+                                continue
+                            
+                            # Score based on ROI, delta quality, and capital efficiency
+                            roi_score = roi_per_cycle * 10
+                            delta_score = (leaps["delta"] - 0.7) * 50  # Bonus for higher LEAPS delta
+                            efficiency_score = (1 - net_debit / (current_price * 100)) * 20  # Lower cost = better
+                            score = round(roi_score + delta_score + efficiency_score + annualized_roi / 5, 1)
+                            
+                            opportunities.append({
                                     "symbol": symbol,
                                     "stock_price": round(current_price, 2),
                                     "leaps_strike": leaps.get("strike"),
