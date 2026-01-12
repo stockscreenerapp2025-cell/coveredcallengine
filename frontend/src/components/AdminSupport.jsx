@@ -298,7 +298,7 @@ const AdminSupport = () => {
   };
 
   // Approve AI draft
-  const handleApproveDraft = async (edit = false) => {
+  const handleApproveDraft = async (edit = false, resolveTicket = false) => {
     if (!selectedTicket) return;
     
     setSendingReply(true);
@@ -309,10 +309,21 @@ const AdminSupport = () => {
       }
       
       await api.post(`/support/admin/tickets/${selectedTicket.id}/approve-draft`, null, { params });
-      toast.success(edit ? 'Edited response sent to user' : 'AI draft approved and sent');
+      
+      // If resolving, update status to resolved
+      if (resolveTicket) {
+        await api.put(`/support/admin/tickets/${selectedTicket.id}`, null, {
+          params: { status: 'resolved' }
+        });
+        toast.success('Response sent and ticket marked as resolved');
+      } else {
+        toast.success(edit ? 'Edited response sent to user' : 'AI draft approved and sent');
+      }
+      
       setEditingDraft(false);
       fetchTicketDetail(selectedTicket.id);
       fetchTickets(ticketsPagination.page);
+      fetchStats();
     } catch (error) {
       toast.error('Failed to send response');
     } finally {
