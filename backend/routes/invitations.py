@@ -374,6 +374,7 @@ async def send_invitation_email(
     to_email: str,
     name: str,
     role: str,
+    environment: str,
     token: str,
     message: Optional[str],
     invited_by: str
@@ -391,9 +392,13 @@ async def send_invitation_email(
         role_label = role_info.get("label", role)
         role_description = role_info.get("description", "")
         
-        # Build accept URL
-        base_url = "https://coveredcallengine.com"  # Production URL
+        # Build accept URL based on environment
+        base_url = ENVIRONMENT_URLS.get(environment, ENVIRONMENT_URLS["production"])
         accept_url = f"{base_url}/accept-invitation?token={token}"
+        
+        # Environment label for email
+        env_label = "Test Environment" if environment == "test" else "Production"
+        env_badge_color = "#f59e0b" if environment == "test" else "#10b981"
         
         # Logo URL
         logo_url = "https://customer-assets.emergentagent.com/job_optiontrader-9/artifacts/cg2ri3n1_Logo%20CCE.JPG"
