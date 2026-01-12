@@ -31,6 +31,13 @@ class AdminSettings(BaseModel):
     enable_live_data: bool = False
 
 
+class IMAPSettings(BaseModel):
+    imap_server: str = "imap.hostinger.com"
+    imap_port: int = 993
+    username: str
+    password: str
+
+
 def _mask_api_key(key: str) -> str:
     """Mask API key for security - show first 8 and last 4 chars"""
     if not key or len(key) <= 12:
