@@ -556,7 +556,7 @@ async def send_welcome_email(email: str, name: str, role: str, environment: str 
                 {access_info}
                 
                 <div style="text-align: center; margin: 30px 0;">
-                    <a href="https://coveredcallengine.com/login" style="display: inline-block; background-color: #10b981; color: #ffffff; padding: 14px 32px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 16px;">
+                    <a href="{login_url}" style="display: inline-block; background-color: #10b981; color: #ffffff; padding: 14px 32px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 16px;">
                         Log In Now
                     </a>
                 </div>
