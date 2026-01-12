@@ -351,8 +351,13 @@ async def accept_invitation(
     
     logger.info(f"Invitation accepted: {invitation['email']} as {invitation['role']}")
     
-    # Send welcome email
-    await send_welcome_email(invitation["email"], invitation["name"], invitation["role"])
+    # Send welcome email with environment-specific login URL
+    await send_welcome_email(
+        invitation["email"], 
+        invitation["name"], 
+        invitation["role"],
+        invitation.get("environment", "production")
+    )
     
     return {
         "success": True,
