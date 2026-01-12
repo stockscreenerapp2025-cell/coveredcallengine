@@ -1317,8 +1317,33 @@ async def startup():
         replace_existing=True
     )
     
+    # IMAP Email Sync - runs 4 times daily (every 6 hours)
+    async def sync_imap_emails():
+        """Sync emails from Hostinger IMAP to support tickets"""
+        try:
+            from services.imap_service import IMAPService
+            imap_service = IMAPService(db)
+            result = await imap_service.process_incoming_emails()
+            
+            if result.get("processed", 0) > 0 or result.get("errors"):
+                logger.info(f"IMAP sync: processed {result.get('processed', 0)} emails, "
+                           f"matched {result.get('matched', 0)}, new tickets {result.get('new_tickets', 0)}")
+            if result.get("errors"):
+                for error in result["errors"]:
+                    logger.error(f"IMAP sync error: {error}")
+        except Exception as e:
+            logger.error(f"IMAP sync error: {e}")
+    
+    scheduler.add_job(
+        sync_imap_emails,
+        'interval',
+        hours=6,  # Run 4 times daily
+        id='imap_email_sync',
+        replace_existing=True
+    )
+    
     scheduler.start()
-    logger.info("Schedulers started - Simulator: 4:30 PM ET weekdays, Support auto-response: every 5 min")
+    logger.info("Schedulers started - Simulator: 4:30 PM ET weekdays, Support auto-response: every 5 min, IMAP sync: every 6 hours")
 
 @app.on_event("shutdown")
 async def shutdown_db_client():
