@@ -1049,5 +1049,3 @@ async def get_imap_status(admin: dict = Depends(get_admin_user)):
         "last_sync_error": settings.get("last_sync_error"),
         "last_sync_processed": settings.get("last_sync_processed", 0)
     }
-
-    }
