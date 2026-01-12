@@ -135,7 +135,7 @@ async def get_tickets(
     sentiment: Optional[str] = Query(None),
     search: Optional[str] = Query(None),
     assigned_to: Optional[str] = Query(None),
-    admin: dict = Depends(get_admin_user),
+    user: dict = Depends(get_support_user),
     service: SupportService = Depends(get_support_service)
 ):
     """
@@ -156,7 +156,7 @@ async def get_tickets(
 @support_router.get("/admin/tickets/{ticket_id}")
 async def get_ticket_detail(
     ticket_id: str,
-    admin: dict = Depends(get_admin_user),
+    user: dict = Depends(get_support_user),
     service: SupportService = Depends(get_support_service)
 ):
     """
@@ -178,7 +178,7 @@ async def update_ticket(
     priority: Optional[str] = Query(None),
     assigned_to: Optional[str] = Query(None),
     internal_notes: Optional[str] = Query(None),
-    admin: dict = Depends(get_admin_user),
+    user: dict = Depends(get_support_user),
     service: SupportService = Depends(get_support_service)
 ):
     """
@@ -217,7 +217,7 @@ async def add_admin_reply(
     ticket_id: str,
     message: str = Query(..., description="Reply message"),
     send_email: bool = Query(True, description="Send email to user"),
-    admin: dict = Depends(get_admin_user),
+    user: dict = Depends(get_support_user),
     service: SupportService = Depends(get_support_service)
 ):
     """
@@ -249,7 +249,7 @@ async def approve_ai_draft(
     ticket_id: str,
     edit_message: Optional[str] = Query(None, description="Optionally edit the AI draft before sending"),
     send_email: bool = Query(True),
-    admin: dict = Depends(get_admin_user),
+    user: dict = Depends(get_support_user),
     service: SupportService = Depends(get_support_service)
 ):
     """
@@ -312,7 +312,7 @@ async def approve_ai_draft(
 @support_router.post("/admin/tickets/{ticket_id}/regenerate-draft")
 async def regenerate_draft(
     ticket_id: str,
-    admin: dict = Depends(get_admin_user),
+    user: dict = Depends(get_support_user),
     service: SupportService = Depends(get_support_service)
 ):
     """
@@ -336,7 +336,7 @@ async def regenerate_draft(
 async def escalate_ticket(
     ticket_id: str,
     reason: str = Query(..., description="Reason for escalation"),
-    admin: dict = Depends(get_admin_user),
+    user: dict = Depends(get_support_user),
     service: SupportService = Depends(get_support_service)
 ):
     """
@@ -362,7 +362,7 @@ async def escalate_ticket(
 async def resolve_ticket(
     ticket_id: str,
     resolution_notes: Optional[str] = Query(None),
-    admin: dict = Depends(get_admin_user),
+    user: dict = Depends(get_support_user),
     service: SupportService = Depends(get_support_service)
 ):
     """
@@ -391,7 +391,7 @@ async def resolve_ticket(
 @support_router.post("/admin/tickets/{ticket_id}/close")
 async def close_ticket(
     ticket_id: str,
-    admin: dict = Depends(get_admin_user),
+    user: dict = Depends(get_support_user),
     service: SupportService = Depends(get_support_service)
 ):
     """
@@ -413,7 +413,7 @@ async def close_ticket(
 @support_router.post("/admin/tickets")
 async def admin_create_ticket(
     request: AdminCreateTicketRequest,
-    admin: dict = Depends(get_admin_user),
+    user: dict = Depends(get_support_user),
     service: SupportService = Depends(get_support_service)
 ):
     """
@@ -450,7 +450,7 @@ async def admin_create_ticket(
 
 @support_router.get("/admin/stats")
 async def get_support_stats(
-    admin: dict = Depends(get_admin_user),
+    user: dict = Depends(get_support_user),
     service: SupportService = Depends(get_support_service)
 ):
     """
@@ -468,7 +468,7 @@ async def get_kb_articles(
     category: Optional[str] = Query(None),
     active_only: bool = Query(False),
     search: Optional[str] = Query(None),
-    admin: dict = Depends(get_admin_user),
+    user: dict = Depends(get_support_user),
     service: SupportService = Depends(get_support_service)
 ):
     """
@@ -486,7 +486,7 @@ async def get_kb_articles(
 @support_router.post("/admin/kb")
 async def create_kb_article(
     request: CreateKBArticleRequest,
-    admin: dict = Depends(get_admin_user),
+    user: dict = Depends(get_support_user),
     service: SupportService = Depends(get_support_service)
 ):
     """
@@ -518,7 +518,7 @@ async def update_kb_article(
     answer: Optional[str] = Query(None),
     category: Optional[str] = Query(None),
     active: Optional[bool] = Query(None),
-    admin: dict = Depends(get_admin_user),
+    user: dict = Depends(get_support_user),
     service: SupportService = Depends(get_support_service)
 ):
     """
@@ -558,7 +558,7 @@ async def update_kb_article(
 @support_router.delete("/admin/kb/{article_id}")
 async def delete_kb_article(
     article_id: str,
-    admin: dict = Depends(get_admin_user),
+    user: dict = Depends(get_support_user),
     service: SupportService = Depends(get_support_service)
 ):
     """
@@ -709,7 +709,7 @@ async def handle_inbound_email(
 
 @support_router.get("/admin/auto-response-settings")
 async def get_auto_response_settings(
-    admin: dict = Depends(get_admin_user)
+    user: dict = Depends(get_support_user)
 ):
     """Get auto-response configuration"""
     settings = await db.admin_settings.find_one(
@@ -737,7 +737,7 @@ async def update_auto_response_settings(
     delay_minutes: int = Query(60, ge=0, le=1440),
     min_confidence: int = Query(85, ge=50, le=100),
     allowed_categories: str = Query("general,how_it_works,educational"),
-    admin: dict = Depends(get_admin_user)
+    user: dict = Depends(get_support_user)
 ):
     """Update auto-response configuration"""
     settings = {
@@ -765,7 +765,7 @@ async def update_auto_response_settings(
 
 @support_router.post("/admin/process-auto-responses")
 async def trigger_auto_response_processing(
-    admin: dict = Depends(get_admin_user),
+    user: dict = Depends(get_support_user),
     service: SupportService = Depends(get_support_service)
 ):
     """
