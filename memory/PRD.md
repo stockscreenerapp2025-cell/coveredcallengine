@@ -142,6 +142,22 @@ Build a web-based application named "Covered Call Engine" to identify, analyze, 
 - `GET /api/screener/covered-calls` - Screener data
 - `GET /api/screener/pmcc` - PMCC data
 
+### Support (New - Jan 12, 2026)
+- `POST /api/support/tickets` - Create ticket from contact form (public)
+- `GET /api/support/admin/tickets` - Get tickets list with filters (admin)
+- `GET /api/support/admin/tickets/{id}` - Get ticket detail with AI draft (admin)
+- `PUT /api/support/admin/tickets/{id}` - Update ticket status/priority (admin)
+- `POST /api/support/admin/tickets/{id}/reply` - Send admin reply (admin)
+- `POST /api/support/admin/tickets/{id}/approve-draft` - Approve AI draft and send (admin)
+- `POST /api/support/admin/tickets/{id}/regenerate-draft` - Regenerate AI draft (admin)
+- `POST /api/support/admin/tickets/{id}/escalate` - Escalate ticket (admin)
+- `POST /api/support/admin/tickets/{id}/resolve` - Mark resolved (admin)
+- `GET /api/support/admin/stats` - Get support statistics (admin)
+- `GET /api/support/admin/kb` - Get knowledge base articles (admin)
+- `POST /api/support/admin/kb` - Create KB article (admin)
+- `PUT /api/support/admin/kb/{id}` - Update KB article (admin)
+- `DELETE /api/support/admin/kb/{id}` - Delete KB article (admin)
+
 ### Admin
 - `POST /api/admin/clear-cache` - Clear server cache
 
