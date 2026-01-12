@@ -1254,6 +1254,14 @@ async def startup():
     await db.api_cache.create_index("cache_key", unique=True)
     await db.api_cache.create_index("cached_at", expireAfterSeconds=3600)  # Auto-delete after 1 hour
     
+    # Create support ticket indexes
+    await db.support_tickets.create_index("id", unique=True)
+    await db.support_tickets.create_index("ticket_number", unique=True)
+    await db.support_tickets.create_index([("status", 1), ("created_at", -1)])
+    await db.support_tickets.create_index("user_email")
+    await db.knowledge_base.create_index("id", unique=True)
+    await db.knowledge_base.create_index([("category", 1), ("active", 1)])
+    
     # Create default admin if not exists
     admin = await db.users.find_one({"email": "admin@premiumhunter.com"})
     if not admin:
