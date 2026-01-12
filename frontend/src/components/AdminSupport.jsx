@@ -133,6 +133,40 @@ const AdminSupport = () => {
     allowed_categories: ['general', 'how_it_works', 'educational']
   });
   const [savingAutoResponse, setSavingAutoResponse] = useState(false);
+  
+  // Email import state
+  const [importingEmails, setImportingEmails] = useState(false);
+
+  // Import email responses from Hostinger mailbox
+  const importEmailResponses = async () => {
+    setImportingEmails(true);
+    try {
+      const response = await api.post('/admin/imap/sync-now');
+      if (response.data.success) {
+        const { processed, matched, new_tickets } = response.data;
+        if (processed === 0) {
+          toast.info('No new emails to import');
+        } else {
+          toast.success(`Imported ${processed} emails: ${matched} matched to tickets, ${new_tickets} new tickets created`);
+          // Refresh tickets list to show new messages
+          fetchTickets(ticketsPagination.page);
+          // Refresh stats
+          fetchStats();
+        }
+      } else {
+        toast.error(response.data.errors?.[0] || 'Import failed');
+      }
+    } catch (error) {
+      const message = error.response?.data?.detail || 'Failed to import emails';
+      if (message.includes('authentication')) {
+        toast.error('Email import failed: Authentication error. Please contact admin to update IMAP settings.');
+      } else {
+        toast.error(message);
+      }
+    } finally {
+      setImportingEmails(false);
+    }
+  };
 
   // Fetch tickets
   const fetchTickets = useCallback(async (page = 1) => {
