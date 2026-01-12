@@ -122,6 +122,15 @@ const AdminSupport = () => {
   const [showKbForm, setShowKbForm] = useState(false);
   const [kbForm, setKbForm] = useState({ question: '', answer: '', category: 'general', active: true });
   const [editingKbId, setEditingKbId] = useState(null);
+  
+  // Auto-response settings state
+  const [autoResponseSettings, setAutoResponseSettings] = useState({
+    enabled: false,
+    delay_minutes: 60,
+    min_confidence: 85,
+    allowed_categories: ['general', 'how_it_works', 'educational']
+  });
+  const [savingAutoResponse, setSavingAutoResponse] = useState(false);
 
   // Fetch tickets
   const fetchTickets = useCallback(async (page = 1) => {
