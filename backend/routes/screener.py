@@ -1,6 +1,11 @@
 """
 Screener Routes - Covered Call and PMCC screening endpoints
 Designed for scalability with proper caching, async patterns, and efficient data processing
+
+DATA SOURCING STRATEGY (DO NOT CHANGE):
+- OPTIONS DATA: Polygon/Massive ONLY (paid subscription)
+- STOCK DATA: Polygon/Massive primary, Yahoo fallback (until upgrade)
+- All data sourcing is handled by services/data_provider.py
 """
 from fastapi import APIRouter, Depends, Query, HTTPException
 from pydantic import BaseModel
@@ -15,6 +20,12 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from database import db
 from utils.auth import get_current_user
+# Import centralized data provider
+from services.data_provider import (
+    fetch_options_chain,
+    fetch_stock_quote,
+    is_market_closed as data_provider_market_closed
+)
 
 screener_router = APIRouter(tags=["Screener"])
 
@@ -31,12 +42,11 @@ class ScreenerFilterCreate(BaseModel):
 
 
 def _get_server_functions():
-    """Lazy import to avoid circular dependencies"""
+    """Lazy import for cache and utility functions from server.py"""
     from server import (
         get_massive_api_key, generate_cache_key, get_cached_data, 
         set_cached_data, get_last_trading_day_data, is_market_closed,
-        generate_mock_covered_call_opportunities, clear_cache,
-        fetch_options_chain_polygon, fetch_options_chain_yahoo
+        generate_mock_covered_call_opportunities, clear_cache
     )
     return {
         'get_massive_api_key': get_massive_api_key,
@@ -46,9 +56,7 @@ def _get_server_functions():
         'get_last_trading_day_data': get_last_trading_day_data,
         'is_market_closed': is_market_closed,
         'generate_mock_covered_call_opportunities': generate_mock_covered_call_opportunities,
-        'clear_cache': clear_cache,
-        'fetch_options_chain_polygon': fetch_options_chain_polygon,
-        'fetch_options_chain_yahoo': fetch_options_chain_yahoo
+        'clear_cache': clear_cache
     }
 
 
