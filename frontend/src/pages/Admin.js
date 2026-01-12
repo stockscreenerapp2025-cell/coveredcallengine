@@ -133,6 +133,20 @@ const Admin = () => {
     announcement_content: ''
   });
   const [sendingBroadcast, setSendingBroadcast] = useState(false);
+  
+  // IMAP Email Sync
+  const [imapSettings, setImapSettings] = useState({
+    imap_server: 'imap.hostinger.com',
+    imap_port: 993,
+    username: '',
+    password: ''
+  });
+  const [imapStatus, setImapStatus] = useState(null);
+  const [imapHistory, setImapHistory] = useState([]);
+  const [imapLoading, setImapLoading] = useState(false);
+  const [imapSaving, setImapSaving] = useState(false);
+  const [imapSyncing, setImapSyncing] = useState(false);
+  const [showImapPassword, setShowImapPassword] = useState(false);
 
   useEffect(() => {
     fetchSettings();
