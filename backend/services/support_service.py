@@ -498,7 +498,9 @@ The Covered Call Engine Team"""
                 await email_service.send_raw_email(
                     to_email=email,
                     subject=f"[{ticket_number}] We've received your message - {subject}",
-                    html_content=html_content
+                    html_content=html_content,
+                    from_email=self.get_support_from_address(),
+                    reply_to=self.SUPPORT_EMAIL
                 )
         except Exception as e:
             logger.warning(f"Failed to send acknowledgment email: {e}")
