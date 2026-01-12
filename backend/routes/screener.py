@@ -303,10 +303,16 @@ async def screen_covered_calls(
 
 @screener_router.get("/dashboard-opportunities")
 async def get_dashboard_opportunities(user: dict = Depends(get_current_user)):
-    """Get top 10 covered call opportunities for dashboard - 5 Weekly + 5 Monthly"""
+    """
+    Get top 10 covered call opportunities for dashboard - 5 Weekly + 5 Monthly.
+    
+    DATA SOURCES:
+    - Options: Polygon/Massive ONLY
+    - Stock prices: Polygon primary, Yahoo fallback
+    """
     funcs = _get_server_functions()
     
-    cache_key = "dashboard_opportunities_v3"
+    cache_key = "dashboard_opportunities_v4"
     
     cached_data = await funcs['get_cached_data'](cache_key)
     if cached_data:
@@ -337,127 +343,122 @@ async def get_dashboard_opportunities(user: dict = Depends(get_current_user)):
             "CAT", "DE", "GE", "HON",
             "PYPL", "SQ", "ROKU", "SNAP", "UBER", "LYFT",
             "AAL", "DAL", "UAL", "CCL", "NCLH",
-            "PLTR", "SOFI", "HOOD", "RIVN", "LCID", "NIO",
-            "AAPL", "AMD", "DELL", "IBM", "ORCL"
+            "PLTR", "SOFI", "HOOD",
+            "AMD", "DELL", "IBM", "ORCL"
         ]
         
         weekly_opportunities = []
         monthly_opportunities = []
         
-        async with httpx.AsyncClient(timeout=HTTP_TIMEOUT) as client:
-            for symbol in symbols_to_scan[:35]:  # Limit for performance
-                try:
-                    # Get stock price
-                    stock_response = await client.get(
-                        f"https://api.polygon.io/v2/aggs/ticker/{symbol}/prev",
-                        params={"apiKey": api_key}
-                    )
-                    
-                    if stock_response.status_code != 200:
-                        continue
-                    
-                    stock_data = stock_response.json()
-                    if not stock_data.get("results"):
-                        continue
-                    
-                    current_price = stock_data["results"][0].get("c", 0)
-                    
-                    if current_price < 25 or current_price > 100:
-                        continue
-                    
-                    # Get options for both weekly (1-7 DTE) and monthly (8-45 DTE)
-                    # Weekly options
-                    weekly_options = await funcs['fetch_options_chain_yahoo'](symbol, "call", 7, min_dte=1, current_price=current_price)
-                    # Monthly options
-                    monthly_options = await funcs['fetch_options_chain_yahoo'](symbol, "call", 45, min_dte=8, current_price=current_price)
-                    
-                    all_options = []
-                    if weekly_options:
-                        for opt in weekly_options:
-                            opt["expiry_type"] = "Weekly"
-                        all_options.extend(weekly_options)
-                    if monthly_options:
-                        for opt in monthly_options:
-                            opt["expiry_type"] = "Monthly"
-                        all_options.extend(monthly_options)
-                    
-                    if not all_options:
-                        continue
-                    
-                    for opt in all_options:
-                        strike = opt.get("strike", 0)
-                        dte = opt.get("dte", 0)
-                        premium = opt.get("close", 0) or opt.get("vwap", 0)
-                        expiry_type = opt.get("expiry_type", "Monthly")
-                        
-                        if not premium or premium <= 0:
-                            continue
-                        
-                        # Filter for OTM calls
-                        if strike <= current_price:
-                            continue
-                        
-                        strike_pct = ((strike - current_price) / current_price) * 100
-                        if strike_pct > 10:  # Max 10% OTM
-                            continue
-                        
-                        roi_pct = (premium / current_price) * 100
-                        
-                        # ROI filters - Weekly needs at least 0.8%, Monthly needs at least 2.5%
-                        if expiry_type == "Weekly" and roi_pct < 0.8:
-                            continue
-                        if expiry_type == "Monthly" and roi_pct < 2.5:
-                            continue
-                        
-                        annualized_roi = (roi_pct / max(dte, 1)) * 365
-                        
-                        # Estimate delta based on strike distance
-                        estimated_delta = max(0.15, min(0.50, 0.50 - strike_pct * 0.025))
-                        
-                        # Get implied volatility from the option data
-                        iv = opt.get("implied_volatility", 0)
-                        if iv and iv > 0:
-                            iv = iv * 100  # Convert to percentage
-                        else:
-                            iv = 30  # Default estimate
-                        
-                        # Determine moneyness
-                        if strike_pct >= -2 and strike_pct <= 2:
-                            moneyness = "ATM"
-                        else:
-                            moneyness = "OTM"
-                        
-                        # Calculate score
-                        score = round(roi_pct * 10 + annualized_roi / 10 + (50 - iv) / 10, 1)
-                        
-                        opp_data = {
-                            "symbol": symbol,
-                            "stock_price": round(current_price, 2),
-                            "strike": strike,
-                            "strike_pct": round(strike_pct, 1),
-                            "moneyness": moneyness,
-                            "expiry": opt.get("expiry", ""),
-                            "expiry_type": expiry_type,
-                            "dte": dte,
-                            "premium": round(premium, 2),
-                            "roi_pct": round(roi_pct, 2),
-                            "annualized_roi": round(annualized_roi, 1),
-                            "delta": round(estimated_delta, 2),
-                            "iv": round(iv, 0),
-                            "iv_rank": round(min(100, iv * 1.5), 0),  # Rough IV rank estimate
-                            "trend_6m": None,  # Would need historical data API
-                            "trend_12m": None,  # Would need historical data API
-                            "score": score
-                        }
-                        
-                        if expiry_type == "Weekly":
-                            weekly_opportunities.append(opp_data)
-                        else:
-                            monthly_opportunities.append(opp_data)
-                        
-                except Exception as e:
-                    logging.error(f"Dashboard scan error for {symbol}: {e}")
+        for symbol in symbols_to_scan[:35]:  # Limit for performance
+            try:
+                # Get stock price using centralized data provider
+                stock_data = await fetch_stock_quote(symbol, api_key)
+                
+                if not stock_data or stock_data.get("price", 0) == 0:
                     continue
+                
+                current_price = stock_data["price"]
+                
+                if current_price < 25 or current_price > 100:
+                    continue
+                
+                # Get options from Polygon ONLY - Weekly (1-7 DTE)
+                weekly_options = await fetch_options_chain(
+                    symbol, api_key, "call", 7, min_dte=1, current_price=current_price
+                )
+                
+                # Get options from Polygon ONLY - Monthly (8-45 DTE)
+                monthly_options = await fetch_options_chain(
+                    symbol, api_key, "call", 45, min_dte=8, current_price=current_price
+                )
+                
+                all_options = []
+                if weekly_options:
+                    for opt in weekly_options:
+                        opt["expiry_type"] = "Weekly"
+                    all_options.extend(weekly_options)
+                if monthly_options:
+                    for opt in monthly_options:
+                        opt["expiry_type"] = "Monthly"
+                    all_options.extend(monthly_options)
+                
+                if not all_options:
+                    continue
+                
+                for opt in all_options:
+                    strike = opt.get("strike", 0)
+                    dte = opt.get("dte", 0)
+                    premium = opt.get("close", 0) or opt.get("vwap", 0)
+                    expiry_type = opt.get("expiry_type", "Monthly")
+                    
+                    if not premium or premium <= 0:
+                        continue
+                    
+                    # Filter for OTM calls
+                    if strike <= current_price:
+                        continue
+                    
+                    strike_pct = ((strike - current_price) / current_price) * 100
+                    if strike_pct > 10:  # Max 10% OTM
+                        continue
+                    
+                    roi_pct = (premium / current_price) * 100
+                    
+                    # ROI filters - Weekly needs at least 0.8%, Monthly needs at least 2.5%
+                    if expiry_type == "Weekly" and roi_pct < 0.8:
+                        continue
+                    if expiry_type == "Monthly" and roi_pct < 2.5:
+                        continue
+                    
+                    annualized_roi = (roi_pct / max(dte, 1)) * 365
+                    
+                    # Estimate delta based on strike distance
+                    estimated_delta = max(0.15, min(0.50, 0.50 - strike_pct * 0.025))
+                    
+                    # Get implied volatility from the option data
+                    iv = opt.get("implied_volatility", 0)
+                    if iv and iv > 0:
+                        iv = iv * 100  # Convert to percentage
+                    else:
+                        iv = 30  # Default estimate
+                    
+                    # Determine moneyness
+                    if strike_pct >= -2 and strike_pct <= 2:
+                        moneyness = "ATM"
+                    else:
+                        moneyness = "OTM"
+                    
+                    # Calculate score
+                    score = round(roi_pct * 10 + annualized_roi / 10 + (50 - iv) / 10, 1)
+                    
+                    opp_data = {
+                        "symbol": symbol,
+                        "stock_price": round(current_price, 2),
+                        "strike": strike,
+                        "strike_pct": round(strike_pct, 1),
+                        "moneyness": moneyness,
+                        "expiry": opt.get("expiry", ""),
+                        "expiry_type": expiry_type,
+                        "dte": dte,
+                        "premium": round(premium, 2),
+                        "roi_pct": round(roi_pct, 2),
+                        "annualized_roi": round(annualized_roi, 1),
+                        "delta": round(estimated_delta, 2),
+                        "iv": round(iv, 0),
+                        "iv_rank": round(min(100, iv * 1.5), 0),
+                        "score": score,
+                        "data_source": "polygon"
+                    }
+                    
+                    if expiry_type == "Weekly":
+                        weekly_opportunities.append(opp_data)
+                    else:
+                        monthly_opportunities.append(opp_data)
+                    
+            except Exception as e:
+                logging.error(f"Dashboard scan error for {symbol}: {e}")
+                continue
         
         # Sort each list and take top 5
         weekly_opportunities.sort(key=lambda x: x["score"], reverse=True)
