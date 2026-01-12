@@ -154,21 +154,23 @@ async def send_invitation(
         to_email=request.email,
         name=request.name,
         role=request.role,
+        environment=request.environment,
         token=token,
         message=request.message,
         invited_by=admin.get("name", admin.get("email"))
     )
     
     if email_sent:
-        logger.info(f"Invitation sent to {request.email} as {request.role} by {admin.get('email')}")
+        logger.info(f"Invitation sent to {request.email} as {request.role} ({request.environment}) by {admin.get('email')}")
     else:
         logger.warning(f"Failed to send invitation email to {request.email}")
     
     return {
         "success": True,
         "invitation_id": invitation_id,
+        "environment": request.environment,
         "email_sent": email_sent,
-        "message": f"Invitation sent to {request.email}"
+        "message": f"Invitation sent to {request.email} for {request.environment}"
     }
 
 
