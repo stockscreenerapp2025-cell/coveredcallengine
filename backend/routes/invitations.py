@@ -198,22 +198,29 @@ async def list_invitations(
 
 
 @invitation_router.delete("/{invitation_id}")
-async def revoke_invitation(
+async def delete_invitation(
     invitation_id: str,
     admin: dict = Depends(get_admin_user)
 ):
     """
-    Revoke a pending invitation.
+    Delete an invitation. Pending invitations are revoked, others are fully deleted.
     """
-    result = await db.invitations.update_one(
-        {"id": invitation_id, "status": "pending"},
-        {"$set": {"status": "revoked", "revoked_at": datetime.now(timezone.utc).isoformat()}}
-    )
+    invitation = await db.invitations.find_one({"id": invitation_id})
     
-    if result.modified_count == 0:
-        raise HTTPException(status_code=404, detail="Invitation not found or already used")
+    if not invitation:
+        raise HTTPException(status_code=404, detail="Invitation not found")
     
-    return {"success": True, "message": "Invitation revoked"}
+    if invitation["status"] == "pending":
+        # Revoke pending invitations
+        await db.invitations.update_one(
+            {"id": invitation_id},
+            {"$set": {"status": "revoked", "revoked_at": datetime.now(timezone.utc).isoformat()}}
+        )
+        return {"success": True, "message": "Invitation revoked"}
+    else:
+        # Delete non-pending invitations
+        await db.invitations.delete_one({"id": invitation_id})
+        return {"success": True, "message": "Invitation deleted"}
 
 
 @invitation_router.post("/{invitation_id}/resend")
