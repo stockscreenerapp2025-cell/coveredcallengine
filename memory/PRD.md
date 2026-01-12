@@ -93,10 +93,24 @@ Build a web-based application named "Covered Call Engine" to identify, analyze, 
 - [ ] IBKR CSV Parser Validation - Waiting for user's second account CSV
 
 ### 📋 Backlog
-- [ ] Admin Panel - Support Ticket System (P2)
+- [ ] Support Ticket System - Phase 2: Email Ingestion (webhook-based) (P2)
+- [ ] Support Ticket System - Phase 3: AI Auto-Response for eligible tickets (P3)
 - [ ] Admin Panel - Content Manager (P2)
 - [ ] Admin Panel - Roles & Permissions (P3)
 - [ ] Generic CSV Import with field mapping (P3)
+
+### ✅ Completed (Jan 12, 2026)
+- [x] **Support Ticket System - Phase 1: Human-in-the-Loop**
+  - Unified ticket intake via contact form (email ingestion planned for Phase 2)
+  - AI ticket classification using GPT-5.2 (category, sentiment, priority, confidence score)
+  - AI-generated draft responses with professional tone
+  - Admin dashboard in Admin Panel → Support tab
+  - Ticket management: view, filter, search, status updates
+  - Human-in-the-loop workflow: Admin reviews/edits AI draft before sending
+  - Auto-acknowledgment emails via Resend
+  - Knowledge Base management: Add/Edit/Delete FAQ articles for AI reference
+  - Sequential ticket numbering (CCE-0001, CCE-0002, etc.)
+  - Full audit logging for admin actions
 
 ### ✅ Completed Refactoring (Jan 11, 2026)
 - [x] **server.py Refactoring - Phase 4 Complete**
