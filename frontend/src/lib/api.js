@@ -198,6 +198,7 @@ export const simulatorApi = {
 
 export const newsApi = {
   getNews: (params) => api.get('/news/', { params }),
+  analyzeSentiment: (newsItems) => api.post('/news/analyze-sentiment', newsItems),
 };
 
 export const aiApi = {
