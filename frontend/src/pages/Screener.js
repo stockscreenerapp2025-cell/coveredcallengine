@@ -1263,300 +1263,8 @@ const Screener = () => {
                 <p>No opportunities match your criteria</p>
                 <p className="text-sm mt-2">Try adjusting your filters</p>
               </div>
-            ) : activeScan ? (
-              /* Enhanced Pre-computed Scan Results with Technical, Fundamental, News */
-              <div className="space-y-4">
-                {sortedOpportunities.map((opp, index) => (
-                  <div 
-                    key={index}
-                    className="bg-zinc-800/50 rounded-xl border border-zinc-700/50 p-4 hover:border-zinc-600 transition-all cursor-pointer"
-                    onClick={() => {
-                      setSelectedStock(opp.symbol);
-                      setIsModalOpen(true);
-                    }}
-                    data-testid={`scan-result-${opp.symbol}`}
-                  >
-                    {/* Header Row */}
-                    <div className="flex items-center justify-between mb-4">
-                      <div className="flex items-center gap-4">
-                        <div>
-                          <div className="flex items-center gap-2">
-                            <span className="text-xl font-bold text-white">{opp.symbol}</span>
-                            <Badge className={`text-xs ${
-                              opp.timeframe === 'weekly' 
-                                ? 'bg-blue-500/20 text-blue-400 border-blue-500/30' 
-                                : 'bg-purple-500/20 text-purple-400 border-purple-500/30'
-                            }`}>
-                              {opp.timeframe === 'weekly' ? 'Weekly' : 'Monthly'}
-                            </Badge>
-                            {opp.sector && (
-                              <Badge className="bg-zinc-700/50 text-zinc-400 border-zinc-600 text-xs">
-                                {opp.sector}
-                              </Badge>
-                            )}
-                          </div>
-                          <div className="text-sm text-zinc-400 mt-1">
-                            ${opp.stock_price?.toFixed(2)} → Strike ${opp.strike?.toFixed(2)} | {opp.dte}d DTE
-                          </div>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-3">
-                        <div className="text-right">
-                          <div className="text-lg font-bold text-emerald-400">${opp.premium?.toFixed(2)}</div>
-                          <div className="text-xs text-zinc-500">Premium ({opp.premium_yield?.toFixed(2)}%)</div>
-                        </div>
-                        <Badge className={`text-lg px-3 py-1 ${
-                          opp.score >= 50 ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' :
-                          opp.score >= 35 ? 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30' : 
-                          'bg-cyan-500/20 text-cyan-400 border-cyan-500/30'
-                        }`}>
-                          {opp.score?.toFixed(0)}
-                        </Badge>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setSimulateOpp(opp);
-                            setSimulateModalOpen(true);
-                          }}
-                          className="bg-violet-500/10 border-violet-500/30 text-violet-400 hover:bg-violet-500/20"
-                          data-testid={`simulate-btn-${opp.symbol}`}
-                        >
-                          <Play className="w-3 h-3 mr-1" />
-                          Simulate
-                        </Button>
-                      </div>
-                    </div>
-
-                    {/* Three Column Data Grid */}
-                    <div className="grid grid-cols-3 gap-4">
-                      {/* Technical Indicators */}
-                      <div className="bg-zinc-900/50 rounded-lg p-3 border border-zinc-700/30">
-                        <div className="flex items-center gap-2 mb-3">
-                          <Activity className="w-4 h-4 text-cyan-400" />
-                          <span className="text-sm font-medium text-white">Technical</span>
-                        </div>
-                        <div className="space-y-2 text-sm">
-                          <div className="flex justify-between">
-                            <span className="text-zinc-500">SMA 50</span>
-                            <span className={`font-mono ${opp.stock_price > opp.sma50 ? 'text-emerald-400' : 'text-red-400'}`}>
-                              ${opp.sma50?.toFixed(2) || 'N/A'}
-                              {opp.sma50 && (
-                                <span className="text-xs ml-1">
-                                  {opp.stock_price > opp.sma50 ? '↑' : '↓'}
-                                </span>
-                              )}
-                            </span>
-                          </div>
-                          <div className="flex justify-between">
-                            <span className="text-zinc-500">SMA 200</span>
-                            <span className={`font-mono ${opp.stock_price > opp.sma200 ? 'text-emerald-400' : 'text-red-400'}`}>
-                              ${opp.sma200?.toFixed(2) || 'N/A'}
-                              {opp.sma200 && (
-                                <span className="text-xs ml-1">
-                                  {opp.stock_price > opp.sma200 ? '↑' : '↓'}
-                                </span>
-                              )}
-                            </span>
-                          </div>
-                          <div className="flex justify-between">
-                            <span className="text-zinc-500">RSI (14)</span>
-                            <span className={`font-mono ${
-                              opp.rsi14 > 70 ? 'text-red-400' : 
-                              opp.rsi14 < 30 ? 'text-emerald-400' : 'text-yellow-400'
-                            }`}>
-                              {opp.rsi14?.toFixed(1) || 'N/A'}
-                            </span>
-                          </div>
-                          <div className="flex justify-between">
-                            <span className="text-zinc-500">ATR %</span>
-                            <span className={`font-mono ${
-                              opp.atr_pct > 4 ? 'text-orange-400' : 'text-zinc-300'
-                            }`}>
-                              {opp.atr_pct?.toFixed(2) || 'N/A'}%
-                            </span>
-                          </div>
-                          <div className="flex justify-between">
-                            <span className="text-zinc-500">Delta</span>
-                            <span className="font-mono text-zinc-300">
-                              {opp.delta?.toFixed(2)}
-                            </span>
-                          </div>
-                          {/* Trend indicator */}
-                          <div className="pt-2 mt-2 border-t border-zinc-700/50">
-                            <div className="flex items-center justify-between">
-                              <span className="text-zinc-500 text-xs">Trend</span>
-                              <Badge className={`text-xs ${
-                                opp.sma50 > opp.sma200 
-                                  ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30'
-                                  : 'bg-red-500/20 text-red-400 border-red-500/30'
-                              }`}>
-                                {opp.sma50 > opp.sma200 ? '✓ Bullish' : '✗ Bearish'}
-                              </Badge>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Fundamental Data */}
-                      <div className="bg-zinc-900/50 rounded-lg p-3 border border-zinc-700/30">
-                        <div className="flex items-center gap-2 mb-3">
-                          <BarChart3 className="w-4 h-4 text-emerald-400" />
-                          <span className="text-sm font-medium text-white">Fundamentals</span>
-                        </div>
-                        <div className="space-y-2 text-sm">
-                          <div className="flex justify-between">
-                            <span className="text-zinc-500">Market Cap</span>
-                            <span className="font-mono text-zinc-300">
-                              {opp.market_cap 
-                                ? opp.market_cap >= 1e12 
-                                  ? `$${(opp.market_cap / 1e12).toFixed(1)}T`
-                                  : `$${(opp.market_cap / 1e9).toFixed(1)}B`
-                                : 'N/A'}
-                            </span>
-                          </div>
-                          <div className="flex justify-between">
-                            <span className="text-zinc-500">EPS (TTM)</span>
-                            <span className={`font-mono ${opp.eps_ttm > 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                              ${opp.eps_ttm?.toFixed(2) || 'N/A'}
-                            </span>
-                          </div>
-                          <div className="flex justify-between">
-                            <span className="text-zinc-500">ROE</span>
-                            <span className={`font-mono ${opp.roe > 15 ? 'text-emerald-400' : 'text-zinc-300'}`}>
-                              {opp.roe !== null ? `${opp.roe?.toFixed(1)}%` : 'N/A'}
-                            </span>
-                          </div>
-                          <div className="flex justify-between">
-                            <span className="text-zinc-500">D/E Ratio</span>
-                            <span className={`font-mono ${
-                              opp.debt_to_equity > 1 ? 'text-orange-400' : 'text-zinc-300'
-                            }`}>
-                              {opp.debt_to_equity?.toFixed(2) || 'N/A'}
-                            </span>
-                          </div>
-                          <div className="flex justify-between">
-                            <span className="text-zinc-500">Earnings In</span>
-                            <span className={`font-mono ${
-                              opp.days_to_earnings !== null && opp.days_to_earnings < 14 
-                                ? 'text-orange-400' 
-                                : 'text-zinc-300'
-                            }`}>
-                              {opp.days_to_earnings !== null 
-                                ? `${opp.days_to_earnings}d`
-                                : 'N/A'}
-                            </span>
-                          </div>
-                          {/* Quality indicator */}
-                          <div className="pt-2 mt-2 border-t border-zinc-700/50">
-                            <div className="flex items-center justify-between">
-                              <span className="text-zinc-500 text-xs">Quality</span>
-                              <Badge className={`text-xs ${
-                                (opp.eps_ttm > 0 && opp.roe > 10) 
-                                  ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30'
-                                  : opp.eps_ttm > 0
-                                    ? 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30'
-                                    : 'bg-zinc-500/20 text-zinc-400 border-zinc-500/30'
-                              }`}>
-                                {(opp.eps_ttm > 0 && opp.roe > 10) ? '★★★ Strong' : 
-                                 opp.eps_ttm > 0 ? '★★ Moderate' : '★ Speculative'}
-                              </Badge>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* News & Sentiment */}
-                      <div className="bg-zinc-900/50 rounded-lg p-3 border border-zinc-700/30">
-                        <div className="flex items-center gap-2 mb-3">
-                          <TrendingUp className="w-4 h-4 text-yellow-400" />
-                          <span className="text-sm font-medium text-white">News & Risk</span>
-                        </div>
-                        <div className="space-y-2 text-sm">
-                          <div className="flex justify-between">
-                            <span className="text-zinc-500">Sentiment</span>
-                            <Badge className={`text-xs ${
-                              opp.news_sentiment === 'positive' 
-                                ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30'
-                                : opp.news_sentiment === 'negative'
-                                  ? 'bg-red-500/20 text-red-400 border-red-500/30'
-                                  : 'bg-zinc-500/20 text-zinc-400 border-zinc-500/30'
-                            }`}>
-                              {opp.news_sentiment || 'Neutral'}
-                            </Badge>
-                          </div>
-                          <div className="flex justify-between">
-                            <span className="text-zinc-500">Binary Events</span>
-                            <span className={`font-mono text-xs ${
-                              opp.days_to_earnings !== null && opp.days_to_earnings < opp.dte
-                                ? 'text-orange-400'
-                                : 'text-emerald-400'
-                            }`}>
-                              {opp.days_to_earnings !== null && opp.days_to_earnings < opp.dte
-                                ? '⚠ Earnings before expiry'
-                                : '✓ No events'}
-                            </span>
-                          </div>
-                          <div className="flex justify-between">
-                            <span className="text-zinc-500">IV Level</span>
-                            <Badge className={`text-xs ${
-                              opp.atr_pct > 4 
-                                ? 'bg-orange-500/20 text-orange-400 border-orange-500/30'
-                                : opp.atr_pct > 2.5
-                                  ? 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30'
-                                  : 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30'
-                            }`}>
-                              {opp.atr_pct > 4 ? 'High' : opp.atr_pct > 2.5 ? 'Moderate' : 'Low'}
-                            </Badge>
-                          </div>
-                          <div className="flex justify-between">
-                            <span className="text-zinc-500">Prob. OTM</span>
-                            <span className={`font-mono ${
-                              (1 - opp.delta) > 0.7 ? 'text-emerald-400' : 'text-yellow-400'
-                            }`}>
-                              {Math.round((1 - opp.delta) * 100)}%
-                            </span>
-                          </div>
-                          <div className="flex justify-between">
-                            <span className="text-zinc-500">Risk Profile</span>
-                            <Badge className={`text-xs ${
-                              opp.risk_profile === 'conservative' 
-                                ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30'
-                                : opp.risk_profile === 'balanced'
-                                  ? 'bg-blue-500/20 text-blue-400 border-blue-500/30'
-                                  : 'bg-orange-500/20 text-orange-400 border-orange-500/30'
-                            }`}>
-                              {opp.risk_profile?.charAt(0).toUpperCase() + opp.risk_profile?.slice(1)}
-                            </Badge>
-                          </div>
-                          {/* Overall Risk Assessment */}
-                          <div className="pt-2 mt-2 border-t border-zinc-700/50">
-                            <div className="flex items-center justify-between">
-                              <span className="text-zinc-500 text-xs">Risk Level</span>
-                              <Badge className={`text-xs ${
-                                opp.risk_profile === 'conservative' && opp.days_to_earnings > opp.dte
-                                  ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30'
-                                  : opp.risk_profile === 'aggressive' || (opp.days_to_earnings && opp.days_to_earnings < opp.dte)
-                                    ? 'bg-orange-500/20 text-orange-400 border-orange-500/30'
-                                    : 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30'
-                              }`}>
-                                {opp.risk_profile === 'conservative' && opp.days_to_earnings > opp.dte
-                                  ? '● Low Risk'
-                                  : opp.risk_profile === 'aggressive' || (opp.days_to_earnings && opp.days_to_earnings < opp.dte)
-                                    ? '● High Risk'
-                                    : '● Medium Risk'}
-                              </Badge>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
             ) : (
-              /* Standard Table View for Custom Scans */
+              /* Table View for all results (both pre-computed and custom scans) */
               <div className="overflow-x-auto">
                 <table className="data-table">
                   <thead>
@@ -1569,11 +1277,10 @@ const Screener = () => {
                       <SortHeader field="roi_pct" label="ROI %" />
                       <SortHeader field="delta" label="Delta" />
                       <th>Prob OTM</th>
-                      <SortHeader field="iv" label="IV" />
-                      <SortHeader field="iv_rank" label="IV Rank" />
-                      <SortHeader field="volume" label="Vol" />
-                      <SortHeader field="open_interest" label="OI" />
-                      <SortHeader field="score" label="AI Score" />
+                      {!activeScan && <SortHeader field="iv" label="IV" />}
+                      {!activeScan && <SortHeader field="iv_rank" label="IV Rank" />}
+                      {activeScan && <th>Sector</th>}
+                      <SortHeader field="score" label="Score" />
                       <th className="text-center">Action</th>
                     </tr>
                   </thead>
@@ -1585,28 +1292,47 @@ const Screener = () => {
                         className="cursor-pointer hover:bg-zinc-800/50 transition-colors"
                         onClick={() => {
                           setSelectedStock(opp.symbol);
+                          setSelectedScanData(activeScan ? opp : null);  // Pass scan data if from pre-computed scan
                           setIsModalOpen(true);
                         }}
-                        title={`Click to view ${opp.symbol} details`}
+                        title={`Click to view ${opp.symbol} details with Technical, Fundamentals & News`}
                       >
-                        <td className="font-semibold text-white">{opp.symbol}</td>
+                        <td className="font-semibold text-white">
+                          <div className="flex items-center gap-2">
+                            {opp.symbol}
+                            {activeScan && opp.timeframe && (
+                              <Badge className={`text-xs ${
+                                opp.timeframe === 'weekly' 
+                                  ? 'bg-blue-500/20 text-blue-400 border-blue-500/30' 
+                                  : 'bg-purple-500/20 text-purple-400 border-purple-500/30'
+                              }`}>
+                                {opp.timeframe === 'weekly' ? 'W' : 'M'}
+                              </Badge>
+                            )}
+                          </div>
+                        </td>
                         <td>${opp.stock_price?.toFixed(2)}</td>
                         <td>
-                          <span className="font-mono text-sm">{formatOptionContract(opp.expiry, opp.strike, opp.option_type || 'call')}</span>
+                          <span className="font-mono text-sm">
+                            {activeScan ? `$${opp.strike?.toFixed(0)}` : formatOptionContract(opp.expiry, opp.strike, opp.option_type || 'call')}
+                          </span>
                         </td>
                         <td>{opp.dte}d</td>
                         <td className="text-emerald-400">${opp.premium?.toFixed(2)}</td>
-                        <td className="text-cyan-400 font-medium">{opp.roi_pct?.toFixed(2)}%</td>
+                        <td className="text-cyan-400 font-medium">{opp.roi_pct?.toFixed(2) || opp.premium_yield?.toFixed(2)}%</td>
                         <td>{opp.delta?.toFixed(2)}</td>
                         <td className="text-yellow-400">{Math.round((1 - opp.delta) * 100)}%</td>
-                        <td>{(opp.iv * 100)?.toFixed(1)}%</td>
-                        <td>{opp.iv_rank?.toFixed(0)}%</td>
-                        <td>{opp.volume?.toLocaleString()}</td>
-                        <td>{opp.open_interest?.toLocaleString()}</td>
+                        {!activeScan && <td>{(opp.iv * 100)?.toFixed(1)}%</td>}
+                        {!activeScan && <td>{opp.iv_rank?.toFixed(0)}%</td>}
+                        {activeScan && (
+                          <td>
+                            <span className="text-xs text-zinc-400">{opp.sector || '-'}</span>
+                          </td>
+                        )}
                         <td>
                           <Badge className={`${
-                            opp.score >= 80 ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' :
-                            opp.score >= 60 ? 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30' : 
+                            opp.score >= 50 ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' :
+                            opp.score >= 35 ? 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30' : 
                             'bg-cyan-500/20 text-cyan-400 border-cyan-500/30'
                           }`}>
                             {opp.score?.toFixed(0)}
