@@ -324,6 +324,13 @@ async def get_stock_details(symbol: str, user: dict = Depends(get_current_user))
         except Exception as e:
             logging.error(f"MarketAux news error: {e}")
     
+    # Wait for analyst ratings from yfinance
+    try:
+        analyst_data = await analyst_task
+        result["analyst_ratings"] = analyst_data
+    except Exception as e:
+        logging.error(f"Analyst ratings error: {e}")
+    
     return result
 
 
