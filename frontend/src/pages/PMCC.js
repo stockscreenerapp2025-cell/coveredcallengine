@@ -344,6 +344,80 @@ const PMCC = () => {
 
   return (
     <div className="space-y-6" data-testid="pmcc-page">
+      {/* Header */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-2xl md:text-3xl font-bold text-white flex items-center gap-3">
+            <LineChart className="w-8 h-8 text-violet-500" />
+            Poor Man's Covered Call (PMCC)
+          </h1>
+          <p className="text-zinc-400 mt-1">
+            {apiInfo?.is_precomputed 
+              ? `Showing ${apiInfo.label} pre-computed PMCC results`
+              : "LEAPS-based covered call strategy with lower capital requirement"}
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-3">
+          <Button
+            variant="outline"
+            onClick={handleRefreshData}
+            disabled={refreshing || loading}
+            className="btn-outline"
+            data-testid="refresh-pmcc-btn"
+            title="Fetch fresh data from market (bypasses cache)"
+          >
+            <RefreshCw className={`w-4 h-4 mr-2 ${refreshing ? 'animate-spin' : ''}`} />
+            {refreshing ? 'Refreshing...' : 'Refresh Data'}
+          </Button>
+          <Button
+            variant="outline"
+            onClick={() => setFiltersOpen(!filtersOpen)}
+            className="btn-outline"
+          >
+            <Filter className="w-4 h-4 mr-2" />
+            {filtersOpen ? 'Hide' : 'Show'} Filters
+          </Button>
+          <Button
+            onClick={() => { setActiveScan(null); fetchOpportunities(false); }}
+            className="bg-violet-600 hover:bg-violet-700 text-white"
+            data-testid="custom-pmcc-scan-btn"
+          >
+            <Search className="w-4 h-4 mr-2" />
+            Custom Scan
+          </Button>
+        </div>
+      </div>
+
+      {/* Strategy Explanation - Compact Version */}
+      <Card className="glass-card border-violet-500/30">
+        <CardContent className="py-4">
+          <div className="grid md:grid-cols-2 gap-4">
+            <div className="p-3 rounded-lg bg-emerald-500/5 border border-emerald-500/20">
+              <div className="flex items-center gap-2 mb-2">
+                <TrendingUp className="w-4 h-4 text-emerald-400" />
+                <span className="font-medium text-emerald-400 text-sm">Long Leg (LEAPS)</span>
+              </div>
+              <ul className="space-y-1 text-xs text-zinc-400">
+                <li>• <span className="text-white">12–24 months</span> expiration, deep ITM (δ0.80–0.90)</li>
+                <li>• Acts as stock substitute at lower cost</li>
+                <li>• <span className="text-emerald-400">Roll at 6 months remaining</span></li>
+              </ul>
+            </div>
+            <div className="p-3 rounded-lg bg-cyan-500/5 border border-cyan-500/20">
+              <div className="flex items-center gap-2 mb-2">
+                <TrendingDown className="w-4 h-4 text-cyan-400" />
+                <span className="font-medium text-cyan-400 text-sm">Short Leg (Sell Calls)</span>
+              </div>
+              <ul className="space-y-1 text-xs text-zinc-400">
+                <li>• <span className="text-white">7–45 days</span> expiration, OTM (δ0.15–0.40)</li>
+                <li>• Repeat to collect premium income</li>
+                <li>• <span className="text-cyan-400">Roll at 50% profit or 21 DTE</span></li>
+              </ul>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
       {/* Pre-Computed PMCC Scan Buttons */}
       <Card className="glass-card" data-testid="pmcc-precomputed-scans">
         <CardHeader className="pb-3">
