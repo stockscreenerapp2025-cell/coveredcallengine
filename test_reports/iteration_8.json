@@ -1,0 +1,93 @@
+{
+  "summary": "PMCC page bug fixes verified successfully. All 4 reported issues are resolved: 1) Pre-computed PMCC scans load and display data correctly, 2) No duplicate symbols in default screener results, 3) Layout reorganized correctly (Header -> Strategy Explanation -> Quick Scans -> Filters + Results), 4) Strategy Notes are compact. Data mapping from backend long_* fields to frontend leaps_* fields working correctly via normalizeOpp() helper.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/frontend/src/pages/PMCC.js",
+    "/app/backend/services/precomputed_scans.py",
+    "/app/backend/routes/precomputed_scans.py"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "normalizeOpp() helper function correctly maps backend long_* fields to frontend leaps_* fields",
+    "Deduplication logic in fetchOpportunities() working - keeps highest score per symbol",
+    "SortHeader component moved outside main component to fix React lint error",
+    "Layout reorganized: Header -> compact Strategy Explanation -> Quick Scans -> grid with Filters + Results",
+    "Pre-computed scan indicator shows scan name, result count, and update date"
+  ],
+  "updated_files": [],
+  "success_rate": {
+    "backend": "N/A - frontend only testing",
+    "frontend": "100%"
+  },
+  "test_credentials": {
+    "admin_account": "admin@premiumhunter.com / admin123"
+  },
+  "seed_data_creation": "None - used existing pre-computed scan data",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "PMCC page fully functional. Pre-computed scans (Conservative/Balanced/Aggressive) load correctly via /api/scans/pmcc/{risk_profile}. Default screener uses /api/screener/pmcc. Simulate button opens modal with normalized data from both custom and pre-computed scans. All table columns display correctly with proper data mapping.",
+  "features_tested": {
+    "pmcc_page_layout": {
+      "status": "PASS",
+      "details": "Layout reorganized correctly: Header at top, compact Strategy Explanation, Quick Scans section, then grid with Filters panel and Results table"
+    },
+    "precomputed_scans": {
+      "conservative": {
+        "status": "PASS",
+        "count": 5,
+        "sample_data": "COP: LEAPS 17DEC26 83 C, Cost $2,002, Short 12FEB26 103 C, Premium $203"
+      },
+      "balanced": {
+        "status": "PASS",
+        "count": 20,
+        "sample_data": "GILD: LEAPS 20AUG26 110 C, Cost $1,751"
+      },
+      "aggressive": {
+        "status": "PASS",
+        "count": 14,
+        "sample_data": "AMAT: LEAPS 16JUL26 280 C, Cost $4,500"
+      }
+    },
+    "data_mapping": {
+      "status": "PASS",
+      "details": "Backend long_* fields (long_dte, long_strike, long_premium) correctly mapped to frontend leaps_* display via normalizeOpp() helper"
+    },
+    "duplicate_symbols": {
+      "status": "PASS",
+      "details": "Default screener results show 20 unique symbols with no duplicates"
+    },
+    "simulate_button": {
+      "status": "PASS",
+      "details": "Modal opens with correct data: Symbol, Strategy (PMCC), Stock Price, LEAPS (Buy) Strike/Cost, Short Call (Sell) Strike/Premium, Net Debit, Number of Contracts"
+    },
+    "custom_scan_button": {
+      "status": "PASS",
+      "details": "Clears pre-computed scan indicator and loads default screener results"
+    }
+  },
+  "table_columns_verified": [
+    "Symbol",
+    "Price",
+    "LEAPS (Buy) - shows contract format like '17DEC26 83 C' with delta",
+    "Cost - LEAPS cost in dollars",
+    "Short (Sell) - shows contract format with delta",
+    "Premium - short call premium",
+    "Net Debit - calculated correctly",
+    "Width - strike width",
+    "ROI/Cycle - percentage",
+    "Ann. ROI - annualized percentage",
+    "AI Score - badge with score",
+    "Action - Simulate button"
+  ],
+  "mocked_apis": {
+    "note": "No mocked APIs - all data from real pre-computed scans stored in MongoDB"
+  }
+}
