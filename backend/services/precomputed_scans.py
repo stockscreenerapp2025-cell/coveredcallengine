@@ -910,7 +910,31 @@ class PrecomputedScanService:
             results[f"cc_{profile}"] = len(opportunities)
             logger.info(f"  Stored {len(opportunities)} deduplicated opportunities for {profile}")
         
-        # TODO: Add PMCC scans in Phase 3
+        # Run PMCC scans
+        logger.info("\n" + "="*50)
+        logger.info("STARTING PMCC SCANS")
+        logger.info("="*50)
+        
+        pmcc_opportunities = {}
+        for profile in ["conservative", "balanced", "aggressive"]:
+            try:
+                logger.info(f"\n--- Running {profile.upper()} PMCC scan ---")
+                opportunities = await self.run_pmcc_scan(profile)
+                pmcc_opportunities[profile] = opportunities
+                logger.info(f"  Found {len(opportunities)} raw PMCC opportunities for {profile}")
+            except Exception as e:
+                logger.error(f"Error in {profile} PMCC scan: {e}")
+                pmcc_opportunities[profile] = []
+                results[f"pmcc_{profile}"] = f"Error: {str(e)}"
+        
+        # Deduplicate PMCC across profiles
+        deduped_pmcc = self._dedupe_across_profiles(pmcc_opportunities)
+        
+        # Store PMCC results
+        for profile, opportunities in deduped_pmcc.items():
+            await self.store_scan_results("pmcc", profile, opportunities)
+            results[f"pmcc_{profile}"] = len(opportunities)
+            logger.info(f"  Stored {len(opportunities)} deduplicated PMCC opportunities for {profile}")
         
         duration = (datetime.now() - start_time).total_seconds()
         logger.info("="*50)
