@@ -754,6 +754,8 @@ class PrecomputedScanService:
                         "score": round(total_score, 1),
                         "risk_profile": risk_profile,
                         "strategy": "covered_call",
+                        # Timeframe classification
+                        "timeframe": "weekly" if opt["dte"] <= 14 else "monthly",
                         # Include technical indicators
                         "sma50": tech_data.get("sma50"),
                         "sma200": tech_data.get("sma200"),
@@ -771,6 +773,9 @@ class PrecomputedScanService:
             # Small delay between batches
             await asyncio.sleep(0.5)
         
+        # Deduplicate: Keep best Weekly + Monthly per symbol
+        opportunities = self._dedupe_by_symbol_timeframe(opportunities)
+        
         # Sort by score and limit
         opportunities.sort(key=lambda x: x["score"], reverse=True)
         opportunities = opportunities[:50]  # Top 50
@@ -781,6 +786,26 @@ class PrecomputedScanService:
                    f"{stats['passed_options']} had options")
         
         return opportunities
+    
+    def _dedupe_by_symbol_timeframe(self, opportunities: List[Dict]) -> List[Dict]:
+        """
+        Deduplicate opportunities: Keep only the best (highest score) 
+        Weekly and Monthly option per symbol.
+        """
+        # Group by symbol and timeframe
+        symbol_timeframe_best = {}
+        
+        for opp in opportunities:
+            symbol = opp["symbol"]
+            timeframe = opp.get("timeframe", "monthly")
+            key = f"{symbol}_{timeframe}"
+            
+            if key not in symbol_timeframe_best:
+                symbol_timeframe_best[key] = opp
+            elif opp["score"] > symbol_timeframe_best[key]["score"]:
+                symbol_timeframe_best[key] = opp
+        
+        return list(symbol_timeframe_best.values())
     
     # ==================== STORAGE ====================
     
