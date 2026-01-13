@@ -219,3 +219,107 @@ async def get_news_rate_limit(user: dict = Depends(get_current_user)):
         "date": today,
         "limit_reached": current_count >= MARKETAUX_DAILY_LIMIT
     }
+
+
+@news_router.post("/analyze-sentiment")
+async def analyze_news_sentiment(
+    news_items: list,
+    user: dict = Depends(get_current_user)
+):
+    """Analyze sentiment of news articles using AI
+    
+    Request body: list of objects with 'title' and optional 'description' fields
+    Returns: list of sentiment results (Positive/Neutral/Negative) and overall score
+    """
+    import os
+    from dotenv import load_dotenv
+    
+    load_dotenv()
+    api_key = os.environ.get("EMERGENT_LLM_KEY")
+    
+    if not api_key:
+        return {
+            "sentiments": [],
+            "overall_sentiment": "Neutral",
+            "overall_score": 50,
+            "error": "AI analysis not configured"
+        }
+    
+    if not news_items:
+        return {
+            "sentiments": [],
+            "overall_sentiment": "Neutral",
+            "overall_score": 50
+        }
+    
+    try:
+        from emergentintegrations.llm.chat import LlmChat, UserMessage
+        
+        # Prepare news text for analysis
+        news_text = ""
+        for i, item in enumerate(news_items[:5], 1):  # Limit to 5 articles
+            title = item.get("title", "")
+            desc = item.get("description", "")
+            news_text += f"{i}. {title}\n{desc[:200] if desc else ''}\n\n"
+        
+        # Create chat instance
+        chat = LlmChat(
+            api_key=api_key,
+            session_id=f"sentiment_{datetime.now().timestamp()}",
+            system_message="""You are a financial sentiment analyst. Analyze the sentiment of stock-related news articles.
+For each article, provide:
+1. Sentiment: Positive, Neutral, or Negative
+2. Confidence: High, Medium, or Low
+
+Then provide an overall sentiment score from 0-100 where:
+- 0-30 = Very Bearish
+- 31-45 = Bearish  
+- 46-55 = Neutral
+- 56-70 = Bullish
+- 71-100 = Very Bullish
+
+Respond in JSON format ONLY:
+{
+  "articles": [
+    {"index": 1, "sentiment": "Positive", "confidence": "High"},
+    ...
+  ],
+  "overall_sentiment": "Bullish",
+  "overall_score": 65,
+  "summary": "Brief 1-sentence summary of overall sentiment"
+}"""
+        ).with_model("openai", "gpt-5.2")
+        
+        user_message = UserMessage(text=f"Analyze the sentiment of these news articles:\n\n{news_text}")
+        response = await chat.send_message(user_message)
+        
+        # Parse JSON response
+        import json
+        import re
+        
+        # Extract JSON from response
+        json_match = re.search(r'\{[\s\S]*\}', response)
+        if json_match:
+            result = json.loads(json_match.group())
+            return {
+                "sentiments": result.get("articles", []),
+                "overall_sentiment": result.get("overall_sentiment", "Neutral"),
+                "overall_score": result.get("overall_score", 50),
+                "summary": result.get("summary", "")
+            }
+        
+        return {
+            "sentiments": [],
+            "overall_sentiment": "Neutral",
+            "overall_score": 50,
+            "error": "Could not parse AI response"
+        }
+        
+    except Exception as e:
+        logging.error(f"Sentiment analysis error: {e}")
+        return {
+            "sentiments": [],
+            "overall_sentiment": "Neutral", 
+            "overall_score": 50,
+            "error": str(e)
+        }
