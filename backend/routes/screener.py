@@ -341,8 +341,17 @@ async def screen_covered_calls(
         
         opportunities = sorted(best_by_symbol.values(), key=lambda x: x["score"], reverse=True)
         
+        # Fetch analyst ratings for top opportunities
+        top_opps = opportunities[:100]
+        symbols = [opp["symbol"] for opp in top_opps]
+        analyst_ratings = await fetch_analyst_ratings_batch(symbols)
+        
+        # Add analyst ratings to opportunities
+        for opp in top_opps:
+            opp["analyst_rating"] = analyst_ratings.get(opp["symbol"])
+        
         result = {
-            "opportunities": opportunities[:100], 
+            "opportunities": top_opps, 
             "total": len(opportunities), 
             "is_live": True, 
             "from_cache": False,
