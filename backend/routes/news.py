@@ -221,9 +221,18 @@ async def get_news_rate_limit(user: dict = Depends(get_current_user)):
     }
 
 
+from pydantic import BaseModel
+from typing import List, Optional
+
+
+class NewsItem(BaseModel):
+    title: str
+    description: Optional[str] = None
+
+
 @news_router.post("/analyze-sentiment")
 async def analyze_news_sentiment(
-    news_items: list,
+    news_items: List[NewsItem],
     user: dict = Depends(get_current_user)
 ):
     """Analyze sentiment of news articles using AI
