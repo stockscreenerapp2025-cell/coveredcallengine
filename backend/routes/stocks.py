@@ -225,7 +225,7 @@ async def get_stock_details(symbol: str, user: dict = Depends(get_current_user))
                 
                 # Get news from Massive.com
                 news_response = await client.get(
-                    f"https://api.polygon.io/v2/reference/news",
+                    "https://api.polygon.io/v2/reference/news",
                     params={"apiKey": api_key, "ticker": symbol, "limit": 5}
                 )
                 if news_response.status_code == 200:
