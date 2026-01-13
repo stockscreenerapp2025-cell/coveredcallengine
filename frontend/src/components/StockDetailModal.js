@@ -111,10 +111,13 @@ const TradingViewChart = memo(({ symbol }) => {
 const StockDetailModal = ({ symbol, isOpen, onClose, scanData = null }) => {
   const [stockData, setStockData] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [sentimentData, setSentimentData] = useState(null);
+  const [analyzingSentiment, setAnalyzingSentiment] = useState(false);
 
   useEffect(() => {
     if (isOpen && symbol) {
       fetchStockData();
+      setSentimentData(null); // Reset sentiment when modal opens
     }
   }, [isOpen, symbol]);
 
@@ -127,6 +130,20 @@ const StockDetailModal = ({ symbol, isOpen, onClose, scanData = null }) => {
       console.error('Failed to fetch stock details:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const analyzeSentiment = async () => {
+    if (!stockData?.news?.length) return;
+    
+    setAnalyzingSentiment(true);
+    try {
+      const response = await newsApi.analyzeSentiment(stockData.news);
+      setSentimentData(response.data);
+    } catch (error) {
+      console.error('Failed to analyze sentiment:', error);
+    } finally {
+      setAnalyzingSentiment(false);
     }
   };
 
