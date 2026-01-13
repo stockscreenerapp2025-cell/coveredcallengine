@@ -362,7 +362,7 @@ class PrecomputedScanService:
                                 earnings_date = next_earnings.date().isoformat()
                             else:
                                 earnings_date = str(next_earnings)[:10]
-                except:
+                except Exception:
                     pass
                 
                 # Calculate days to earnings
@@ -371,7 +371,7 @@ class PrecomputedScanService:
                     try:
                         earnings_dt = datetime.strptime(earnings_date, "%Y-%m-%d")
                         days_to_earnings = (earnings_dt - datetime.now()).days
-                    except:
+                    except Exception:
                         pass
                 
                 return {
