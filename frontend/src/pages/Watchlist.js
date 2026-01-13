@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { watchlistApi, stocksApi } from '../lib/api';
+import { watchlistApi } from '../lib/api';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
@@ -14,6 +14,25 @@ import {
   DialogTrigger,
 } from '../components/ui/dialog';
 import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '../components/ui/table';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '../components/ui/alert-dialog';
+import {
   BookmarkPlus,
   Plus,
   RefreshCw,
@@ -21,7 +40,8 @@ import {
   TrendingUp,
   TrendingDown,
   Star,
-  Target
+  Minus,
+  AlertCircle
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -31,7 +51,6 @@ const Watchlist = () => {
   const [addDialogOpen, setAddDialogOpen] = useState(false);
   const [newItem, setNewItem] = useState({
     symbol: '',
-    target_price: '',
     notes: ''
   });
 
@@ -59,14 +78,13 @@ const Watchlist = () => {
     }
 
     try {
-      await watchlistApi.add({
+      const response = await watchlistApi.add({
         symbol: newItem.symbol.toUpperCase(),
-        target_price: newItem.target_price ? parseFloat(newItem.target_price) : null,
         notes: newItem.notes || null
       });
-      toast.success(`${newItem.symbol.toUpperCase()} added to watchlist`);
+      toast.success(`${newItem.symbol.toUpperCase()} added at $${response.data.price_when_added?.toFixed(2) || 'N/A'}`);
       setAddDialogOpen(false);
-      setNewItem({ symbol: '', target_price: '', notes: '' });
+      setNewItem({ symbol: '', notes: '' });
       fetchWatchlist();
     } catch (error) {
       toast.error(error.response?.data?.detail || 'Failed to add to watchlist');
@@ -83,18 +101,64 @@ const Watchlist = () => {
     }
   };
 
+  const clearAllWatchlist = async () => {
+    try {
+      await watchlistApi.clearAll();
+      toast.success('Watchlist cleared');
+      setItems([]);
+    } catch (error) {
+      toast.error('Failed to clear watchlist');
+    }
+  };
+
   const formatCurrency = (value) => {
+    if (value === null || value === undefined || value === 0) return '-';
     return new Intl.NumberFormat('en-US', {
       style: 'currency',
       currency: 'USD',
       minimumFractionDigits: 2
-    }).format(value || 0);
+    }).format(value);
   };
 
-  const getDistanceToTarget = (current, target) => {
-    if (!target) return null;
-    const distance = ((target - current) / current) * 100;
-    return distance;
+  const formatPercent = (value) => {
+    if (value === null || value === undefined) return '-';
+    const sign = value >= 0 ? '+' : '';
+    return `${sign}${value.toFixed(2)}%`;
+  };
+
+  const formatDate = (isoDate) => {
+    if (!isoDate) return '-';
+    return new Date(isoDate).toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric'
+    });
+  };
+
+  const formatExpiry = (expiry) => {
+    if (!expiry) return '-';
+    // Convert 2025-01-17 to 17JAN25
+    const date = new Date(expiry + 'T00:00:00');
+    const day = date.getDate().toString().padStart(2, '0');
+    const month = date.toLocaleString('en-US', { month: 'short' }).toUpperCase();
+    const year = date.getFullYear().toString().slice(-2);
+    return `${day}${month}${year}`;
+  };
+
+  const getAnalystColor = (rating) => {
+    if (!rating) return 'text-zinc-500';
+    const r = rating.toLowerCase();
+    if (r.includes('strong buy')) return 'text-emerald-400';
+    if (r.includes('buy')) return 'text-green-400';
+    if (r.includes('hold')) return 'text-yellow-400';
+    if (r.includes('sell')) return 'text-red-400';
+    return 'text-zinc-400';
+  };
+
+  const getMovementIcon = (value) => {
+    if (value > 0) return <TrendingUp className="w-4 h-4 text-emerald-400" />;
+    if (value < 0) return <TrendingDown className="w-4 h-4 text-red-400" />;
+    return <Minus className="w-4 h-4 text-zinc-500" />;
   };
 
   return (
@@ -106,7 +170,7 @@ const Watchlist = () => {
             <BookmarkPlus className="w-8 h-8 text-violet-500" />
             Watchlist
           </h1>
-          <p className="text-zinc-400 mt-1">Monitor stocks for covered call opportunities</p>
+          <p className="text-zinc-400 mt-1">Track stocks and find covered call opportunities</p>
         </div>
         <div className="flex gap-3">
           <Button
@@ -118,6 +182,32 @@ const Watchlist = () => {
             <RefreshCw className={`w-4 h-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
             Refresh
           </Button>
+          
+          {items.length > 0 && (
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button variant="outline" className="btn-outline text-red-400 hover:text-red-300" data-testid="clear-all-btn">
+                  <Trash2 className="w-4 h-4 mr-2" />
+                  Clear All
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent className="bg-zinc-900 border-zinc-800">
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Clear Watchlist?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    This will remove all {items.length} items from your watchlist. This action cannot be undone.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel className="bg-zinc-800 hover:bg-zinc-700 border-zinc-700">Cancel</AlertDialogCancel>
+                  <AlertDialogAction onClick={clearAllWatchlist} className="bg-red-600 hover:bg-red-700">
+                    Clear All
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          )}
+          
           <Dialog open={addDialogOpen} onOpenChange={setAddDialogOpen}>
             <DialogTrigger asChild>
               <Button className="btn-primary" data-testid="add-watchlist-btn">
@@ -138,18 +228,7 @@ const Watchlist = () => {
                     placeholder="AAPL"
                     className="input-dark mt-2"
                     data-testid="watchlist-symbol-input"
-                  />
-                </div>
-                <div>
-                  <Label>Target Price (optional)</Label>
-                  <Input
-                    type="number"
-                    step="0.01"
-                    value={newItem.target_price}
-                    onChange={(e) => setNewItem(p => ({ ...p, target_price: e.target.value }))}
-                    placeholder="150.00"
-                    className="input-dark mt-2"
-                    data-testid="watchlist-target-input"
+                    onKeyDown={(e) => e.key === 'Enter' && addToWatchlist()}
                   />
                 </div>
                 <div>
@@ -170,103 +249,177 @@ const Watchlist = () => {
         </div>
       </div>
 
-      {/* Watchlist Grid */}
-      {loading ? (
-        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {Array(6).fill(0).map((_, i) => (
-            <Skeleton key={i} className="h-40 rounded-xl" />
-          ))}
-        </div>
-      ) : items.length === 0 ? (
-        <Card className="glass-card">
-          <CardContent className="py-16 text-center text-zinc-500">
-            <Star className="w-12 h-12 mx-auto mb-4 opacity-50" />
-            <p className="text-lg font-medium">Your watchlist is empty</p>
-            <p className="text-sm mt-2">Add stocks to monitor for covered call opportunities</p>
-          </CardContent>
-        </Card>
-      ) : (
-        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {items.map((item) => {
-            const distanceToTarget = getDistanceToTarget(item.current_price, item.target_price);
-            
-            return (
-              <Card 
-                key={item.id} 
-                className="glass-card card-hover"
-                data-testid={`watchlist-card-${item.symbol}`}
-              >
-                <CardContent className="p-5">
-                  <div className="flex items-start justify-between mb-4">
-                    <div>
-                      <h3 className="text-xl font-bold text-white">{item.symbol}</h3>
-                      <div className="flex items-center gap-2 mt-1">
-                        <span className="text-2xl font-mono text-white">
-                          {formatCurrency(item.current_price)}
-                        </span>
-                        {item.change >= 0 ? (
-                          <TrendingUp className="w-4 h-4 text-emerald-400" />
-                        ) : (
-                          <TrendingDown className="w-4 h-4 text-red-400" />
-                        )}
-                      </div>
-                    </div>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => removeFromWatchlist(item.id, item.symbol)}
-                      className="text-zinc-500 hover:text-red-400"
-                      data-testid={`remove-watchlist-${item.symbol}`}
+      {/* Watchlist Table */}
+      <Card className="glass-card">
+        <CardContent className="p-0">
+          {loading ? (
+            <div className="p-6 space-y-4">
+              {Array(5).fill(0).map((_, i) => (
+                <Skeleton key={i} className="h-16 rounded-lg" />
+              ))}
+            </div>
+          ) : items.length === 0 ? (
+            <div className="py-16 text-center text-zinc-500">
+              <Star className="w-12 h-12 mx-auto mb-4 opacity-50" />
+              <p className="text-lg font-medium">Your watchlist is empty</p>
+              <p className="text-sm mt-2">Add stocks to monitor for covered call opportunities</p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow className="border-white/5 hover:bg-transparent">
+                    <TableHead className="text-zinc-400 font-medium">Symbol</TableHead>
+                    <TableHead className="text-zinc-400 font-medium">Date Added</TableHead>
+                    <TableHead className="text-zinc-400 font-medium text-right">Price Added</TableHead>
+                    <TableHead className="text-zinc-400 font-medium text-right">Current</TableHead>
+                    <TableHead className="text-zinc-400 font-medium text-right">Movement</TableHead>
+                    <TableHead className="text-zinc-400 font-medium text-center">Analyst</TableHead>
+                    <TableHead className="text-zinc-400 font-medium">Best Opportunity</TableHead>
+                    <TableHead className="text-zinc-400 font-medium text-right">ROI</TableHead>
+                    <TableHead className="text-zinc-400 font-medium text-center">Action</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {items.map((item) => (
+                    <TableRow 
+                      key={item.id} 
+                      className="border-white/5 hover:bg-white/5"
+                      data-testid={`watchlist-row-${item.symbol}`}
                     >
-                      <Trash2 className="w-4 h-4" />
-                    </Button>
-                  </div>
-
-                  <div className="space-y-3">
-                    {/* Daily Change */}
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="text-zinc-500">Today</span>
-                      <span className={`font-mono ${item.change >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                        {item.change >= 0 ? '+' : ''}{item.change?.toFixed(2)} ({item.change_pct >= 0 ? '+' : ''}{item.change_pct?.toFixed(2)}%)
-                      </span>
-                    </div>
-
-                    {/* Target Price */}
-                    {item.target_price && (
-                      <div className="flex items-center justify-between text-sm">
-                        <span className="text-zinc-500 flex items-center gap-1">
-                          <Target className="w-3 h-3" />
-                          Target
-                        </span>
-                        <div className="flex items-center gap-2">
-                          <span className="font-mono text-white">{formatCurrency(item.target_price)}</span>
-                          <Badge className={`text-xs ${
-                            distanceToTarget >= 0 ? 'badge-success' : 'badge-danger'
-                          }`}>
-                            {distanceToTarget >= 0 ? '+' : ''}{distanceToTarget?.toFixed(1)}%
-                          </Badge>
+                      {/* Symbol */}
+                      <TableCell className="font-bold text-white">
+                        <div className="flex flex-col">
+                          <span className="text-lg">{item.symbol}</span>
+                          {item.notes && (
+                            <span className="text-xs text-zinc-500 truncate max-w-[150px]">{item.notes}</span>
+                          )}
                         </div>
-                      </div>
-                    )}
+                      </TableCell>
+                      
+                      {/* Date Added */}
+                      <TableCell className="text-zinc-400 text-sm">
+                        {formatDate(item.added_at)}
+                      </TableCell>
+                      
+                      {/* Price When Added */}
+                      <TableCell className="text-right font-mono text-zinc-400">
+                        {formatCurrency(item.price_when_added)}
+                      </TableCell>
+                      
+                      {/* Current Price */}
+                      <TableCell className="text-right font-mono text-white font-medium">
+                        {formatCurrency(item.current_price)}
+                      </TableCell>
+                      
+                      {/* Movement */}
+                      <TableCell className="text-right">
+                        <div className="flex items-center justify-end gap-2">
+                          {getMovementIcon(item.movement_pct)}
+                          <span className={`font-mono ${
+                            item.movement_pct > 0 ? 'text-emerald-400' : 
+                            item.movement_pct < 0 ? 'text-red-400' : 'text-zinc-500'
+                          }`}>
+                            {formatPercent(item.movement_pct)}
+                          </span>
+                        </div>
+                      </TableCell>
+                      
+                      {/* Analyst Rating */}
+                      <TableCell className="text-center">
+                        {item.analyst_rating ? (
+                          <Badge variant="outline" className={`${getAnalystColor(item.analyst_rating)} border-current`}>
+                            {item.analyst_rating}
+                          </Badge>
+                        ) : (
+                          <span className="text-zinc-600">-</span>
+                        )}
+                      </TableCell>
+                      
+                      {/* Best Opportunity */}
+                      <TableCell>
+                        {item.opportunity ? (
+                          <div className="flex flex-col">
+                            <span className="text-emerald-400 font-medium">
+                              {formatExpiry(item.opportunity.expiry)} ${item.opportunity.strike}C
+                            </span>
+                            <span className="text-xs text-zinc-500">
+                              {item.opportunity.dte}d | Δ{item.opportunity.delta} | IV {item.opportunity.iv}%
+                            </span>
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-1 text-zinc-500 text-sm">
+                            <AlertCircle className="w-3 h-3" />
+                            <span>No opportunities</span>
+                          </div>
+                        )}
+                      </TableCell>
+                      
+                      {/* ROI */}
+                      <TableCell className="text-right">
+                        {item.opportunity ? (
+                          <span className="text-emerald-400 font-mono font-medium">
+                            {item.opportunity.roi_pct}%
+                          </span>
+                        ) : (
+                          <span className="text-zinc-600">-</span>
+                        )}
+                      </TableCell>
+                      
+                      {/* Delete Action */}
+                      <TableCell className="text-center">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => removeFromWatchlist(item.id, item.symbol)}
+                          className="text-zinc-500 hover:text-red-400 hover:bg-red-400/10"
+                          data-testid={`delete-watchlist-${item.symbol}`}
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
-                    {/* Notes */}
-                    {item.notes && (
-                      <div className="pt-2 border-t border-white/5">
-                        <p className="text-xs text-zinc-500 line-clamp-2">{item.notes}</p>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Added date */}
-                  <div className="mt-4 pt-3 border-t border-white/5">
-                    <span className="text-xs text-zinc-600">
-                      Added {new Date(item.added_at).toLocaleDateString()}
-                    </span>
-                  </div>
-                </CardContent>
-              </Card>
-            );
-          })}
+      {/* Summary Stats */}
+      {items.length > 0 && (
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <Card className="glass-card">
+            <CardContent className="p-4">
+              <p className="text-zinc-400 text-sm">Total Symbols</p>
+              <p className="text-2xl font-bold text-white">{items.length}</p>
+            </CardContent>
+          </Card>
+          <Card className="glass-card">
+            <CardContent className="p-4">
+              <p className="text-zinc-400 text-sm">With Opportunities</p>
+              <p className="text-2xl font-bold text-emerald-400">
+                {items.filter(i => i.opportunity).length}
+              </p>
+            </CardContent>
+          </Card>
+          <Card className="glass-card">
+            <CardContent className="p-4">
+              <p className="text-zinc-400 text-sm">Gainers</p>
+              <p className="text-2xl font-bold text-emerald-400">
+                {items.filter(i => i.movement_pct > 0).length}
+              </p>
+            </CardContent>
+          </Card>
+          <Card className="glass-card">
+            <CardContent className="p-4">
+              <p className="text-zinc-400 text-sm">Losers</p>
+              <p className="text-2xl font-bold text-red-400">
+                {items.filter(i => i.movement_pct < 0).length}
+              </p>
+            </CardContent>
+          </Card>
         </div>
       )}
     </div>
