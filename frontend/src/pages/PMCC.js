@@ -967,7 +967,9 @@ const PMCC = () => {
               Add PMCC to Simulator
             </DialogTitle>
           </DialogHeader>
-          {simulateOpp && (
+          {simulateOpp && (() => {
+            const norm = normalizeOpp(simulateOpp);
+            return (
             <div className="space-y-4 pt-4">
               <div className="p-4 bg-zinc-800/50 rounded-lg space-y-2">
                 <div className="flex justify-between">
@@ -986,11 +988,11 @@ const PMCC = () => {
                   <div className="text-xs text-emerald-400 mb-1">LEAPS (Buy)</div>
                   <div className="flex justify-between">
                     <span className="text-zinc-400">Strike</span>
-                    <span className="text-white">${simulateOpp.leaps_strike?.toFixed(2)}</span>
+                    <span className="text-white">${norm.leaps_strike?.toFixed(2)}</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-zinc-400">Cost</span>
-                    <span className="text-red-400">${simulateOpp.leaps_cost?.toLocaleString()}</span>
+                    <span className="text-red-400">${norm.leaps_cost?.toLocaleString()}</span>
                   </div>
                 </div>
                 <div className="border-t border-zinc-700 pt-2">
@@ -1001,13 +1003,13 @@ const PMCC = () => {
                   </div>
                   <div className="flex justify-between">
                     <span className="text-zinc-400">Premium</span>
-                    <span className="text-emerald-400">${simulateOpp.short_premium?.toFixed(0)}</span>
+                    <span className="text-emerald-400">${norm.short_premium_total?.toFixed(0)}</span>
                   </div>
                 </div>
                 <div className="border-t border-zinc-700 pt-2">
                   <div className="flex justify-between">
                     <span className="text-zinc-400">Net Debit</span>
-                    <span className="text-white">${simulateOpp.net_debit?.toLocaleString()}</span>
+                    <span className="text-white">${norm.net_debit?.toLocaleString()}</span>
                   </div>
                 </div>
               </div>
@@ -1023,7 +1025,7 @@ const PMCC = () => {
                   className="input-dark mt-2"
                 />
                 <p className="text-xs text-zinc-500 mt-1">
-                  Capital required: ${((simulateOpp.leaps_cost || 0) * simulateContracts).toLocaleString()}
+                  Capital required: ${((norm.leaps_cost || 0) * simulateContracts).toLocaleString()}
                 </p>
               </div>
               
@@ -1044,7 +1046,7 @@ const PMCC = () => {
                 </Button>
               </div>
             </div>
-          )}
+          );})()}
         </DialogContent>
       </Dialog>
 
