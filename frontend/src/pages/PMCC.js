@@ -43,6 +43,21 @@ import {
 import { toast } from 'sonner';
 import StockDetailModal from '../components/StockDetailModal';
 
+// Sort Header component - moved outside to avoid recreation on each render
+const SortHeader = ({ field, label, sortField, sortDirection, onSort }) => (
+  <th
+    className="cursor-pointer hover:text-white transition-colors"
+    onClick={() => onSort(field)}
+  >
+    <div className="flex items-center gap-1">
+      {label}
+      {sortField === field && (
+        sortDirection === 'asc' ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />
+      )}
+    </div>
+  </th>
+);
+
 const PMCC = () => {
   const [opportunities, setOpportunities] = useState([]);
   const [loading, setLoading] = useState(true);
