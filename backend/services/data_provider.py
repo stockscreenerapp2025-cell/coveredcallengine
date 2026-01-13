@@ -156,7 +156,24 @@ async def fetch_options_chain(
             # Limit contracts for price fetching
             contracts_to_fetch = contracts[:40]
             
-            # Step 2: Fetch prices in parallel
+            # Step 2: Try to get IV from options snapshot (more reliable)
+            iv_data = {}
+            try:
+                snapshot_url = f"{POLYGON_BASE_URL}/v3/snapshot/options/{symbol.upper()}"
+                snapshot_response = await client.get(snapshot_url, params={"apiKey": api_key})
+                if snapshot_response.status_code == 200:
+                    snapshot_data = snapshot_response.json()
+                    for result in snapshot_data.get("results", []):
+                        details = result.get("details", {})
+                        greeks = result.get("greeks", {})
+                        contract_ticker = details.get("ticker", "")
+                        if contract_ticker and greeks.get("implied_volatility"):
+                            iv_data[contract_ticker] = greeks.get("implied_volatility", 0)
+                    logging.info(f"Fetched IV data for {len(iv_data)} contracts from snapshot")
+            except Exception as e:
+                logging.debug(f"Snapshot IV fetch failed for {symbol}: {e}")
+            
+            # Step 3: Fetch prices in parallel
             semaphore = asyncio.Semaphore(15)
             
             async def fetch_contract_price(contract):
