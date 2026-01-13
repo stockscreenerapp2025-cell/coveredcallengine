@@ -161,6 +161,18 @@ async def _get_best_opportunity(symbol: str, api_key: str, underlying_price: flo
                 estimated_delta = max(0.15, min(0.60, estimated_delta))
                 
                 iv = opt.get("implied_volatility", 0.25)
+                iv_rank = min(100, iv * 100)
+                
+                # Determine type: Weekly (<=7 DTE) or Monthly
+                option_type = "Weekly" if dte <= 7 else "Monthly"
+                
+                # Calculate AI Score similar to screener
+                roi_score = min(roi_pct * 15, 40)
+                iv_score = min(iv_rank / 100 * 20, 20)
+                delta_score = max(0, 20 - abs(estimated_delta - 0.3) * 50)
+                protection = (premium / underlying_price) * 100 if strike > underlying_price else ((strike - underlying_price + premium) / underlying_price * 100)
+                protection_score = min(abs(protection), 10) * 2
+                ai_score = round(roi_score + iv_score + delta_score + protection_score, 1)
                 
                 best_opp = {
                     "strike": strike,
@@ -171,7 +183,9 @@ async def _get_best_opportunity(symbol: str, api_key: str, underlying_price: flo
                     "delta": round(estimated_delta, 3),
                     "iv": round(iv * 100, 1),
                     "volume": opt.get("volume", 0),
-                    "open_interest": opt.get("open_interest", 0)
+                    "open_interest": opt.get("open_interest", 0),
+                    "type": option_type,
+                    "ai_score": ai_score
                 }
         
         return best_opp
