@@ -884,7 +884,6 @@ const Portfolio = () => {
                         <ExternalLink className="w-4 h-4 mr-2" />
                         Open IBKR Account
                       </Button>
-                      <p className="text-xs text-zinc-600 text-center mt-1">Opens in new window</p>
                     </div>
                   </CardContent>
                 </Card>

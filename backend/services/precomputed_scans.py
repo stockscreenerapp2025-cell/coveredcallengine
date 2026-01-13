@@ -135,7 +135,8 @@ PMCC_PROFILES = {
     "conservative": {
         "label": "Capital Efficient Income",
         "description": "High delta LEAPS with conservative short calls for stable income",
-        "long_dte_min": 180,
+        "long_dte_min": 365,  # Minimum 12 months for true LEAPS
+        "long_dte_max": 730,
         "long_delta_min": 0.70,
         "long_delta_max": 0.80,
         "long_itm_pct": 0.10,  # ITM >= 10%
@@ -147,8 +148,8 @@ PMCC_PROFILES = {
     "balanced": {
         "label": "Leveraged Income",
         "description": "Moderate delta LEAPS with balanced risk/reward diagonal spread",
-        "long_dte_min": 120,
-        "long_dte_max": 240,
+        "long_dte_min": 365,  # Minimum 12 months for true LEAPS
+        "long_dte_max": 730,
         "long_delta_min": 0.65,
         "long_delta_max": 0.75,
         "short_delta_min": 0.30,
@@ -159,7 +160,7 @@ PMCC_PROFILES = {
     "aggressive": {
         "label": "Max Yield Diagonal",
         "description": "Lower delta LEAPS with aggressive short calls for maximum yield",
-        "long_dte_min": 180,
+        "long_dte_min": 365,  # Minimum 12 months for true LEAPS
         "long_dte_max": 730,
         "long_delta_min": 0.55,
         "long_delta_max": 0.70,
