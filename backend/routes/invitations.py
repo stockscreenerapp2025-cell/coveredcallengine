@@ -549,6 +549,10 @@ async def send_welcome_email(email: str, name: str, role: str, environment: str 
                         Log In Now
                     </a>
                 </div>
+                
+                <p style="color: #71717a; font-size: 12px; text-align: center; margin-top: 20px;">
+                    💡 Tip: If someone else is logged in, please log out first or use a private/incognito window.
+                </p>
             </div>
             
             <div style="text-align: center; padding: 20px; border-top: 1px solid #27272a; color: #71717a; font-size: 12px;">
