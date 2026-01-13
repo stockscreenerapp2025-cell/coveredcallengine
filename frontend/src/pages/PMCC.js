@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { screenerApi, simulatorApi } from '../lib/api';
+import { screenerApi, simulatorApi, scansApi } from '../lib/api';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
@@ -33,7 +33,12 @@ import {
   Target,
   ChevronDown,
   ChevronUp,
-  Play
+  Play,
+  Zap,
+  Shield,
+  BarChart3,
+  Flame,
+  X
 } from 'lucide-react';
 import { toast } from 'sonner';
 import StockDetailModal from '../components/StockDetailModal';
@@ -45,9 +50,15 @@ const PMCC = () => {
   const [apiInfo, setApiInfo] = useState(null);
   const [filtersOpen, setFiltersOpen] = useState(true);
   const [selectedStock, setSelectedStock] = useState(null);
+  const [selectedScanData, setSelectedScanData] = useState(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [sortField, setSortField] = useState('score');
   const [sortDirection, setSortDirection] = useState('desc');
+  
+  // Pre-computed scans state
+  const [availableScans, setAvailableScans] = useState(null);
+  const [activeScan, setActiveScan] = useState(null);
+  const [scanLoading, setScanLoading] = useState(false);
   
   // Simulator state
   const [simulateModalOpen, setSimulateModalOpen] = useState(false);
