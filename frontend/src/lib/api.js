@@ -65,6 +65,19 @@ export const screenerApi = {
   clearCache: () => api.post('/screener/clear-cache'),
 };
 
+// Pre-computed Scans API
+export const scansApi = {
+  getAvailable: () => api.get('/scans/available'),
+  getCoveredCallScan: (riskProfile, params = {}) => 
+    api.get(`/scans/covered-call/${riskProfile}`, { params }),
+  getPMCCScan: (riskProfile, params = {}) => 
+    api.get(`/scans/pmcc/${riskProfile}`, { params }),
+  triggerScan: (strategy, riskProfile) => 
+    api.post(`/scans/trigger/${strategy}/${riskProfile}`),
+  triggerAll: () => api.post('/scans/trigger-all'),
+  getStatus: () => api.get('/scans/admin/status'),
+};
+
 export const portfolioApi = {
   getPositions: () => api.get('/portfolio/positions'),
   addPosition: (data) => api.post('/portfolio/positions', data),
