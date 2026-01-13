@@ -863,19 +863,8 @@ const PMCC = () => {
                     </thead>
                     <tbody>
                       {sortedOpportunities.map((opp, index) => {
-                        // Handle both old API format and pre-computed scan format
-                        const leapsDte = opp.leaps_dte || opp.long_dte;
-                        const leapsStrike = opp.leaps_strike || opp.long_strike;
-                        const leapsCost = opp.leaps_cost || (opp.long_premium ? opp.long_premium * 100 : 0);
-                        const leapsDelta = opp.leaps_delta || opp.long_delta;
-                        const shortDte = opp.short_dte;
-                        const shortStrike = opp.short_strike;
-                        const shortPremium = opp.short_premium ? opp.short_premium * 100 : 0;
-                        const shortDelta = opp.short_delta;
-                        const netDebit = opp.net_debit || (leapsCost - shortPremium);
-                        const strikeWidth = shortStrike && leapsStrike ? (shortStrike - leapsStrike) : opp.strike_width;
-                        const roiPerCycle = opp.roi_per_cycle || opp.roi_pct || (netDebit > 0 ? (shortPremium / netDebit) * 100 : 0);
-                        const annualizedRoi = opp.annualized_roi || (shortDte > 0 ? roiPerCycle * (365 / shortDte) : 0);
+                        // Normalize data from both custom API and pre-computed API
+                        const norm = normalizeOpp(opp);
                         
                         return (
                           <tr 
@@ -893,22 +882,22 @@ const PMCC = () => {
                             <td className="font-mono">${opp.stock_price?.toFixed(2)}</td>
                             <td>
                               <div className="flex flex-col">
-                                <span className="text-emerald-400 font-mono text-sm">{formatOptionContract(leapsDte, leapsStrike)}</span>
-                                <span className="text-xs text-zinc-500">δ{leapsDelta?.toFixed(2)}</span>
+                                <span className="text-emerald-400 font-mono text-sm">{formatOptionContract(norm.leaps_dte, norm.leaps_strike)}</span>
+                                <span className="text-xs text-zinc-500">δ{norm.leaps_delta?.toFixed(2)}</span>
                               </div>
                             </td>
-                            <td className="text-red-400 font-mono">${leapsCost?.toLocaleString()}</td>
+                            <td className="text-red-400 font-mono">${norm.leaps_cost?.toLocaleString()}</td>
                             <td>
                               <div className="flex flex-col">
-                                <span className="text-cyan-400 font-mono text-sm">{formatOptionContract(shortDte, shortStrike)}</span>
-                                <span className="text-xs text-zinc-500">δ{shortDelta?.toFixed(2)}</span>
+                                <span className="text-cyan-400 font-mono text-sm">{formatOptionContract(opp.short_dte, opp.short_strike)}</span>
+                                <span className="text-xs text-zinc-500">δ{opp.short_delta?.toFixed(2)}</span>
                               </div>
                             </td>
-                            <td className="text-emerald-400 font-mono">${shortPremium?.toFixed(0)}</td>
-                            <td className="text-white font-mono">${netDebit?.toLocaleString()}</td>
-                            <td className="font-mono">${strikeWidth?.toFixed(0)}</td>
-                            <td className="text-yellow-400 font-semibold">{roiPerCycle?.toFixed(1)}%</td>
-                            <td className="text-emerald-400 font-semibold">{annualizedRoi?.toFixed(0)}%</td>
+                            <td className="text-emerald-400 font-mono">${norm.short_premium_total?.toFixed(0)}</td>
+                            <td className="text-white font-mono">${norm.net_debit?.toLocaleString()}</td>
+                            <td className="font-mono">${norm.strike_width?.toFixed(0)}</td>
+                            <td className="text-yellow-400 font-semibold">{norm.roi_per_cycle?.toFixed(1)}%</td>
+                            <td className="text-emerald-400 font-semibold">{norm.annualized_roi?.toFixed(0)}%</td>
                             <td>
                               <Badge className={`${opp.score >= 70 ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' : opp.score >= 50 ? 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30' : 'bg-violet-500/20 text-violet-400 border-violet-500/30'}`}>
                                 {opp.score?.toFixed(0)}
