@@ -803,6 +803,7 @@ const Dashboard = () => {
                     <th>Delta</th>
                     <th>IV</th>
                     <th>AI Score</th>
+                    <th>Analyst</th>
                     <th className="text-center">Action</th>
                   </tr>
                 </thead>
