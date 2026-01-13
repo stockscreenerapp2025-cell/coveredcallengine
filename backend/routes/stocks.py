@@ -5,12 +5,27 @@ from fastapi import APIRouter, Depends, Query, HTTPException
 from datetime import datetime, timedelta
 import logging
 import httpx
+import asyncio
+import os
+from concurrent.futures import ThreadPoolExecutor
 
 import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from utils.auth import get_current_user
+
+# Lazy import yfinance to avoid startup slowdown
+_yf = None
+def get_yfinance():
+    global _yf
+    if _yf is None:
+        import yfinance as yf
+        _yf = yf
+    return _yf
+
+# Thread pool for yfinance (which is blocking)
+_executor = ThreadPoolExecutor(max_workers=5)
 
 stocks_router = APIRouter(tags=["Stocks"])
 
