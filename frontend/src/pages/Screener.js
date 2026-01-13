@@ -1449,7 +1449,9 @@ const Screener = () => {
         onClose={() => {
           setIsModalOpen(false);
           setSelectedStock(null);
+          setSelectedScanData(null);
         }}
+        scanData={selectedScanData}
       />
     </div>
   );
