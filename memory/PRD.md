@@ -14,6 +14,15 @@ Build a web-based application named "Covered Call Engine" to identify, analyze, 
 - Powerful screening engine with extensive filters
 - Supports stocks and ETFs
 - Uses Polygon.io for stock data, Yahoo Finance fallback for ETFs
+- **Pre-Computed Scans** (NEW - Jan 13, 2026)
+  - Income Guard (Conservative): Stable large-caps, SMA trending, high probability
+  - Steady Income (Balanced): Growth stocks, moderate IV, solid fundamentals
+  - Premium Hunter (Aggressive): High momentum, high IV, maximum premium yield
+  - Results pre-computed nightly at 4:45 PM ET after market close
+  - Instant loading from MongoDB (no API delay on click)
+  - Technical filters: SMA50/200 alignment, RSI, ATR%, price stability
+  - Fundamental filters: Market cap, EPS, ROE, D/E, revenue growth
+  - Options filters: Delta range, DTE range, premium yield minimum
 
 ### 3. PMCC Screener
 - Dedicated page for Poor Man's Covered Call strategies
@@ -45,6 +54,10 @@ Build a web-based application named "Covered Call Engine" to identify, analyze, 
 - User management
 - API key configuration (Polygon.io, MarketAux, OpenAI)
 - Cache management
+- **Pre-Computed Scans Management** (NEW - Jan 13, 2026)
+  - Trigger manual scans for any risk profile
+  - View scan status and results count
+  - Automatic nightly scheduler at 4:45 PM ET
 
 ### 8. Legal & Contact
 - Terms & Conditions page
