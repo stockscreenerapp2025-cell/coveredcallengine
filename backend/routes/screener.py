@@ -751,6 +751,14 @@ async def screen_pmcc(
         opportunities.sort(key=lambda x: x["score"], reverse=True)
         opportunities = opportunities[:100]
         
+        # Fetch analyst ratings for all symbols
+        symbols = [opp["symbol"] for opp in opportunities]
+        analyst_ratings = await fetch_analyst_ratings_batch(symbols)
+        
+        # Add analyst ratings to opportunities
+        for opp in opportunities:
+            opp["analyst_rating"] = analyst_ratings.get(opp["symbol"])
+        
         result = {"opportunities": opportunities, "total": len(opportunities), "is_live": True, "data_source": "polygon"}
         await funcs['set_cached_data'](cache_key, result)
         return result
