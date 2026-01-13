@@ -104,7 +104,7 @@ const TradingViewChart = memo(({ symbol }) => {
   return <div ref={containerRef} style={{ height: '100%', width: '100%' }} />;
 });
 
-const StockDetailModal = ({ symbol, isOpen, onClose }) => {
+const StockDetailModal = ({ symbol, isOpen, onClose, scanData = null }) => {
   const [stockData, setStockData] = useState(null);
   const [loading, setLoading] = useState(true);
 
@@ -139,6 +139,47 @@ const StockDetailModal = ({ symbol, isOpen, onClose }) => {
     if (num >= 1e6) return `$${(num / 1e6).toFixed(2)}M`;
     return num.toLocaleString();
   };
+
+  // Merge API data with pre-computed scan data
+  const getTechnicals = () => {
+    const apiTechnicals = stockData?.technicals || {};
+    if (scanData) {
+      return {
+        ...apiTechnicals,
+        sma_50: scanData.sma50 || apiTechnicals.sma_50,
+        sma_200: scanData.sma200 || apiTechnicals.sma_200,
+        rsi: scanData.rsi14 || apiTechnicals.rsi,
+        atr_pct: scanData.atr_pct,
+        delta: scanData.delta,
+        above_sma_50: scanData.sma50 ? stockData?.price > scanData.sma50 : apiTechnicals.above_sma_50,
+        above_sma_200: scanData.sma200 ? stockData?.price > scanData.sma200 : apiTechnicals.above_sma_200,
+        sma_50_above_200: scanData.sma50 && scanData.sma200 ? scanData.sma50 > scanData.sma200 : apiTechnicals.sma_50_above_200,
+        trend: scanData.sma50 && scanData.sma200 
+          ? (scanData.sma50 > scanData.sma200 ? 'bullish' : 'bearish') 
+          : apiTechnicals.trend
+      };
+    }
+    return apiTechnicals;
+  };
+
+  const getFundamentals = () => {
+    const apiFundamentals = stockData?.fundamentals || {};
+    if (scanData) {
+      return {
+        ...apiFundamentals,
+        market_cap: scanData.market_cap || apiFundamentals.market_cap,
+        eps_ttm: scanData.eps_ttm,
+        roe: scanData.roe,
+        debt_to_equity: scanData.debt_to_equity,
+        days_to_earnings: scanData.days_to_earnings,
+        sector: scanData.sector || apiFundamentals.sector
+      };
+    }
+    return apiFundamentals;
+  };
+
+  const technicals = getTechnicals();
+  const fundamentals = getFundamentals();
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
