@@ -242,23 +242,29 @@ const StockDetailModal = ({ symbol, isOpen, onClose, scanData = null }) => {
                       <div className="grid grid-cols-2 gap-3">
                         <div className="p-3 rounded bg-zinc-900/50">
                           <div className="text-xs text-zinc-500 mb-1">SMA 50</div>
-                          <div className="text-lg font-mono text-blue-400">
-                            ${stockData.technicals?.sma_50?.toFixed(2) || 'N/A'}
+                          <div className="text-lg font-mono text-yellow-400">
+                            ${technicals?.sma_50?.toFixed(2) || 'N/A'}
                           </div>
-                          {stockData.technicals?.above_sma_50 !== undefined && (
-                            <div className={`text-xs ${stockData.technicals.above_sma_50 ? 'text-emerald-400' : 'text-red-400'}`}>
-                              Price {stockData.technicals.above_sma_50 ? 'Above' : 'Below'}
+                          {(technicals?.above_sma_50 !== undefined || (stockData?.price && technicals?.sma_50)) && (
+                            <div className={`text-xs ${
+                              technicals?.above_sma_50 || (stockData?.price > technicals?.sma_50) 
+                                ? 'text-emerald-400' : 'text-red-400'
+                            }`}>
+                              Price {technicals?.above_sma_50 || (stockData?.price > technicals?.sma_50) ? 'Above ↑' : 'Below ↓'}
                             </div>
                           )}
                         </div>
                         <div className="p-3 rounded bg-zinc-900/50">
                           <div className="text-xs text-zinc-500 mb-1">SMA 200</div>
-                          <div className="text-lg font-mono text-orange-400">
-                            ${stockData.technicals?.sma_200?.toFixed(2) || 'N/A'}
+                          <div className="text-lg font-mono text-blue-400">
+                            ${technicals?.sma_200?.toFixed(2) || 'N/A'}
                           </div>
-                          {stockData.technicals?.above_sma_200 !== undefined && (
-                            <div className={`text-xs ${stockData.technicals.above_sma_200 ? 'text-emerald-400' : 'text-red-400'}`}>
-                              Price {stockData.technicals.above_sma_200 ? 'Above' : 'Below'}
+                          {(technicals?.above_sma_200 !== undefined || (stockData?.price && technicals?.sma_200)) && (
+                            <div className={`text-xs ${
+                              technicals?.above_sma_200 || (stockData?.price > technicals?.sma_200) 
+                                ? 'text-emerald-400' : 'text-red-400'
+                            }`}>
+                              Price {technicals?.above_sma_200 || (stockData?.price > technicals?.sma_200) ? 'Above ↑' : 'Below ↓'}
                             </div>
                           )}
                         </div>
@@ -269,19 +275,19 @@ const StockDetailModal = ({ symbol, isOpen, onClose, scanData = null }) => {
                         <div className="flex justify-between items-center mb-2">
                           <span className="text-xs text-zinc-500">RSI (14)</span>
                           <span className={`text-lg font-mono ${
-                            stockData.technicals?.rsi > 70 ? 'text-red-400' : 
-                            stockData.technicals?.rsi < 30 ? 'text-emerald-400' : 'text-white'
+                            technicals?.rsi > 70 ? 'text-red-400' : 
+                            technicals?.rsi < 30 ? 'text-emerald-400' : 'text-white'
                           }`}>
-                            {stockData.technicals?.rsi?.toFixed(1) || 'N/A'}
+                            {technicals?.rsi?.toFixed(1) || 'N/A'}
                           </span>
                         </div>
                         <div className="h-2 bg-zinc-700 rounded-full overflow-hidden">
                           <div 
                             className={`h-full ${
-                              stockData.technicals?.rsi > 70 ? 'bg-red-500' : 
-                              stockData.technicals?.rsi < 30 ? 'bg-emerald-500' : 'bg-violet-500'
+                              technicals?.rsi > 70 ? 'bg-red-500' : 
+                              technicals?.rsi < 30 ? 'bg-emerald-500' : 'bg-violet-500'
                             }`}
-                            style={{ width: `${Math.min(stockData.technicals?.rsi || 0, 100)}%` }}
+                            style={{ width: `${Math.min(technicals?.rsi || 0, 100)}%` }}
                           />
                         </div>
                         <div className="flex justify-between text-xs text-zinc-500 mt-1">
@@ -290,21 +296,53 @@ const StockDetailModal = ({ symbol, isOpen, onClose, scanData = null }) => {
                         </div>
                       </div>
 
+                      {/* ATR% and Delta - from scan data */}
+                      {(technicals?.atr_pct !== undefined || technicals?.delta !== undefined) && (
+                        <div className="grid grid-cols-2 gap-3">
+                          {technicals?.atr_pct !== undefined && (
+                            <div className="p-3 rounded bg-zinc-900/50">
+                              <div className="text-xs text-zinc-500 mb-1">ATR %</div>
+                              <div className={`text-lg font-mono ${
+                                technicals.atr_pct > 4 ? 'text-orange-400' : 
+                                technicals.atr_pct > 2.5 ? 'text-yellow-400' : 'text-emerald-400'
+                              }`}>
+                                {technicals.atr_pct?.toFixed(2)}%
+                              </div>
+                              <div className="text-xs text-zinc-500">
+                                {technicals.atr_pct > 4 ? 'High Volatility' : 
+                                 technicals.atr_pct > 2.5 ? 'Moderate' : 'Low Volatility'}
+                              </div>
+                            </div>
+                          )}
+                          {technicals?.delta !== undefined && (
+                            <div className="p-3 rounded bg-zinc-900/50">
+                              <div className="text-xs text-zinc-500 mb-1">Delta</div>
+                              <div className="text-lg font-mono text-cyan-400">
+                                {technicals.delta?.toFixed(2)}
+                              </div>
+                              <div className="text-xs text-zinc-500">
+                                Prob OTM: {Math.round((1 - technicals.delta) * 100)}%
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
+
                       {/* Trend */}
                       <div className="p-3 rounded bg-zinc-900/50">
                         <div className="text-xs text-zinc-500 mb-2">Overall Trend</div>
                         <Badge className={`text-sm ${
-                          stockData.technicals?.trend === 'bullish' ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' :
-                          stockData.technicals?.trend === 'bearish' ? 'bg-red-500/20 text-red-400 border-red-500/30' :
+                          technicals?.trend === 'bullish' ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' :
+                          technicals?.trend === 'bearish' ? 'bg-red-500/20 text-red-400 border-red-500/30' :
                           'bg-yellow-500/20 text-yellow-400 border-yellow-500/30'
                         }`}>
-                          {stockData.technicals?.trend === 'bullish' && <TrendingUp className="w-3 h-3 mr-1" />}
-                          {stockData.technicals?.trend === 'bearish' && <TrendingDown className="w-3 h-3 mr-1" />}
-                          {stockData.technicals?.trend?.toUpperCase() || 'NEUTRAL'}
+                          {technicals?.trend === 'bullish' && <TrendingUp className="w-3 h-3 mr-1" />}
+                          {technicals?.trend === 'bearish' && <TrendingDown className="w-3 h-3 mr-1" />}
+                          {technicals?.trend?.toUpperCase() || 'NEUTRAL'}
                         </Badge>
-                        {stockData.technicals?.sma_50_above_200 !== undefined && (
-                          <div className={`text-xs mt-2 ${stockData.technicals.sma_50_above_200 ? 'text-emerald-400' : 'text-red-400'}`}>
-                            {stockData.technicals.sma_50_above_200 ? '✓ Golden Cross (SMA50 > SMA200)' : '✗ Death Cross (SMA50 < SMA200)'}
+                        {technicals?.sma_50_above_200 !== undefined && (
+                          <div className={`text-xs mt-2 ${technicals.sma_50_above_200 ? 'text-emerald-400' : 'text-red-400'}`}>
+                            {technicals.sma_50_above_200 ? '✓ Golden Cross (SMA50 > SMA200)' : '✗ Death Cross (SMA50 < SMA200)'}
                           </div>
                         )}
                       </div>
