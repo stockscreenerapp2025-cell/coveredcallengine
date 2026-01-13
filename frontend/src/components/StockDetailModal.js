@@ -548,6 +548,72 @@ const StockDetailModal = ({ symbol, isOpen, onClose, scanData = null }) => {
                     </CardContent>
                   </Card>
 
+                  {/* Analyst Ratings Card */}
+                  <Card className="bg-zinc-800/50 border-zinc-700">
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-sm flex items-center gap-2">
+                        <Target className="w-4 h-4 text-violet-400" />
+                        Analyst Ratings
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      {stockData?.analyst_ratings?.rating ? (
+                        <>
+                          <div className="flex items-center justify-between mb-3">
+                            <Badge className={`text-sm px-3 py-1 ${
+                              stockData.analyst_ratings.rating === 'Strong Buy' 
+                                ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30'
+                                : stockData.analyst_ratings.rating === 'Buy'
+                                  ? 'bg-green-500/20 text-green-400 border-green-500/30'
+                                  : stockData.analyst_ratings.rating === 'Hold'
+                                    ? 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30'
+                                    : 'bg-red-500/20 text-red-400 border-red-500/30'
+                            }`}>
+                              {stockData.analyst_ratings.rating}
+                            </Badge>
+                            {stockData.analyst_ratings.has_sufficient_coverage ? (
+                              <span className="text-xs text-zinc-400">
+                                {stockData.analyst_ratings.num_analysts} analysts
+                              </span>
+                            ) : (
+                              <span className="text-xs text-orange-400">
+                                ⚠ {stockData.analyst_ratings.num_analysts || 0} analysts (min 5 recommended)
+                              </span>
+                            )}
+                          </div>
+                          
+                          {stockData.analyst_ratings.target_price && (
+                            <div className="grid grid-cols-2 gap-3">
+                              <div className="p-3 rounded bg-zinc-900/50">
+                                <div className="text-xs text-zinc-500">Target Price</div>
+                                <div className="text-lg font-mono text-white">
+                                  ${stockData.analyst_ratings.target_price?.toFixed(2)}
+                                </div>
+                                {stockData.analyst_ratings.upside_pct !== null && (
+                                  <div className={`text-xs ${stockData.analyst_ratings.upside_pct >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                                    {stockData.analyst_ratings.upside_pct >= 0 ? '▲' : '▼'} {Math.abs(stockData.analyst_ratings.upside_pct)}% upside
+                                  </div>
+                                )}
+                              </div>
+                              <div className="p-3 rounded bg-zinc-900/50">
+                                <div className="text-xs text-zinc-500">Price Range</div>
+                                <div className="text-sm font-mono">
+                                  <span className="text-red-400">${stockData.analyst_ratings.target_low?.toFixed(0)}</span>
+                                  <span className="text-zinc-500"> - </span>
+                                  <span className="text-emerald-400">${stockData.analyst_ratings.target_high?.toFixed(0)}</span>
+                                </div>
+                              </div>
+                            </div>
+                          )}
+                        </>
+                      ) : (
+                        <div className="text-sm text-zinc-500 text-center py-4">
+                          No analyst coverage available
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+
                   {/* Price Stats */}
                   <Card className="bg-zinc-800/50 border-zinc-700">
                     <CardHeader className="pb-2">
