@@ -535,6 +535,14 @@ async def get_dashboard_opportunities(user: dict = Depends(get_current_user)):
         # Combine: Weekly first, then Monthly
         opportunities = top_weekly + top_monthly
         
+        # Fetch analyst ratings for all symbols in parallel
+        symbols = [opp["symbol"] for opp in opportunities]
+        analyst_ratings = await fetch_analyst_ratings_batch(symbols)
+        
+        # Add analyst ratings to opportunities
+        for opp in opportunities:
+            opp["analyst_rating"] = analyst_ratings.get(opp["symbol"])
+        
         result = {
             "opportunities": opportunities, 
             "total": len(opportunities), 
