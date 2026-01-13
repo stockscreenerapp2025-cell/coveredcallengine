@@ -66,42 +66,76 @@ const PMCC = () => {
   const [simulateContracts, setSimulateContracts] = useState(1);
   const [simulateLoading, setSimulateLoading] = useState(false);
 
+  // Helper to normalize PMCC data from both custom API (leaps_*) and pre-computed API (long_*)
+  const normalizeOpp = (opp) => {
+    if (!opp) return null;
+    const leapsDte = opp.leaps_dte || opp.long_dte;
+    const leapsStrike = opp.leaps_strike || opp.long_strike;
+    const leapsPremium = opp.leaps_premium || opp.long_premium;
+    const leapsCost = opp.leaps_cost || (leapsPremium ? leapsPremium * 100 : 0);
+    const leapsDelta = opp.leaps_delta || opp.long_delta;
+    const leapsExpiry = opp.leaps_expiry || opp.long_expiry;
+    const shortPremium = opp.short_premium || 0;
+    const shortPremiumTotal = shortPremium < 10 ? shortPremium * 100 : shortPremium; // Normalize to total
+    const netDebit = opp.net_debit || (leapsCost - shortPremiumTotal);
+    const strikeWidth = opp.strike_width || (opp.short_strike && leapsStrike ? opp.short_strike - leapsStrike : 0);
+    const roiPerCycle = opp.roi_per_cycle || opp.roi_pct || (netDebit > 0 ? (shortPremiumTotal / netDebit) * 100 : 0);
+    const annualizedRoi = opp.annualized_roi || (opp.short_dte > 0 ? roiPerCycle * (365 / opp.short_dte) : 0);
+    
+    return {
+      ...opp,
+      leaps_dte: leapsDte,
+      leaps_strike: leapsStrike,
+      leaps_premium: leapsPremium,
+      leaps_cost: leapsCost,
+      leaps_delta: leapsDelta,
+      leaps_expiry: leapsExpiry,
+      short_premium_total: shortPremiumTotal,
+      net_debit: netDebit,
+      strike_width: strikeWidth,
+      roi_per_cycle: roiPerCycle,
+      annualized_roi: annualizedRoi,
+    };
+  };
+
   // Handle adding to simulator
   const handleSimulate = async () => {
     if (!simulateOpp) return;
     
     setSimulateLoading(true);
     try {
+      // Normalize the data first
+      const norm = normalizeOpp(simulateOpp);
+      
       // PMCC data uses leaps_cost (total cost) - convert to per-share premium for backend
-      // leaps_cost is typically the cost for 1 contract (100 shares)
-      const leapsPremiumPerShare = simulateOpp.leaps_cost ? simulateOpp.leaps_cost / 100 : simulateOpp.leaps_premium;
+      const leapsPremiumPerShare = norm.leaps_cost ? norm.leaps_cost / 100 : norm.leaps_premium;
       
       const tradeData = {
-        symbol: simulateOpp.symbol,
+        symbol: norm.symbol,
         strategy_type: 'pmcc',
-        underlying_price: simulateOpp.stock_price,
-        short_call_strike: simulateOpp.short_strike,
-        short_call_expiry: simulateOpp.short_expiry,
-        short_call_premium: simulateOpp.short_premium,
-        short_call_delta: simulateOpp.short_delta,
-        short_call_iv: simulateOpp.short_iv,
-        leaps_strike: simulateOpp.leaps_strike,
-        leaps_expiry: simulateOpp.leaps_expiry,
+        underlying_price: norm.stock_price,
+        short_call_strike: norm.short_strike,
+        short_call_expiry: norm.short_expiry || norm.leaps_expiry, // Fallback
+        short_call_premium: norm.short_premium,
+        short_call_delta: norm.short_delta,
+        short_call_iv: norm.short_iv,
+        leaps_strike: norm.leaps_strike,
+        leaps_expiry: norm.leaps_expiry,
         leaps_premium: leapsPremiumPerShare,
-        leaps_delta: simulateOpp.leaps_delta,
+        leaps_delta: norm.leaps_delta,
         contracts: simulateContracts,
         scan_parameters: {
-          score: simulateOpp.score,
-          net_debit: simulateOpp.net_debit,
-          max_profit: simulateOpp.max_profit,
-          leaps_dte: simulateOpp.leaps_dte,
-          short_dte: simulateOpp.short_dte,
-          leaps_cost: simulateOpp.leaps_cost
+          score: norm.score,
+          net_debit: norm.net_debit,
+          max_profit: norm.max_profit,
+          leaps_dte: norm.leaps_dte,
+          short_dte: norm.short_dte,
+          leaps_cost: norm.leaps_cost
         }
       };
       
       await simulatorApi.addTrade(tradeData);
-      toast.success(`Added ${simulateOpp.symbol} PMCC to Simulator!`);
+      toast.success(`Added ${norm.symbol} PMCC to Simulator!`);
       setSimulateModalOpen(false);
       setSimulateOpp(null);
       setSimulateContracts(1);
