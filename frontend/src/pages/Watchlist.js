@@ -137,7 +137,6 @@ const Watchlist = () => {
 
   const formatExpiry = (expiry) => {
     if (!expiry) return '-';
-    // Convert 2025-01-17 to 17JAN25
     const date = new Date(expiry + 'T00:00:00');
     const day = date.getDate().toString().padStart(2, '0');
     const month = date.toLocaleString('en-US', { month: 'short' }).toUpperCase();
@@ -278,7 +277,10 @@ const Watchlist = () => {
                 <TableHeader>
                   <TableRow className="border-white/5 hover:bg-transparent">
                     <TableHead className="text-zinc-400 font-medium">Symbol</TableHead>
-                    <TableHead className="text-zinc-400 font-medium text-right">Price</TableHead>
+                    <TableHead className="text-zinc-400 font-medium">Date Added</TableHead>
+                    <TableHead className="text-zinc-400 font-medium text-right">Price Added</TableHead>
+                    <TableHead className="text-zinc-400 font-medium text-right">Current</TableHead>
+                    <TableHead className="text-zinc-400 font-medium text-right">Movement</TableHead>
                     <TableHead className="text-zinc-400 font-medium">Strike</TableHead>
                     <TableHead className="text-zinc-400 font-medium text-center">Type</TableHead>
                     <TableHead className="text-zinc-400 font-medium text-center">DTE</TableHead>
@@ -305,25 +307,42 @@ const Watchlist = () => {
                         <TableCell className="font-bold text-white">
                           <div className="flex flex-col">
                             <span className="text-lg">{item.symbol}</span>
-                            <div className="flex items-center gap-2 text-xs">
-                              <span className="text-zinc-500">
-                                Added {formatDate(item.added_at)}
-                              </span>
-                              {item.price_when_added > 0 && item.movement_pct !== 0 && (
-                                <span className={`flex items-center gap-1 ${
-                                  item.movement_pct > 0 ? 'text-emerald-400' : 'text-red-400'
-                                }`}>
-                                  {getMovementIcon(item.movement_pct)}
-                                  {formatPercent(item.movement_pct)}
-                                </span>
-                              )}
-                            </div>
+                            {item.notes && (
+                              <span className="text-xs text-zinc-500 truncate max-w-[120px]">{item.notes}</span>
+                            )}
                           </div>
+                        </TableCell>
+                        
+                        {/* Date Added */}
+                        <TableCell className="text-zinc-400 text-sm">
+                          {formatDate(item.added_at)}
+                        </TableCell>
+                        
+                        {/* Price When Added */}
+                        <TableCell className="text-right font-mono text-zinc-400">
+                          {item.price_when_added > 0 ? formatCurrency(item.price_when_added) : '-'}
                         </TableCell>
                         
                         {/* Current Price */}
                         <TableCell className="text-right font-mono text-white font-medium">
                           {formatCurrency(item.current_price)}
+                        </TableCell>
+                        
+                        {/* Movement */}
+                        <TableCell className="text-right">
+                          {item.price_when_added > 0 ? (
+                            <div className="flex items-center justify-end gap-1">
+                              {getMovementIcon(item.movement_pct)}
+                              <span className={`font-mono ${
+                                item.movement_pct > 0 ? 'text-emerald-400' : 
+                                item.movement_pct < 0 ? 'text-red-400' : 'text-zinc-500'
+                              }`}>
+                                {formatPercent(item.movement_pct)}
+                              </span>
+                            </div>
+                          ) : (
+                            <span className="text-zinc-600">-</span>
+                          )}
                         </TableCell>
                         
                         {/* Strike */}
