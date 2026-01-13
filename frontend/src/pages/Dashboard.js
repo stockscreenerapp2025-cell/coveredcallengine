@@ -106,7 +106,25 @@ const Dashboard = () => {
     }
   };
 
-  // Format option contract for display - already defined below, use that one
+  // Format option contract for display (e.g., "17JAN26 $46 C")
+  const formatOptionContract = (dte, strike, expiry) => {
+    const months = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
+    let expiryDate;
+    
+    if (expiry) {
+      expiryDate = new Date(expiry);
+    } else if (dte !== undefined && dte !== null) {
+      expiryDate = new Date();
+      expiryDate.setDate(expiryDate.getDate() + dte);
+    } else {
+      return `$${strike?.toFixed(0)} C`;
+    }
+    
+    const day = expiryDate.getDate().toString().padStart(2, '0');
+    const month = months[expiryDate.getMonth()];
+    const year = expiryDate.getFullYear().toString().slice(-2);
+    return `${day}${month}${year} $${strike?.toFixed(0)} C`;
+  };
 
   useEffect(() => {
     fetchDashboardData();
