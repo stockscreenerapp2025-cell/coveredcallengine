@@ -842,17 +842,17 @@ const PMCC = () => {
                   <table className="data-table">
                     <thead>
                       <tr>
-                        <SortHeader field="symbol" label="Symbol" />
-                        <SortHeader field="stock_price" label="Price" />
+                        <SortHeader field="symbol" label="Symbol" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
+                        <SortHeader field="stock_price" label="Price" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
                         <th>LEAPS (Buy)</th>
-                        <SortHeader field="leaps_cost" label="Cost" />
+                        <SortHeader field="leaps_cost" label="Cost" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
                         <th>Short (Sell)</th>
-                        <SortHeader field="short_premium" label="Premium" />
-                        <SortHeader field="net_debit" label="Net Debit" />
+                        <SortHeader field="short_premium" label="Premium" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
+                        <SortHeader field="net_debit" label="Net Debit" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
                         <th>Width</th>
                         <th>ROI/Cycle</th>
                         <th>Ann. ROI</th>
-                        <SortHeader field="score" label="AI Score" />
+                        <SortHeader field="score" label="AI Score" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
                         <th className="text-center">Action</th>
                       </tr>
                     </thead>
