@@ -134,6 +134,10 @@ async def get_stock_details(symbol: str, user: dict = Depends(get_current_user))
         "is_live": False
     }
     
+    # Fetch analyst ratings from yfinance in parallel
+    loop = asyncio.get_event_loop()
+    analyst_task = loop.run_in_executor(_executor, _fetch_analyst_ratings, symbol)
+    
     if api_key:
         try:
             async with httpx.AsyncClient(timeout=30.0) as client:
