@@ -167,7 +167,11 @@ async def _get_best_opportunity(symbol: str, api_key: str, underlying_price: flo
                     estimated_delta = 0.50 - (strike_pct_diff * 0.03)
                 estimated_delta = max(0.15, min(0.60, estimated_delta))
                 
-                iv = opt.get("implied_volatility", 0.25)
+                # Get IV from option or estimate based on ATR/price volatility
+                iv = opt.get("implied_volatility", 0)
+                if iv == 0:
+                    # Default estimate based on typical IV range (25-40% for most stocks)
+                    iv = 0.30  # 30% default
                 iv_rank = min(100, iv * 100)
                 
                 # Determine type: Weekly (<=7 DTE) or Monthly
