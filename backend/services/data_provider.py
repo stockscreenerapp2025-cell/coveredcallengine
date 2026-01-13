@@ -197,6 +197,9 @@ async def fetch_options_chain(
                                 strike = contract.get("strike_price", 0)
                                 expiry = contract.get("expiration_date", "")
                                 
+                                # Get IV from snapshot data or default
+                                iv = iv_data.get(contract_ticker, 0)
+                                
                                 return {
                                     "contract_ticker": contract_ticker,
                                     "underlying": symbol.upper(),
@@ -210,7 +213,7 @@ async def fetch_options_chain(
                                     "low": result.get("l", 0),
                                     "volume": result.get("v", 0),
                                     "vwap": result.get("vw", 0),
-                                    "implied_volatility": 0,  # Would need separate API call
+                                    "implied_volatility": iv,
                                 }
                     except Exception as e:
                         logging.debug(f"Error fetching price for {contract_ticker}: {e}")
