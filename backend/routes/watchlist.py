@@ -88,18 +88,18 @@ async def fetch_analyst_ratings_batch(symbols: List[str]) -> Dict[str, str]:
 async def fetch_stock_prices_polygon(symbols: List[str], api_key: str) -> Dict[str, dict]:
     """Fetch stock prices from Polygon API"""
     if not symbols or not api_key:
+        logging.warning(f"fetch_stock_prices_polygon: Missing symbols={symbols} or api_key={bool(api_key)}")
         return {}
     
     prices = {}
     
     async with httpx.AsyncClient(timeout=30.0) as client:
-        # Use ticker snapshot grouped endpoint for efficiency
         for symbol in symbols:
             try:
-                response = await client.get(
-                    f"https://api.polygon.io/v2/aggs/ticker/{symbol}/prev",
-                    params={"apiKey": api_key}
-                )
+                url = f"https://api.polygon.io/v2/aggs/ticker/{symbol}/prev"
+                response = await client.get(url, params={"apiKey": api_key})
+                logging.info(f"Polygon price fetch for {symbol}: status={response.status_code}")
+                
                 if response.status_code == 200:
                     data = response.json()
                     if data.get("results") and len(data["results"]) > 0:
@@ -114,8 +114,15 @@ async def fetch_stock_prices_polygon(symbols: List[str], api_key: str) -> Dict[s
                             "change": round(change, 2),
                             "change_pct": round(change_pct, 2)
                         }
+                        logging.info(f"Got price for {symbol}: ${close_price}")
+                    else:
+                        logging.warning(f"No results for {symbol} in Polygon response")
+                else:
+                    logging.warning(f"Polygon API error for {symbol}: {response.status_code}")
             except Exception as e:
-                logging.debug(f"Error fetching price for {symbol}: {e}")
+                logging.error(f"Error fetching price for {symbol}: {e}")
+    
+    return prices
     
     return prices
 
