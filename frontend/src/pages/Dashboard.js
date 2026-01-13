@@ -825,7 +825,7 @@ const Dashboard = () => {
                       <td>${opp.stock_price?.toFixed(2)}</td>
                       <td>
                         <div className="flex flex-col">
-                          <span className="font-mono text-sm">${opp.strike?.toFixed(0)}</span>
+                          <span className="font-mono text-sm text-emerald-400">{formatOptionContract(opp.dte, opp.strike, opp.expiry)}</span>
                           <Badge className={`mt-0.5 w-fit ${opp.moneyness === 'ATM' ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30 text-xs' : 'bg-blue-500/20 text-blue-400 border-blue-500/30 text-xs'}`}>
                             {opp.moneyness || (opp.strike_pct !== undefined ? (opp.strike_pct >= -2 && opp.strike_pct <= 2 ? 'ATM' : 'OTM') : 'OTM')}
                           </Badge>
