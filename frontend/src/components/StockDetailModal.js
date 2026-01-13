@@ -619,7 +619,7 @@ const StockDetailModal = ({ symbol, isOpen, onClose, scanData = null }) => {
                     <CardHeader className="pb-2">
                       <CardTitle className="text-sm flex items-center gap-2">
                         <BarChart3 className="w-4 h-4 text-cyan-400" />
-                        Today's Stats
+                        Today&apos;s Stats
                       </CardTitle>
                     </CardHeader>
                     <CardContent>
