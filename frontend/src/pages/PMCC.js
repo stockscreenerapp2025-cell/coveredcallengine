@@ -922,33 +922,6 @@ const PMCC = () => {
               )}
             </CardContent>
           </Card>
-
-          {/* Strategy Tips */}
-          <div className="grid md:grid-cols-2 gap-6">
-            <Card className="glass-card">
-              <CardHeader>
-                <CardTitle className="text-sm text-emerald-400">PMCC Advantages</CardTitle>
-              </CardHeader>
-              <CardContent className="text-xs text-zinc-400 space-y-2">
-                <p>• <span className="text-white">Lower capital requirement</span> - LEAPS cost less than 100 shares</p>
-                <p>• <span className="text-white">Built-in leverage</span> - Control 100 shares with less money</p>
-                <p>• <span className="text-white">Income generation</span> - Sell short calls repeatedly for premium</p>
-                <p>• <span className="text-white">Defined risk</span> - Maximum loss is the net debit paid</p>
-              </CardContent>
-            </Card>
-
-            <Card className="glass-card">
-              <CardHeader>
-                <CardTitle className="text-sm text-cyan-400">Key Management Rules</CardTitle>
-              </CardHeader>
-              <CardContent className="text-xs text-zinc-400 space-y-2">
-                <p>• <span className="text-white">LEAPS delta:</span> Keep at 0.80-0.90 (deep ITM) to minimize extrinsic value</p>
-                <p>• <span className="text-white">Short call delta:</span> Stay at 0.20-0.30 (OTM) to reduce assignment risk</p>
-                <p>• <span className="text-white">Roll short calls:</span> At 50% profit or 21 DTE remaining</p>
-                <p>• <span className="text-white">Roll LEAPS:</span> When 6 months remaining to avoid theta acceleration</p>
-              </CardContent>
-            </Card>
-          </div>
         </div>
       </div>
 
