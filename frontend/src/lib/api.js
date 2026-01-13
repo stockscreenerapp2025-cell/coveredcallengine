@@ -131,6 +131,8 @@ export const watchlistApi = {
   getAll: () => api.get('/watchlist/'),
   add: (data) => api.post('/watchlist/', data),
   remove: (id) => api.delete(`/watchlist/${id}`),
+  clearAll: () => api.delete('/watchlist/'),
+  updateNotes: (id, notes) => api.put(`/watchlist/${id}/notes`, null, { params: { notes } }),
 };
 
 // Simulator API
