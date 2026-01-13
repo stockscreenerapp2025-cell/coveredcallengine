@@ -200,7 +200,46 @@ const Screener = () => {
     fetchOpportunities();
     fetchSavedFilters();
     fetchMarketStatus();
+    fetchAvailableScans();
   }, []);
+
+  const fetchAvailableScans = async () => {
+    try {
+      const res = await scansApi.getAvailable();
+      setAvailableScans(res.data.scans);
+    } catch (error) {
+      console.log('Could not fetch available scans:', error);
+    }
+  };
+
+  const loadPrecomputedScan = async (riskProfile) => {
+    setScanLoading(true);
+    setActiveScan(riskProfile);
+    try {
+      const res = await scansApi.getCoveredCallScan(riskProfile);
+      setOpportunities(res.data.opportunities || []);
+      setDataInfo({
+        from_cache: false,
+        is_precomputed: true,
+        computed_at: res.data.computed_at,
+        risk_profile: riskProfile,
+        label: res.data.label
+      });
+      toast.success(`Loaded ${res.data.label} scan: ${res.data.total} opportunities`);
+    } catch (error) {
+      const msg = error.response?.data?.detail || 'Failed to load scan';
+      toast.error(msg);
+      setActiveScan(null);
+    } finally {
+      setScanLoading(false);
+      setLoading(false);
+    }
+  };
+
+  const clearActiveScan = () => {
+    setActiveScan(null);
+    fetchOpportunities();
+  };
 
   const fetchMarketStatus = async () => {
     try {
