@@ -196,7 +196,19 @@ const PMCC = () => {
       if (bypassCache) params.bypass_cache = true;
       
       const response = await screenerApi.getPMCC(params);
-      setOpportunities(response.data.opportunities || []);
+      let opportunities = response.data.opportunities || [];
+      
+      // Deduplicate by symbol - keep only the entry with highest score
+      const symbolMap = {};
+      for (const opp of opportunities) {
+        const symbol = opp.symbol;
+        if (!symbolMap[symbol] || (opp.score || 0) > (symbolMap[symbol].score || 0)) {
+          symbolMap[symbol] = opp;
+        }
+      }
+      opportunities = Object.values(symbolMap);
+      
+      setOpportunities(opportunities);
       setApiInfo(response.data);
     } catch (error) {
       console.error('PMCC fetch error:', error);
