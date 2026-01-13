@@ -287,21 +287,17 @@ async def trigger_scan(
     if strategy == "covered_call":
         opportunities = await service.run_covered_call_scan(risk_profile)
         await service.store_scan_results("covered_call", risk_profile, opportunities)
-        
-        return {
-            "message": "Scan complete",
-            "strategy": strategy,
-            "risk_profile": risk_profile,
-            "count": len(opportunities),
-            "triggered_by": admin.get("email")
-        }
-    else:
-        return {
-            "message": "PMCC scans are planned for Phase 3",
-            "strategy": strategy,
-            "risk_profile": risk_profile,
-            "count": 0
-        }
+    else:  # pmcc
+        opportunities = await service.run_pmcc_scan(risk_profile)
+        await service.store_scan_results("pmcc", risk_profile, opportunities)
+    
+    return {
+        "message": "Scan complete",
+        "strategy": strategy,
+        "risk_profile": risk_profile,
+        "count": len(opportunities),
+        "triggered_by": admin.get("email")
+    }
 
 
 @scans_router.post("/trigger-all")
