@@ -205,6 +205,8 @@ async def get_covered_call_scan(
 async def get_pmcc_scan(
     risk_profile: str,
     limit: int = Query(50, ge=1, le=100),
+    min_score: float = Query(0, ge=0),
+    sector: Optional[str] = None,
     user: dict = Depends(get_current_user)
 ):
     """
@@ -227,10 +229,20 @@ async def get_pmcc_scan(
     if not result:
         raise HTTPException(
             status_code=404,
-            detail="PMCC scans are coming in Phase 3. Currently only Covered Call scans are available."
+            detail=f"No pre-computed results for {risk_profile} PMCC scan. "
+                   f"Scans run daily at 4:45 PM ET. An admin can trigger a manual scan."
         )
     
-    opportunities = result.get("opportunities", [])[:limit]
+    opportunities = result.get("opportunities", [])
+    
+    # Apply filters
+    if min_score > 0:
+        opportunities = [o for o in opportunities if o.get("score", 0) >= min_score]
+    
+    if sector:
+        opportunities = [o for o in opportunities if o.get("sector", "").lower() == sector.lower()]
+    
+    opportunities = opportunities[:limit]
     
     return {
         "strategy": "pmcc",
