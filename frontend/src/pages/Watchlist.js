@@ -398,7 +398,7 @@ const Watchlist = () => {
                         
                         {/* Analyst Rating */}
                         <TableCell className="text-center">
-                          {item.analyst_rating ? (
+                          {item.analyst_rating && item.analyst_rating.toLowerCase() !== 'none' ? (
                             <Badge variant="outline" className={`${getAnalystColor(item.analyst_rating)} border-current`}>
                               {item.analyst_rating}
                             </Badge>
