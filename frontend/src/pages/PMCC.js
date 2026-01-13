@@ -298,6 +298,153 @@ const PMCC = () => {
 
   return (
     <div className="space-y-6" data-testid="pmcc-page">
+      {/* Pre-Computed PMCC Scan Buttons */}
+      <Card className="glass-card" data-testid="pmcc-precomputed-scans">
+        <CardHeader className="pb-3">
+          <CardTitle className="text-lg flex items-center gap-2">
+            <Zap className="w-5 h-5 text-violet-400" />
+            Quick PMCC Scans
+            <Badge className="ml-2 bg-violet-500/20 text-violet-400 border-violet-500/30 text-xs">
+              Pre-Computed
+            </Badge>
+          </CardTitle>
+          <p className="text-sm text-zinc-400 mt-1">
+            Pre-computed PMCC opportunities with LEAPS + short call combinations. Updated daily at market close.
+          </p>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {/* Capital Efficient Income - Conservative */}
+            <button
+              onClick={() => loadPrecomputedScan('conservative')}
+              disabled={scanLoading}
+              className={`p-4 rounded-xl border transition-all text-left group hover:scale-[1.02] ${
+                activeScan === 'conservative'
+                  ? 'bg-emerald-500/20 border-emerald-500/50'
+                  : 'bg-zinc-800/50 border-zinc-700/50 hover:border-emerald-500/30 hover:bg-zinc-800'
+              }`}
+              data-testid="pmcc-scan-conservative"
+            >
+              <div className="flex items-center gap-3 mb-2">
+                <div className="p-2 rounded-lg bg-emerald-500/20">
+                  <Shield className="w-5 h-5 text-emerald-400" />
+                </div>
+                <div>
+                  <h3 className="font-semibold text-white">Capital Efficient</h3>
+                  <Badge className="bg-emerald-500/20 text-emerald-400 border-emerald-500/30 text-xs">
+                    Low Risk
+                  </Badge>
+                </div>
+              </div>
+              <p className="text-xs text-zinc-400 leading-relaxed">
+                High delta LEAPS (0.70-0.80), 180+ DTE, conservative short calls
+              </p>
+              {availableScans?.pmcc?.[0]?.available && (
+                <p className="text-xs text-zinc-500 mt-2">
+                  {availableScans.pmcc[0].count} opportunities
+                </p>
+              )}
+            </button>
+
+            {/* Leveraged Income - Balanced */}
+            <button
+              onClick={() => loadPrecomputedScan('balanced')}
+              disabled={scanLoading}
+              className={`p-4 rounded-xl border transition-all text-left group hover:scale-[1.02] ${
+                activeScan === 'balanced'
+                  ? 'bg-blue-500/20 border-blue-500/50'
+                  : 'bg-zinc-800/50 border-zinc-700/50 hover:border-blue-500/30 hover:bg-zinc-800'
+              }`}
+              data-testid="pmcc-scan-balanced"
+            >
+              <div className="flex items-center gap-3 mb-2">
+                <div className="p-2 rounded-lg bg-blue-500/20">
+                  <BarChart3 className="w-5 h-5 text-blue-400" />
+                </div>
+                <div>
+                  <h3 className="font-semibold text-white">Leveraged Income</h3>
+                  <Badge className="bg-blue-500/20 text-blue-400 border-blue-500/30 text-xs">
+                    Balanced
+                  </Badge>
+                </div>
+              </div>
+              <p className="text-xs text-zinc-400 leading-relaxed">
+                Moderate delta LEAPS (0.65-0.75), 120-240 DTE, balanced risk/reward
+              </p>
+              {availableScans?.pmcc?.[1]?.available && (
+                <p className="text-xs text-zinc-500 mt-2">
+                  {availableScans.pmcc[1].count} opportunities
+                </p>
+              )}
+            </button>
+
+            {/* Max Yield Diagonal - Aggressive */}
+            <button
+              onClick={() => loadPrecomputedScan('aggressive')}
+              disabled={scanLoading}
+              className={`p-4 rounded-xl border transition-all text-left group hover:scale-[1.02] ${
+                activeScan === 'aggressive'
+                  ? 'bg-orange-500/20 border-orange-500/50'
+                  : 'bg-zinc-800/50 border-zinc-700/50 hover:border-orange-500/30 hover:bg-zinc-800'
+              }`}
+              data-testid="pmcc-scan-aggressive"
+            >
+              <div className="flex items-center gap-3 mb-2">
+                <div className="p-2 rounded-lg bg-orange-500/20">
+                  <Flame className="w-5 h-5 text-orange-400" />
+                </div>
+                <div>
+                  <h3 className="font-semibold text-white">Max Yield Diagonal</h3>
+                  <Badge className="bg-orange-500/20 text-orange-400 border-orange-500/30 text-xs">
+                    Aggressive
+                  </Badge>
+                </div>
+              </div>
+              <p className="text-xs text-zinc-400 leading-relaxed">
+                Lower delta LEAPS (0.55-0.65), 12-24 month, aggressive short calls
+              </p>
+              {availableScans?.pmcc?.[2]?.available && (
+                <p className="text-xs text-zinc-500 mt-2">
+                  {availableScans.pmcc[2].count} opportunities
+                </p>
+              )}
+            </button>
+          </div>
+
+          {/* Active scan indicator */}
+          {activeScan && (
+            <div className="mt-4 flex items-center justify-between p-3 bg-zinc-800/50 rounded-lg border border-zinc-700">
+              <div className="flex items-center gap-2">
+                <Badge className={`${
+                  activeScan === 'conservative' ? 'bg-emerald-500/20 text-emerald-400' :
+                  activeScan === 'balanced' ? 'bg-blue-500/20 text-blue-400' :
+                  'bg-orange-500/20 text-orange-400'
+                }`}>
+                  {apiInfo?.label || activeScan.charAt(0).toUpperCase() + activeScan.slice(1)}
+                </Badge>
+                <span className="text-sm text-zinc-400">
+                  Pre-computed PMCC scan active • {opportunities.length} results
+                </span>
+                {apiInfo?.computed_at && (
+                  <span className="text-xs text-zinc-500">
+                    • Updated {new Date(apiInfo.computed_at).toLocaleDateString()}
+                  </span>
+                )}
+              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={clearActiveScan}
+                className="text-zinc-400 hover:text-white"
+              >
+                <X className="w-4 h-4 mr-1" />
+                Clear
+              </Button>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
@@ -305,7 +452,11 @@ const PMCC = () => {
             <LineChart className="w-8 h-8 text-violet-500" />
             Poor Man's Covered Call (PMCC)
           </h1>
-          <p className="text-zinc-400 mt-1">LEAPS-based covered call strategy with lower capital requirement</p>
+          <p className="text-zinc-400 mt-1">
+            {apiInfo?.is_precomputed 
+              ? `Showing ${apiInfo.label} pre-computed PMCC results`
+              : "LEAPS-based covered call strategy with lower capital requirement"}
+          </p>
         </div>
         <div className="flex flex-wrap gap-3">
           <Button
@@ -326,6 +477,14 @@ const PMCC = () => {
           >
             <Filter className="w-4 h-4 mr-2" />
             {filtersOpen ? 'Hide' : 'Show'} Filters
+          </Button>
+          <Button
+            onClick={() => { setActiveScan(null); fetchOpportunities(false); }}
+            className="bg-violet-600 hover:bg-violet-700 text-white"
+            data-testid="custom-pmcc-scan-btn"
+          >
+            <Search className="w-4 h-4 mr-2" />
+            Custom Scan
           </Button>
         </div>
       </div>
