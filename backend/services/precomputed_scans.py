@@ -819,6 +819,13 @@ class PrecomputedScanService:
         """Store pre-computed scan results in MongoDB."""
         try:
             now = datetime.now(timezone.utc)
+            
+            # Use appropriate profile config based on strategy
+            if strategy == "pmcc":
+                profile_config = PMCC_PROFILES.get(risk_profile, {})
+            else:
+                profile_config = RISK_PROFILES.get(risk_profile, {})
+            
             scan_doc = {
                 "strategy": strategy,  # "covered_call" or "pmcc"
                 "risk_profile": risk_profile,
@@ -826,8 +833,8 @@ class PrecomputedScanService:
                 "count": len(opportunities),
                 "computed_at": now.isoformat(),
                 "computed_date": now.strftime("%Y-%m-%d"),
-                "label": RISK_PROFILES.get(risk_profile, {}).get("label", risk_profile.title()),
-                "description": RISK_PROFILES.get(risk_profile, {}).get("description", ""),
+                "label": profile_config.get("label", risk_profile.title()),
+                "description": profile_config.get("description", ""),
             }
             
             # Upsert - replace existing scan for same strategy+profile
