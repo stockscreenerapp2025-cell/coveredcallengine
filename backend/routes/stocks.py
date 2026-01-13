@@ -107,6 +107,50 @@ async def get_stock_quote(symbol: str, user: dict = Depends(get_current_user)):
     raise HTTPException(status_code=404, detail=f"Stock {symbol} not found")
 
 
+def _fetch_analyst_ratings(symbol: str) -> dict:
+    """Fetch analyst ratings from Yahoo Finance (blocking call)"""
+    try:
+        yf = get_yfinance()
+        ticker = yf.Ticker(symbol)
+        info = ticker.info
+        
+        recommendation = info.get("recommendationKey", "")
+        num_analysts = info.get("numberOfAnalystOpinions", 0)
+        target_mean = info.get("targetMeanPrice")
+        target_high = info.get("targetHighPrice")
+        target_low = info.get("targetLowPrice")
+        current_price = info.get("currentPrice") or info.get("regularMarketPrice")
+        
+        # Map Yahoo's recommendation keys to display values
+        rating_map = {
+            "strong_buy": "Strong Buy",
+            "buy": "Buy",
+            "hold": "Hold",
+            "underperform": "Sell",
+            "sell": "Sell"
+        }
+        
+        display_rating = rating_map.get(recommendation, recommendation.replace("_", " ").title() if recommendation else "")
+        
+        # Calculate upside potential
+        upside_pct = None
+        if target_mean and current_price and current_price > 0:
+            upside_pct = round((target_mean - current_price) / current_price * 100, 1)
+        
+        return {
+            "rating": display_rating,
+            "num_analysts": num_analysts,
+            "target_price": round(target_mean, 2) if target_mean else None,
+            "target_high": round(target_high, 2) if target_high else None,
+            "target_low": round(target_low, 2) if target_low else None,
+            "upside_pct": upside_pct,
+            "has_sufficient_coverage": num_analysts >= 5
+        }
+    except Exception as e:
+        logging.error(f"yfinance analyst ratings error for {symbol}: {e}")
+        return {}
+
+
 @stocks_router.get("/indices")
 async def get_market_indices(user: dict = Depends(get_current_user)):
     """Get market indices data"""
