@@ -102,7 +102,40 @@ Build a web-based application named "Covered Call Engine" to identify, analyze, 
   - Scanner comparison to identify best parameter combinations
 
 ### 🔄 In Progress
-- [ ] Watchlist Functionality (P1)
+- None currently
+
+### ✅ Completed (Jan 13, 2026) - Enhanced Watchlist
+- [x] **Watchlist Table Redesign**
+  - Redesigned from card-based to table format matching screener style
+  - Columns: Symbol, Date Added, Price Added, Current, Movement, Analyst, Best Opportunity, ROI, Action
+  - Notes displayed below symbol name
+- [x] **Price Tracking**
+  - Captures `price_when_added` from Polygon API when adding stocks
+  - Shows current price from live Polygon data
+  - Movement percentage calculation (current vs added price)
+  - Up/down arrow indicators with color coding (green/red)
+- [x] **Covered Call Opportunities**
+  - Best opportunity shown for each watchlist item
+  - Displays: Expiry date, Strike, Delta, IV
+  - "No opportunities" message with icon when no suitable options
+- [x] **CRUD Operations**
+  - Add stock with symbol validation
+  - Delete individual items
+  - Clear All with confirmation dialog
+- [x] **Summary Stats**
+  - Total Symbols count
+  - With Opportunities count
+  - Gainers count (stocks up since added)
+  - Losers count (stocks down since added)
+- [x] **Analyst Ratings**
+  - Fetched from yfinance
+  - Color-coded badges (Strong Buy, Buy, Hold, Sell)
+- [x] **Backend Enhancements**
+  - `/app/backend/routes/watchlist.py` - Complete rewrite with Polygon API integration
+  - `fetch_stock_prices_polygon()` - Batch price fetching
+  - `fetch_analyst_ratings_batch()` - Parallel analyst rating fetches
+  - `_get_best_opportunity()` - Find best covered call for each symbol
+  - New endpoint: `DELETE /api/watchlist/` - Clear all items
 
 ### 🔴 Blocked
 - [ ] Stripe Webhook Configuration - Requires user action
