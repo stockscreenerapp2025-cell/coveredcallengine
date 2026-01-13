@@ -9,10 +9,12 @@ DATA SOURCING STRATEGY (DO NOT CHANGE):
 """
 from fastapi import APIRouter, Depends, Query, HTTPException
 from pydantic import BaseModel
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 from datetime import datetime, timezone, timedelta
+from concurrent.futures import ThreadPoolExecutor
 import logging
 import httpx
+import asyncio
 
 import sys
 from pathlib import Path
@@ -32,8 +34,62 @@ screener_router = APIRouter(tags=["Screener"])
 # HTTP client settings
 HTTP_TIMEOUT = httpx.Timeout(30.0, connect=10.0)
 
+# Thread pool for blocking yfinance calls
+_analyst_executor = ThreadPoolExecutor(max_workers=10)
+
 # ETF symbols for special handling
 ETF_SYMBOLS = {"SPY", "QQQ", "IWM", "DIA", "XLF", "XLE", "XLK", "XLV", "XLI", "XLB", "XLU", "XLP", "XLY"}
+
+
+def _fetch_analyst_rating_sync(symbol: str) -> dict:
+    """Fetch analyst rating for a single symbol (blocking call)"""
+    try:
+        import yfinance as yf
+        ticker = yf.Ticker(symbol)
+        info = ticker.info
+        
+        recommendation = info.get("recommendationKey", "")
+        rating_map = {
+            "strong_buy": "Strong Buy",
+            "buy": "Buy",
+            "hold": "Hold",
+            "underperform": "Sell",
+            "sell": "Sell"
+        }
+        rating = rating_map.get(recommendation, recommendation.replace("_", " ").title() if recommendation else None)
+        
+        return {
+            "symbol": symbol,
+            "analyst_rating": rating,
+            "num_analysts": info.get("numberOfAnalystOpinions", 0)
+        }
+    except Exception as e:
+        logging.warning(f"Failed to fetch analyst rating for {symbol}: {e}")
+        return {"symbol": symbol, "analyst_rating": None, "num_analysts": 0}
+
+
+async def fetch_analyst_ratings_batch(symbols: List[str]) -> Dict[str, str]:
+    """Fetch analyst ratings for multiple symbols in parallel"""
+    if not symbols:
+        return {}
+    
+    loop = asyncio.get_event_loop()
+    
+    # Run all fetches in parallel using thread pool
+    tasks = [
+        loop.run_in_executor(_analyst_executor, _fetch_analyst_rating_sync, symbol)
+        for symbol in set(symbols)  # Dedupe symbols
+    ]
+    
+    results = await asyncio.gather(*tasks, return_exceptions=True)
+    
+    # Build symbol -> rating map
+    ratings = {}
+    for result in results:
+        if isinstance(result, dict):
+            ratings[result["symbol"]] = result.get("analyst_rating")
+    
+    return ratings
 
 
 class ScreenerFilterCreate(BaseModel):
