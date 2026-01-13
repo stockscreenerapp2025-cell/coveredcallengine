@@ -22,7 +22,7 @@ from services.data_provider import fetch_stock_quote, fetch_options_chain
 watchlist_router = APIRouter(tags=["Watchlist"])
 
 # Thread pool for blocking yfinance calls
-_executor = ThreadPoolExecutor(max_workers=10)
+_executor = ThreadPoolExecutor(max_workers=5)
 
 
 def _get_server_functions():
@@ -31,8 +31,8 @@ def _get_server_functions():
     return get_massive_api_key, MOCK_STOCKS
 
 
-def _fetch_stock_data_sync(symbol: str) -> dict:
-    """Fetch stock data including analyst rating (blocking call)"""
+def _fetch_analyst_rating_sync(symbol: str) -> dict:
+    """Fetch analyst rating only (blocking call)"""
     try:
         import yfinance as yf
         ticker = yf.Ticker(symbol)
@@ -49,53 +49,75 @@ def _fetch_stock_data_sync(symbol: str) -> dict:
         }
         rating = rating_map.get(recommendation, recommendation.replace("_", " ").title() if recommendation else None)
         
-        # Get current price
-        current_price = info.get("regularMarketPrice") or info.get("currentPrice") or info.get("previousClose", 0)
-        previous_close = info.get("previousClose", current_price)
-        
-        change = current_price - previous_close if previous_close else 0
-        change_pct = (change / previous_close * 100) if previous_close else 0
-        
         return {
             "symbol": symbol,
-            "current_price": round(current_price, 2) if current_price else 0,
-            "change": round(change, 2),
-            "change_pct": round(change_pct, 2),
             "analyst_rating": rating,
             "num_analysts": info.get("numberOfAnalystOpinions", 0)
         }
     except Exception as e:
-        logging.warning(f"Failed to fetch stock data for {symbol}: {e}")
+        logging.debug(f"Failed to fetch analyst rating for {symbol}: {e}")
         return {
             "symbol": symbol,
-            "current_price": 0,
-            "change": 0,
-            "change_pct": 0,
             "analyst_rating": None,
             "num_analysts": 0
         }
 
 
-async def fetch_stock_data_batch(symbols: List[str]) -> Dict[str, dict]:
-    """Fetch stock data for multiple symbols in parallel"""
+async def fetch_analyst_ratings_batch(symbols: List[str]) -> Dict[str, str]:
+    """Fetch analyst ratings for multiple symbols in parallel"""
     if not symbols:
         return {}
     
     loop = asyncio.get_event_loop()
     
     tasks = [
-        loop.run_in_executor(_executor, _fetch_stock_data_sync, symbol)
+        loop.run_in_executor(_executor, _fetch_analyst_rating_sync, symbol)
         for symbol in set(symbols)
     ]
     
     results = await asyncio.gather(*tasks, return_exceptions=True)
     
-    data = {}
+    ratings = {}
     for result in results:
         if isinstance(result, dict) and result.get("symbol"):
-            data[result["symbol"]] = result
+            ratings[result["symbol"]] = result.get("analyst_rating")
     
-    return data
+    return ratings
+
+
+async def fetch_stock_prices_polygon(symbols: List[str], api_key: str) -> Dict[str, dict]:
+    """Fetch stock prices from Polygon API"""
+    if not symbols or not api_key:
+        return {}
+    
+    prices = {}
+    
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        # Use ticker snapshot grouped endpoint for efficiency
+        for symbol in symbols:
+            try:
+                response = await client.get(
+                    f"https://api.polygon.io/v2/aggs/ticker/{symbol}/prev",
+                    params={"apiKey": api_key}
+                )
+                if response.status_code == 200:
+                    data = response.json()
+                    if data.get("results") and len(data["results"]) > 0:
+                        result = data["results"][0]
+                        close_price = result.get("c", 0)
+                        open_price = result.get("o", close_price)
+                        change = close_price - open_price if open_price else 0
+                        change_pct = (change / open_price * 100) if open_price else 0
+                        
+                        prices[symbol] = {
+                            "current_price": round(close_price, 2),
+                            "change": round(change, 2),
+                            "change_pct": round(change_pct, 2)
+                        }
+            except Exception as e:
+                logging.debug(f"Error fetching price for {symbol}: {e}")
+    
+    return prices
 
 
 async def _get_best_opportunity(symbol: str, api_key: str, underlying_price: float) -> dict:
@@ -169,21 +191,26 @@ async def get_watchlist(user: dict = Depends(get_current_user)):
         return []
     
     # Get all symbols
-    symbols = [item.get("symbol", "") for item in items]
+    symbols = [item.get("symbol", "") for item in items if item.get("symbol")]
     
-    # Fetch current stock data in batch
-    stock_data = await fetch_stock_data_batch(symbols)
-    
-    # Get API key for options data
+    # Get API key for Polygon
     api_key = await get_massive_api_key()
+    
+    # Fetch prices from Polygon
+    prices = {}
+    if api_key:
+        prices = await fetch_stock_prices_polygon(symbols, api_key)
+    
+    # Fetch analyst ratings in parallel
+    analyst_ratings = await fetch_analyst_ratings_batch(symbols)
     
     # Enrich items with current prices and opportunities
     enriched_items = []
     for item in items:
         symbol = item.get("symbol", "")
-        data = stock_data.get(symbol, {})
+        price_data = prices.get(symbol, {})
         
-        current_price = data.get("current_price", 0)
+        current_price = price_data.get("current_price", 0)
         price_when_added = item.get("price_when_added", 0)
         
         # Calculate price movement since added
@@ -197,12 +224,12 @@ async def get_watchlist(user: dict = Depends(get_current_user)):
         enriched = {
             **item,
             "current_price": current_price,
-            "change": data.get("change", 0),
-            "change_pct": data.get("change_pct", 0),
+            "change": price_data.get("change", 0),
+            "change_pct": price_data.get("change_pct", 0),
             "price_when_added": price_when_added,
             "movement": round(movement, 2),
             "movement_pct": round(movement_pct, 2),
-            "analyst_rating": data.get("analyst_rating"),
+            "analyst_rating": analyst_ratings.get(symbol),
             "opportunity": None
         }
         
@@ -228,9 +255,13 @@ async def add_to_watchlist(item: WatchlistItemCreate, user: dict = Depends(get_c
     if existing:
         raise HTTPException(status_code=400, detail="Symbol already in watchlist")
     
-    # Get current price to store as price_when_added
-    stock_data = await fetch_stock_data_batch([symbol])
-    price_when_added = stock_data.get(symbol, {}).get("current_price", 0)
+    # Get current price from Polygon
+    api_key = await get_massive_api_key()
+    price_when_added = 0
+    
+    if api_key:
+        prices = await fetch_stock_prices_polygon([symbol], api_key)
+        price_when_added = prices.get(symbol, {}).get("current_price", 0)
     
     doc = {
         "id": str(uuid.uuid4()),
