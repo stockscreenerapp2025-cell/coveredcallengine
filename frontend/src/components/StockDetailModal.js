@@ -802,7 +802,7 @@ const StockDetailModal = ({ symbol, isOpen, onClose, scanData = null }) => {
                         </div>
                       ) : (
                         <div className="text-xs text-zinc-500 text-center py-2">
-                          Click "Analyze News" to get AI-powered sentiment analysis
+                          Click &quot;Analyze News&quot; to get AI-powered sentiment analysis
                         </div>
                       )}
                     </CardContent>
