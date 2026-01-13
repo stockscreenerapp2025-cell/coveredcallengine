@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { screenerApi, simulatorApi } from '../lib/api';
+import { screenerApi, simulatorApi, scansApi } from '../lib/api';
 import api from '../lib/api';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
@@ -48,7 +48,10 @@ import {
   Gauge,
   Clock,
   Moon,
-  Play
+  Play,
+  Shield,
+  Zap,
+  Flame
 } from 'lucide-react';
 import { toast } from 'sonner';
 import StockDetailModal from '../components/StockDetailModal';
@@ -67,6 +70,11 @@ const Screener = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [marketStatus, setMarketStatus] = useState(null);
   const [dataInfo, setDataInfo] = useState(null);
+  
+  // Pre-computed scans state
+  const [availableScans, setAvailableScans] = useState(null);
+  const [activeScan, setActiveScan] = useState(null);
+  const [scanLoading, setScanLoading] = useState(false);
   
   // Simulator state
   const [simulateModalOpen, setSimulateModalOpen] = useState(false);
