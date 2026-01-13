@@ -1344,8 +1344,39 @@ async def startup():
         replace_existing=True
     )
     
+    # Pre-computed scans - runs at 4:45 PM ET (after market close) on weekdays
+    async def run_precomputed_scans():
+        """Run nightly pre-computed scans for covered calls and PMCC."""
+        try:
+            from services.precomputed_scans import PrecomputedScanService
+            
+            # Get API key
+            settings = await db.admin_settings.find_one(
+                {"massive_api_key": {"$exists": True}}, 
+                {"_id": 0}
+            )
+            api_key = settings.get("massive_api_key") if settings else None
+            
+            if not api_key:
+                logger.warning("Pre-computed scans skipped: No Polygon API key configured")
+                return
+            
+            service = PrecomputedScanService(db, api_key)
+            results = await service.run_all_scans()
+            logger.info(f"Pre-computed scans complete: {results}")
+            
+        except Exception as e:
+            logger.error(f"Pre-computed scans error: {e}")
+    
+    scheduler.add_job(
+        run_precomputed_scans,
+        CronTrigger(hour=16, minute=45, day_of_week='mon-fri', timezone='America/New_York'),
+        id='precomputed_scans',
+        replace_existing=True
+    )
+    
     scheduler.start()
-    logger.info("Schedulers started - Simulator: 4:30 PM ET weekdays, Support auto-response: every 5 min, IMAP sync: every 6 hours")
+    logger.info("Schedulers started - Simulator: 4:30 PM ET, Pre-computed scans: 4:45 PM ET, Support: every 5 min, IMAP: every 6 hours")
 
 @app.on_event("shutdown")
 async def shutdown_db_client():
