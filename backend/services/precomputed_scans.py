@@ -380,6 +380,21 @@ class PrecomputedScanService:
                     except Exception:
                         pass
                 
+                # Analyst Rating
+                recommendation = info.get("recommendationKey", "")
+                num_analysts = info.get("numberOfAnalystOpinions", 0)
+                target_price = info.get("targetMeanPrice")
+                
+                # Map Yahoo's recommendation keys to display values
+                rating_map = {
+                    "strong_buy": "Strong Buy",
+                    "buy": "Buy",
+                    "hold": "Hold",
+                    "underperform": "Sell",
+                    "sell": "Sell"
+                }
+                analyst_rating = rating_map.get(recommendation, recommendation.replace("_", " ").title() if recommendation else None)
+                
                 return {
                     "symbol": symbol,
                     "market_cap": market_cap,
@@ -394,6 +409,9 @@ class PrecomputedScanService:
                     "days_to_earnings": days_to_earnings,
                     "sector": info.get('sector', ''),
                     "industry": info.get('industry', ''),
+                    "analyst_rating": analyst_rating,
+                    "num_analysts": num_analysts,
+                    "target_price": target_price,
                     "timestamp": datetime.now(timezone.utc).isoformat()
                 }
             
