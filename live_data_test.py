@@ -10,7 +10,7 @@ from datetime import datetime
 
 class LiveDataTester:
     def __init__(self):
-        self.base_url = "https://premiumcall.preview.emergentagent.com"
+        self.base_url = "https://call-engine-1.preview.emergentagent.com"
         self.token = None
         self.session = requests.Session()
         
