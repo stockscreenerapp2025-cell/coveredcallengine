@@ -1041,3 +1041,315 @@ class PrecomputedScanService:
                 fit_score += 10
         
         return fit_score
+
+    # ==================== PMCC SCAN LOGIC ====================
+    
+    async def fetch_leaps_options(
+        self, 
+        symbol: str, 
+        current_price: float,
+        dte_min: int,
+        dte_max: int = None,
+        delta_min: float = 0.55,
+        delta_max: float = 0.80,
+        itm_pct: float = 0.10
+    ) -> List[Dict[str, Any]]:
+        """
+        Fetch LEAPS (Long-term Equity AnticiPation Securities) for PMCC long leg.
+        LEAPS are deep ITM calls with high delta and long DTE.
+        """
+        if not self.api_key:
+            return []
+        
+        try:
+            today = datetime.now()
+            min_expiry = (today + timedelta(days=dte_min)).strftime("%Y-%m-%d")
+            max_expiry = (today + timedelta(days=dte_max or 730)).strftime("%Y-%m-%d")
+            
+            # LEAPS should be ITM - strike below current price
+            strike_max = current_price * (1 - itm_pct)  # At least ITM by itm_pct
+            strike_min = current_price * 0.5  # Don't go too deep
+            
+            async with httpx.AsyncClient(timeout=HTTP_TIMEOUT) as client:
+                contracts_url = f"{POLYGON_BASE_URL}/v3/reference/options/contracts"
+                params = {
+                    "underlying_ticker": symbol.upper(),
+                    "contract_type": "call",
+                    "expiration_date.gte": min_expiry,
+                    "expiration_date.lte": max_expiry,
+                    "strike_price.gte": strike_min,
+                    "strike_price.lte": strike_max,
+                    "limit": 50,
+                    "apiKey": self.api_key
+                }
+                
+                response = await client.get(contracts_url, params=params)
+                if response.status_code != 200:
+                    return []
+                
+                data = response.json()
+                contracts = data.get("results", [])
+                
+                if not contracts:
+                    return []
+                
+                # Fetch prices for LEAPS
+                semaphore = asyncio.Semaphore(20)
+                
+                async def fetch_leap_price(contract):
+                    async with semaphore:
+                        ticker = contract.get("ticker", "")
+                        if not ticker:
+                            return None
+                        
+                        try:
+                            price_resp = await client.get(
+                                f"{POLYGON_BASE_URL}/v2/aggs/ticker/{ticker}/prev",
+                                params={"apiKey": self.api_key}
+                            )
+                            
+                            if price_resp.status_code == 200:
+                                price_data = price_resp.json()
+                                results = price_data.get("results", [])
+                                
+                                if results:
+                                    r = results[0]
+                                    strike = contract.get("strike_price", 0)
+                                    expiry = contract.get("expiration_date", "")
+                                    
+                                    # Calculate DTE
+                                    dte = 0
+                                    if expiry:
+                                        try:
+                                            exp_dt = datetime.strptime(expiry, "%Y-%m-%d")
+                                            dte = (exp_dt - datetime.now()).days
+                                        except Exception:
+                                            pass
+                                    
+                                    # Estimate delta for ITM calls (higher for deeper ITM)
+                                    moneyness = (current_price - strike) / current_price
+                                    est_delta = 0.50 + moneyness * 2  # Rough estimate
+                                    est_delta = max(0.50, min(0.95, est_delta))
+                                    
+                                    # Filter by delta
+                                    if est_delta < delta_min or est_delta > delta_max:
+                                        return None
+                                    
+                                    close_price = r.get("c", 0)
+                                    if close_price <= 0:
+                                        return None
+                                    
+                                    # Calculate intrinsic and extrinsic value
+                                    intrinsic = max(0, current_price - strike)
+                                    extrinsic = close_price - intrinsic
+                                    
+                                    return {
+                                        "contract_ticker": ticker,
+                                        "symbol": symbol,
+                                        "strike": strike,
+                                        "expiry": expiry,
+                                        "dte": dte,
+                                        "premium": close_price,
+                                        "delta": round(est_delta, 3),
+                                        "intrinsic": round(intrinsic, 2),
+                                        "extrinsic": round(extrinsic, 2),
+                                        "itm_pct": round(moneyness * 100, 1),
+                                        "volume": r.get("v", 0),
+                                    }
+                        except Exception as e:
+                            logger.debug(f"Error fetching LEAP price for {ticker}: {e}")
+                        return None
+                
+                tasks = [fetch_leap_price(c) for c in contracts[:30]]
+                results = await asyncio.gather(*tasks, return_exceptions=True)
+                
+                leaps = [r for r in results if r and not isinstance(r, Exception)]
+                
+                # Sort by DTE (prefer longer) and delta (prefer higher)
+                leaps.sort(key=lambda x: (x["dte"], x["delta"]), reverse=True)
+                
+                return leaps
+                
+        except Exception as e:
+            logger.error(f"Error fetching LEAPS for {symbol}: {e}")
+            return []
+    
+    async def run_pmcc_scan(self, risk_profile: str = "conservative") -> List[Dict[str, Any]]:
+        """
+        Run a PMCC (Poor Man's Covered Call) scan for the given risk profile.
+        
+        PMCC structure:
+        - Long Call (LEAPS): Deep ITM, high delta, long DTE
+        - Short Call: OTM, lower delta, shorter DTE
+        
+        Returns ranked list of PMCC opportunities.
+        """
+        cc_profile = RISK_PROFILES.get(risk_profile, RISK_PROFILES["conservative"])
+        pmcc_profile = PMCC_PROFILES.get(risk_profile, PMCC_PROFILES["conservative"])
+        
+        logger.info(f"Starting {risk_profile} PMCC scan...")
+        
+        # Get symbol universe
+        symbols = await self.get_liquid_symbols()
+        logger.info(f"Scanning {len(symbols)} symbols for {risk_profile} PMCC")
+        
+        opportunities = []
+        stats = {
+            "total_symbols": len(symbols),
+            "passed_technical": 0,
+            "passed_fundamental": 0,
+            "has_leaps": 0,
+            "has_short_call": 0,
+        }
+        
+        # Process symbols in batches
+        batch_size = 15
+        for i in range(0, len(symbols), batch_size):
+            batch = symbols[i:i + batch_size]
+            
+            # Fetch technical and fundamental data in parallel
+            tech_tasks = [self.fetch_technical_data(s) for s in batch]
+            fund_tasks = [self.fetch_fundamental_data(s) for s in batch]
+            
+            tech_results = await asyncio.gather(*tech_tasks, return_exceptions=True)
+            fund_results = await asyncio.gather(*fund_tasks, return_exceptions=True)
+            
+            for j, symbol in enumerate(batch):
+                tech_data = tech_results[j] if not isinstance(tech_results[j], Exception) else None
+                fund_data = fund_results[j] if not isinstance(fund_results[j], Exception) else None
+                
+                # Apply technical filters (same as covered call)
+                tech_pass, _ = self.passes_technical_filters(tech_data, cc_profile)
+                if not tech_pass:
+                    continue
+                stats["passed_technical"] += 1
+                
+                # Apply fundamental filters
+                fund_pass, _ = self.passes_fundamental_filters(fund_data, cc_profile)
+                if not fund_pass:
+                    continue
+                stats["passed_fundamental"] += 1
+                
+                current_price = tech_data.get("close", 0)
+                if current_price <= 0:
+                    continue
+                
+                # Fetch LEAPS (long leg)
+                leaps = await self.fetch_leaps_options(
+                    symbol,
+                    current_price,
+                    dte_min=pmcc_profile.get("long_dte_min", 180),
+                    dte_max=pmcc_profile.get("long_dte_max", 730),
+                    delta_min=pmcc_profile.get("long_delta_min", 0.65),
+                    delta_max=pmcc_profile.get("long_delta_max", 0.80),
+                    itm_pct=pmcc_profile.get("long_itm_pct", 0.10)
+                )
+                
+                if not leaps:
+                    continue
+                stats["has_leaps"] += 1
+                
+                # Fetch short calls
+                short_calls = await self.fetch_options_for_scan(
+                    symbol,
+                    current_price,
+                    dte_min=pmcc_profile.get("short_dte_min", 20),
+                    dte_max=pmcc_profile.get("short_dte_max", 45),
+                    delta_min=pmcc_profile.get("short_delta_min", 0.20),
+                    delta_max=pmcc_profile.get("short_delta_max", 0.40)
+                )
+                
+                if not short_calls:
+                    continue
+                stats["has_short_call"] += 1
+                
+                # Find best LEAP and short call combination
+                best_leap = leaps[0]  # Already sorted by quality
+                best_short = max(short_calls, key=lambda x: x.get("premium_yield", 0))
+                
+                # Calculate PMCC metrics
+                leap_cost = best_leap["premium"] * 100  # Cost to buy LEAP
+                short_premium = best_short["premium"] * 100  # Premium received
+                net_debit = leap_cost - short_premium
+                
+                # ROI on capital deployed (LEAP cost)
+                roi_pct = (short_premium / leap_cost) * 100 if leap_cost > 0 else 0
+                
+                # Max profit = short strike - leap strike + net credit (if any)
+                max_profit_per_share = best_short["strike"] - best_leap["strike"]
+                max_profit = max_profit_per_share * 100
+                
+                # Capital efficiency vs buying stock
+                capital_efficiency = (current_price * 100) / net_debit if net_debit > 0 else 0
+                
+                # Calculate score
+                score = 0
+                score += min(roi_pct * 5, 30)  # ROI contribution
+                score += min(capital_efficiency * 2, 20)  # Capital efficiency
+                score += 10 if best_leap["delta"] >= 0.70 else 5  # High delta LEAP
+                score += 10 if best_short["delta"] <= 0.30 else 5  # Low delta short
+                
+                # Fundamental bonus
+                if fund_data.get("eps_ttm", 0) > 0:
+                    score += 10
+                if fund_data.get("roe", 0) > 0.15:
+                    score += 5
+                
+                opportunities.append({
+                    "symbol": symbol,
+                    "stock_price": round(current_price, 2),
+                    "risk_profile": risk_profile,
+                    "strategy": "pmcc",
+                    # Long leg (LEAP)
+                    "long_strike": best_leap["strike"],
+                    "long_expiry": best_leap["expiry"],
+                    "long_dte": best_leap["dte"],
+                    "long_premium": round(best_leap["premium"], 2),
+                    "long_delta": best_leap["delta"],
+                    "long_itm_pct": best_leap.get("itm_pct", 0),
+                    # Short leg
+                    "short_strike": best_short["strike"],
+                    "short_expiry": best_short["expiry"],
+                    "short_dte": best_short["dte"],
+                    "short_premium": round(best_short["premium"], 2),
+                    "short_delta": best_short["delta"],
+                    # Combined metrics
+                    "net_debit": round(net_debit, 2),
+                    "roi_pct": round(roi_pct, 2),
+                    "max_profit": round(max_profit, 2),
+                    "capital_efficiency": round(capital_efficiency, 1),
+                    "score": round(score, 1),
+                    # Technical indicators
+                    "sma50": tech_data.get("sma50"),
+                    "sma200": tech_data.get("sma200"),
+                    "rsi14": tech_data.get("rsi14"),
+                    "atr_pct": round(tech_data.get("atr_pct", 0) * 100, 2) if tech_data.get("atr_pct") else None,
+                    # Fundamental data
+                    "market_cap": fund_data.get("market_cap", 0),
+                    "eps_ttm": fund_data.get("eps_ttm", 0),
+                    "roe": round(fund_data.get("roe", 0) * 100, 1) if fund_data.get("roe") else None,
+                    "debt_to_equity": fund_data.get("debt_to_equity"),
+                    "days_to_earnings": fund_data.get("days_to_earnings"),
+                    "sector": fund_data.get("sector", ""),
+                })
+            
+            await asyncio.sleep(0.5)
+        
+        # Deduplicate by symbol (keep best)
+        symbol_best = {}
+        for opp in opportunities:
+            symbol = opp["symbol"]
+            if symbol not in symbol_best or opp["score"] > symbol_best[symbol]["score"]:
+                symbol_best[symbol] = opp
+        
+        opportunities = list(symbol_best.values())
+        opportunities.sort(key=lambda x: x["score"], reverse=True)
+        opportunities = opportunities[:50]
+        
+        logger.info(f"PMCC scan complete: {len(opportunities)} opportunities found")
+        logger.info(f"Stats: {stats['passed_technical']} passed tech, "
+                   f"{stats['passed_fundamental']} passed fund, "
+                   f"{stats['has_leaps']} had LEAPS, "
+                   f"{stats['has_short_call']} had short calls")
+        
+        return opportunities
