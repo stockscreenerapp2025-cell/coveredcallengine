@@ -465,6 +465,153 @@ const Screener = () => {
         </div>
       )}
 
+      {/* Pre-Computed Scan Buttons */}
+      <Card className="glass-card" data-testid="precomputed-scans">
+        <CardHeader className="pb-3">
+          <CardTitle className="text-lg flex items-center gap-2">
+            <Zap className="w-5 h-5 text-yellow-400" />
+            Quick Scans
+            <Badge className="ml-2 bg-yellow-500/20 text-yellow-400 border-yellow-500/30 text-xs">
+              Pre-Computed
+            </Badge>
+          </CardTitle>
+          <p className="text-sm text-zinc-400 mt-1">
+            AI-powered scans with technical + fundamental filters. Updated daily at market close.
+          </p>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {/* Income Guard - Conservative */}
+            <button
+              onClick={() => loadPrecomputedScan('conservative')}
+              disabled={scanLoading}
+              className={`p-4 rounded-xl border transition-all text-left group hover:scale-[1.02] ${
+                activeScan === 'conservative'
+                  ? 'bg-emerald-500/20 border-emerald-500/50'
+                  : 'bg-zinc-800/50 border-zinc-700/50 hover:border-emerald-500/30 hover:bg-zinc-800'
+              }`}
+              data-testid="scan-conservative"
+            >
+              <div className="flex items-center gap-3 mb-2">
+                <div className="p-2 rounded-lg bg-emerald-500/20">
+                  <Shield className="w-5 h-5 text-emerald-400" />
+                </div>
+                <div>
+                  <h3 className="font-semibold text-white">Income Guard</h3>
+                  <Badge className="bg-emerald-500/20 text-emerald-400 border-emerald-500/30 text-xs">
+                    Low Risk
+                  </Badge>
+                </div>
+              </div>
+              <p className="text-xs text-zinc-400 leading-relaxed">
+                Stable large-caps, low volatility, SMA trending, high probability of profit
+              </p>
+              {availableScans?.covered_call?.[0]?.available && (
+                <p className="text-xs text-zinc-500 mt-2">
+                  {availableScans.covered_call[0].count} opportunities
+                </p>
+              )}
+            </button>
+
+            {/* Steady Income - Balanced */}
+            <button
+              onClick={() => loadPrecomputedScan('balanced')}
+              disabled={scanLoading}
+              className={`p-4 rounded-xl border transition-all text-left group hover:scale-[1.02] ${
+                activeScan === 'balanced'
+                  ? 'bg-blue-500/20 border-blue-500/50'
+                  : 'bg-zinc-800/50 border-zinc-700/50 hover:border-blue-500/30 hover:bg-zinc-800'
+              }`}
+              data-testid="scan-balanced"
+            >
+              <div className="flex items-center gap-3 mb-2">
+                <div className="p-2 rounded-lg bg-blue-500/20">
+                  <BarChart3 className="w-5 h-5 text-blue-400" />
+                </div>
+                <div>
+                  <h3 className="font-semibold text-white">Steady Income</h3>
+                  <Badge className="bg-blue-500/20 text-blue-400 border-blue-500/30 text-xs">
+                    Balanced
+                  </Badge>
+                </div>
+              </div>
+              <p className="text-xs text-zinc-400 leading-relaxed">
+                Slightly bullish, moderate IV, growth stocks with solid fundamentals
+              </p>
+              {availableScans?.covered_call?.[1]?.available && (
+                <p className="text-xs text-zinc-500 mt-2">
+                  {availableScans.covered_call[1].count} opportunities
+                </p>
+              )}
+            </button>
+
+            {/* Premium Hunter - Aggressive */}
+            <button
+              onClick={() => loadPrecomputedScan('aggressive')}
+              disabled={scanLoading}
+              className={`p-4 rounded-xl border transition-all text-left group hover:scale-[1.02] ${
+                activeScan === 'aggressive'
+                  ? 'bg-orange-500/20 border-orange-500/50'
+                  : 'bg-zinc-800/50 border-zinc-700/50 hover:border-orange-500/30 hover:bg-zinc-800'
+              }`}
+              data-testid="scan-aggressive"
+            >
+              <div className="flex items-center gap-3 mb-2">
+                <div className="p-2 rounded-lg bg-orange-500/20">
+                  <Flame className="w-5 h-5 text-orange-400" />
+                </div>
+                <div>
+                  <h3 className="font-semibold text-white">Premium Hunter</h3>
+                  <Badge className="bg-orange-500/20 text-orange-400 border-orange-500/30 text-xs">
+                    Aggressive
+                  </Badge>
+                </div>
+              </div>
+              <p className="text-xs text-zinc-400 leading-relaxed">
+                Strong momentum, high IV, maximum premium yield, shorter DTE
+              </p>
+              {availableScans?.covered_call?.[2]?.available && (
+                <p className="text-xs text-zinc-500 mt-2">
+                  {availableScans.covered_call[2].count} opportunities
+                </p>
+              )}
+            </button>
+          </div>
+
+          {/* Active scan indicator */}
+          {activeScan && (
+            <div className="mt-4 flex items-center justify-between p-3 bg-zinc-800/50 rounded-lg border border-zinc-700">
+              <div className="flex items-center gap-2">
+                <Badge className={`${
+                  activeScan === 'conservative' ? 'bg-emerald-500/20 text-emerald-400' :
+                  activeScan === 'balanced' ? 'bg-blue-500/20 text-blue-400' :
+                  'bg-orange-500/20 text-orange-400'
+                }`}>
+                  {dataInfo?.label || activeScan.charAt(0).toUpperCase() + activeScan.slice(1)}
+                </Badge>
+                <span className="text-sm text-zinc-400">
+                  Pre-computed scan active • {opportunities.length} results
+                </span>
+                {dataInfo?.computed_at && (
+                  <span className="text-xs text-zinc-500">
+                    • Updated {new Date(dataInfo.computed_at).toLocaleDateString()}
+                  </span>
+                )}
+              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={clearActiveScan}
+                className="text-zinc-400 hover:text-white"
+              >
+                <X className="w-4 h-4 mr-1" />
+                Clear
+              </Button>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
@@ -473,9 +620,11 @@ const Screener = () => {
             Covered Call Screener
           </h1>
           <p className="text-zinc-400 mt-1">
-            {dataInfo?.from_cache && marketStatus && !marketStatus.is_open 
-              ? "Showing data from last market session" 
-              : "Advanced filtering for optimal premium opportunities"}
+            {dataInfo?.is_precomputed 
+              ? `Showing ${dataInfo.label} pre-computed results`
+              : dataInfo?.from_cache && marketStatus && !marketStatus.is_open 
+                ? "Showing data from last market session" 
+                : "Advanced filtering for optimal premium opportunities"}
           </p>
         </div>
         <div className="flex flex-wrap gap-3">
@@ -533,12 +682,12 @@ const Screener = () => {
             Export
           </Button>
           <Button
-            onClick={() => fetchOpportunities(false)}
+            onClick={() => { setActiveScan(null); fetchOpportunities(false); }}
             className="bg-emerald-600 hover:bg-emerald-700 text-white"
             data-testid="apply-filters-btn"
           >
             <Search className="w-4 h-4 mr-2" />
-            Scan
+            Custom Scan
           </Button>
           <Button
             variant="outline"
