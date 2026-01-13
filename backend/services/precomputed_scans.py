@@ -104,9 +104,9 @@ RISK_PROFILES = {
         "label": "Premium Hunter",
         "description": "Strong momentum with premium maximization",
         # Technical filters
-        "trend_sma50_above_sma200": False,
-        "price_above_sma20": True,  # Faster trend
-        "price_above_sma50": False,  # Use SMA20 instead
+        "trend_sma50_above_sma200": True,  # MANDATORY: Slightly bullish bias for ALL scans
+        "price_above_sma20": True,  # Fast trend confirmation
+        "price_above_sma50": False,  # Relaxed - using SMA20 for short-term momentum
         "rsi_min": 45,
         "rsi_max": 80,
         "atr_pct_min": 0.025,  # ATR >= 2.5% (more momentum stocks)
