@@ -107,17 +107,19 @@ Build a web-based application named "Covered Call Engine" to identify, analyze, 
 ### ✅ Completed (Jan 13, 2026) - Enhanced Watchlist
 - [x] **Watchlist Table Redesign**
   - Redesigned from card-based to table format matching screener style
-  - Columns: Symbol, Date Added, Price Added, Current, Movement, Analyst, Best Opportunity, ROI, Action
-  - Notes displayed below symbol name
+  - Columns: Symbol, Price, Strike, Type, DTE, Premium, ROI, Delta, IV, AI Score, Analyst, Action
+  - Notes and "Added" date displayed below symbol name
 - [x] **Price Tracking**
   - Captures `price_when_added` from Polygon API when adding stocks
   - Shows current price from live Polygon data
-  - Movement percentage calculation (current vs added price)
-  - Up/down arrow indicators with color coding (green/red)
+  - Movement percentage calculation (current vs added price) with up/down arrows
 - [x] **Covered Call Opportunities**
   - Best opportunity shown for each watchlist item
-  - Displays: Expiry date, Strike, Delta, IV
-  - "No opportunities" message with icon when no suitable options
+  - Strike column: Shows expiry + strike + type (e.g., "16JAN26 $257.5C")
+  - Type column: Weekly (cyan badge) or Monthly (purple badge)
+  - Premium, ROI, Delta, IV columns with formatted data
+  - AI Score with color-coded badges (green for high scores)
+  - "No opportunities" message with icon for ETFs without suitable options
 - [x] **CRUD Operations**
   - Add stock with symbol validation
   - Delete individual items
@@ -130,12 +132,12 @@ Build a web-based application named "Covered Call Engine" to identify, analyze, 
 - [x] **Analyst Ratings**
   - Fetched from yfinance
   - Color-coded badges (Strong Buy, Buy, Hold, Sell)
+  - Shows "-" for stocks without analyst coverage
 - [x] **Backend Enhancements**
   - `/app/backend/routes/watchlist.py` - Complete rewrite with Polygon API integration
-  - `fetch_stock_prices_polygon()` - Batch price fetching
+  - `fetch_stock_prices_polygon()` - Batch price fetching with logging
   - `fetch_analyst_ratings_batch()` - Parallel analyst rating fetches
-  - `_get_best_opportunity()` - Find best covered call for each symbol
-  - New endpoint: `DELETE /api/watchlist/` - Clear all items
+  - `_get_best_opportunity()` - Find best covered call with Type, AI Score, IV defaults
 
 ### 🔴 Blocked
 - [ ] Stripe Webhook Configuration - Requires user action
