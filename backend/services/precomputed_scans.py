@@ -50,27 +50,27 @@ RISK_PROFILES = {
         # Technical filters
         "trend_sma50_above_sma200": True,
         "price_above_sma50": True,
-        "rsi_min": 40,
-        "rsi_max": 60,
-        "atr_pct_max": 0.03,  # ATR <= 3%
-        "no_recent_gap": True,
-        "gap_threshold": 0.03,  # No 3%+ gaps in 10 days
+        "rsi_min": 35,
+        "rsi_max": 65,
+        "atr_pct_max": 0.04,  # ATR <= 4%
+        "no_recent_gap": False,  # Relaxed for more results
+        "gap_threshold": 0.03,
         # Fundamental filters
-        "market_cap_min": 10_000_000_000,  # $10B
+        "market_cap_min": 5_000_000_000,  # $5B (relaxed from $10B)
         "eps_positive": True,
-        "revenue_growth_min": 0.05,  # 5% YoY
-        "debt_to_equity_max": 0.6,
-        "roe_min": 0.12,  # 12%
+        "revenue_growth_min": 0,  # Relaxed - any positive revenue is fine
+        "debt_to_equity_max": 1.0,  # Relaxed from 0.6
+        "roe_min": 0.08,  # 8% (relaxed from 12%)
         # Options filters
-        "iv_percentile_min": 20,
-        "iv_percentile_max": 40,
+        "iv_percentile_min": 15,
+        "iv_percentile_max": 50,
         "delta_min": 0.20,
-        "delta_max": 0.30,
-        "dte_min": 25,
-        "dte_max": 45,
-        "premium_yield_min": 0.007,  # 0.7%
+        "delta_max": 0.35,
+        "dte_min": 20,
+        "dte_max": 50,
+        "premium_yield_min": 0.005,  # 0.5% (relaxed)
         # Earnings filter
-        "earnings_days_away_min": 21,
+        "earnings_days_away_min": 14,
     },
     "balanced": {
         "label": "Steady Income",
@@ -78,25 +78,25 @@ RISK_PROFILES = {
         # Technical filters
         "trend_sma50_above_sma200": False,  # Just price > SMA50
         "price_above_sma50": True,
-        "rsi_min": 45,
-        "rsi_max": 65,
-        "atr_pct_max": 0.05,  # ATR <= 5%
+        "rsi_min": 40,
+        "rsi_max": 70,
+        "atr_pct_max": 0.06,  # ATR <= 6%
         "no_recent_gap": False,
-        "volume_above_avg": True,
+        "volume_above_avg": False,  # Relaxed
         # Fundamental filters
-        "market_cap_min": 3_000_000_000,  # $3B
-        "eps_positive": False,  # Positive OR improving
-        "revenue_growth_min": 0.08,  # 8% YoY
-        "debt_to_equity_max": 1.0,
+        "market_cap_min": 2_000_000_000,  # $2B
+        "eps_positive": False,  # Allow negative EPS
+        "revenue_growth_min": 0,  # Any revenue growth
+        "debt_to_equity_max": 2.0,  # More lenient
         "roe_min": 0,
         # Options filters
-        "iv_percentile_min": 30,
-        "iv_percentile_max": 55,
-        "delta_min": 0.30,
-        "delta_max": 0.40,
-        "dte_min": 20,
-        "dte_max": 40,
-        "premium_yield_min": 0.01,  # 1%
+        "iv_percentile_min": 20,
+        "iv_percentile_max": 60,
+        "delta_min": 0.25,
+        "delta_max": 0.45,
+        "dte_min": 15,
+        "dte_max": 45,
+        "premium_yield_min": 0.008,  # 0.8%
         # Earnings filter
         "earnings_days_away_min": 14,
     },
