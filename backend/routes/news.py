@@ -267,8 +267,8 @@ async def analyze_news_sentiment(
         # Prepare news text for analysis
         news_text = ""
         for i, item in enumerate(news_items[:5], 1):  # Limit to 5 articles
-            title = item.get("title", "")
-            desc = item.get("description", "")
+            title = item.title
+            desc = item.description or ""
             news_text += f"{i}. {title}\n{desc[:200] if desc else ''}\n\n"
         
         # Create chat instance
