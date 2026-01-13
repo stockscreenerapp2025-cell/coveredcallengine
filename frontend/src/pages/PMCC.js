@@ -808,69 +808,85 @@ const PMCC = () => {
                         <th>Short (Sell)</th>
                         <SortHeader field="short_premium" label="Premium" />
                         <SortHeader field="net_debit" label="Net Debit" />
-                        <SortHeader field="strike_width" label="Width" />
-                        <SortHeader field="roi_per_cycle" label="ROI/Cycle" />
-                        <SortHeader field="annualized_roi" label="Ann. ROI" />
+                        <th>Width</th>
+                        <th>ROI/Cycle</th>
+                        <th>Ann. ROI</th>
                         <SortHeader field="score" label="AI Score" />
                         <th className="text-center">Action</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {sortedOpportunities.map((opp, index) => (
-                        <tr 
-                          key={index} 
-                          className="cursor-pointer hover:bg-zinc-800/50 transition-colors" 
-                          data-testid={`pmcc-row-${opp.symbol}`}
-                          onClick={() => {
-                            setSelectedStock(opp.symbol);
-                            setSelectedScanData(activeScan ? opp : null);
-                            setIsModalOpen(true);
-                          }}
-                          title={`Click to view ${opp.symbol} details with Technical, Fundamentals & News`}
-                        >
-                          <td className="font-semibold text-white">{opp.symbol}</td>
-                          <td className="font-mono">${opp.stock_price?.toFixed(2)}</td>
-                          <td>
-                            <div className="flex flex-col">
-                              <span className="text-emerald-400 font-mono text-sm">{formatOptionContract(opp.leaps_dte, opp.leaps_strike)}</span>
-                              <span className="text-xs text-zinc-500">δ{opp.leaps_delta?.toFixed(2)}</span>
-                            </div>
-                          </td>
-                          <td className="text-red-400 font-mono">${opp.leaps_cost?.toLocaleString()}</td>
-                          <td>
-                            <div className="flex flex-col">
-                              <span className="text-cyan-400 font-mono text-sm">{formatOptionContract(opp.short_dte, opp.short_strike)}</span>
-                              <span className="text-xs text-zinc-500">δ{opp.short_delta?.toFixed(2)}</span>
-                            </div>
-                          </td>
-                          <td className="text-emerald-400 font-mono">${opp.short_premium?.toFixed(0)}</td>
-                          <td className="text-white font-mono">${opp.net_debit?.toLocaleString()}</td>
-                          <td className="font-mono">${opp.strike_width?.toFixed(0)}</td>
-                          <td className="text-yellow-400 font-semibold">{opp.roi_per_cycle?.toFixed(1)}%</td>
-                          <td className="text-emerald-400 font-semibold">{opp.annualized_roi?.toFixed(0)}%</td>
-                          <td>
-                            <Badge className={`${opp.score >= 70 ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' : opp.score >= 50 ? 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30' : 'bg-violet-500/20 text-violet-400 border-violet-500/30'}`}>
-                              {opp.score?.toFixed(0)}
-                            </Badge>
-                          </td>
-                          <td className="text-center">
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setSimulateOpp(opp);
-                                setSimulateModalOpen(true);
-                              }}
-                              className="bg-violet-500/10 border-violet-500/30 text-violet-400 hover:bg-violet-500/20 hover:text-violet-300"
-                              data-testid={`simulate-btn-${opp.symbol}`}
-                            >
-                              <Play className="w-3 h-3 mr-1" />
-                              Simulate
-                            </Button>
-                          </td>
-                        </tr>
-                      ))}
+                      {sortedOpportunities.map((opp, index) => {
+                        // Handle both old API format and pre-computed scan format
+                        const leapsDte = opp.leaps_dte || opp.long_dte;
+                        const leapsStrike = opp.leaps_strike || opp.long_strike;
+                        const leapsCost = opp.leaps_cost || (opp.long_premium ? opp.long_premium * 100 : 0);
+                        const leapsDelta = opp.leaps_delta || opp.long_delta;
+                        const shortDte = opp.short_dte;
+                        const shortStrike = opp.short_strike;
+                        const shortPremium = opp.short_premium ? opp.short_premium * 100 : 0;
+                        const shortDelta = opp.short_delta;
+                        const netDebit = opp.net_debit || (leapsCost - shortPremium);
+                        const strikeWidth = shortStrike && leapsStrike ? (shortStrike - leapsStrike) : opp.strike_width;
+                        const roiPerCycle = opp.roi_per_cycle || opp.roi_pct || (netDebit > 0 ? (shortPremium / netDebit) * 100 : 0);
+                        const annualizedRoi = opp.annualized_roi || (shortDte > 0 ? roiPerCycle * (365 / shortDte) : 0);
+                        
+                        return (
+                          <tr 
+                            key={index} 
+                            className="cursor-pointer hover:bg-zinc-800/50 transition-colors" 
+                            data-testid={`pmcc-row-${opp.symbol}`}
+                            onClick={() => {
+                              setSelectedStock(opp.symbol);
+                              setSelectedScanData(activeScan ? opp : null);
+                              setIsModalOpen(true);
+                            }}
+                            title={`Click to view ${opp.symbol} details with Technical, Fundamentals & News`}
+                          >
+                            <td className="font-semibold text-white">{opp.symbol}</td>
+                            <td className="font-mono">${opp.stock_price?.toFixed(2)}</td>
+                            <td>
+                              <div className="flex flex-col">
+                                <span className="text-emerald-400 font-mono text-sm">{formatOptionContract(leapsDte, leapsStrike)}</span>
+                                <span className="text-xs text-zinc-500">δ{leapsDelta?.toFixed(2)}</span>
+                              </div>
+                            </td>
+                            <td className="text-red-400 font-mono">${leapsCost?.toLocaleString()}</td>
+                            <td>
+                              <div className="flex flex-col">
+                                <span className="text-cyan-400 font-mono text-sm">{formatOptionContract(shortDte, shortStrike)}</span>
+                                <span className="text-xs text-zinc-500">δ{shortDelta?.toFixed(2)}</span>
+                              </div>
+                            </td>
+                            <td className="text-emerald-400 font-mono">${shortPremium?.toFixed(0)}</td>
+                            <td className="text-white font-mono">${netDebit?.toLocaleString()}</td>
+                            <td className="font-mono">${strikeWidth?.toFixed(0)}</td>
+                            <td className="text-yellow-400 font-semibold">{roiPerCycle?.toFixed(1)}%</td>
+                            <td className="text-emerald-400 font-semibold">{annualizedRoi?.toFixed(0)}%</td>
+                            <td>
+                              <Badge className={`${opp.score >= 70 ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' : opp.score >= 50 ? 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30' : 'bg-violet-500/20 text-violet-400 border-violet-500/30'}`}>
+                                {opp.score?.toFixed(0)}
+                              </Badge>
+                            </td>
+                            <td className="text-center">
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setSimulateOpp(opp);
+                                  setSimulateModalOpen(true);
+                                }}
+                                className="bg-violet-500/10 border-violet-500/30 text-violet-400 hover:bg-violet-500/20 hover:text-violet-300"
+                                data-testid={`simulate-btn-${opp.symbol}`}
+                              >
+                                <Play className="w-3 h-3 mr-1" />
+                                Simulate
+                              </Button>
+                            </td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>
