@@ -343,20 +343,6 @@ const PMCC = () => {
     return sortDirection === 'asc' ? aVal - bVal : bVal - aVal;
   });
 
-  const SortHeader = ({ field, label }) => (
-    <th
-      className="cursor-pointer hover:text-white transition-colors"
-      onClick={() => handleSort(field)}
-    >
-      <div className="flex items-center gap-1">
-        {label}
-        {sortField === field && (
-          sortDirection === 'asc' ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />
-        )}
-      </div>
-    </th>
-  );
-
   return (
     <div className="space-y-6" data-testid="pmcc-page">
       {/* Header */}
