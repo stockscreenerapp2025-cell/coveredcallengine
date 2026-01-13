@@ -101,18 +101,45 @@ Build a web-based application named "Covered Call Engine" to identify, analyze, 
 - [ ] Watchlist Functionality (P1)
 
 ### 🔴 Blocked
+- [ ] IMAP Email Import - MX Records need to point to Hostinger
 - [ ] Stripe Webhook Configuration - Requires user action
 - [ ] Resend Domain Verification - Requires user action
 - [ ] IBKR CSV Parser Validation - Waiting for user's second account CSV
 
 ### 📋 Backlog
-- [ ] Support Ticket System - Phase 2: Email Ingestion (webhook-based) (P2)
-- [ ] Support Ticket System - Phase 3: AI Auto-Response for eligible tickets (P3)
+- [ ] PMCC Pre-Computed Scans (Phase 3) (P1)
+  - Capital Efficient Income (Conservative PMCC)
+  - Leveraged Income (Balanced PMCC)
+  - Max Yield Diagonal (Aggressive PMCC)
+- [ ] Support System - AI Learning from admin edits (P1)
+- [ ] Refactor Admin.js (2000+ lines) into sub-components (P2)
+- [ ] Support Ticket System - Phase 3: Advanced AI Resolution (P2)
 - [ ] Admin Panel - Content Manager (P2)
 - [ ] Admin Panel - Roles & Permissions (P3)
 - [ ] Generic CSV Import with field mapping (P3)
 
+### ✅ Completed (Jan 13, 2026)
+- [x] **Pre-Computed Scans for Covered Calls**
+  - Income Guard (Conservative): 32 opportunities
+  - Steady Income (Balanced): 50 opportunities
+  - Premium Hunter (Aggressive): 50 opportunities
+  - Backend service: `/app/backend/services/precomputed_scans.py`
+  - API routes: `/app/backend/routes/precomputed_scans.py`
+  - Nightly scheduler at 4:45 PM ET (weekdays)
+  - Technical filters: SMA alignment, RSI, ATR%, price stability
+  - Fundamental filters: Market cap, EPS, ROE, D/E, revenue growth
+  - Options filters: Delta range, DTE range, premium yield
+  - MongoDB collection: `precomputed_scans`
+  - Frontend: Quick Scans section with 3 scan buttons
+
 ### ✅ Completed (Jan 12, 2026)
+- [x] **Full RBAC Implementation**
+  - Admin, Tester, Support Staff roles
+  - Role-based navigation and access control
+  - Invitation system fixed
+- [x] **IMAP Email Polling System**
+  - Automated email import from Hostinger mailbox
+  - AI auto-draft for customer replies
 - [x] **Support Ticket System - Phase 1: Human-in-the-Loop**
   - Unified ticket intake via contact form (email ingestion planned for Phase 2)
   - AI ticket classification using GPT-5.2 (category, sentiment, priority, confidence score)
@@ -138,8 +165,9 @@ Build a web-based application named "Covered Call Engine" to identify, analyze, 
 - **Frontend:** React, Tailwind CSS, Shadcn/UI
 - **Backend:** FastAPI (Python)
 - **Database:** MongoDB
-- **APIs:** Polygon.io, Yahoo Finance, MarketAux, Stripe, Resend
+- **APIs:** Polygon.io, Yahoo Finance (technical + fundamentals), MarketAux, Stripe, Resend
 - **Charting:** TradingView (iframe), Recharts
+- **Scheduler:** APScheduler (nightly pre-computed scans)
 
 ---
 
