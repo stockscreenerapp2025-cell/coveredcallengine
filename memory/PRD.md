@@ -118,6 +118,32 @@ Build a web-based application named "Covered Call Engine" to identify, analyze, 
 - [ ] Admin Panel - Roles & Permissions (P3)
 - [ ] Generic CSV Import with field mapping (P3)
 
+### ✅ Completed (Jan 13, 2026) - New Features
+- [x] **PMCC LEAPS Minimum 12 Months DTE**
+  - Updated PMCC_PROFILES to require `long_dte_min: 365` for all risk profiles (conservative, balanced, aggressive)
+  - All pre-computed PMCC scans now only show LEAPS with 12+ months expiration
+  - True LEAPS options for better capital efficiency and leverage
+- [x] **Dashboard Top 10 CC Strike Format**
+  - Strike column now shows date + strike + type format: "16JAN26 $46 C"
+  - Added `formatOptionContract()` function to Dashboard.js
+  - Better visibility of contract details at a glance
+- [x] **Portfolio IBKR Button Cleanup**
+  - Removed "Opens in new window" helper text from IBKR account button
+  - Cleaner UI in the Portfolio page
+- [x] **AI Sentiment Analysis for News**
+  - Added "Analyze News" button in Stock Detail Modal News tab
+  - Uses GPT-5.2 via Emergent integrations for sentiment analysis
+  - Returns: Overall Sentiment (Bullish/Bearish/Neutral), Sentiment Score (0-100), Summary
+  - Per-article sentiment badges: Positive/Neutral/Negative with confidence levels
+  - New endpoint: `POST /api/news/analyze-sentiment`
+- [x] **Analyst Ratings in Fundamentals Tab**
+  - Added Analyst Ratings card in Stock Detail Modal Fundamentals tab
+  - Shows: Rating badge (Strong Buy/Buy/Hold/Sell), Analyst count, Target Price
+  - Price Range (low - high), Upside percentage calculation
+  - Data from Yahoo Finance via yfinance library
+  - Added `_fetch_analyst_ratings()` function in stocks.py
+  - Added "Analyst" column to Dashboard Top 10 CC table
+
 ### ✅ Completed (Jan 13, 2026) - PMCC Bug Fixes
 - [x] **PMCC Pre-Computed Scans Data Mapping Fix**
   - Added `normalizeOpp()` helper function to map backend `long_*` fields to frontend `leaps_*` fields
