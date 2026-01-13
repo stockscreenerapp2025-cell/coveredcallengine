@@ -66,6 +66,9 @@ export default function AcceptInvitation() {
       setSuccess(true);
       toast.success('Account created successfully!');
       
+      // Clear any existing session to prevent confusion with previous logged-in user
+      localStorage.removeItem('token');
+      
       // Redirect to login after 3 seconds
       setTimeout(() => {
         navigate('/login');
