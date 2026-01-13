@@ -823,9 +823,10 @@ const PMCC = () => {
                           data-testid={`pmcc-row-${opp.symbol}`}
                           onClick={() => {
                             setSelectedStock(opp.symbol);
+                            setSelectedScanData(activeScan ? opp : null);
                             setIsModalOpen(true);
                           }}
-                          title={`Click to view ${opp.symbol} details`}
+                          title={`Click to view ${opp.symbol} details with Technical, Fundamentals & News`}
                         >
                           <td className="font-semibold text-white">{opp.symbol}</td>
                           <td className="font-mono">${opp.stock_price?.toFixed(2)}</td>
