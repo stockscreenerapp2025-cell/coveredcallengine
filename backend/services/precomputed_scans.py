@@ -604,40 +604,40 @@ class PrecomputedScanService:
         if not fund_data:
             return False, "No fundamental data"
         
-        market_cap = fund_data.get("market_cap", 0)
-        eps = fund_data.get("eps_ttm", 0)
-        roe = fund_data.get("roe", 0)
-        de_ratio = fund_data.get("debt_to_equity", 0)
-        rev_growth = fund_data.get("revenue_growth", 0)
+        market_cap = fund_data.get("market_cap") or 0
+        eps = fund_data.get("eps_ttm") or 0
+        roe = fund_data.get("roe") or 0
+        de_ratio = fund_data.get("debt_to_equity") or 0
+        rev_growth = fund_data.get("revenue_growth") or 0
         days_to_earnings = fund_data.get("days_to_earnings")
         
-        # Market cap filter
+        # Market cap filter - must have valid market cap
         min_cap = profile.get("market_cap_min", 0)
         if market_cap < min_cap:
             return False, f"Market cap ${market_cap/1e9:.1f}B below ${min_cap/1e9}B"
         
-        # EPS filter
-        if profile.get("eps_positive") and eps <= 0:
+        # EPS filter - only apply if strictly required
+        if profile.get("eps_positive") and eps is not None and eps <= 0:
             return False, f"EPS ${eps:.2f} not positive"
         
-        # ROE filter
+        # ROE filter - skip if data not available
         min_roe = profile.get("roe_min", 0)
-        if roe < min_roe:
+        if min_roe > 0 and roe is not None and roe > 0 and roe < min_roe:
             return False, f"ROE {roe*100:.1f}% below {min_roe*100}%"
         
-        # Debt to Equity filter
+        # Debt to Equity filter - skip if no data
         max_de = profile.get("debt_to_equity_max")
-        if max_de is not None and de_ratio > max_de:
+        if max_de is not None and de_ratio is not None and de_ratio > 0 and de_ratio > max_de:
             return False, f"D/E {de_ratio:.2f} above {max_de}"
         
-        # Revenue growth filter
+        # Revenue growth filter - skip if no data
         min_rev = profile.get("revenue_growth_min", 0)
-        if rev_growth < min_rev:
+        if min_rev > 0 and rev_growth is not None and rev_growth < min_rev:
             return False, f"Revenue growth {rev_growth*100:.1f}% below {min_rev*100}%"
         
-        # Earnings date filter
+        # Earnings date filter - skip if no data
         min_days = profile.get("earnings_days_away_min", 0)
-        if days_to_earnings is not None and days_to_earnings < min_days:
+        if min_days > 0 and days_to_earnings is not None and days_to_earnings >= 0 and days_to_earnings < min_days:
             return False, f"Earnings in {days_to_earnings} days (min {min_days})"
         
         return True, "Passed"
