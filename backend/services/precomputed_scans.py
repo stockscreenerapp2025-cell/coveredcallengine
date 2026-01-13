@@ -156,13 +156,14 @@ PMCC_PROFILES = {
     },
     "aggressive": {
         "label": "Max Yield Diagonal",
-        "long_dte_min": 365,  # 12-24 months
-        "long_dte_max": 730,
+        "long_dte_min": 180,  # Relaxed from 365 to find more opportunities
+        "long_dte_max": 730,  # Up to 24 months
         "long_delta_min": 0.55,
-        "long_delta_max": 0.65,
-        "short_delta_min": 0.40,
+        "long_delta_max": 0.70,  # Slightly wider range
+        "long_itm_pct": 0.05,  # 5% ITM (less deep than conservative)
+        "short_delta_min": 0.35,
         "short_delta_max": 0.55,
-        "short_dte_min": 14,
+        "short_dte_min": 7,
         "short_dte_max": 30,
     }
 }
