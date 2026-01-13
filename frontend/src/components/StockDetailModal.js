@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, memo } from 'react';
-import { stocksApi } from '../lib/api';
+import { stocksApi, newsApi } from '../lib/api';
 import {
   Dialog,
   DialogContent,
@@ -10,6 +10,7 @@ import { Badge } from '../components/ui/badge';
 import { Skeleton } from '../components/ui/skeleton';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
+import { Button } from '../components/ui/button';
 import {
   TrendingUp,
   TrendingDown,
@@ -23,7 +24,10 @@ import {
   Calendar,
   AlertTriangle,
   Shield,
-  DollarSign
+  DollarSign,
+  Target,
+  Sparkles,
+  Loader2
 } from 'lucide-react';
 
 // Custom TradingView Chart component with SMA 50 and 200
