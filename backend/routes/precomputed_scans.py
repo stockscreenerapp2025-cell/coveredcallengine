@@ -227,7 +227,7 @@ async def get_pmcc_scan(
     if not result:
         raise HTTPException(
             status_code=404,
-            detail=f"PMCC scans are coming in Phase 3. Currently only Covered Call scans are available."
+            detail="PMCC scans are coming in Phase 3. Currently only Covered Call scans are available."
         )
     
     opportunities = result.get("opportunities", [])[:limit]
@@ -277,7 +277,7 @@ async def trigger_scan(
         await service.store_scan_results("covered_call", risk_profile, opportunities)
         
         return {
-            "message": f"Scan complete",
+            "message": "Scan complete",
             "strategy": strategy,
             "risk_profile": risk_profile,
             "count": len(opportunities),
