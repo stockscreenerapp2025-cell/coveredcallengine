@@ -375,17 +375,19 @@ const StockDetailModal = ({ symbol, isOpen, onClose, scanData = null }) => {
                       </CardTitle>
                     </CardHeader>
                     <CardContent className="space-y-3">
-                      {stockData.fundamentals?.name && (
+                      {(stockData?.fundamentals?.name || fundamentals?.name) && (
                         <div>
                           <div className="text-xs text-zinc-500">Company Name</div>
-                          <div className="text-white">{stockData.fundamentals.name}</div>
+                          <div className="text-white">{stockData?.fundamentals?.name || fundamentals?.name}</div>
                         </div>
                       )}
                       
-                      {stockData.fundamentals?.sic_description && (
+                      {(stockData?.fundamentals?.sic_description || fundamentals?.sector) && (
                         <div>
-                          <div className="text-xs text-zinc-500">Industry</div>
-                          <div className="text-zinc-300 text-sm">{stockData.fundamentals.sic_description}</div>
+                          <div className="text-xs text-zinc-500">Sector / Industry</div>
+                          <div className="text-zinc-300 text-sm">
+                            {fundamentals?.sector || stockData?.fundamentals?.sic_description}
+                          </div>
                         </div>
                       )}
 
@@ -393,33 +395,33 @@ const StockDetailModal = ({ symbol, isOpen, onClose, scanData = null }) => {
                         <div className="p-3 rounded bg-zinc-900/50">
                           <div className="text-xs text-zinc-500">Market Cap</div>
                           <div className="text-lg font-mono text-emerald-400">
-                            {formatNumber(stockData.fundamentals?.market_cap)}
+                            {formatNumber(fundamentals?.market_cap || stockData?.fundamentals?.market_cap)}
                           </div>
                         </div>
                         <div className="p-3 rounded bg-zinc-900/50">
                           <div className="text-xs text-zinc-500">Employees</div>
                           <div className="text-lg font-mono text-white flex items-center gap-1">
                             <Users className="w-4 h-4 text-zinc-500" />
-                            {stockData.fundamentals?.employees?.toLocaleString() || 'N/A'}
+                            {stockData?.fundamentals?.employees?.toLocaleString() || 'N/A'}
                           </div>
                         </div>
                       </div>
 
-                      {stockData.fundamentals?.list_date && (
+                      {stockData?.fundamentals?.list_date && (
                         <div className="flex items-center gap-2 text-sm text-zinc-400">
                           <Calendar className="w-4 h-4" />
                           Listed: {formatDate(stockData.fundamentals.list_date)}
                         </div>
                       )}
 
-                      {stockData.fundamentals?.primary_exchange && (
+                      {stockData?.fundamentals?.primary_exchange && (
                         <div className="flex items-center gap-2 text-sm text-zinc-400">
                           <BarChart3 className="w-4 h-4" />
                           Exchange: {stockData.fundamentals.primary_exchange}
                         </div>
                       )}
 
-                      {stockData.fundamentals?.homepage && (
+                      {stockData?.fundamentals?.homepage && (
                         <a 
                           href={stockData.fundamentals.homepage} 
                           target="_blank" 
@@ -432,11 +434,93 @@ const StockDetailModal = ({ symbol, isOpen, onClose, scanData = null }) => {
                         </a>
                       )}
 
-                      {stockData.fundamentals?.description && (
+                      {stockData?.fundamentals?.description && (
                         <div>
                           <div className="text-xs text-zinc-500 mb-1">About</div>
                           <div className="text-xs text-zinc-400 line-clamp-4">
                             {stockData.fundamentals.description}
+                          </div>
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+
+                  {/* Key Financial Metrics - Enhanced with scan data */}
+                  <Card className="bg-zinc-800/50 border-zinc-700">
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-sm flex items-center gap-2">
+                        <DollarSign className="w-4 h-4 text-yellow-400" />
+                        Key Financial Metrics
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="grid grid-cols-2 gap-3">
+                        {fundamentals?.eps_ttm !== undefined && (
+                          <div className="p-3 rounded bg-zinc-900/50">
+                            <div className="text-xs text-zinc-500">EPS (TTM)</div>
+                            <div className={`text-lg font-mono ${fundamentals.eps_ttm > 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                              ${fundamentals.eps_ttm?.toFixed(2)}
+                            </div>
+                            <div className="text-xs text-zinc-500">
+                              {fundamentals.eps_ttm > 0 ? 'Profitable' : 'Loss Making'}
+                            </div>
+                          </div>
+                        )}
+                        {fundamentals?.roe !== undefined && fundamentals?.roe !== null && (
+                          <div className="p-3 rounded bg-zinc-900/50">
+                            <div className="text-xs text-zinc-500">ROE</div>
+                            <div className={`text-lg font-mono ${fundamentals.roe > 15 ? 'text-emerald-400' : 'text-yellow-400'}`}>
+                              {fundamentals.roe?.toFixed(1)}%
+                            </div>
+                            <div className="text-xs text-zinc-500">
+                              {fundamentals.roe > 15 ? 'Strong' : fundamentals.roe > 10 ? 'Good' : 'Below Avg'}
+                            </div>
+                          </div>
+                        )}
+                        {fundamentals?.debt_to_equity !== undefined && fundamentals?.debt_to_equity !== null && (
+                          <div className="p-3 rounded bg-zinc-900/50">
+                            <div className="text-xs text-zinc-500">Debt/Equity</div>
+                            <div className={`text-lg font-mono ${
+                              fundamentals.debt_to_equity > 1.5 ? 'text-orange-400' : 
+                              fundamentals.debt_to_equity > 1 ? 'text-yellow-400' : 'text-emerald-400'
+                            }`}>
+                              {fundamentals.debt_to_equity?.toFixed(2)}
+                            </div>
+                            <div className="text-xs text-zinc-500">
+                              {fundamentals.debt_to_equity > 1.5 ? 'High Debt' : fundamentals.debt_to_equity > 1 ? 'Moderate' : 'Low Debt'}
+                            </div>
+                          </div>
+                        )}
+                        {fundamentals?.days_to_earnings !== undefined && fundamentals?.days_to_earnings !== null && (
+                          <div className="p-3 rounded bg-zinc-900/50">
+                            <div className="text-xs text-zinc-500">Next Earnings</div>
+                            <div className={`text-lg font-mono ${
+                              fundamentals.days_to_earnings < 14 ? 'text-orange-400' : 'text-zinc-300'
+                            }`}>
+                              {fundamentals.days_to_earnings >= 0 ? `${fundamentals.days_to_earnings}d` : 'Passed'}
+                            </div>
+                            <div className={`text-xs ${fundamentals.days_to_earnings < 14 ? 'text-orange-400' : 'text-zinc-500'}`}>
+                              {fundamentals.days_to_earnings < 14 ? '⚠ Approaching' : 'No Binary Event'}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                      
+                      {/* Quality Assessment */}
+                      {(fundamentals?.eps_ttm !== undefined || fundamentals?.roe !== undefined) && (
+                        <div className="mt-3 p-3 rounded bg-zinc-900/50">
+                          <div className="flex justify-between items-center">
+                            <span className="text-xs text-zinc-500">Quality Assessment</span>
+                            <Badge className={`text-xs ${
+                              (fundamentals?.eps_ttm > 0 && fundamentals?.roe > 10) 
+                                ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30'
+                                : fundamentals?.eps_ttm > 0
+                                  ? 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30'
+                                  : 'bg-zinc-500/20 text-zinc-400 border-zinc-500/30'
+                            }`}>
+                              {(fundamentals?.eps_ttm > 0 && fundamentals?.roe > 10) ? '★★★ Strong' : 
+                               fundamentals?.eps_ttm > 0 ? '★★ Moderate' : '★ Speculative'}
+                            </Badge>
                           </div>
                         </div>
                       )}
@@ -455,19 +539,19 @@ const StockDetailModal = ({ symbol, isOpen, onClose, scanData = null }) => {
                       <div className="grid grid-cols-2 gap-3">
                         <div className="p-2 rounded bg-zinc-900/50">
                           <div className="text-xs text-zinc-500">Open</div>
-                          <div className="font-mono text-white">${stockData.open?.toFixed(2)}</div>
+                          <div className="font-mono text-white">${stockData?.open?.toFixed(2) || 'N/A'}</div>
                         </div>
                         <div className="p-2 rounded bg-zinc-900/50">
                           <div className="text-xs text-zinc-500">Volume</div>
-                          <div className="font-mono text-white">{(stockData.volume / 1e6)?.toFixed(2)}M</div>
+                          <div className="font-mono text-white">{stockData?.volume ? (stockData.volume / 1e6)?.toFixed(2) + 'M' : 'N/A'}</div>
                         </div>
                         <div className="p-2 rounded bg-zinc-900/50">
                           <div className="text-xs text-zinc-500">High</div>
-                          <div className="font-mono text-emerald-400">${stockData.high?.toFixed(2)}</div>
+                          <div className="font-mono text-emerald-400">${stockData?.high?.toFixed(2) || 'N/A'}</div>
                         </div>
                         <div className="p-2 rounded bg-zinc-900/50">
                           <div className="text-xs text-zinc-500">Low</div>
-                          <div className="font-mono text-red-400">${stockData.low?.toFixed(2)}</div>
+                          <div className="font-mono text-red-400">${stockData?.low?.toFixed(2) || 'N/A'}</div>
                         </div>
                       </div>
                     </CardContent>
