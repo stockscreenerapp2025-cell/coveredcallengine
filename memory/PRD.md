@@ -150,6 +150,7 @@ Build a web-based application named "Covered Call Engine" to identify, analyze, 
 - [ ] Admin Panel - Content Manager (P2)
 - [ ] Admin Panel - Roles & Permissions (P3)
 - [ ] Generic CSV Import with field mapping (P3)
+- [ ] Watchlist Price Alerts - notify when target price hit or high-ROI opportunity appears (P3)
 
 ### ✅ Completed (Jan 13, 2026) - Analyst Rating Columns
 - [x] **Screener Page**
