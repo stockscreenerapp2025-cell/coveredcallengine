@@ -858,7 +858,8 @@ const StockDetailModal = ({ symbol, isOpen, onClose, scanData = null }) => {
                             </Badge>
                           )}
                         </a>
-                      ))}
+                      );
+                      })}
                     </div>
                   ) : (
                     <div className="text-center py-8 text-zinc-500">
