@@ -492,7 +492,7 @@ class PrecomputedScanService:
                                         try:
                                             exp_dt = datetime.strptime(expiry, "%Y-%m-%d")
                                             dte = (exp_dt - datetime.now()).days
-                                        except:
+                                        except Exception:
                                             pass
                                     
                                     # Estimate delta based on moneyness
