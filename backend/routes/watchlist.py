@@ -123,8 +123,6 @@ async def fetch_stock_prices_polygon(symbols: List[str], api_key: str) -> Dict[s
                 logging.error(f"Error fetching price for {symbol}: {e}")
     
     return prices
-    
-    return prices
 
 
 async def _get_best_opportunity(symbol: str, api_key: str, underlying_price: float) -> dict:
