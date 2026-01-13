@@ -105,24 +105,37 @@ Build a web-based application named "Covered Call Engine" to identify, analyze, 
 - [ ] Watchlist Functionality (P1)
 
 ### 🔴 Blocked
-- [ ] IMAP Email Import - MX Records need to point to Hostinger
 - [ ] Stripe Webhook Configuration - Requires user action
 - [ ] Resend Domain Verification - Requires user action
 - [ ] IBKR CSV Parser Validation - Waiting for user's second account CSV
 
 ### 📋 Backlog
-- [ ] PMCC Pre-Computed Scans (Phase 3) (P1)
-  - Capital Efficient Income (Conservative PMCC)
-  - Leveraged Income (Balanced PMCC)
-  - Max Yield Diagonal (Aggressive PMCC)
 - [ ] Support System - AI Learning from admin edits (P1)
 - [ ] Refactor Admin.js (2000+ lines) into sub-components (P2)
+- [ ] Refactor Screener.js and PMCC.js into smaller components (P2)
 - [ ] Support Ticket System - Phase 3: Advanced AI Resolution (P2)
 - [ ] Admin Panel - Content Manager (P2)
 - [ ] Admin Panel - Roles & Permissions (P3)
 - [ ] Generic CSV Import with field mapping (P3)
 
-### ✅ Completed (Jan 13, 2026)
+### ✅ Completed (Jan 13, 2026) - PMCC Bug Fixes
+- [x] **PMCC Pre-Computed Scans Data Mapping Fix**
+  - Added `normalizeOpp()` helper function to map backend `long_*` fields to frontend `leaps_*` fields
+  - Backend sends: long_dte, long_strike, long_premium, long_delta
+  - Frontend displays: LEAPS (Buy) column with formatted contract info
+  - Simulate modal now uses normalized data for both custom and pre-computed scans
+- [x] **PMCC Default Screener Deduplication**
+  - Added client-side deduplication in `fetchOpportunities()` function
+  - Keeps highest score per symbol, removes duplicates
+- [x] **PMCC Page Layout Reorganization**
+  - New order: Header → Compact Strategy Explanation → Quick Scans → Filters + Results
+  - Removed standalone Strategy Tips cards at bottom
+  - Integrated key strategy info into compact 2-column card at top
+- [x] **Code Quality Improvements**
+  - Moved `SortHeader` component outside main `PMCC` component (React lint fix)
+  - Updated all SortHeader usages to pass required props
+
+### ✅ Completed (Jan 13, 2026) - Pre-Computed Scans
 - [x] **Pre-Computed Scans for Covered Calls**
   - Income Guard (Conservative): 32 opportunities
   - Steady Income (Balanced): 50 opportunities
