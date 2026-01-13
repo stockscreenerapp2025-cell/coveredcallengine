@@ -742,6 +742,72 @@ const StockDetailModal = ({ symbol, isOpen, onClose, scanData = null }) => {
                     </Card>
                   )}
 
+                  {/* AI Sentiment Analysis */}
+                  <Card className="bg-zinc-800/50 border-zinc-700 mb-3">
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-sm flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <Sparkles className="w-4 h-4 text-violet-400" />
+                          AI Sentiment Analysis
+                        </div>
+                        {!sentimentData && stockData?.news?.length > 0 && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={analyzeSentiment}
+                            disabled={analyzingSentiment}
+                            className="text-xs h-7"
+                          >
+                            {analyzingSentiment ? (
+                              <>
+                                <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+                                Analyzing...
+                              </>
+                            ) : (
+                              'Analyze News'
+                            )}
+                          </Button>
+                        )}
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      {sentimentData ? (
+                        <div className="space-y-3">
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <div className="text-xs text-zinc-500 mb-1">Overall Sentiment</div>
+                              <Badge className={`text-sm ${
+                                sentimentData.overall_score > 55 
+                                  ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30'
+                                  : sentimentData.overall_score < 45
+                                    ? 'bg-red-500/20 text-red-400 border-red-500/30'
+                                    : 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30'
+                              }`}>
+                                {sentimentData.overall_sentiment}
+                              </Badge>
+                            </div>
+                            <div className="text-right">
+                              <div className="text-xs text-zinc-500 mb-1">Sentiment Score</div>
+                              <div className={`text-2xl font-bold ${
+                                sentimentData.overall_score > 55 ? 'text-emerald-400' :
+                                sentimentData.overall_score < 45 ? 'text-red-400' : 'text-yellow-400'
+                              }`}>
+                                {sentimentData.overall_score}
+                              </div>
+                            </div>
+                          </div>
+                          {sentimentData.summary && (
+                            <p className="text-xs text-zinc-400 italic">{sentimentData.summary}</p>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="text-xs text-zinc-500 text-center py-2">
+                          Click "Analyze News" to get AI-powered sentiment analysis
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+
                   <div className="flex items-center gap-2 mb-2">
                     <Newspaper className="w-4 h-4 text-violet-400" />
                     <span className="text-sm font-medium text-white">Latest News</span>
@@ -749,7 +815,11 @@ const StockDetailModal = ({ symbol, isOpen, onClose, scanData = null }) => {
                   
                   {stockData?.news?.length > 0 ? (
                     <div className="space-y-3">
-                      {stockData.news.map((article, index) => (
+                      {stockData.news.map((article, index) => {
+                        // Get AI sentiment for this article if available
+                        const aiSentiment = sentimentData?.sentiments?.find(s => s.index === index + 1);
+                        
+                        return (
                         <a
                           key={index}
                           href={article.url}
@@ -769,7 +839,16 @@ const StockDetailModal = ({ symbol, isOpen, onClose, scanData = null }) => {
                             <span className="text-zinc-500">{article.source}</span>
                             <span className="text-zinc-600">{formatDate(article.published)}</span>
                           </div>
-                          {article.sentiment !== undefined && (
+                          {/* Show AI sentiment badge if available */}
+                          {aiSentiment ? (
+                            <Badge className={`mt-2 text-xs ${
+                              aiSentiment.sentiment === 'Positive' ? 'bg-emerald-500/20 text-emerald-400' :
+                              aiSentiment.sentiment === 'Negative' ? 'bg-red-500/20 text-red-400' :
+                              'bg-yellow-500/20 text-yellow-400'
+                            }`}>
+                              {aiSentiment.sentiment} ({aiSentiment.confidence})
+                            </Badge>
+                          ) : article.sentiment !== undefined && (
                             <Badge className={`mt-2 text-xs ${
                               article.sentiment > 0 ? 'bg-emerald-500/20 text-emerald-400' :
                               article.sentiment < 0 ? 'bg-red-500/20 text-red-400' :
