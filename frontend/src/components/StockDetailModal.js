@@ -560,12 +560,107 @@ const StockDetailModal = ({ symbol, isOpen, onClose, scanData = null }) => {
 
                 {/* News Tab */}
                 <TabsContent value="news" className="space-y-3 mt-4">
+                  {/* Risk Assessment from scan data */}
+                  {scanData && (
+                    <Card className="bg-zinc-800/50 border-zinc-700 mb-4">
+                      <CardHeader className="pb-2">
+                        <CardTitle className="text-sm flex items-center gap-2">
+                          <Shield className="w-4 h-4 text-violet-400" />
+                          Risk Assessment
+                        </CardTitle>
+                      </CardHeader>
+                      <CardContent className="space-y-3">
+                        <div className="grid grid-cols-2 gap-3">
+                          <div className="p-3 rounded bg-zinc-900/50">
+                            <div className="text-xs text-zinc-500 mb-1">Risk Profile</div>
+                            <Badge className={`text-sm ${
+                              scanData.risk_profile === 'conservative' 
+                                ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30'
+                                : scanData.risk_profile === 'balanced'
+                                  ? 'bg-blue-500/20 text-blue-400 border-blue-500/30'
+                                  : 'bg-orange-500/20 text-orange-400 border-orange-500/30'
+                            }`}>
+                              {scanData.risk_profile?.charAt(0).toUpperCase() + scanData.risk_profile?.slice(1)}
+                            </Badge>
+                          </div>
+                          <div className="p-3 rounded bg-zinc-900/50">
+                            <div className="text-xs text-zinc-500 mb-1">Timeframe</div>
+                            <Badge className={`text-sm ${
+                              scanData.timeframe === 'weekly' 
+                                ? 'bg-blue-500/20 text-blue-400 border-blue-500/30' 
+                                : 'bg-purple-500/20 text-purple-400 border-purple-500/30'
+                            }`}>
+                              {scanData.timeframe === 'weekly' ? 'Weekly' : 'Monthly'}
+                            </Badge>
+                          </div>
+                        </div>
+                        
+                        <div className="p-3 rounded bg-zinc-900/50">
+                          <div className="text-xs text-zinc-500 mb-2">Binary Event Check</div>
+                          {fundamentals?.days_to_earnings !== undefined && fundamentals?.days_to_earnings !== null ? (
+                            <div className={`flex items-center gap-2 ${
+                              fundamentals.days_to_earnings < (scanData?.dte || 30) 
+                                ? 'text-orange-400' : 'text-emerald-400'
+                            }`}>
+                              {fundamentals.days_to_earnings < (scanData?.dte || 30) ? (
+                                <>
+                                  <AlertTriangle className="w-4 h-4" />
+                                  <span className="text-sm">⚠ Earnings in {fundamentals.days_to_earnings}d (before expiry)</span>
+                                </>
+                              ) : (
+                                <>
+                                  <Shield className="w-4 h-4" />
+                                  <span className="text-sm">✓ No binary events before expiry</span>
+                                </>
+                              )}
+                            </div>
+                          ) : (
+                            <span className="text-sm text-zinc-400">Earnings date unknown</span>
+                          )}
+                        </div>
+
+                        <div className="p-3 rounded bg-zinc-900/50">
+                          <div className="text-xs text-zinc-500 mb-2">Volatility Assessment</div>
+                          <Badge className={`${
+                            technicals?.atr_pct > 4 
+                              ? 'bg-orange-500/20 text-orange-400 border-orange-500/30'
+                              : technicals?.atr_pct > 2.5
+                                ? 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30'
+                                : 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30'
+                          }`}>
+                            {technicals?.atr_pct > 4 ? '● High Volatility' : 
+                             technicals?.atr_pct > 2.5 ? '● Moderate Volatility' : '● Low Volatility'}
+                          </Badge>
+                        </div>
+
+                        <div className="p-3 rounded bg-zinc-900/50">
+                          <div className="flex justify-between items-center">
+                            <span className="text-xs text-zinc-500">Overall Risk Level</span>
+                            <Badge className={`${
+                              scanData.risk_profile === 'conservative' && (!fundamentals?.days_to_earnings || fundamentals.days_to_earnings > (scanData?.dte || 30))
+                                ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30'
+                                : scanData.risk_profile === 'aggressive' || (fundamentals?.days_to_earnings && fundamentals.days_to_earnings < (scanData?.dte || 30))
+                                  ? 'bg-orange-500/20 text-orange-400 border-orange-500/30'
+                                  : 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30'
+                            }`}>
+                              {scanData.risk_profile === 'conservative' && (!fundamentals?.days_to_earnings || fundamentals.days_to_earnings > (scanData?.dte || 30))
+                                ? '● Low Risk'
+                                : scanData.risk_profile === 'aggressive' || (fundamentals?.days_to_earnings && fundamentals.days_to_earnings < (scanData?.dte || 30))
+                                  ? '● High Risk'
+                                  : '● Medium Risk'}
+                            </Badge>
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  )}
+
                   <div className="flex items-center gap-2 mb-2">
                     <Newspaper className="w-4 h-4 text-violet-400" />
                     <span className="text-sm font-medium text-white">Latest News</span>
                   </div>
                   
-                  {stockData.news?.length > 0 ? (
+                  {stockData?.news?.length > 0 ? (
                     <div className="space-y-3">
                       {stockData.news.map((article, index) => (
                         <a
