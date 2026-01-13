@@ -106,26 +106,27 @@ RISK_PROFILES = {
         # Technical filters
         "trend_sma50_above_sma200": False,
         "price_above_sma20": True,  # Faster trend
-        "rsi_min": 50,
-        "rsi_max": 75,
-        "atr_pct_min": 0.04,  # ATR >= 4%
-        "volume_expansion": True,
+        "price_above_sma50": False,  # Use SMA20 instead
+        "rsi_min": 45,
+        "rsi_max": 80,
+        "atr_pct_min": 0.025,  # ATR >= 2.5% (more momentum stocks)
+        "volume_expansion": False,  # Relaxed
         # Fundamental filters
         "market_cap_min": 1_000_000_000,  # $1B
         "eps_positive": False,
-        "revenue_growth_min": 0.10,  # 10% YoY
+        "revenue_growth_min": 0,  # Any growth
         "debt_to_equity_max": None,  # No limit
         "roe_min": 0,
         # Options filters
-        "iv_percentile_min": 55,
-        "iv_percentile_max": 85,
-        "delta_min": 0.40,
+        "iv_percentile_min": 35,
+        "iv_percentile_max": 90,
+        "delta_min": 0.35,
         "delta_max": 0.55,
-        "dte_min": 14,
-        "dte_max": 30,
-        "premium_yield_min": 0.015,  # 1.5%
+        "dte_min": 7,
+        "dte_max": 35,
+        "premium_yield_min": 0.012,  # 1.2%
         # Earnings filter
-        "earnings_days_away_min": 5,
+        "earnings_days_away_min": 3,
     }
 }
 
