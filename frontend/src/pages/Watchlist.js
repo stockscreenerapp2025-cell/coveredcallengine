@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { watchlistApi } from '../lib/api';
-import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
+import { Card, CardContent } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
@@ -161,6 +161,14 @@ const Watchlist = () => {
     return <Minus className="w-4 h-4 text-zinc-500" />;
   };
 
+  const getScoreColor = (score) => {
+    if (!score) return 'bg-zinc-700 text-zinc-300';
+    if (score >= 80) return 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30';
+    if (score >= 60) return 'bg-green-500/20 text-green-400 border border-green-500/30';
+    if (score >= 40) return 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/30';
+    return 'bg-zinc-700 text-zinc-300';
+  };
+
   return (
     <div className="space-y-6" data-testid="watchlist-page">
       {/* Header */}
@@ -270,116 +278,150 @@ const Watchlist = () => {
                 <TableHeader>
                   <TableRow className="border-white/5 hover:bg-transparent">
                     <TableHead className="text-zinc-400 font-medium">Symbol</TableHead>
-                    <TableHead className="text-zinc-400 font-medium">Date Added</TableHead>
-                    <TableHead className="text-zinc-400 font-medium text-right">Price Added</TableHead>
-                    <TableHead className="text-zinc-400 font-medium text-right">Current</TableHead>
-                    <TableHead className="text-zinc-400 font-medium text-right">Movement</TableHead>
-                    <TableHead className="text-zinc-400 font-medium text-center">Analyst</TableHead>
-                    <TableHead className="text-zinc-400 font-medium">Best Opportunity</TableHead>
+                    <TableHead className="text-zinc-400 font-medium text-right">Price</TableHead>
+                    <TableHead className="text-zinc-400 font-medium">Strike</TableHead>
+                    <TableHead className="text-zinc-400 font-medium text-center">Type</TableHead>
+                    <TableHead className="text-zinc-400 font-medium text-center">DTE</TableHead>
+                    <TableHead className="text-zinc-400 font-medium text-right">Premium</TableHead>
                     <TableHead className="text-zinc-400 font-medium text-right">ROI</TableHead>
+                    <TableHead className="text-zinc-400 font-medium text-center">Delta</TableHead>
+                    <TableHead className="text-zinc-400 font-medium text-center">IV</TableHead>
+                    <TableHead className="text-zinc-400 font-medium text-center">AI Score</TableHead>
+                    <TableHead className="text-zinc-400 font-medium text-center">Analyst</TableHead>
                     <TableHead className="text-zinc-400 font-medium text-center">Action</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {items.map((item) => (
-                    <TableRow 
-                      key={item.id} 
-                      className="border-white/5 hover:bg-white/5"
-                      data-testid={`watchlist-row-${item.symbol}`}
-                    >
-                      {/* Symbol */}
-                      <TableCell className="font-bold text-white">
-                        <div className="flex flex-col">
-                          <span className="text-lg">{item.symbol}</span>
-                          {item.notes && (
-                            <span className="text-xs text-zinc-500 truncate max-w-[150px]">{item.notes}</span>
-                          )}
-                        </div>
-                      </TableCell>
-                      
-                      {/* Date Added */}
-                      <TableCell className="text-zinc-400 text-sm">
-                        {formatDate(item.added_at)}
-                      </TableCell>
-                      
-                      {/* Price When Added */}
-                      <TableCell className="text-right font-mono text-zinc-400">
-                        {formatCurrency(item.price_when_added)}
-                      </TableCell>
-                      
-                      {/* Current Price */}
-                      <TableCell className="text-right font-mono text-white font-medium">
-                        {formatCurrency(item.current_price)}
-                      </TableCell>
-                      
-                      {/* Movement */}
-                      <TableCell className="text-right">
-                        <div className="flex items-center justify-end gap-2">
-                          {getMovementIcon(item.movement_pct)}
-                          <span className={`font-mono ${
-                            item.movement_pct > 0 ? 'text-emerald-400' : 
-                            item.movement_pct < 0 ? 'text-red-400' : 'text-zinc-500'
-                          }`}>
-                            {formatPercent(item.movement_pct)}
-                          </span>
-                        </div>
-                      </TableCell>
-                      
-                      {/* Analyst Rating */}
-                      <TableCell className="text-center">
-                        {item.analyst_rating ? (
-                          <Badge variant="outline" className={`${getAnalystColor(item.analyst_rating)} border-current`}>
-                            {item.analyst_rating}
-                          </Badge>
-                        ) : (
-                          <span className="text-zinc-600">-</span>
-                        )}
-                      </TableCell>
-                      
-                      {/* Best Opportunity */}
-                      <TableCell>
-                        {item.opportunity ? (
+                  {items.map((item) => {
+                    const opp = item.opportunity;
+                    
+                    return (
+                      <TableRow 
+                        key={item.id} 
+                        className="border-white/5 hover:bg-white/5"
+                        data-testid={`watchlist-row-${item.symbol}`}
+                      >
+                        {/* Symbol */}
+                        <TableCell className="font-bold text-white">
                           <div className="flex flex-col">
+                            <span className="text-lg">{item.symbol}</span>
+                            <div className="flex items-center gap-2 text-xs">
+                              <span className="text-zinc-500">
+                                Added {formatDate(item.added_at)}
+                              </span>
+                              {item.price_when_added > 0 && item.movement_pct !== 0 && (
+                                <span className={`flex items-center gap-1 ${
+                                  item.movement_pct > 0 ? 'text-emerald-400' : 'text-red-400'
+                                }`}>
+                                  {getMovementIcon(item.movement_pct)}
+                                  {formatPercent(item.movement_pct)}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        </TableCell>
+                        
+                        {/* Current Price */}
+                        <TableCell className="text-right font-mono text-white font-medium">
+                          {formatCurrency(item.current_price)}
+                        </TableCell>
+                        
+                        {/* Strike */}
+                        <TableCell>
+                          {opp ? (
                             <span className="text-emerald-400 font-medium">
-                              {formatExpiry(item.opportunity.expiry)} ${item.opportunity.strike}C
+                              {formatExpiry(opp.expiry)} ${opp.strike}C
                             </span>
-                            <span className="text-xs text-zinc-500">
-                              {item.opportunity.dte}d | Δ{item.opportunity.delta} | IV {item.opportunity.iv}%
+                          ) : (
+                            <div className="flex items-center gap-1 text-zinc-500 text-sm">
+                              <AlertCircle className="w-3 h-3" />
+                              <span>No opportunities</span>
+                            </div>
+                          )}
+                        </TableCell>
+                        
+                        {/* Type */}
+                        <TableCell className="text-center">
+                          {opp?.type ? (
+                            <Badge 
+                              variant="outline" 
+                              className={`${opp.type === 'Weekly' ? 'border-cyan-500/50 text-cyan-400 bg-cyan-500/10' : 'border-violet-500/50 text-violet-400 bg-violet-500/10'}`}
+                            >
+                              {opp.type}
+                            </Badge>
+                          ) : (
+                            <span className="text-zinc-600">-</span>
+                          )}
+                        </TableCell>
+                        
+                        {/* DTE */}
+                        <TableCell className="text-center font-mono text-white">
+                          {opp?.dte ? `${opp.dte}d` : '-'}
+                        </TableCell>
+                        
+                        {/* Premium */}
+                        <TableCell className="text-right font-mono text-emerald-400">
+                          {opp?.premium ? `$${opp.premium.toFixed(2)}` : '-'}
+                        </TableCell>
+                        
+                        {/* ROI */}
+                        <TableCell className="text-right">
+                          {opp?.roi_pct ? (
+                            <span className="text-emerald-400 font-mono font-medium">
+                              {opp.roi_pct.toFixed(2)}%
                             </span>
-                          </div>
-                        ) : (
-                          <div className="flex items-center gap-1 text-zinc-500 text-sm">
-                            <AlertCircle className="w-3 h-3" />
-                            <span>No opportunities</span>
-                          </div>
-                        )}
-                      </TableCell>
-                      
-                      {/* ROI */}
-                      <TableCell className="text-right">
-                        {item.opportunity ? (
-                          <span className="text-emerald-400 font-mono font-medium">
-                            {item.opportunity.roi_pct}%
-                          </span>
-                        ) : (
-                          <span className="text-zinc-600">-</span>
-                        )}
-                      </TableCell>
-                      
-                      {/* Delete Action */}
-                      <TableCell className="text-center">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => removeFromWatchlist(item.id, item.symbol)}
-                          className="text-zinc-500 hover:text-red-400 hover:bg-red-400/10"
-                          data-testid={`delete-watchlist-${item.symbol}`}
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                  ))}
+                          ) : (
+                            <span className="text-zinc-600">-</span>
+                          )}
+                        </TableCell>
+                        
+                        {/* Delta */}
+                        <TableCell className="text-center font-mono text-white">
+                          {opp?.delta ? opp.delta.toFixed(2) : '-'}
+                        </TableCell>
+                        
+                        {/* IV */}
+                        <TableCell className="text-center font-mono text-white">
+                          {opp?.iv ? `${opp.iv.toFixed(0)}%` : '-'}
+                        </TableCell>
+                        
+                        {/* AI Score */}
+                        <TableCell className="text-center">
+                          {opp?.ai_score ? (
+                            <Badge className={`font-mono ${getScoreColor(opp.ai_score)}`}>
+                              {Math.round(opp.ai_score)}
+                            </Badge>
+                          ) : (
+                            <span className="text-zinc-600">-</span>
+                          )}
+                        </TableCell>
+                        
+                        {/* Analyst Rating */}
+                        <TableCell className="text-center">
+                          {item.analyst_rating ? (
+                            <Badge variant="outline" className={`${getAnalystColor(item.analyst_rating)} border-current`}>
+                              {item.analyst_rating}
+                            </Badge>
+                          ) : (
+                            <span className="text-zinc-600">-</span>
+                          )}
+                        </TableCell>
+                        
+                        {/* Delete Action */}
+                        <TableCell className="text-center">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => removeFromWatchlist(item.id, item.symbol)}
+                            className="text-zinc-500 hover:text-red-400 hover:bg-red-400/10"
+                            data-testid={`delete-watchlist-${item.symbol}`}
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
                 </TableBody>
               </Table>
             </div>
