@@ -375,7 +375,7 @@ January 12, 2026 - Centralized Data Sourcing Implementation
    - File: `/app/frontend/src/pages/Login.js` - Removed lines 127-132
 
 2. **Invitation URL Environment Logic**
-   - Test environment invitations now correctly use: `https://tradehub-313.preview.emergentagent.com`
+   - Test environment invitations now correctly use: `https://premiumcall.preview.emergentagent.com`
    - Production environment invitations use: `https://coveredcallengine.com`
    - File: `/app/backend/routes/invitations.py` - Lines 36-39
 
