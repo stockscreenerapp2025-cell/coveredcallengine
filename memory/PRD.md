@@ -118,6 +118,22 @@ Build a web-based application named "Covered Call Engine" to identify, analyze, 
 - [ ] Admin Panel - Roles & Permissions (P3)
 - [ ] Generic CSV Import with field mapping (P3)
 
+### ✅ Completed (Jan 13, 2026) - Analyst Rating Columns
+- [x] **Screener Page**
+  - Added Analyst column showing Strong Buy/Buy/Hold/Sell badges
+  - Fixed IV column to be visible for both pre-computed and custom scans
+  - IV data now shows properly (percentage format)
+- [x] **PMCC Page**
+  - Added Analyst column showing analyst ratings
+  - Pre-computed PMCC scans now include analyst_rating data
+- [x] **Dashboard Top 10 CC**
+  - Added Analyst column header (shows "-" for live data, ratings available in modal)
+  - Strike format updated to "16JAN26 $46 C"
+- [x] **Pre-Computed Scans Backend**
+  - Updated fetch_fundamental_data() to include analyst_rating, num_analysts, target_price
+  - Both CC and PMCC opportunities now include analyst data
+  - Data sourced from Yahoo Finance recommendationKey field
+
 ### ✅ Completed (Jan 13, 2026) - New Features
 - [x] **PMCC LEAPS Minimum 12 Months DTE**
   - Updated PMCC_PROFILES to require `long_dte_min: 365` for all risk profiles (conservative, balanced, aggressive)
