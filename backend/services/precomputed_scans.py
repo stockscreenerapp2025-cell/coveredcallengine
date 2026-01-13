@@ -886,16 +886,29 @@ class PrecomputedScanService:
         start_time = datetime.now()
         results = {}
         
-        # Run each covered call profile
+        # Run each covered call profile and collect all opportunities
+        all_opportunities = {}  # profile -> list of opportunities
+        
         for profile in ["conservative", "balanced", "aggressive"]:
             try:
                 logger.info(f"\n--- Running {profile.upper()} Covered Call scan ---")
                 opportunities = await self.run_covered_call_scan(profile)
-                await self.store_scan_results("covered_call", profile, opportunities)
-                results[f"cc_{profile}"] = len(opportunities)
+                all_opportunities[profile] = opportunities
+                logger.info(f"  Found {len(opportunities)} raw opportunities for {profile}")
             except Exception as e:
                 logger.error(f"Error in {profile} CC scan: {e}")
+                all_opportunities[profile] = []
                 results[f"cc_{profile}"] = f"Error: {str(e)}"
+        
+        # Deduplicate across profiles: each symbol appears in only ONE scan
+        # Priority: conservative > balanced > aggressive (conservative gets first pick)
+        deduped_opportunities = self._dedupe_across_profiles(all_opportunities)
+        
+        # Store deduplicated results
+        for profile, opportunities in deduped_opportunities.items():
+            await self.store_scan_results("covered_call", profile, opportunities)
+            results[f"cc_{profile}"] = len(opportunities)
+            logger.info(f"  Stored {len(opportunities)} deduplicated opportunities for {profile}")
         
         # TODO: Add PMCC scans in Phase 3
         
@@ -906,3 +919,125 @@ class PrecomputedScanService:
         logger.info("="*50)
         
         return results
+    
+    def _dedupe_across_profiles(self, all_opportunities: Dict[str, List[Dict]]) -> Dict[str, List[Dict]]:
+        """
+        Deduplicate symbols across profiles.
+        Each symbol should appear in only ONE profile - the one it's most suitable for.
+        
+        Logic:
+        1. For each symbol, determine which profile it fits best based on its characteristics
+        2. Conservative: Low ATR, high market cap, positive EPS, SMA alignment
+        3. Balanced: Moderate ATR, decent fundamentals
+        4. Aggressive: High ATR, momentum characteristics
+        """
+        # Track which symbols are assigned to which profile
+        symbol_assignments = {}  # symbol -> (profile, best_opportunity)
+        
+        # Priority order: conservative first, then balanced, then aggressive
+        # But we'll assign based on BEST FIT, not just first-come
+        profiles_order = ["conservative", "balanced", "aggressive"]
+        
+        for profile in profiles_order:
+            for opp in all_opportunities.get(profile, []):
+                symbol = opp["symbol"]
+                
+                if symbol not in symbol_assignments:
+                    # First time seeing this symbol, assign it
+                    symbol_assignments[symbol] = (profile, opp)
+                else:
+                    # Symbol already assigned, check if this profile is a better fit
+                    existing_profile, existing_opp = symbol_assignments[symbol]
+                    
+                    # Calculate "fit score" for each profile based on characteristics
+                    existing_fit = self._calculate_profile_fit(existing_opp, existing_profile)
+                    new_fit = self._calculate_profile_fit(opp, profile)
+                    
+                    # If new profile is a better fit, reassign
+                    if new_fit > existing_fit:
+                        symbol_assignments[symbol] = (profile, opp)
+        
+        # Build deduplicated lists for each profile
+        deduped = {profile: [] for profile in profiles_order}
+        for symbol, (profile, opp) in symbol_assignments.items():
+            deduped[profile].append(opp)
+        
+        # Sort each profile's list by score
+        for profile in deduped:
+            deduped[profile].sort(key=lambda x: x["score"], reverse=True)
+            deduped[profile] = deduped[profile][:50]  # Limit to 50
+        
+        return deduped
+    
+    def _calculate_profile_fit(self, opp: Dict, profile: str) -> float:
+        """
+        Calculate how well an opportunity fits a specific profile.
+        Higher score = better fit.
+        """
+        fit_score = 0
+        
+        atr_pct = opp.get("atr_pct", 3) or 3  # Default 3%
+        market_cap = opp.get("market_cap", 0) or 0
+        eps = opp.get("eps_ttm", 0) or 0
+        roe = opp.get("roe", 0) or 0
+        delta = opp.get("delta", 0.35) or 0.35
+        dte = opp.get("dte", 30) or 30
+        
+        if profile == "conservative":
+            # Conservative prefers: low ATR, high market cap, positive EPS, low delta, longer DTE
+            if atr_pct <= 3:
+                fit_score += 20
+            elif atr_pct <= 4:
+                fit_score += 10
+            
+            if market_cap >= 50_000_000_000:  # $50B+
+                fit_score += 20
+            elif market_cap >= 10_000_000_000:  # $10B+
+                fit_score += 10
+            
+            if eps > 0:
+                fit_score += 15
+            
+            if delta <= 0.30:
+                fit_score += 15
+            
+            if dte >= 30:
+                fit_score += 10
+                
+        elif profile == "balanced":
+            # Balanced prefers: moderate ATR, decent market cap, moderate delta
+            if 3 <= atr_pct <= 5:
+                fit_score += 20
+            elif atr_pct < 3:
+                fit_score += 10
+            
+            if 5_000_000_000 <= market_cap <= 50_000_000_000:
+                fit_score += 15
+            
+            if 0.30 <= delta <= 0.40:
+                fit_score += 15
+            
+            if 20 <= dte <= 40:
+                fit_score += 10
+                
+        elif profile == "aggressive":
+            # Aggressive prefers: high ATR, any market cap, higher delta, shorter DTE
+            if atr_pct >= 4:
+                fit_score += 25
+            elif atr_pct >= 3:
+                fit_score += 15
+            
+            if delta >= 0.40:
+                fit_score += 20
+            
+            if dte <= 21:
+                fit_score += 15
+            
+            # Higher premium yield is bonus for aggressive
+            premium_yield = opp.get("premium_yield", 0) or 0
+            if premium_yield >= 1.5:
+                fit_score += 15
+            elif premium_yield >= 1.0:
+                fit_score += 10
+        
+        return fit_score
