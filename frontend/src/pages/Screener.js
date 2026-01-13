@@ -67,6 +67,7 @@ const Screener = () => {
   const [filterName, setFilterName] = useState('');
   const [saveDialogOpen, setSaveDialogOpen] = useState(false);
   const [selectedStock, setSelectedStock] = useState(null);
+  const [selectedScanData, setSelectedScanData] = useState(null);  // For passing scan data to modal
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [marketStatus, setMarketStatus] = useState(null);
   const [dataInfo, setDataInfo] = useState(null);
