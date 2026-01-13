@@ -14,12 +14,16 @@ Build a web-based application named "Covered Call Engine" to identify, analyze, 
 - Powerful screening engine with extensive filters
 - Supports stocks and ETFs
 - Uses Polygon.io for stock data, Yahoo Finance fallback for ETFs
-- **Pre-Computed Scans** (NEW - Jan 13, 2026)
+- **Pre-Computed Scans** (Updated - Jan 13, 2026)
   - Income Guard (Conservative): Stable large-caps, SMA trending, high probability
   - Steady Income (Balanced): Growth stocks, moderate IV, solid fundamentals
   - Premium Hunter (Aggressive): High momentum, high IV, maximum premium yield
   - Results pre-computed nightly at 4:45 PM ET after market close
   - Instant loading from MongoDB (no API delay on click)
+  - **Deduplication Logic**:
+    - Each symbol appears in only ONE profile (most suitable based on characteristics)
+    - Best Weekly + Monthly option per symbol (no duplicate strikes)
+    - Profile fit scoring based on ATR%, market cap, EPS, delta, DTE
   - Technical filters: SMA50/200 alignment, RSI, ATR%, price stability
   - Fundamental filters: Market cap, EPS, ROE, D/E, revenue growth
   - Options filters: Delta range, DTE range, premium yield minimum
