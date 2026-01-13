@@ -20,7 +20,10 @@ import {
   Building2,
   Users,
   Globe,
-  Calendar
+  Calendar,
+  AlertTriangle,
+  Shield,
+  DollarSign
 } from 'lucide-react';
 
 // Custom TradingView Chart component with SMA 50 and 200
