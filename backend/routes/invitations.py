@@ -115,17 +115,6 @@ async def send_invitation(
     if existing_user:
         raise HTTPException(status_code=400, detail="A user with this email already exists")
     
-    # Check invitation limits (5 testers max per environment)
-    if request.role == "tester":
-        tester_count = await db.users.count_documents({"role": "tester"})
-        pending_tester_invites = await db.invitations.count_documents({
-            "role": "tester",
-            "environment": request.environment,
-            "status": "pending"
-        })
-        if tester_count + pending_tester_invites >= 5:
-            raise HTTPException(status_code=400, detail="Maximum of 5 testers allowed")
-    
     # Generate secure invitation token
     token = secrets.token_urlsafe(32)
     invitation_id = str(uuid4())
