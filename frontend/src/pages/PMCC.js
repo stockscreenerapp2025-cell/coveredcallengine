@@ -135,7 +135,46 @@ const PMCC = () => {
 
   useEffect(() => {
     fetchOpportunities();
+    fetchAvailableScans();
   }, []);
+
+  const fetchAvailableScans = async () => {
+    try {
+      const res = await scansApi.getAvailable();
+      setAvailableScans(res.data.scans);
+    } catch (error) {
+      console.log('Could not fetch available scans:', error);
+    }
+  };
+
+  const loadPrecomputedScan = async (riskProfile) => {
+    setScanLoading(true);
+    setActiveScan(riskProfile);
+    try {
+      const res = await scansApi.getPMCCScan(riskProfile);
+      setOpportunities(res.data.opportunities || []);
+      setApiInfo({
+        from_cache: false,
+        is_precomputed: true,
+        computed_at: res.data.computed_at,
+        risk_profile: riskProfile,
+        label: res.data.label
+      });
+      toast.success(`Loaded ${res.data.label} PMCC scan: ${res.data.total} opportunities`);
+    } catch (error) {
+      const msg = error.response?.data?.detail || 'Failed to load PMCC scan';
+      toast.error(msg);
+      setActiveScan(null);
+    } finally {
+      setScanLoading(false);
+      setLoading(false);
+    }
+  };
+
+  const clearActiveScan = () => {
+    setActiveScan(null);
+    fetchOpportunities();
+  };
 
   const fetchOpportunities = async (bypassCache = false) => {
     setLoading(true);
