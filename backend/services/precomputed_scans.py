@@ -1392,6 +1392,10 @@ class PrecomputedScanService:
                     "debt_to_equity": fund_data.get("debt_to_equity"),
                     "days_to_earnings": fund_data.get("days_to_earnings"),
                     "sector": fund_data.get("sector", ""),
+                    # Include analyst rating
+                    "analyst_rating": fund_data.get("analyst_rating"),
+                    "num_analysts": fund_data.get("num_analysts", 0),
+                    "target_price": fund_data.get("target_price"),
                 })
             
             await asyncio.sleep(0.5)
