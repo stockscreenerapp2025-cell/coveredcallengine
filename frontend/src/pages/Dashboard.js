@@ -199,24 +199,6 @@ const Dashboard = () => {
     value: 450 + Math.random() * 50 - (i > 15 ? -10 : 10) + i * 0.5
   }));
 
-  // Format option contract display like "26SEP25 49.5 C"
-  const formatOptionContract = (expiry, strike, optionType = 'call') => {
-    if (!expiry || !strike) return '-';
-    try {
-      const date = new Date(expiry);
-      const day = date.getDate().toString().padStart(2, '0');
-      const months = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
-      const month = months[date.getMonth()];
-      const year = date.getFullYear().toString().slice(-2);
-      // C for Call, P for Put
-      const type = optionType?.toLowerCase() === 'put' ? 'P' : 'C';
-      return `${day}${month}${year} ${strike} ${type}`;
-    } catch {
-      const type = optionType?.toLowerCase() === 'put' ? 'P' : 'C';
-      return `${strike} ${type}`;
-    }
-  };
-
   // Portfolio performance colors
   const STRATEGY_COLORS = {
     COVERED_CALL: '#10b981',
