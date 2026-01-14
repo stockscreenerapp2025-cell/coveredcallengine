@@ -535,7 +535,16 @@ class PrecomputedScanService:
                                     if close_price <= 0:
                                         return None
                                     
+                                    # DATA QUALITY FILTER: Premium sanity check
+                                    max_reasonable_premium = current_price * 0.20
+                                    if close_price > max_reasonable_premium:
+                                        return None
+                                    
                                     premium_yield = close_price / current_price
+                                    
+                                    # DATA QUALITY FILTER: ROI sanity check
+                                    if premium_yield > 0.50:  # 50% is unrealistic
+                                        return None
                                     
                                     return {
                                         "contract_ticker": ticker,
