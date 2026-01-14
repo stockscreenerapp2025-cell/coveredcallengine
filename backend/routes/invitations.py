@@ -34,7 +34,7 @@ class InvitationRequest(BaseModel):
 
 # Environment URLs
 ENVIRONMENT_URLS = {
-    "test": "https://option-screener.preview.emergentagent.com",
+    "test": "https://callengine-2.preview.emergentagent.com",
     "production": "https://coveredcallengine.com"
 }
 
