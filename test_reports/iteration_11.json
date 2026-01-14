@@ -32,9 +32,9 @@
   ],
   "action_items": [
     "DONE: Fixed Simulator.js to read iv_rank from trade.scan_parameters.iv_rank - IV Rank now displays correctly",
-    "Consider storing open_interest in scan_parameters when adding trades to simulator from screener",
+    "DONE: Updated Dashboard.js and Screener.js to pass open_interest to scan_parameters when adding trades to simulator",
     "Consider re-running pre-computed scans to include iv_rank and open_interest data",
-    "Consider updating simulator backend to store iv_rank and open_interest at top level when trade is created"
+    "Existing simulator trades won't show OI until new trades are added with the fix"
   ],
   "critical_code_review_comments": [
     "Dashboard page correctly displays IV (62%), IV Rank (93%), OI (14,432) from live Yahoo Finance data",
