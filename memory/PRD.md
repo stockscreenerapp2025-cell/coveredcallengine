@@ -104,6 +104,26 @@ Build a web-based application named "Covered Call Engine" to identify, analyze, 
 ### 🔄 In Progress
 - None currently
 
+### ✅ Completed (Jan 14, 2026) - Yahoo Finance Data Enrichment
+- [x] **Yahoo Finance Integration for IV & OI**
+  - Created `fetch_options_iv_oi_from_yahoo()` in data_provider.py
+  - Created `enrich_options_with_yahoo_data()` helper function
+  - Fetches real Implied Volatility and Open Interest from Yahoo
+  - Used as enrichment layer on top of Polygon options data
+- [x] **Applied to All Screeners**
+  - Watchlist: Shows real IV (28%, 48%, 39%) and OI (6,770+)
+  - Screener: Shows real IV and OI from Yahoo
+  - Dashboard: Uses Yahoo enrichment
+  - PMCC: Uses Yahoo enrichment
+- [x] **Watchlist Fixes**
+  - Removed strict OI filter that blocked all results
+  - OI filter now only applies when Yahoo data is available
+  - All opportunity columns now populated with real data
+- [x] **Files Updated**
+  - `/app/backend/services/data_provider.py` - Added Yahoo options functions
+  - `/app/backend/routes/watchlist.py` - Uses Yahoo enrichment
+  - `/app/backend/routes/screener.py` - Uses Yahoo enrichment
+
 ### ✅ Completed (Jan 14, 2026) - Data Quality Filters
 - [x] **Premium Sanity Check**
   - Max OTM call premium: 10% of underlying price
