@@ -104,6 +104,7 @@ def _fetch_stock_quote_yahoo_sync(symbol: str) -> Dict[str, Any]:
     """
     try:
         import yfinance as yf
+        from datetime import datetime
         ticker = yf.Ticker(symbol)
         info = ticker.info
         
@@ -125,6 +126,27 @@ def _fetch_stock_quote_yahoo_sync(symbol: str) -> Dict[str, Any]:
         }
         analyst_rating = rating_map.get(recommendation, recommendation.replace("_", " ").title() if recommendation else None)
         
+        # Get next earnings date
+        earnings_date = None
+        days_to_earnings = None
+        try:
+            calendar = ticker.calendar
+            if calendar is not None and 'Earnings Date' in calendar:
+                earnings_dates = calendar['Earnings Date']
+                if len(earnings_dates) > 0:
+                    next_earnings = earnings_dates[0]
+                    if hasattr(next_earnings, 'date'):
+                        earnings_date = next_earnings.date().isoformat()
+                    else:
+                        earnings_date = str(next_earnings)[:10]
+                    
+                    # Calculate days to earnings
+                    if earnings_date:
+                        earnings_dt = datetime.strptime(earnings_date, "%Y-%m-%d")
+                        days_to_earnings = (earnings_dt - datetime.now()).days
+        except Exception:
+            pass
+        
         return {
             "symbol": symbol,
             "price": round(current_price, 2) if current_price else 0,
@@ -132,6 +154,8 @@ def _fetch_stock_quote_yahoo_sync(symbol: str) -> Dict[str, Any]:
             "change": round(change, 2),
             "change_pct": round(change_pct, 2),
             "analyst_rating": analyst_rating,
+            "earnings_date": earnings_date,
+            "days_to_earnings": days_to_earnings,
             "source": "yahoo"
         }
     except Exception as e:
