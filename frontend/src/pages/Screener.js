@@ -1278,7 +1278,7 @@ const Screener = () => {
                       <SortHeader field="delta" label="Delta" />
                       <th>Prob OTM</th>
                       <SortHeader field="iv" label="IV" />
-                      {!activeScan && <SortHeader field="iv_rank" label="IV Rank" />}
+                      <SortHeader field="open_interest" label="OI" />
                       {activeScan && <th>Sector</th>}
                       <SortHeader field="score" label="Score" />
                       <th>Analyst</th>
@@ -1324,7 +1324,7 @@ const Screener = () => {
                         <td>{opp.delta?.toFixed(2)}</td>
                         <td className="text-yellow-400">{Math.round((1 - opp.delta) * 100)}%</td>
                         <td>{opp.iv ? `${(opp.iv * 100).toFixed(1)}%` : (opp.iv_pct ? `${opp.iv_pct.toFixed(1)}%` : '-')}</td>
-                        {!activeScan && <td>{opp.iv_rank?.toFixed(0)}%</td>}
+                        <td className="text-zinc-400">{opp.open_interest ? opp.open_interest.toLocaleString() : '-'}</td>
                         {activeScan && (
                           <td>
                             <span className="text-xs text-zinc-400">{opp.sector || '-'}</span>
