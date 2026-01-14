@@ -883,6 +883,7 @@ const PMCC = () => {
                         <th>Ann. ROI</th>
                         <SortHeader field="score" label="AI Score" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
                         <th>Analyst</th>
+                        <SortHeader field="days_to_earnings" label="Earnings" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
                         <th className="text-center">Action</th>
                       </tr>
                     </thead>
