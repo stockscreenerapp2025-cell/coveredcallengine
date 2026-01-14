@@ -729,11 +729,25 @@ async def screen_pmcc(
                 filtered_leaps = []
                 for opt in leaps_options:
                     strike = opt.get("strike", 0)
+                    open_interest = opt.get("open_interest", 0) or 0
+                    premium = opt.get("close", 0) or opt.get("vwap", 0)
+                    
+                    # DATA QUALITY FILTER: Skip low OI
+                    if open_interest < 10:
+                        continue
+                    
+                    # DATA QUALITY FILTER: Premium sanity check for LEAPS
+                    # LEAPS premium should be reasonable (not > stock price + 50% for deep ITM)
+                    max_leaps_premium = current_price * 1.5
+                    if premium > max_leaps_premium:
+                        continue
+                    
                     if strike < current_price * 0.85:  # Deep ITM
                         estimated_delta = min(0.90, 0.70 + (current_price - strike) / current_price * 0.5)
                         if min_leaps_delta <= estimated_delta <= max_leaps_delta:
                             opt["delta"] = estimated_delta
-                            opt["cost"] = (opt.get("close", 0) or opt.get("vwap", 0)) * 100
+                            opt["cost"] = premium * 100
+                            opt["open_interest"] = open_interest
                             if opt["cost"] > 0:
                                 filtered_leaps.append(opt)
                 
@@ -741,12 +755,25 @@ async def screen_pmcc(
                 filtered_short = []
                 for opt in short_options:
                     strike = opt.get("strike", 0)
+                    open_interest = opt.get("open_interest", 0) or 0
+                    premium = opt.get("close", 0) or opt.get("vwap", 0)
+                    
+                    # DATA QUALITY FILTER: Skip low OI
+                    if open_interest < 10:
+                        continue
+                    
+                    # DATA QUALITY FILTER: Premium sanity for OTM short calls
+                    max_short_premium = current_price * 0.20
+                    if premium > max_short_premium:
+                        continue
+                    
                     if strike > current_price:  # OTM
                         strike_pct = ((strike - current_price) / current_price) * 100
                         estimated_delta = max(0.15, 0.50 - strike_pct * 0.03)
                         if min_short_delta <= estimated_delta <= max_short_delta:
                             opt["delta"] = estimated_delta
-                            opt["premium"] = (opt.get("close", 0) or opt.get("vwap", 0)) * 100
+                            opt["premium"] = premium * 100
+                            opt["open_interest"] = open_interest
                             if opt["premium"] > 0:
                                 filtered_short.append(opt)
                 
