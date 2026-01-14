@@ -578,8 +578,7 @@ async def enrich_options_with_yahoo_data(
     # Fetch Yahoo data
     yahoo_data = await fetch_options_iv_oi_from_yahoo(symbol, max_dte + 5)
     
-    if not yahoo_data:
-        return options
+    enriched_count = 0
     
     # Enrich options
     for opt in options:
@@ -589,14 +588,19 @@ async def enrich_options_with_yahoo_data(
         
         if key in yahoo_data:
             yahoo_info = yahoo_data[key]
-            # Only update if Yahoo has valid data and Polygon doesn't
-            if yahoo_info.get("iv", 0) > 0 and opt.get("implied_volatility", 0) == 0:
-                opt["implied_volatility"] = yahoo_info["iv"]
-            if yahoo_info.get("open_interest", 0) > 0 and opt.get("open_interest", 0) == 0:
-                opt["open_interest"] = yahoo_info["open_interest"]
+            # Only update if Yahoo has valid data (IV > 1% and OI > 0)
+            yahoo_iv = yahoo_info.get("iv", 0)
+            yahoo_oi = yahoo_info.get("open_interest", 0)
+            
+            if yahoo_iv > 0.01:  # IV must be > 1% to be valid
+                opt["implied_volatility"] = yahoo_iv
+                enriched_count += 1
+            
+            if yahoo_oi > 0:
+                opt["open_interest"] = yahoo_oi
     
-    enriched_count = sum(1 for o in options if o.get("open_interest", 0) > 0)
-    logging.info(f"Enriched {enriched_count}/{len(options)} options with Yahoo IV/OI data for {symbol}")
+    if enriched_count > 0:
+        logging.info(f"Enriched {enriched_count}/{len(options)} options with Yahoo IV/OI data for {symbol}")
     
     return options
 
