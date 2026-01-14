@@ -89,7 +89,8 @@ const Dashboard = () => {
           score: simulateOpp.score,
           roi_pct: simulateOpp.roi_pct,
           dte: simulateOpp.dte,
-          iv_rank: simulateOpp.iv_rank
+          iv_rank: simulateOpp.iv_rank,
+          open_interest: simulateOpp.open_interest
         }
       };
       
