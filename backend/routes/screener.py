@@ -502,10 +502,6 @@ async def get_dashboard_opportunities(user: dict = Depends(get_current_user)):
                     
                     roi_pct = (premium / current_price) * 100
                     
-                    # DATA QUALITY FILTER: ROI sanity check - 20% max for OTM
-                    if roi_pct > 20:
-                        continue
-                    
                     # ROI filters - Weekly needs at least 0.8%, Monthly needs at least 2.5%
                     if expiry_type == "Weekly" and roi_pct < 0.8:
                         continue
