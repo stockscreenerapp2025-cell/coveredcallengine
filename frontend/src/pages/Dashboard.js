@@ -784,6 +784,7 @@ const Dashboard = () => {
                     <th>ROI</th>
                     <th>Delta</th>
                     <th>IV</th>
+                    <th>OI</th>
                     <th>AI Score</th>
                     <th>Analyst</th>
                     <th className="text-center">Action</th>
@@ -824,6 +825,7 @@ const Dashboard = () => {
                       <td className="text-cyan-400 font-medium">{opp.roi_pct?.toFixed(2)}%</td>
                       <td>{opp.delta?.toFixed(2)}</td>
                       <td>{opp.iv ? `${opp.iv?.toFixed(0)}%` : '-'}</td>
+                      <td className="text-zinc-400">{opp.open_interest ? opp.open_interest.toLocaleString() : '-'}</td>
                       <td>
                         <Badge className={`${opp.score >= 70 ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' : opp.score >= 50 ? 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30' : 'bg-cyan-500/20 text-cyan-400 border-cyan-500/30'}`}>
                           {opp.score?.toFixed(0)}
