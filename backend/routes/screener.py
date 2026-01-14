@@ -353,7 +353,8 @@ async def screen_covered_calls(
                         "volume": volume,
                         "open_interest": open_interest,
                         "score": score,
-                        "data_source": "polygon"
+                        "analyst_rating": analyst_rating,
+                        "data_source": opt.get("source", "yahoo")
                     })
             except Exception as e:
                 logging.error(f"Error scanning {symbol}: {e}")
@@ -368,15 +369,6 @@ async def screen_covered_calls(
                 best_by_symbol[sym] = opp
         
         opportunities = sorted(best_by_symbol.values(), key=lambda x: x["score"], reverse=True)
-        
-        # Fetch analyst ratings for top opportunities
-        top_opps = opportunities[:100]
-        symbols = [opp["symbol"] for opp in top_opps]
-        analyst_ratings = await fetch_analyst_ratings_batch(symbols)
-        
-        # Add analyst ratings to opportunities
-        for opp in top_opps:
-            opp["analyst_rating"] = analyst_ratings.get(opp["symbol"])
         
         result = {
             "opportunities": top_opps, 
