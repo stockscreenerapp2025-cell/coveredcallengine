@@ -1,5 +1,5 @@
 {
-  "summary": "Data consistency testing for IV, IV Rank, and OI columns across all pages. Dashboard and Watchlist show correct data. Screener Custom Scan shows correct data. Pre-computed scans (Premium Hunter, Income Guard) show IV but IV Rank and OI are '-' due to older stored data from Jan 13. FIXED: Simulator.js now reads iv_rank from scan_parameters - IV Rank now displays correctly (46%, 51%, 45%). OI still shows '-' because open_interest is not stored in scan_parameters when trades are added.",
+  "summary": "Data consistency testing for IV, IV Rank, and OI columns across all pages completed. FIXES APPLIED: (1) Simulator.js now reads iv_rank from scan_parameters - IV Rank displays correctly (46%, 51%, 45%). (2) Dashboard.js and Screener.js updated to pass open_interest to scan_parameters for new trades. Dashboard, Watchlist, and Screener Custom Scan all show correct IV, IV Rank, and OI data from Yahoo Finance. Pre-computed scans show IV but IV Rank/OI are '-' due to older stored data. PMCC page doesn't have these columns by design.",
   "backend_issues": {
     "critical": [],
     "minor": [
