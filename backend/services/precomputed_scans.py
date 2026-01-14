@@ -984,9 +984,23 @@ class PrecomputedScanService:
         risk_profile: str, 
         opportunities: List[Dict]
     ) -> bool:
-        """Store pre-computed scan results in MongoDB."""
+        """Store pre-computed scan results in MongoDB.
+        
+        IMPORTANT: If new scan returns 0 results, preserve the previous data
+        to ensure users always see something (previous market close data).
+        """
         try:
             now = datetime.now(timezone.utc)
+            
+            # SAFETY: Don't overwrite good data with empty results
+            if not opportunities or len(opportunities) == 0:
+                existing = await self.db.precomputed_scans.find_one(
+                    {"strategy": strategy, "risk_profile": risk_profile}
+                )
+                if existing and existing.get("count", 0) > 0:
+                    logger.warning(f"Scan returned 0 results for {strategy}/{risk_profile}. "
+                                 f"Preserving previous data ({existing.get('count')} opportunities)")
+                    return True
             
             # Use appropriate profile config based on strategy
             if strategy == "pmcc":
