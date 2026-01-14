@@ -104,6 +104,29 @@ Build a web-based application named "Covered Call Engine" to identify, analyze, 
 ### 🔄 In Progress
 - None currently
 
+### ✅ Completed (Jan 14, 2026) - Auto-Load Pre-Computed Scans & Data Preservation
+- [x] **PMCC Page Fix**
+  - Fixed: PMCC page now auto-loads "Leveraged Income" pre-computed scan on page load
+  - 19 PMCC opportunities displayed with full data
+  - Users never see blank screen - previous market close data always available
+- [x] **Screener Page Fix**  
+  - Fixed: Screener page now auto-loads "Premium Hunter" pre-computed scan on page load
+  - 32 CC opportunities displayed with real IV, IV Rank, OI data
+  - IV (57.9%, 63.8%, 44.0%), IV Rank (87%, 96%, 66%), OI (385, 424, 42)
+- [x] **Data Preservation Logic**
+  - Added safety check: scans returning 0 results now preserve previous data
+  - Prevents overwriting good data during rate limits or after-hours
+- [x] **Yahoo Finance for LEAPS**
+  - PMCC scan now uses Yahoo Finance (primary) for LEAPS options
+  - Fallback to Polygon if Yahoo fails
+  - Better data availability for PMCC opportunities
+- [x] **All Pre-Computed Scans Refreshed**
+  - CC Conservative: 8 opportunities
+  - CC Balanced: 27 opportunities  
+  - CC Aggressive: 32 opportunities
+  - PMCC Conservative: 7 opportunities
+  - PMCC Balanced: 19 opportunities
+
 ### ✅ Completed (Jan 14, 2026) - IV, IV Rank, OI Data Consistency
 - [x] **Dashboard Top 10 Table**
   - IV, IV Rank, and OI columns display correctly
