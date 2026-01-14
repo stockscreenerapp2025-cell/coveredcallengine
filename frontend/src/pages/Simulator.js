@@ -1941,19 +1941,13 @@ const Simulator = () => {
                 <div className="p-4 bg-zinc-800/30 rounded-lg">
                   <h4 className="text-sm font-medium text-zinc-400 mb-3 flex items-center gap-2">
                     <Activity className="w-4 h-4" />
-                    Current Greeks
+                    Current Greeks & Volatility
                   </h4>
-                  <div className="grid grid-cols-2 md:grid-cols-5 gap-4 text-sm">
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
                     <div className="text-center">
                       <div className="text-xs text-zinc-500 mb-1">Delta</div>
                       <div className="text-cyan-400 font-mono font-semibold">
                         {selectedTrade.current_delta?.toFixed(3) || selectedTrade.short_call_delta?.toFixed(3) || '-'}
-                      </div>
-                    </div>
-                    <div className="text-center">
-                      <div className="text-xs text-zinc-500 mb-1">Gamma</div>
-                      <div className="text-violet-400 font-mono font-semibold">
-                        {selectedTrade.current_gamma?.toFixed(4) || '-'}
                       </div>
                     </div>
                     <div className="text-center">
@@ -1963,15 +1957,39 @@ const Simulator = () => {
                       </div>
                     </div>
                     <div className="text-center">
-                      <div className="text-xs text-zinc-500 mb-1">Vega</div>
+                      <div className="text-xs text-zinc-500 mb-1">IV</div>
+                      <div className="text-violet-400 font-mono font-semibold">
+                        {selectedTrade.iv ? `${(selectedTrade.iv * 100).toFixed(1)}%` : (selectedTrade.short_call_iv ? `${(selectedTrade.short_call_iv * 100).toFixed(1)}%` : '-')}
+                      </div>
+                    </div>
+                    <div className="text-center">
+                      <div className="text-xs text-zinc-500 mb-1">IV Rank</div>
                       <div className="text-amber-400 font-mono font-semibold">
-                        {selectedTrade.current_vega?.toFixed(2) || '-'}
+                        {selectedTrade.iv_rank ? `${selectedTrade.iv_rank.toFixed(0)}%` : '-'}
+                      </div>
+                    </div>
+                    <div className="text-center">
+                      <div className="text-xs text-zinc-500 mb-1">Open Interest</div>
+                      <div className="text-zinc-300 font-mono font-semibold">
+                        {selectedTrade.open_interest ? selectedTrade.open_interest.toLocaleString() : '-'}
                       </div>
                     </div>
                     <div className="text-center">
                       <div className="text-xs text-zinc-500 mb-1">Premium Captured</div>
                       <div className={`font-mono font-semibold ${(selectedTrade.premium_capture_pct || 0) >= 50 ? 'text-emerald-400' : 'text-zinc-400'}`}>
                         {selectedTrade.premium_capture_pct?.toFixed(1) || 0}%
+                      </div>
+                    </div>
+                    <div className="text-center">
+                      <div className="text-xs text-zinc-500 mb-1">Gamma</div>
+                      <div className="text-violet-400 font-mono font-semibold">
+                        {selectedTrade.current_gamma?.toFixed(4) || '-'}
+                      </div>
+                    </div>
+                    <div className="text-center">
+                      <div className="text-xs text-zinc-500 mb-1">Vega</div>
+                      <div className="text-amber-400 font-mono font-semibold">
+                        {selectedTrade.current_vega?.toFixed(2) || '-'}
                       </div>
                     </div>
                   </div>
