@@ -406,6 +406,16 @@ const Watchlist = () => {
                           {opp?.iv ? `${opp.iv.toFixed(0)}%` : '-'}
                         </TableCell>
                         
+                        {/* IV Rank */}
+                        <TableCell className="text-center font-mono text-white">
+                          {opp?.iv_rank ? `${opp.iv_rank.toFixed(0)}%` : '-'}
+                        </TableCell>
+                        
+                        {/* OI */}
+                        <TableCell className="text-center text-zinc-400">
+                          {opp?.open_interest ? opp.open_interest.toLocaleString() : '-'}
+                        </TableCell>
+                        
                         {/* AI Score */}
                         <TableCell className="text-center">
                           {opp?.ai_score ? (
