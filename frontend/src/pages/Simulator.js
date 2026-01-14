@@ -776,8 +776,14 @@ const Simulator = () => {
                         <td className="text-cyan-400 font-mono">
                           {trade.current_delta?.toFixed(2) || trade.short_call_delta?.toFixed(2) || '-'}
                         </td>
-                        <td className="text-red-400 font-mono">
-                          {trade.current_theta ? `$${Math.abs(trade.current_theta).toFixed(2)}` : '-'}
+                        <td className="text-violet-400 font-mono">
+                          {trade.iv ? `${(trade.iv * 100).toFixed(1)}%` : (trade.short_call_iv ? `${(trade.short_call_iv * 100).toFixed(1)}%` : '-')}
+                        </td>
+                        <td className="text-amber-400 font-mono">
+                          {trade.iv_rank ? `${trade.iv_rank.toFixed(0)}%` : '-'}
+                        </td>
+                        <td className="text-zinc-400 font-mono">
+                          {trade.open_interest ? trade.open_interest.toLocaleString() : '-'}
                         </td>
                         <td className={`font-mono ${(trade.premium_capture_pct || 0) >= 50 ? 'text-emerald-400' : 'text-zinc-400'}`}>
                           {trade.premium_capture_pct?.toFixed(0) || 0}%
