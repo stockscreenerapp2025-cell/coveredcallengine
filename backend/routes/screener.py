@@ -460,6 +460,8 @@ async def get_dashboard_opportunities(user: dict = Depends(get_current_user)):
                 if current_price < 25 or current_price > 100:
                     continue
                 
+                from services.data_provider import enrich_options_with_yahoo_data
+                
                 # Get options from Polygon ONLY - Weekly (1-7 DTE)
                 weekly_options = await fetch_options_chain(
                     symbol, api_key, "call", 7, min_dte=1, current_price=current_price
@@ -472,10 +474,14 @@ async def get_dashboard_opportunities(user: dict = Depends(get_current_user)):
                 
                 all_options = []
                 if weekly_options:
+                    # Enrich with Yahoo IV and OI
+                    weekly_options = await enrich_options_with_yahoo_data(weekly_options, symbol)
                     for opt in weekly_options:
                         opt["expiry_type"] = "Weekly"
                     all_options.extend(weekly_options)
                 if monthly_options:
+                    # Enrich with Yahoo IV and OI
+                    monthly_options = await enrich_options_with_yahoo_data(monthly_options, symbol)
                     for opt in monthly_options:
                         opt["expiry_type"] = "Monthly"
                     all_options.extend(monthly_options)
