@@ -554,7 +554,8 @@ async def get_dashboard_opportunities(user: dict = Depends(get_current_user)):
                         "iv_rank": round(min(100, iv * 1.5), 0),
                         "open_interest": open_interest,
                         "score": score,
-                        "data_source": "polygon"
+                        "analyst_rating": analyst_rating,
+                        "data_source": opt.get("source", "yahoo")
                     }
                     
                     if expiry_type == "Weekly":
@@ -584,10 +585,6 @@ async def get_dashboard_opportunities(user: dict = Depends(get_current_user)):
         
         # Combine: Weekly first, then Monthly
         opportunities = top_weekly + top_monthly
-        
-        # Fetch analyst ratings for all symbols in parallel
-        symbols = [opp["symbol"] for opp in opportunities]
-        analyst_ratings = await fetch_analyst_ratings_batch(symbols)
         
         # Add analyst ratings to opportunities
         for opp in opportunities:
