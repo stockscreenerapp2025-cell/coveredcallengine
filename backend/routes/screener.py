@@ -586,17 +586,13 @@ async def get_dashboard_opportunities(user: dict = Depends(get_current_user)):
         # Combine: Weekly first, then Monthly
         opportunities = top_weekly + top_monthly
         
-        # Add analyst ratings to opportunities
-        for opp in opportunities:
-            opp["analyst_rating"] = analyst_ratings.get(opp["symbol"])
-        
         result = {
             "opportunities": opportunities, 
             "total": len(opportunities), 
             "weekly_count": len(top_weekly),
             "monthly_count": len(top_monthly),
             "is_live": True,
-            "data_source": "polygon"
+            "data_source": "yahoo_primary"
         }
         await funcs['set_cached_data'](cache_key, result)
         return result
