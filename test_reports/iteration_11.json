@@ -89,11 +89,11 @@
       "sample_data": "AAPL: IV=31%, IV Rank=19%, OI=171"
     },
     "simulator": {
-      "status": "PARTIAL",
+      "status": "PARTIAL - IMPROVED",
       "iv_column": true,
-      "iv_rank_column": false,
+      "iv_rank_column": true,
       "oi_column": false,
-      "note": "IV Rank and OI show '-' because frontend reads from wrong field path"
+      "note": "IV Rank now displays correctly after fix. OI still shows '-' because open_interest is not stored in scan_parameters"
     },
     "pmcc": {
       "status": "N/A",
