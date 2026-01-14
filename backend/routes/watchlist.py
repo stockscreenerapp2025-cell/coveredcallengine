@@ -182,6 +182,8 @@ async def get_watchlist(user: dict = Depends(get_current_user)):
             "movement": round(movement, 2),
             "movement_pct": round(movement_pct, 2),
             "analyst_rating": data.get("analyst_rating"),
+            "days_to_earnings": data.get("days_to_earnings"),
+            "earnings_date": data.get("earnings_date"),
             "opportunity": None
         }
         
