@@ -44,7 +44,9 @@
     "Simulator trades store iv_rank in scan_parameters.iv_rank but frontend reads from trade.iv_rank which is undefined",
     "PMCC page doesn't have IV, IV Rank, OI columns by design - focuses on LEAPS metrics instead"
   ],
-  "updated_files": [],
+  "updated_files": [
+    "/app/frontend/src/pages/Simulator.js"
+  ],
   "success_rate": {
     "backend": "100% - All APIs return correct data structure",
     "frontend": "80% - Dashboard, Watchlist, Screener Custom Scan work correctly. Simulator IV Rank/OI display issue."
