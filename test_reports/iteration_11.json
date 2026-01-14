@@ -1,5 +1,5 @@
 {
-  "summary": "Data consistency testing for IV, IV Rank, and OI columns across all pages. Dashboard and Watchlist show correct data. Screener Custom Scan shows correct data. Pre-computed scans (Premium Hunter, Income Guard) show IV but IV Rank and OI are '-' due to older stored data from Jan 13. Simulator trades show IV but IV Rank and OI are '-' because these values are stored in scan_parameters but frontend reads from top-level fields.",
+  "summary": "Data consistency testing for IV, IV Rank, and OI columns across all pages. Dashboard and Watchlist show correct data. Screener Custom Scan shows correct data. Pre-computed scans (Premium Hunter, Income Guard) show IV but IV Rank and OI are '-' due to older stored data from Jan 13. FIXED: Simulator.js now reads iv_rank from scan_parameters - IV Rank now displays correctly (46%, 51%, 45%). OI still shows '-' because open_interest is not stored in scan_parameters when trades are added.",
   "backend_issues": {
     "critical": [],
     "minor": [
