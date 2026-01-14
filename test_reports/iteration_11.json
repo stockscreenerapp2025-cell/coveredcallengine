@@ -18,10 +18,10 @@
   "frontend_issues": {
     "ui_bugs": [
       {
-        "component": "Simulator.js",
-        "issue": "IV Rank and OI columns show '-' for all trades. Frontend reads trade.iv_rank and trade.open_interest but these are stored in trade.scan_parameters.iv_rank",
-        "selector": "table tbody tr td (IV Rank, OI columns)",
-        "priority": "MEDIUM"
+        "component": "Dashboard.js - Simulate Modal",
+        "issue": "Expiry field shows 'NaNundefinedaN $48 C' instead of proper date format like '16JAN26 $48 C'",
+        "selector": "Simulate modal - Expiry field",
+        "priority": "LOW"
       }
     ],
     "integration_issues": [],
