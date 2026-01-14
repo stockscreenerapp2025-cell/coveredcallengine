@@ -104,6 +104,29 @@ Build a web-based application named "Covered Call Engine" to identify, analyze, 
 ### 🔄 In Progress
 - None currently
 
+### ✅ Completed (Jan 14, 2026) - Unified Data Architecture (Yahoo Primary)
+- [x] **Data Provider Rewrite**
+  - Yahoo Finance is now PRIMARY source for stocks AND options
+  - Polygon is BACKUP only (for when Yahoo fails)
+  - Unified logic in `/app/backend/services/data_provider.py`
+- [x] **Consistency Across All Pages**
+  - Dashboard, Screener, PMCC, Watchlist now use same data source
+  - No more separate enrichment calls - Yahoo provides IV/OI built-in
+  - Analyst ratings fetched with stock quotes automatically
+- [x] **Data Always Available**
+  - Yahoo provides previous close data for weekends/holidays
+  - When market opens, real-time data available
+  - Graceful fallback to Polygon if Yahoo fails
+- [x] **Files Updated**
+  - `/app/backend/services/data_provider.py` - Complete rewrite with Yahoo primary
+  - `/app/backend/routes/screener.py` - Simplified to use unified provider
+  - `/app/backend/routes/watchlist.py` - Simplified to use unified provider
+- [x] **Benefits**
+  - Simpler codebase (no separate enrichment steps)
+  - Consistent data across all pages
+  - IV and OI available from Yahoo (during market hours)
+  - Analyst ratings included automatically
+
 ### ✅ Completed (Jan 14, 2026) - Added OI Column to Dashboard & Screener
 - [x] **Dashboard Top 10 Table**
   - Added OI (Open Interest) column between IV and AI Score
