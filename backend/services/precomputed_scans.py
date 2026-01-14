@@ -1271,7 +1271,132 @@ class PrecomputedScanService:
         """
         Fetch LEAPS (Long-term Equity AnticiPation Securities) for PMCC long leg.
         LEAPS are deep ITM calls with high delta and long DTE.
+        
+        Uses Yahoo Finance (primary) with Polygon as fallback.
         """
+        # Try Yahoo Finance first
+        leaps = await self._fetch_leaps_yahoo(symbol, current_price, dte_min, dte_max, delta_min, delta_max, itm_pct)
+        if leaps:
+            return leaps
+        
+        # Fallback to Polygon
+        return await self._fetch_leaps_polygon(symbol, current_price, dte_min, dte_max, delta_min, delta_max, itm_pct)
+    
+    async def _fetch_leaps_yahoo(
+        self,
+        symbol: str,
+        current_price: float,
+        dte_min: int,
+        dte_max: int,
+        delta_min: float,
+        delta_max: float,
+        itm_pct: float
+    ) -> List[Dict[str, Any]]:
+        """Fetch LEAPS from Yahoo Finance."""
+        try:
+            def _fetch_yahoo_sync():
+                ticker = yf.Ticker(symbol)
+                try:
+                    expirations = ticker.options
+                except Exception:
+                    return []
+                
+                if not expirations:
+                    return []
+                
+                today = datetime.now()
+                leaps = []
+                
+                for exp_str in expirations:
+                    try:
+                        exp_date = datetime.strptime(exp_str, "%Y-%m-%d")
+                        dte = (exp_date - today).days
+                        
+                        # Filter for LEAPS (long-term)
+                        if dte < dte_min or dte > (dte_max or 730):
+                            continue
+                        
+                        opt_chain = ticker.option_chain(exp_str)
+                        calls = opt_chain.calls
+                        
+                        for _, row in calls.iterrows():
+                            strike = row.get('strike', 0)
+                            if not strike:
+                                continue
+                            
+                            # LEAPS should be ITM - strike below current price
+                            if strike >= current_price * (1 - itm_pct):
+                                continue  # Not deep enough ITM
+                            
+                            if strike < current_price * 0.5:
+                                continue  # Too deep ITM
+                            
+                            # Estimate delta for ITM calls
+                            moneyness = (current_price - strike) / current_price
+                            est_delta = 0.50 + moneyness * 2
+                            est_delta = max(0.50, min(0.95, est_delta))
+                            
+                            if est_delta < delta_min or est_delta > delta_max:
+                                continue
+                            
+                            # Get premium
+                            last_price = row.get('lastPrice', 0)
+                            bid = row.get('bid', 0)
+                            ask = row.get('ask', 0)
+                            premium = last_price if last_price > 0 else ((bid + ask) / 2 if bid > 0 and ask > 0 else 0)
+                            
+                            if premium <= 0:
+                                continue
+                            
+                            # Calculate intrinsic and extrinsic value
+                            intrinsic = max(0, current_price - strike)
+                            extrinsic = premium - intrinsic
+                            
+                            iv = row.get('impliedVolatility', 0)
+                            oi = row.get('openInterest', 0)
+                            
+                            leaps.append({
+                                "contract_ticker": row.get('contractSymbol', ''),
+                                "symbol": symbol,
+                                "strike": float(strike),
+                                "expiry": exp_str,
+                                "dte": dte,
+                                "premium": round(float(premium), 2),
+                                "delta": round(est_delta, 3),
+                                "intrinsic": round(intrinsic, 2),
+                                "extrinsic": round(extrinsic, 2),
+                                "itm_pct": round(moneyness * 100, 1),
+                                "volume": int(row.get('volume', 0) or 0),
+                                "open_interest": int(oi) if oi else 0,
+                                "iv": float(iv) if iv else 0
+                            })
+                            
+                    except Exception as e:
+                        logger.debug(f"Error processing LEAPS expiry {exp_str} for {symbol}: {e}")
+                        continue
+                
+                # Sort by DTE (prefer longer) and delta (prefer higher)
+                leaps.sort(key=lambda x: (x["dte"], x["delta"]), reverse=True)
+                return leaps
+            
+            loop = asyncio.get_event_loop()
+            return await loop.run_in_executor(self._executor, _fetch_yahoo_sync)
+            
+        except Exception as e:
+            logger.debug(f"Yahoo LEAPS fetch failed for {symbol}: {e}")
+            return []
+    
+    async def _fetch_leaps_polygon(
+        self,
+        symbol: str,
+        current_price: float,
+        dte_min: int,
+        dte_max: int,
+        delta_min: float,
+        delta_max: float,
+        itm_pct: float
+    ) -> List[Dict[str, Any]]:
+        """Fallback: Fetch LEAPS from Polygon."""
         if not self.api_key:
             return []
         
