@@ -111,6 +111,9 @@ async def _get_best_opportunity(symbol: str, api_key: str, underlying_price: flo
                 
                 ai_score = round(roi_score + iv_score + delta_score + protection_score + liquidity_score, 1)
                 
+                # Calculate IV Rank (simplified: IV as percentage of typical range 20-80%)
+                iv_rank = min(100, max(0, (iv - 0.20) / 0.60 * 100)) if iv > 0 else 0
+                
                 best_opp = {
                     "strike": strike,
                     "expiry": expiry,
@@ -119,6 +122,7 @@ async def _get_best_opportunity(symbol: str, api_key: str, underlying_price: flo
                     "roi_pct": round(roi_pct, 2),
                     "delta": round(estimated_delta, 3),
                     "iv": round(iv * 100, 1),
+                    "iv_rank": round(iv_rank, 0),
                     "volume": opt.get("volume", 0),
                     "open_interest": open_interest,
                     "type": option_type,
