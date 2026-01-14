@@ -143,8 +143,13 @@ async def _get_best_opportunity(symbol: str, api_key: str, underlying_price: flo
             expiry = opt.get("expiry", "")
             dte = opt.get("dte", 0)
             premium = opt.get("close", 0) or opt.get("vwap", 0)
+            open_interest = opt.get("open_interest", 0) or 0
             
             if premium <= 0 or strike <= 0 or dte < 1:
+                continue
+            
+            # DATA QUALITY FILTER: Minimum open interest
+            if open_interest < 10:
                 continue
             
             # Filter for reasonable strikes (slightly OTM)
@@ -152,7 +157,16 @@ async def _get_best_opportunity(symbol: str, api_key: str, underlying_price: flo
             if strike_pct < 98 or strike_pct > 110:
                 continue
             
+            # DATA QUALITY FILTER: Premium sanity check
+            max_reasonable_premium = underlying_price * 0.20
+            if premium > max_reasonable_premium:
+                continue
+            
             roi_pct = (premium / underlying_price) * 100
+            
+            # DATA QUALITY FILTER: ROI sanity check
+            if roi_pct > 50:
+                continue
             
             if roi_pct > best_roi and roi_pct >= 0.5:  # Min 0.5% ROI
                 best_roi = roi_pct
@@ -175,13 +189,25 @@ async def _get_best_opportunity(symbol: str, api_key: str, underlying_price: flo
                 # Determine type: Weekly (<=7 DTE) or Monthly
                 option_type = "Weekly" if dte <= 7 else "Monthly"
                 
-                # Calculate AI Score similar to screener
+                # Calculate AI Score with liquidity bonus
                 roi_score = min(roi_pct * 15, 40)
                 iv_score = min(iv_rank / 100 * 20, 20)
                 delta_score = max(0, 20 - abs(estimated_delta - 0.3) * 50)
                 protection = (premium / underlying_price) * 100 if strike > underlying_price else ((strike - underlying_price + premium) / underlying_price * 100)
                 protection_score = min(abs(protection), 10) * 2
-                ai_score = round(roi_score + iv_score + delta_score + protection_score, 1)
+                
+                # Liquidity bonus
+                liquidity_score = 0
+                if open_interest >= 1000:
+                    liquidity_score = 10
+                elif open_interest >= 500:
+                    liquidity_score = 7
+                elif open_interest >= 100:
+                    liquidity_score = 5
+                elif open_interest >= 50:
+                    liquidity_score = 2
+                
+                ai_score = round(roi_score + iv_score + delta_score + protection_score + liquidity_score, 1)
                 
                 best_opp = {
                     "strike": strike,
@@ -192,7 +218,7 @@ async def _get_best_opportunity(symbol: str, api_key: str, underlying_price: flo
                     "delta": round(estimated_delta, 3),
                     "iv": round(iv * 100, 1),
                     "volume": opt.get("volume", 0),
-                    "open_interest": opt.get("open_interest", 0),
+                    "open_interest": open_interest,
                     "type": option_type,
                     "ai_score": ai_score
                 }
