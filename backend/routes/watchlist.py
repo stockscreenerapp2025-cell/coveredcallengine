@@ -127,6 +127,7 @@ async def _get_best_opportunity(symbol: str, api_key: str, underlying_price: flo
                     "open_interest": open_interest,
                     "type": option_type,
                     "ai_score": ai_score,
+                    "days_to_earnings": opt.get("days_to_earnings"),
                     "source": opt.get("source", "yahoo")
                 }
         
