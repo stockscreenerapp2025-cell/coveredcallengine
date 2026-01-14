@@ -128,12 +128,17 @@ async def fetch_stock_prices_polygon(symbols: List[str], api_key: str) -> Dict[s
 async def _get_best_opportunity(symbol: str, api_key: str, underlying_price: float) -> dict:
     """Get the best covered call opportunity for a symbol"""
     try:
+        from services.data_provider import enrich_options_with_yahoo_data
+        
         options = await fetch_options_chain(
             symbol, api_key, "call", 45, min_dte=1, current_price=underlying_price
         )
         
         if not options:
             return None
+        
+        # Enrich options with Yahoo IV and OI data
+        options = await enrich_options_with_yahoo_data(options, symbol)
         
         best_opp = None
         best_roi = 0
@@ -164,6 +169,10 @@ async def _get_best_opportunity(symbol: str, api_key: str, underlying_price: flo
             # DATA QUALITY FILTER: ROI sanity check (20% max for OTM)
             if strike > underlying_price and roi_pct > 20:
                 continue
+            
+            # If we have OI data from Yahoo, prefer liquid options
+            if open_interest > 0 and open_interest < 10:
+                continue  # Skip illiquid options only if we have OI data
             
             if roi_pct > best_roi and roi_pct >= 0.5:  # Min 0.5% ROI
                 best_roi = roi_pct
