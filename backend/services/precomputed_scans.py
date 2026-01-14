@@ -926,6 +926,7 @@ class PrecomputedScanService:
                         "roe": round(fund_data.get("roe", 0) * 100, 1) if fund_data.get("roe") else None,
                         "debt_to_equity": fund_data.get("debt_to_equity"),
                         "days_to_earnings": fund_data.get("days_to_earnings"),
+                        "earnings_date": fund_data.get("earnings_date"),
                         "sector": fund_data.get("sector", ""),
                         # Include analyst rating
                         "analyst_rating": fund_data.get("analyst_rating"),
@@ -1669,6 +1670,7 @@ class PrecomputedScanService:
                     "roe": round(fund_data.get("roe", 0) * 100, 1) if fund_data.get("roe") else None,
                     "debt_to_equity": fund_data.get("debt_to_equity"),
                     "days_to_earnings": fund_data.get("days_to_earnings"),
+                    "earnings_date": fund_data.get("earnings_date"),
                     "sector": fund_data.get("sector", ""),
                     # Include analyst rating
                     "analyst_rating": fund_data.get("analyst_rating"),
