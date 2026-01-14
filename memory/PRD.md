@@ -104,6 +104,36 @@ Build a web-based application named "Covered Call Engine" to identify, analyze, 
 ### 🔄 In Progress
 - None currently
 
+### ✅ Completed (Jan 15, 2026) - Earnings Column & Strike Column Fix
+- [x] **Earnings Column Added to All Pages**
+  - Dashboard Top 10 CC: Added "Earnings" column showing days to next earnings
+  - Screener: Added sortable "Earnings" column with days_to_earnings data
+  - PMCC: Added sortable "Earnings" column 
+  - Watchlist: Added "Earnings" column with color-coded badges
+  - Color coding: Red (≤7d), Amber (8-14d), Gray (>14d)
+- [x] **Strike Column Date Fix**
+  - Screener Strike column now shows full option contract format for all scans
+  - Format: "16JAN26 337.5 C" (date + strike + type)
+  - Works for both pre-computed and custom scans
+- [x] **Filter Panel Width Optimization**
+  - Narrowed filter panel in Screener (lg:col-span-1 with max-width)
+  - Results table now takes more horizontal space (lg:col-span-4)
+- [x] **PMCC Aggressive Scan Fix**
+  - Was showing 0 opportunities due to yfinance rate limiting
+  - Triggered manual scan - now has 15 opportunities
+- [x] **Backend Earnings Data**
+  - Updated `_fetch_stock_quote_yahoo_sync()` in data_provider.py to include earnings_date and days_to_earnings
+  - Updated precomputed_scans.py to include earnings_date in CC and PMCC opportunity objects
+  - Updated screener.py dashboard-opportunities endpoint with earnings data
+  - Updated watchlist.py to include earnings data
+- [x] **All Pre-Computed Scans Refreshed**
+  - CC Conservative: 4 opportunities
+  - CC Balanced: 17 opportunities
+  - CC Aggressive: 16 opportunities
+  - PMCC Conservative: 3 opportunities
+  - PMCC Balanced: 19 opportunities
+  - PMCC Aggressive: 15 opportunities
+
 ### ✅ Completed (Jan 14, 2026) - Auto-Load Pre-Computed Scans & Data Preservation
 - [x] **PMCC Page Fix**
   - Fixed: PMCC page now auto-loads "Leveraged Income" pre-computed scan on page load
