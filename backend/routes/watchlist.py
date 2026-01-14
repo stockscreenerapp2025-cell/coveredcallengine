@@ -148,24 +148,21 @@ async def _get_best_opportunity(symbol: str, api_key: str, underlying_price: flo
             if premium <= 0 or strike <= 0 or dte < 1:
                 continue
             
-            # DATA QUALITY FILTER: Minimum open interest
-            if open_interest < 10:
-                continue
-            
             # Filter for reasonable strikes (slightly OTM)
             strike_pct = (strike / underlying_price) * 100 if underlying_price > 0 else 0
             if strike_pct < 98 or strike_pct > 110:
                 continue
             
-            # DATA QUALITY FILTER: Premium sanity check
-            max_reasonable_premium = underlying_price * 0.20
-            if premium > max_reasonable_premium:
-                continue
+            # DATA QUALITY FILTER: Premium sanity check (10% max for OTM)
+            if strike > underlying_price:
+                max_reasonable_premium = underlying_price * 0.10
+                if premium > max_reasonable_premium:
+                    continue
             
             roi_pct = (premium / underlying_price) * 100
             
-            # DATA QUALITY FILTER: ROI sanity check
-            if roi_pct > 50:
+            # DATA QUALITY FILTER: ROI sanity check (20% max for OTM)
+            if strike > underlying_price and roi_pct > 20:
                 continue
             
             if roi_pct > best_roi and roi_pct >= 0.5:  # Min 0.5% ROI
