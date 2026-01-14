@@ -222,31 +222,27 @@ async def screen_covered_calls(
         
         for symbol in symbols_to_scan:
             try:
-                from services.data_provider import enrich_options_with_yahoo_data
-                
-                # Get stock price using centralized data provider
+                # Get stock price using centralized data provider (Yahoo primary)
                 stock_data = await fetch_stock_quote(symbol, api_key)
                 
                 if not stock_data or stock_data.get("price", 0) == 0:
                     continue
                 
                 underlying_price = stock_data["price"]
+                analyst_rating = stock_data.get("analyst_rating")
                 
                 is_etf = symbol.upper() in ETF_SYMBOLS
                 if not is_etf and (underlying_price < min_price or underlying_price > max_price):
                     continue
                 
-                # Get options chain from Polygon ONLY (no Yahoo fallback for options)
+                # Get options chain (Yahoo primary with IV/OI, Polygon backup)
                 options_results = await fetch_options_chain(
                     symbol, api_key, "call", max_dte, min_dte=1, current_price=underlying_price
                 )
                 
                 if not options_results:
-                    logging.debug(f"No options data from Polygon for {symbol}")
+                    logging.debug(f"No options data for {symbol}")
                     continue
-                
-                # Enrich with Yahoo IV and OI data
-                options_results = await enrich_options_with_yahoo_data(options_results, symbol)
                 
                 for opt in options_results:
                     strike = opt.get("strike", 0)
