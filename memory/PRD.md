@@ -104,6 +104,36 @@ Build a web-based application named "Covered Call Engine" to identify, analyze, 
 ### 🔄 In Progress
 - [ ] Pre-computed scans need to be re-run to include new IV Rank and OI fields (will happen at 4:45 PM ET)
 
+### ✅ Completed (Jan 14, 2026) - IV, IV Rank, OI Data Consistency
+- [x] **Dashboard Top 10 Table**
+  - IV, IV Rank, and OI columns display correctly
+  - Real data from Yahoo Finance: IV (66%), IV Rank (98%), OI (14,432)
+  - Added open_interest to scan_parameters when adding trades to simulator
+- [x] **Screener Custom Scan**
+  - IV, IV Rank, OI columns display correctly with real data
+  - Sample data: IV (76.6%), IV Rank (77%), OI (1,417)
+  - Fixed bug: 'top_opps' undefined error in screener.py
+- [x] **Screener Pre-Computed Scans**
+  - IV column displays (30% default from older data)
+  - IV Rank and OI show '-' until scans are re-run with new code
+  - Updated precomputed_scans.py to use Yahoo Finance for IV/OI
+- [x] **Watchlist Page**
+  - All columns display correctly: IV, IV Rank, OI
+  - Real data from Yahoo Finance opportunity object
+- [x] **Simulator Page**
+  - Fixed: IV Rank now reads from trade.scan_parameters.iv_rank
+  - IV displays correctly, IV Rank now shows (46%, 51%, 45%)
+  - OI will display for new trades added after fix
+- [x] **PMCC Page**
+  - No IV/OI columns by design - focuses on LEAPS metrics
+  - All PMCC-specific columns display correctly
+- [x] **Files Updated**
+  - `/app/backend/services/precomputed_scans.py` - Yahoo primary for options, includes IV/OI
+  - `/app/backend/routes/screener.py` - Fixed 'top_opps' bug
+  - `/app/frontend/src/pages/Simulator.js` - Reads iv_rank from scan_parameters
+  - `/app/frontend/src/pages/Dashboard.js` - Passes open_interest to scan_parameters
+  - `/app/frontend/src/pages/Screener.js` - Passes open_interest to scan_parameters
+
 ### ✅ Completed (Jan 14, 2026) - Unified Data Architecture (Yahoo Primary)
 - [x] **Data Provider Rewrite**
   - Yahoo Finance is now PRIMARY source for stocks AND options
