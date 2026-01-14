@@ -1,0 +1,104 @@
+{
+  "summary": "Data consistency testing for IV, IV Rank, and OI columns across all pages. Dashboard and Watchlist show correct data. Screener Custom Scan shows correct data. Pre-computed scans (Premium Hunter, Income Guard) show IV but IV Rank and OI are '-' due to older stored data from Jan 13. Simulator trades show IV but IV Rank and OI are '-' because these values are stored in scan_parameters but frontend reads from top-level fields.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {
+        "endpoint": "/api/simulator/trades",
+        "issue": "Simulator trades don't expose iv_rank and open_interest at top level. Values are stored in scan_parameters but not accessible in API response for display.",
+        "priority": "MEDIUM"
+      },
+      {
+        "endpoint": "/api/scans/{scan_type}/results",
+        "issue": "Pre-computed scans from Jan 13 don't have iv_rank and open_interest data. These scans need to be re-run to include the new fields.",
+        "priority": "LOW"
+      }
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {
+        "component": "Simulator.js",
+        "issue": "IV Rank and OI columns show '-' for all trades. Frontend reads trade.iv_rank and trade.open_interest but these are stored in trade.scan_parameters.iv_rank",
+        "selector": "table tbody tr td (IV Rank, OI columns)",
+        "priority": "MEDIUM"
+      }
+    ],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/test_reports/iteration_11.json"
+  ],
+  "action_items": [
+    "Fix Simulator.js to read iv_rank from trade.scan_parameters.iv_rank if trade.iv_rank is not available",
+    "Fix Simulator.js to read open_interest from trade.scan_parameters.open_interest if trade.open_interest is not available",
+    "Consider re-running pre-computed scans to include iv_rank and open_interest data",
+    "Consider updating simulator backend to store iv_rank and open_interest at top level when trade is created"
+  ],
+  "critical_code_review_comments": [
+    "Dashboard page correctly displays IV (62%), IV Rank (93%), OI (14,432) from live Yahoo Finance data",
+    "Watchlist page correctly displays IV, IV Rank, OI from opportunity nested object",
+    "Screener Custom Scan correctly displays IV (76.6%), IV Rank (77%), OI (1,417) from live Yahoo Finance data",
+    "Screener Pre-computed scans (Premium Hunter) show IV (30.0%) but IV Rank and OI show '-' - data from Jan 13 doesn't include these fields",
+    "Simulator trades store iv_rank in scan_parameters.iv_rank but frontend reads from trade.iv_rank which is undefined",
+    "PMCC page doesn't have IV, IV Rank, OI columns by design - focuses on LEAPS metrics instead"
+  ],
+  "updated_files": [],
+  "success_rate": {
+    "backend": "100% - All APIs return correct data structure",
+    "frontend": "80% - Dashboard, Watchlist, Screener Custom Scan work correctly. Simulator IV Rank/OI display issue."
+  },
+  "test_credentials": {
+    "email": "admin@premiumhunter.com",
+    "password": "admin123"
+  },
+  "seed_data_creation": "None - used existing data",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "IV, IV Rank, OI data consistency testing completed. Main issue is Simulator page not displaying IV Rank and OI because frontend reads from wrong field path. Pre-computed scans have older data without IV Rank/OI. Custom scans and live data work correctly.",
+  "pages_tested": {
+    "dashboard": {
+      "status": "PASS",
+      "iv_column": true,
+      "iv_rank_column": true,
+      "oi_column": true,
+      "sample_data": "INTC: IV=62%, IV Rank=93%, OI=14,432"
+    },
+    "screener_custom_scan": {
+      "status": "PASS",
+      "iv_column": true,
+      "iv_rank_column": true,
+      "oi_column": true,
+      "sample_data": "INTC: IV=76.6%, IV Rank=77%, OI=1,417"
+    },
+    "screener_precomputed": {
+      "status": "PARTIAL",
+      "iv_column": true,
+      "iv_rank_column": false,
+      "oi_column": false,
+      "note": "Pre-computed scans from Jan 13 don't have IV Rank and OI data"
+    },
+    "watchlist": {
+      "status": "PASS",
+      "iv_column": true,
+      "iv_rank_column": true,
+      "oi_column": true,
+      "sample_data": "AAPL: IV=31%, IV Rank=19%, OI=171"
+    },
+    "simulator": {
+      "status": "PARTIAL",
+      "iv_column": true,
+      "iv_rank_column": false,
+      "oi_column": false,
+      "note": "IV Rank and OI show '-' because frontend reads from wrong field path"
+    },
+    "pmcc": {
+      "status": "N/A",
+      "note": "PMCC page doesn't have IV, IV Rank, OI columns by design"
+    }
+  },
+  "mocked_apis": {
+    "note": "No mocked APIs - all data from real Yahoo Finance"
+  }
+}
