@@ -104,6 +104,23 @@ Build a web-based application named "Covered Call Engine" to identify, analyze, 
 ### 🔄 In Progress
 - None currently
 
+### ✅ Completed (Jan 14, 2026) - Data Quality Filters
+- [x] **Premium Sanity Check**
+  - Max OTM call premium: 10% of underlying price
+  - Filters out unrealistic premiums (e.g., $141 on $124 stock)
+  - Applied to: Screener, Dashboard, PMCC, Watchlist
+- [x] **ROI Sanity Check**
+  - Preliminary ROI check: 20% max for OTM calls
+  - Filters out bad data with abnormally high ROI
+- [x] **Liquidity Scoring**
+  - Bonus points for high open interest (when available)
+  - Higher OI = higher score ranking
+- [x] **Files Updated**
+  - `/app/backend/routes/screener.py` - Main screener and dashboard endpoints
+  - `/app/backend/routes/watchlist.py` - Watchlist opportunity finder
+  - `/app/backend/services/precomputed_scans.py` - Pre-computed scan service
+- [x] **Note**: Polygon basic plan doesn't return open interest, so filtering relies on premium sanity checks
+
 ### ✅ Completed (Jan 13, 2026) - Enhanced Watchlist
 - [x] **Watchlist Table Redesign**
   - Redesigned from card-based to table format matching screener style
