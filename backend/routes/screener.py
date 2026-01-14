@@ -281,25 +281,24 @@ async def screen_covered_calls(
                     
                     # DATA QUALITY FILTER: Check for unrealistic premiums
                     # For OTM calls, premium should not exceed intrinsic value + reasonable time value
-                    # Max reasonable premium for OTM call: ~15% of underlying price for 30-45 DTE
-                    max_reasonable_premium = underlying_price * 0.20  # 20% max for any OTM call
+                    # Rule 1: Max reasonable premium for OTM call: ~10% of underlying price for 30-45 DTE
+                    max_reasonable_premium = underlying_price * 0.10
                     if strike > underlying_price and premium > max_reasonable_premium:
                         logging.debug(f"Skipping {symbol} ${strike}C: premium ${premium} exceeds reasonable max ${max_reasonable_premium:.2f}")
                         continue
                     
+                    # Rule 2: ROI sanity check - anything over 20% per month is suspicious for OTM
+                    preliminary_roi = (premium / underlying_price) * 100
+                    if strike > underlying_price and preliminary_roi > 20:
+                        logging.debug(f"Skipping {symbol} ${strike}C: ROI {preliminary_roi:.2f}% is unrealistically high for OTM")
+                        continue
+                    
                     # DATA QUALITY FILTER: Minimum open interest to ensure liquidity
                     open_interest = opt.get("open_interest", 0) or 0
-                    if open_interest < 10:
-                        # Very low open interest - likely bad data or illiquid
-                        logging.debug(f"Skipping {symbol} ${strike}C: open interest {open_interest} < 10")
-                        continue
+                    # Note: Polygon basic plan doesn't return OI, so we can't filter on it
+                    # Instead rely on premium sanity checks above
                     
                     roi_pct = (premium / underlying_price) * 100
-                    
-                    # DATA QUALITY FILTER: ROI sanity check - anything over 50% per month is suspicious
-                    if roi_pct > 50:
-                        logging.debug(f"Skipping {symbol} ${strike}C: ROI {roi_pct:.2f}% is unrealistically high")
-                        continue
                     
                     if roi_pct < min_roi:
                         continue
