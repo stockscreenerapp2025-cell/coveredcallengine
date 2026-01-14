@@ -724,7 +724,9 @@ const Simulator = () => {
                       <th className="pb-3 font-medium">Contract</th>
                       <th className="pb-3 font-medium">DTE</th>
                       <th className="pb-3 font-medium">Delta</th>
-                      <th className="pb-3 font-medium">Theta</th>
+                      <th className="pb-3 font-medium">IV</th>
+                      <th className="pb-3 font-medium">IV Rank</th>
+                      <th className="pb-3 font-medium">OI</th>
                       <th className="pb-3 font-medium">Prem %</th>
                       <th className="pb-3 font-medium">P/L</th>
                       <th className="pb-3 font-medium">ROI</th>
