@@ -279,7 +279,27 @@ async def screen_covered_calls(
                     if premium <= 0:
                         continue
                     
+                    # DATA QUALITY FILTER: Check for unrealistic premiums
+                    # For OTM calls, premium should not exceed intrinsic value + reasonable time value
+                    # Max reasonable premium for OTM call: ~15% of underlying price for 30-45 DTE
+                    max_reasonable_premium = underlying_price * 0.20  # 20% max for any OTM call
+                    if strike > underlying_price and premium > max_reasonable_premium:
+                        logging.debug(f"Skipping {symbol} ${strike}C: premium ${premium} exceeds reasonable max ${max_reasonable_premium:.2f}")
+                        continue
+                    
+                    # DATA QUALITY FILTER: Minimum open interest to ensure liquidity
+                    open_interest = opt.get("open_interest", 0) or 0
+                    if open_interest < 10:
+                        # Very low open interest - likely bad data or illiquid
+                        logging.debug(f"Skipping {symbol} ${strike}C: open interest {open_interest} < 10")
+                        continue
+                    
                     roi_pct = (premium / underlying_price) * 100
+                    
+                    # DATA QUALITY FILTER: ROI sanity check - anything over 50% per month is suspicious
+                    if roi_pct > 50:
+                        logging.debug(f"Skipping {symbol} ${strike}C: ROI {roi_pct:.2f}% is unrealistically high")
+                        continue
                     
                     if roi_pct < min_roi:
                         continue
@@ -301,13 +321,25 @@ async def screen_covered_calls(
                     else:
                         protection = ((strike - underlying_price + premium) / underlying_price * 100)
                     
-                    # Calculate score
+                    # Calculate score with liquidity bonus/penalty
                     roi_score = min(roi_pct * 15, 40)
                     iv_score = min(iv_rank / 100 * 20, 20)
                     delta_score = max(0, 20 - abs(estimated_delta - 0.3) * 50)
                     protection_score = min(abs(protection), 10) * 2
                     
-                    score = round(roi_score + iv_score + delta_score + protection_score, 1)
+                    # Liquidity bonus: reward high open interest
+                    liquidity_score = 0
+                    if open_interest >= 1000:
+                        liquidity_score = 10
+                    elif open_interest >= 500:
+                        liquidity_score = 7
+                    elif open_interest >= 100:
+                        liquidity_score = 5
+                    elif open_interest >= 50:
+                        liquidity_score = 2
+                    # Low OI already filtered out above
+                    
+                    score = round(roi_score + iv_score + delta_score + protection_score + liquidity_score, 1)
                     
                     opportunities.append({
                         "symbol": symbol,
@@ -323,7 +355,7 @@ async def screen_covered_calls(
                         "iv_rank": round(iv_rank, 1),
                         "downside_protection": round(protection, 2),
                         "volume": volume,
-                        "open_interest": opt.get("open_interest", 0),
+                        "open_interest": open_interest,
                         "score": score,
                         "data_source": "polygon"
                     })
