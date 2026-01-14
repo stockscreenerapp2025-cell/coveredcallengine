@@ -789,6 +789,7 @@ const Dashboard = () => {
                     <th>OI</th>
                     <th>AI Score</th>
                     <th>Analyst</th>
+                    <th>Earnings</th>
                     <th className="text-center">Action</th>
                   </tr>
                 </thead>
