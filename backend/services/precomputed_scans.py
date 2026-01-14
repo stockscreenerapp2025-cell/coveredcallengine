@@ -933,7 +933,10 @@ class PrecomputedScanService:
                         "target_price": fund_data.get("target_price"),
                         # Include IV data
                         "iv": opt.get("iv"),
-                        "iv_pct": opt.get("iv", 0) * 100 if opt.get("iv") else None,
+                        "iv_pct": round(opt.get("iv", 0) * 100, 1) if opt.get("iv") else None,
+                        # Include OI and IV Rank data
+                        "open_interest": opt.get("open_interest", 0),
+                        "iv_rank": round(min(100, opt.get("iv", 0) * 100 * 1.5), 0) if opt.get("iv") else None,
                     })
             
             # Small delay between batches
