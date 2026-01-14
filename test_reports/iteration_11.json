@@ -49,7 +49,7 @@
   ],
   "success_rate": {
     "backend": "100% - All APIs return correct data structure",
-    "frontend": "80% - Dashboard, Watchlist, Screener Custom Scan work correctly. Simulator IV Rank/OI display issue."
+    "frontend": "90% - Dashboard, Watchlist, Screener Custom Scan work correctly. Simulator IV Rank now fixed. OI still shows '-' for simulator trades."
   },
   "test_credentials": {
     "email": "admin@premiumhunter.com",
