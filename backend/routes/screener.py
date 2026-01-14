@@ -371,7 +371,7 @@ async def screen_covered_calls(
         opportunities = sorted(best_by_symbol.values(), key=lambda x: x["score"], reverse=True)
         
         result = {
-            "opportunities": top_opps, 
+            "opportunities": opportunities, 
             "total": len(opportunities), 
             "is_live": True, 
             "from_cache": False,
