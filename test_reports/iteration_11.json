@@ -31,8 +31,8 @@
     "/app/test_reports/iteration_11.json"
   ],
   "action_items": [
-    "Fix Simulator.js to read iv_rank from trade.scan_parameters.iv_rank if trade.iv_rank is not available",
-    "Fix Simulator.js to read open_interest from trade.scan_parameters.open_interest if trade.open_interest is not available",
+    "DONE: Fixed Simulator.js to read iv_rank from trade.scan_parameters.iv_rank - IV Rank now displays correctly",
+    "Consider storing open_interest in scan_parameters when adding trades to simulator from screener",
     "Consider re-running pre-computed scans to include iv_rank and open_interest data",
     "Consider updating simulator backend to store iv_rank and open_interest at top level when trade is created"
   ],
