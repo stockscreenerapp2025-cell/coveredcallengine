@@ -292,10 +292,12 @@ async def screen_covered_calls(
                         logging.debug(f"Skipping {symbol} ${strike}C: premium ${premium} exceeds reasonable max ${max_reasonable_premium:.2f}")
                         continue
                     
-                    # DATA QUALITY FILTER: Minimum open interest to ensure liquidity
+                    # DATA QUALITY FILTER: Open interest check (when available from Yahoo)
                     open_interest = opt.get("open_interest", 0) or 0
-                    # Note: Polygon basic plan doesn't return OI, so we can't filter on it
-                    # Instead rely on premium sanity checks above
+                    # If we have OI data from Yahoo, filter out illiquid options
+                    if open_interest > 0 and open_interest < 10:
+                        logging.debug(f"Skipping {symbol} ${strike}C: open interest {open_interest} < 10")
+                        continue
                     
                     roi_pct = (premium / underlying_price) * 100
                     
