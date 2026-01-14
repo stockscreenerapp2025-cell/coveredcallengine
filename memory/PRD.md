@@ -102,7 +102,7 @@ Build a web-based application named "Covered Call Engine" to identify, analyze, 
   - Scanner comparison to identify best parameter combinations
 
 ### 🔄 In Progress
-- [ ] Pre-computed scans need to be re-run to include new IV Rank and OI fields (will happen at 4:45 PM ET)
+- None currently
 
 ### ✅ Completed (Jan 14, 2026) - IV, IV Rank, OI Data Consistency
 - [x] **Dashboard Top 10 Table**
