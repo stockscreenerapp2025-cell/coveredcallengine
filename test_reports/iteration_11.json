@@ -45,7 +45,9 @@
     "PMCC page doesn't have IV, IV Rank, OI columns by design - focuses on LEAPS metrics instead"
   ],
   "updated_files": [
-    "/app/frontend/src/pages/Simulator.js"
+    "/app/frontend/src/pages/Simulator.js",
+    "/app/frontend/src/pages/Dashboard.js",
+    "/app/frontend/src/pages/Screener.js"
   ],
   "success_rate": {
     "backend": "100% - All APIs return correct data structure",
