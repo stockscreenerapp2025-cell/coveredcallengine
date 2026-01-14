@@ -1260,7 +1260,7 @@ const Screener = () => {
         )}
 
         {/* Results Table - Enhanced for Pre-computed Scans */}
-        <Card className={`glass-card ${filtersOpen ? 'lg:col-span-3' : 'lg:col-span-4'}`} data-testid="results-table">
+        <Card className={`glass-card ${filtersOpen ? 'lg:col-span-4' : 'lg:col-span-5'}`} data-testid="results-table">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-lg flex items-center gap-2">
               Results
