@@ -60,7 +60,7 @@
   "seed_data_creation": "None - used existing data",
   "retest_needed": true,
   "should_main_agent_self_test": true,
-  "context_for_next_testing_agent": "IV, IV Rank, OI data consistency testing completed. Main issue is Simulator page not displaying IV Rank and OI because frontend reads from wrong field path. Pre-computed scans have older data without IV Rank/OI. Custom scans and live data work correctly.",
+  "context_for_next_testing_agent": "IV, IV Rank, OI data consistency testing completed. Fixes applied to Simulator.js, Dashboard.js, Screener.js. IV Rank now displays correctly in Simulator (reads from scan_parameters). OI will display for new trades added after the fix. Pre-computed scans have older data without IV Rank/OI - need to be re-run. Minor bug: Simulate modal shows 'NaNundefinedaN' for expiry format.",
   "pages_tested": {
     "dashboard": {
       "status": "PASS",
