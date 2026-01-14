@@ -1278,6 +1278,7 @@ const Screener = () => {
                       <SortHeader field="delta" label="Delta" />
                       <th>Prob OTM</th>
                       <SortHeader field="iv" label="IV" />
+                      <SortHeader field="iv_rank" label="IV Rank" />
                       <SortHeader field="open_interest" label="OI" />
                       {activeScan && <th>Sector</th>}
                       <SortHeader field="score" label="Score" />
