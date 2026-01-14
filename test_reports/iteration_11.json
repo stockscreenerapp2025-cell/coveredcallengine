@@ -51,7 +51,7 @@
   ],
   "success_rate": {
     "backend": "100% - All APIs return correct data structure",
-    "frontend": "90% - Dashboard, Watchlist, Screener Custom Scan work correctly. Simulator IV Rank now fixed. OI still shows '-' for simulator trades."
+    "frontend": "95% - Dashboard, Watchlist, Screener Custom Scan work correctly. Simulator IV Rank fixed. OI will show for new trades. Minor: Simulate modal expiry format bug."
   },
   "test_credentials": {
     "email": "admin@premiumhunter.com",
