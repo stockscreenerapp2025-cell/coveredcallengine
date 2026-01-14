@@ -288,6 +288,8 @@ const Watchlist = () => {
                     <TableHead className="text-zinc-400 font-medium text-right">ROI</TableHead>
                     <TableHead className="text-zinc-400 font-medium text-center">Delta</TableHead>
                     <TableHead className="text-zinc-400 font-medium text-center">IV</TableHead>
+                    <TableHead className="text-zinc-400 font-medium text-center">IV Rank</TableHead>
+                    <TableHead className="text-zinc-400 font-medium text-center">OI</TableHead>
                     <TableHead className="text-zinc-400 font-medium text-center">AI Score</TableHead>
                     <TableHead className="text-zinc-400 font-medium text-center">Analyst</TableHead>
                     <TableHead className="text-zinc-400 font-medium text-center">Action</TableHead>
