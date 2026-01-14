@@ -1,5 +1,6 @@
 """
 Watchlist routes - Enhanced with price tracking and opportunities
+Uses unified data provider (Yahoo primary, Polygon backup)
 """
 from fastapi import APIRouter, HTTPException, Depends
 from datetime import datetime, timezone
@@ -7,8 +8,6 @@ from typing import List, Dict, Any
 import uuid
 import logging
 import asyncio
-from concurrent.futures import ThreadPoolExecutor
-import httpx
 
 import sys
 from pathlib import Path
@@ -17,12 +16,9 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from database import db
 from models.schemas import WatchlistItemCreate
 from utils.auth import get_current_user
-from services.data_provider import fetch_stock_quote, fetch_options_chain
+from services.data_provider import fetch_stock_quote, fetch_options_chain, fetch_stock_quotes_batch
 
 watchlist_router = APIRouter(tags=["Watchlist"])
-
-# Thread pool for blocking yfinance calls
-_executor = ThreadPoolExecutor(max_workers=5)
 
 
 def _get_server_functions():
@@ -31,114 +27,16 @@ def _get_server_functions():
     return get_massive_api_key, MOCK_STOCKS
 
 
-def _fetch_analyst_rating_sync(symbol: str) -> dict:
-    """Fetch analyst rating only (blocking call)"""
-    try:
-        import yfinance as yf
-        ticker = yf.Ticker(symbol)
-        info = ticker.info
-        
-        # Get analyst rating
-        recommendation = info.get("recommendationKey", "")
-        rating_map = {
-            "strong_buy": "Strong Buy",
-            "buy": "Buy",
-            "hold": "Hold",
-            "underperform": "Sell",
-            "sell": "Sell"
-        }
-        rating = rating_map.get(recommendation, recommendation.replace("_", " ").title() if recommendation else None)
-        
-        return {
-            "symbol": symbol,
-            "analyst_rating": rating,
-            "num_analysts": info.get("numberOfAnalystOpinions", 0)
-        }
-    except Exception as e:
-        logging.debug(f"Failed to fetch analyst rating for {symbol}: {e}")
-        return {
-            "symbol": symbol,
-            "analyst_rating": None,
-            "num_analysts": 0
-        }
-
-
-async def fetch_analyst_ratings_batch(symbols: List[str]) -> Dict[str, str]:
-    """Fetch analyst ratings for multiple symbols in parallel"""
-    if not symbols:
-        return {}
-    
-    loop = asyncio.get_event_loop()
-    
-    tasks = [
-        loop.run_in_executor(_executor, _fetch_analyst_rating_sync, symbol)
-        for symbol in set(symbols)
-    ]
-    
-    results = await asyncio.gather(*tasks, return_exceptions=True)
-    
-    ratings = {}
-    for result in results:
-        if isinstance(result, dict) and result.get("symbol"):
-            ratings[result["symbol"]] = result.get("analyst_rating")
-    
-    return ratings
-
-
-async def fetch_stock_prices_polygon(symbols: List[str], api_key: str) -> Dict[str, dict]:
-    """Fetch stock prices from Polygon API"""
-    if not symbols or not api_key:
-        logging.warning(f"fetch_stock_prices_polygon: Missing symbols={symbols} or api_key={bool(api_key)}")
-        return {}
-    
-    prices = {}
-    
-    async with httpx.AsyncClient(timeout=30.0) as client:
-        for symbol in symbols:
-            try:
-                url = f"https://api.polygon.io/v2/aggs/ticker/{symbol}/prev"
-                response = await client.get(url, params={"apiKey": api_key})
-                logging.info(f"Polygon price fetch for {symbol}: status={response.status_code}")
-                
-                if response.status_code == 200:
-                    data = response.json()
-                    if data.get("results") and len(data["results"]) > 0:
-                        result = data["results"][0]
-                        close_price = result.get("c", 0)
-                        open_price = result.get("o", close_price)
-                        change = close_price - open_price if open_price else 0
-                        change_pct = (change / open_price * 100) if open_price else 0
-                        
-                        prices[symbol] = {
-                            "current_price": round(close_price, 2),
-                            "change": round(change, 2),
-                            "change_pct": round(change_pct, 2)
-                        }
-                        logging.info(f"Got price for {symbol}: ${close_price}")
-                    else:
-                        logging.warning(f"No results for {symbol} in Polygon response")
-                else:
-                    logging.warning(f"Polygon API error for {symbol}: {response.status_code}")
-            except Exception as e:
-                logging.error(f"Error fetching price for {symbol}: {e}")
-    
-    return prices
-
-
 async def _get_best_opportunity(symbol: str, api_key: str, underlying_price: float) -> dict:
-    """Get the best covered call opportunity for a symbol"""
+    """Get the best covered call opportunity for a symbol using unified data provider"""
     try:
-        from services.data_provider import enrich_options_with_yahoo_data
-        
+        # Fetch options chain (Yahoo primary with IV/OI, Polygon backup)
         options = await fetch_options_chain(
             symbol, api_key, "call", 45, min_dte=1, current_price=underlying_price
         )
         
         if not options:
             return None
-        
-        # Enrich options with Yahoo IV and OI data
-        options = await enrich_options_with_yahoo_data(options, symbol)
         
         best_opp = None
         best_roi = 0
@@ -147,8 +45,9 @@ async def _get_best_opportunity(symbol: str, api_key: str, underlying_price: flo
             strike = opt.get("strike", 0)
             expiry = opt.get("expiry", "")
             dte = opt.get("dte", 0)
-            premium = opt.get("close", 0) or opt.get("vwap", 0)
+            premium = opt.get("close", 0)
             open_interest = opt.get("open_interest", 0) or 0
+            iv = opt.get("implied_volatility", 0) or 0
             
             if premium <= 0 or strike <= 0 or dte < 1:
                 continue
@@ -170,11 +69,11 @@ async def _get_best_opportunity(symbol: str, api_key: str, underlying_price: flo
             if strike > underlying_price and roi_pct > 20:
                 continue
             
-            # If we have OI data from Yahoo, prefer liquid options
+            # If we have OI data, prefer liquid options
             if open_interest > 0 and open_interest < 10:
-                continue  # Skip illiquid options only if we have OI data
+                continue
             
-            if roi_pct > best_roi and roi_pct >= 0.5:  # Min 0.5% ROI
+            if roi_pct > best_roi and roi_pct >= 0.5:
                 best_roi = roi_pct
                 
                 # Estimate delta based on moneyness
@@ -185,19 +84,16 @@ async def _get_best_opportunity(symbol: str, api_key: str, underlying_price: flo
                     estimated_delta = 0.50 - (strike_pct_diff * 0.03)
                 estimated_delta = max(0.15, min(0.60, estimated_delta))
                 
-                # Get IV from option or estimate based on ATR/price volatility
-                iv = opt.get("implied_volatility", 0)
+                # Use IV from Yahoo if available, else estimate
                 if iv == 0:
-                    # Default estimate based on typical IV range (25-40% for most stocks)
                     iv = 0.30  # 30% default
-                iv_rank = min(100, iv * 100)
                 
                 # Determine type: Weekly (<=7 DTE) or Monthly
                 option_type = "Weekly" if dte <= 7 else "Monthly"
                 
                 # Calculate AI Score with liquidity bonus
                 roi_score = min(roi_pct * 15, 40)
-                iv_score = min(iv_rank / 100 * 20, 20)
+                iv_score = min(iv * 20, 20)
                 delta_score = max(0, 20 - abs(estimated_delta - 0.3) * 50)
                 protection = (premium / underlying_price) * 100 if strike > underlying_price else ((strike - underlying_price + premium) / underlying_price * 100)
                 protection_score = min(abs(protection), 10) * 2
@@ -226,7 +122,8 @@ async def _get_best_opportunity(symbol: str, api_key: str, underlying_price: flo
                     "volume": opt.get("volume", 0),
                     "open_interest": open_interest,
                     "type": option_type,
-                    "ai_score": ai_score
+                    "ai_score": ai_score,
+                    "source": opt.get("source", "yahoo")
                 }
         
         return best_opp
@@ -238,7 +135,7 @@ async def _get_best_opportunity(symbol: str, api_key: str, underlying_price: flo
 @watchlist_router.get("/")
 async def get_watchlist(user: dict = Depends(get_current_user)):
     """Get user's watchlist with current prices and opportunities"""
-    get_massive_api_key, MOCK_STOCKS = _get_server_functions()
+    get_massive_api_key, _ = _get_server_functions()
     
     items = await db.watchlist.find({"user_id": user["id"]}, {"_id": 0}).to_list(100)
     
@@ -248,24 +145,19 @@ async def get_watchlist(user: dict = Depends(get_current_user)):
     # Get all symbols
     symbols = [item.get("symbol", "") for item in items if item.get("symbol")]
     
-    # Get API key for Polygon
+    # Get API key
     api_key = await get_massive_api_key()
     
-    # Fetch prices from Polygon
-    prices = {}
-    if api_key:
-        prices = await fetch_stock_prices_polygon(symbols, api_key)
-    
-    # Fetch analyst ratings in parallel
-    analyst_ratings = await fetch_analyst_ratings_batch(symbols)
+    # Fetch stock quotes in batch (Yahoo primary)
+    stock_data = await fetch_stock_quotes_batch(symbols, api_key)
     
     # Enrich items with current prices and opportunities
     enriched_items = []
     for item in items:
         symbol = item.get("symbol", "")
-        price_data = prices.get(symbol, {})
+        data = stock_data.get(symbol, {})
         
-        current_price = price_data.get("current_price", 0)
+        current_price = data.get("price", 0)
         price_when_added = item.get("price_when_added", 0)
         
         # Calculate price movement since added
@@ -279,17 +171,17 @@ async def get_watchlist(user: dict = Depends(get_current_user)):
         enriched = {
             **item,
             "current_price": current_price,
-            "change": price_data.get("change", 0),
-            "change_pct": price_data.get("change_pct", 0),
+            "change": data.get("change", 0),
+            "change_pct": data.get("change_pct", 0),
             "price_when_added": price_when_added,
             "movement": round(movement, 2),
             "movement_pct": round(movement_pct, 2),
-            "analyst_rating": analyst_ratings.get(symbol),
+            "analyst_rating": data.get("analyst_rating"),
             "opportunity": None
         }
         
-        # Get best opportunity if API key is available and current price exists
-        if api_key and current_price > 0:
+        # Get best opportunity if current price exists
+        if current_price > 0:
             opp = await _get_best_opportunity(symbol, api_key, current_price)
             enriched["opportunity"] = opp
         
@@ -301,7 +193,7 @@ async def get_watchlist(user: dict = Depends(get_current_user)):
 @watchlist_router.post("/")
 async def add_to_watchlist(item: WatchlistItemCreate, user: dict = Depends(get_current_user)):
     """Add a symbol to user's watchlist with current price"""
-    get_massive_api_key, MOCK_STOCKS = _get_server_functions()
+    get_massive_api_key, _ = _get_server_functions()
     
     symbol = item.symbol.upper()
     
@@ -310,13 +202,10 @@ async def add_to_watchlist(item: WatchlistItemCreate, user: dict = Depends(get_c
     if existing:
         raise HTTPException(status_code=400, detail="Symbol already in watchlist")
     
-    # Get current price from Polygon
+    # Get current price (Yahoo primary)
     api_key = await get_massive_api_key()
-    price_when_added = 0
-    
-    if api_key:
-        prices = await fetch_stock_prices_polygon([symbol], api_key)
-        price_when_added = prices.get(symbol, {}).get("current_price", 0)
+    stock_data = await fetch_stock_quote(symbol, api_key)
+    price_when_added = stock_data.get("price", 0) if stock_data else 0
     
     doc = {
         "id": str(uuid.uuid4()),
