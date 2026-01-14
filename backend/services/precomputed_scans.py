@@ -434,9 +434,150 @@ class PrecomputedScanService:
         delta_max: float
     ) -> List[Dict[str, Any]]:
         """
-        Fetch and filter options contracts from Polygon.
-        No rate limiting needed - unlimited API calls.
+        Fetch and filter options contracts using Yahoo Finance (primary) for IV/OI data.
+        Falls back to Polygon if Yahoo fails.
         """
+        try:
+            # Try Yahoo Finance first (has IV, OI data)
+            options = await self._fetch_options_yahoo(symbol, current_price, dte_min, dte_max, delta_min, delta_max)
+            if options:
+                return options
+            
+            # Fallback to Polygon (no IV/OI in basic plan)
+            if self.api_key:
+                return await self._fetch_options_polygon(symbol, current_price, dte_min, dte_max, delta_min, delta_max)
+            
+            return []
+        except Exception as e:
+            logger.error(f"Error fetching options for {symbol}: {e}")
+            return []
+    
+    async def _fetch_options_yahoo(
+        self,
+        symbol: str,
+        current_price: float,
+        dte_min: int,
+        dte_max: int,
+        delta_min: float,
+        delta_max: float
+    ) -> List[Dict[str, Any]]:
+        """Fetch options from Yahoo Finance with real IV and OI data."""
+        try:
+            def _fetch_yahoo_sync():
+                ticker = yf.Ticker(symbol)
+                try:
+                    expirations = ticker.options
+                except Exception:
+                    return []
+                
+                if not expirations:
+                    return []
+                
+                today = datetime.now()
+                options = []
+                
+                for exp_str in expirations:
+                    try:
+                        exp_date = datetime.strptime(exp_str, "%Y-%m-%d")
+                        dte = (exp_date - today).days
+                        
+                        if dte < dte_min or dte > dte_max:
+                            continue
+                        
+                        opt_chain = ticker.option_chain(exp_str)
+                        calls = opt_chain.calls
+                        
+                        for _, row in calls.iterrows():
+                            strike = row.get('strike', 0)
+                            if not strike:
+                                continue
+                            
+                            # Filter strikes based on moneyness for delta range
+                            moneyness = (strike - current_price) / current_price
+                            
+                            # Estimate delta based on moneyness
+                            if moneyness <= 0:  # ITM
+                                est_delta = 0.55 + abs(moneyness) * 0.5
+                            else:  # OTM
+                                est_delta = 0.50 - moneyness * 3
+                            est_delta = max(0.10, min(0.90, est_delta))
+                            
+                            # Filter by delta
+                            if est_delta < delta_min or est_delta > delta_max:
+                                continue
+                            
+                            # Get premium
+                            last_price = row.get('lastPrice', 0)
+                            bid = row.get('bid', 0)
+                            ask = row.get('ask', 0)
+                            premium = last_price if last_price > 0 else ((bid + ask) / 2 if bid > 0 and ask > 0 else 0)
+                            
+                            if premium <= 0:
+                                continue
+                            
+                            # DATA QUALITY FILTER: Premium sanity check
+                            max_reasonable_premium = current_price * 0.20
+                            if premium > max_reasonable_premium:
+                                continue
+                            
+                            premium_yield = premium / current_price
+                            
+                            # DATA QUALITY FILTER: ROI sanity check
+                            if premium_yield > 0.50:
+                                continue
+                            
+                            # Get IV and OI from Yahoo
+                            iv = row.get('impliedVolatility', 0)
+                            oi = row.get('openInterest', 0)
+                            volume = row.get('volume', 0)
+                            
+                            # Skip if IV is unrealistic
+                            if iv and (iv < 0.01 or iv > 5.0):
+                                iv = 0
+                            
+                            # Filter low liquidity options
+                            if oi and oi > 0 and oi < 10:
+                                continue
+                            
+                            options.append({
+                                "contract_ticker": row.get('contractSymbol', ''),
+                                "symbol": symbol,
+                                "strike": float(strike),
+                                "expiry": exp_str,
+                                "dte": dte,
+                                "premium": round(float(premium), 2),
+                                "premium_yield": round(premium_yield, 4),
+                                "delta": round(est_delta, 3),
+                                "volume": int(volume) if volume else 0,
+                                "open_interest": int(oi) if oi else 0,
+                                "iv": float(iv) if iv else 0,
+                                "bid": float(bid) if bid else 0,
+                                "ask": float(ask) if ask else 0
+                            })
+                            
+                    except Exception as e:
+                        logger.debug(f"Error processing expiry {exp_str} for {symbol}: {e}")
+                        continue
+                
+                return options
+            
+            loop = asyncio.get_event_loop()
+            return await loop.run_in_executor(self._executor, _fetch_yahoo_sync)
+            
+        except Exception as e:
+            logger.warning(f"Yahoo options fetch failed for {symbol}: {e}")
+            return []
+    
+    async def _fetch_options_polygon(
+        self,
+        symbol: str,
+        current_price: float,
+        dte_min: int,
+        dte_max: int,
+        delta_min: float,
+        delta_max: float
+    ) -> List[Dict[str, Any]]:
+        """Fallback: Fetch options from Polygon (no IV/OI in basic plan)."""
         if not self.api_key:
             return []
         
@@ -446,11 +587,6 @@ class PrecomputedScanService:
             max_expiry = (today + timedelta(days=dte_max)).strftime("%Y-%m-%d")
             
             # Calculate strike range based on delta targets
-            # Lower delta = further OTM = higher strike
-            # Delta 0.20-0.30 (conservative) ≈ 3-8% OTM
-            # Delta 0.30-0.40 (balanced) ≈ 0-5% OTM
-            # Delta 0.40-0.55 (aggressive) ≈ ATM to 3% OTM
-            
             if delta_max <= 0.30:  # Conservative - OTM
                 strike_min = current_price * 1.02
                 strike_max = current_price * 1.15
@@ -462,7 +598,6 @@ class PrecomputedScanService:
                 strike_max = current_price * 1.05
             
             async with httpx.AsyncClient(timeout=HTTP_TIMEOUT) as client:
-                # Fetch contracts
                 contracts_url = f"{POLYGON_BASE_URL}/v3/reference/options/contracts"
                 params = {
                     "underlying_ticker": symbol.upper(),
@@ -486,8 +621,7 @@ class PrecomputedScanService:
                 if not contracts:
                     return []
                 
-                # Fetch prices for each contract in parallel
-                semaphore = asyncio.Semaphore(20)  # Unlimited, but control concurrency
+                semaphore = asyncio.Semaphore(20)
                 
                 async def fetch_price(contract):
                     async with semaphore:
@@ -510,7 +644,6 @@ class PrecomputedScanService:
                                     strike = contract.get("strike_price", 0)
                                     expiry = contract.get("expiration_date", "")
                                     
-                                    # Calculate DTE
                                     dte = 0
                                     if expiry:
                                         try:
@@ -519,15 +652,13 @@ class PrecomputedScanService:
                                         except Exception:
                                             pass
                                     
-                                    # Estimate delta based on moneyness
                                     moneyness = (strike - current_price) / current_price
-                                    if moneyness <= 0:  # ITM
+                                    if moneyness <= 0:
                                         est_delta = 0.55 + abs(moneyness) * 0.5
-                                    else:  # OTM
+                                    else:
                                         est_delta = 0.50 - moneyness * 3
                                     est_delta = max(0.10, min(0.90, est_delta))
                                     
-                                    # Filter by delta
                                     if est_delta < delta_min or est_delta > delta_max:
                                         return None
                                     
@@ -535,15 +666,13 @@ class PrecomputedScanService:
                                     if close_price <= 0:
                                         return None
                                     
-                                    # DATA QUALITY FILTER: Premium sanity check
                                     max_reasonable_premium = current_price * 0.20
                                     if close_price > max_reasonable_premium:
                                         return None
                                     
                                     premium_yield = close_price / current_price
                                     
-                                    # DATA QUALITY FILTER: ROI sanity check
-                                    if premium_yield > 0.50:  # 50% is unrealistic
+                                    if premium_yield > 0.50:
                                         return None
                                     
                                     return {
@@ -556,25 +685,23 @@ class PrecomputedScanService:
                                         "premium_yield": premium_yield,
                                         "delta": round(est_delta, 3),
                                         "volume": r.get("v", 0),
-                                        "open_interest": 0,  # Would need separate call
-                                        "iv": 0.30,  # Would need Greeks API
+                                        "open_interest": 0,
+                                        "iv": 0.30,
                                         "vwap": r.get("vw", 0)
                                     }
                         except Exception as e:
                             logger.debug(f"Error fetching price for {ticker}: {e}")
                         return None
                 
-                # Fetch all prices in parallel
-                tasks = [fetch_price(c) for c in contracts[:50]]  # Limit to 50 contracts
+                tasks = [fetch_price(c) for c in contracts[:50]]
                 results = await asyncio.gather(*tasks, return_exceptions=True)
                 
-                # Filter out None results
                 options = [r for r in results if r and not isinstance(r, Exception)]
                 
                 return options
                 
         except Exception as e:
-            logger.error(f"Error fetching options for {symbol}: {e}")
+            logger.error(f"Polygon options fetch failed for {symbol}: {e}")
             return []
     
     # ==================== FILTER LOGIC ====================
