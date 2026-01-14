@@ -780,10 +780,10 @@ const Simulator = () => {
                           {trade.iv ? `${(trade.iv * 100).toFixed(1)}%` : (trade.short_call_iv ? `${(trade.short_call_iv * 100).toFixed(1)}%` : '-')}
                         </td>
                         <td className="text-amber-400 font-mono">
-                          {trade.iv_rank ? `${trade.iv_rank.toFixed(0)}%` : '-'}
+                          {trade.iv_rank ? `${trade.iv_rank.toFixed(0)}%` : (trade.scan_parameters?.iv_rank ? `${trade.scan_parameters.iv_rank.toFixed(0)}%` : '-')}
                         </td>
                         <td className="text-zinc-400 font-mono">
-                          {trade.open_interest ? trade.open_interest.toLocaleString() : '-'}
+                          {trade.open_interest ? trade.open_interest.toLocaleString() : (trade.scan_parameters?.open_interest ? trade.scan_parameters.open_interest.toLocaleString() : '-')}
                         </td>
                         <td className={`font-mono ${(trade.premium_capture_pct || 0) >= 50 ? 'text-emerald-400' : 'text-zinc-400'}`}>
                           {trade.premium_capture_pct?.toFixed(0) || 0}%
