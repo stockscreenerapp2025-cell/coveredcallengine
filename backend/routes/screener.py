@@ -222,6 +222,8 @@ async def screen_covered_calls(
         
         for symbol in symbols_to_scan:
             try:
+                from services.data_provider import enrich_options_with_yahoo_data
+                
                 # Get stock price using centralized data provider
                 stock_data = await fetch_stock_quote(symbol, api_key)
                 
@@ -242,6 +244,9 @@ async def screen_covered_calls(
                 if not options_results:
                     logging.debug(f"No options data from Polygon for {symbol}")
                     continue
+                
+                # Enrich with Yahoo IV and OI data
+                options_results = await enrich_options_with_yahoo_data(options_results, symbol)
                 
                 for opt in options_results:
                     strike = opt.get("strike", 0)
