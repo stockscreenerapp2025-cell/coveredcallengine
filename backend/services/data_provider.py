@@ -471,3 +471,132 @@ def get_data_source_status() -> Dict[str, Any]:
         "polygon_base_url": POLYGON_BASE_URL,
         "market_closed": is_market_closed()
     }
+
+
+# =============================================================================
+# YAHOO FINANCE OPTIONS DATA (for IV, OI enrichment)
+# =============================================================================
+
+async def fetch_options_iv_oi_from_yahoo(symbol: str, max_dte: int = 45) -> Dict[str, Dict]:
+    """
+    Fetch options IV and Open Interest data from Yahoo Finance.
+    
+    This is used to enrich Polygon options data with IV and OI
+    which are not available in Polygon basic plan.
+    
+    Args:
+        symbol: Stock ticker symbol
+        max_dte: Maximum days to expiration to fetch
+        
+    Returns:
+        Dictionary mapping (strike, expiry) tuples to {iv, open_interest} data
+    """
+    try:
+        import yfinance as yf
+        from concurrent.futures import ThreadPoolExecutor
+        
+        def _fetch_yahoo_options():
+            ticker = yf.Ticker(symbol)
+            
+            # Get available expiration dates
+            try:
+                expirations = ticker.options
+            except Exception:
+                return {}
+            
+            if not expirations:
+                return {}
+            
+            # Filter expirations within max_dte
+            today = datetime.now()
+            valid_expiries = []
+            for exp_str in expirations:
+                try:
+                    exp_date = datetime.strptime(exp_str, "%Y-%m-%d")
+                    dte = (exp_date - today).days
+                    if 0 < dte <= max_dte:
+                        valid_expiries.append(exp_str)
+                except Exception:
+                    continue
+            
+            if not valid_expiries:
+                return {}
+            
+            iv_oi_data = {}
+            
+            # Fetch options chain for each expiry
+            for expiry in valid_expiries[:3]:  # Limit to 3 expiries for performance
+                try:
+                    opt_chain = ticker.option_chain(expiry)
+                    calls = opt_chain.calls
+                    
+                    for _, row in calls.iterrows():
+                        strike = row.get('strike', 0)
+                        iv = row.get('impliedVolatility', 0)
+                        oi = row.get('openInterest', 0)
+                        
+                        if strike > 0:
+                            key = f"{strike}_{expiry}"
+                            iv_oi_data[key] = {
+                                "iv": iv if iv and iv > 0 else 0,
+                                "open_interest": int(oi) if oi and oi > 0 else 0
+                            }
+                except Exception as e:
+                    logging.debug(f"Error fetching Yahoo options for {symbol} {expiry}: {e}")
+                    continue
+            
+            return iv_oi_data
+        
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(None, _fetch_yahoo_options)
+        
+    except Exception as e:
+        logging.warning(f"Yahoo options fetch error for {symbol}: {e}")
+        return {}
+
+
+async def enrich_options_with_yahoo_data(
+    options: List[Dict], 
+    symbol: str
+) -> List[Dict]:
+    """
+    Enrich Polygon options data with IV and OI from Yahoo Finance.
+    
+    Args:
+        options: List of option contracts from Polygon
+        symbol: Stock ticker symbol
+        
+    Returns:
+        Enriched options list with IV and OI data
+    """
+    if not options:
+        return options
+    
+    # Get max DTE from options
+    max_dte = max(opt.get("dte", 45) for opt in options)
+    
+    # Fetch Yahoo data
+    yahoo_data = await fetch_options_iv_oi_from_yahoo(symbol, max_dte + 5)
+    
+    if not yahoo_data:
+        return options
+    
+    # Enrich options
+    for opt in options:
+        strike = opt.get("strike", 0)
+        expiry = opt.get("expiry", "")
+        key = f"{strike}_{expiry}"
+        
+        if key in yahoo_data:
+            yahoo_info = yahoo_data[key]
+            # Only update if Yahoo has valid data and Polygon doesn't
+            if yahoo_info.get("iv", 0) > 0 and opt.get("implied_volatility", 0) == 0:
+                opt["implied_volatility"] = yahoo_info["iv"]
+            if yahoo_info.get("open_interest", 0) > 0 and opt.get("open_interest", 0) == 0:
+                opt["open_interest"] = yahoo_info["open_interest"]
+    
+    enriched_count = sum(1 for o in options if o.get("open_interest", 0) > 0)
+    logging.info(f"Enriched {enriched_count}/{len(options)} options with Yahoo IV/OI data for {symbol}")
+    
+    return options
+
