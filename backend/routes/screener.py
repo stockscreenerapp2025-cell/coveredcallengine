@@ -492,8 +492,10 @@ async def get_dashboard_opportunities(user: dict = Depends(get_current_user)):
                     if not premium or premium <= 0:
                         continue
                     
-                    # DATA QUALITY FILTER: Minimum open interest
-                    if open_interest < 10:
+                    # DATA QUALITY FILTER: Premium sanity check (tighter for OTM)
+                    # OTM calls premium shouldn't exceed 10% of stock price
+                    max_reasonable_premium = current_price * 0.10
+                    if premium > max_reasonable_premium:
                         continue
                     
                     # Filter for OTM calls
@@ -504,16 +506,10 @@ async def get_dashboard_opportunities(user: dict = Depends(get_current_user)):
                     if strike_pct > 10:  # Max 10% OTM
                         continue
                     
-                    # DATA QUALITY FILTER: Premium sanity check
-                    # For OTM calls, premium shouldn't exceed 20% of stock price
-                    max_reasonable_premium = current_price * 0.20
-                    if premium > max_reasonable_premium:
-                        continue
-                    
                     roi_pct = (premium / current_price) * 100
                     
-                    # DATA QUALITY FILTER: ROI sanity check
-                    if roi_pct > 50:
+                    # DATA QUALITY FILTER: ROI sanity check - 20% max for OTM
+                    if roi_pct > 20:
                         continue
                     
                     # ROI filters - Weekly needs at least 0.8%, Monthly needs at least 2.5%
