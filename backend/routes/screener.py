@@ -541,8 +541,21 @@ async def get_dashboard_opportunities(user: dict = Depends(get_current_user)):
                     else:
                         moneyness = "OTM"
                     
-                    # Calculate score
-                    score = round(roi_pct * 10 + annualized_roi / 10 + (50 - iv) / 10, 1)
+                    # Calculate score with liquidity bonus
+                    base_score = roi_pct * 10 + annualized_roi / 10 + (50 - iv) / 10
+                    
+                    # Liquidity bonus
+                    liquidity_bonus = 0
+                    if open_interest >= 1000:
+                        liquidity_bonus = 10
+                    elif open_interest >= 500:
+                        liquidity_bonus = 7
+                    elif open_interest >= 100:
+                        liquidity_bonus = 5
+                    elif open_interest >= 50:
+                        liquidity_bonus = 2
+                    
+                    score = round(base_score + liquidity_bonus, 1)
                     
                     opp_data = {
                         "symbol": symbol,
@@ -559,6 +572,7 @@ async def get_dashboard_opportunities(user: dict = Depends(get_current_user)):
                         "delta": round(estimated_delta, 2),
                         "iv": round(iv, 0),
                         "iv_rank": round(min(100, iv * 1.5), 0),
+                        "open_interest": open_interest,
                         "score": score,
                         "data_source": "polygon"
                     }
