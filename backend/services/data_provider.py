@@ -1,36 +1,39 @@
 """
 Centralized Data Provider Service
 =================================
-This service manages all external data sourcing with clear separation of concerns:
+PRIMARY DATA SOURCE: Yahoo Finance (yfinance)
+BACKUP DATA SOURCE: Polygon/Massive (free tier)
 
-OPTIONS DATA: Polygon/Massive ONLY (paid subscription)
-STOCK DATA: Polygon/Massive primary, Yahoo fallback (until upgrade)
+Yahoo Finance provides:
+- Stock quotes (current + previous close - always available)
+- Options chains with IV, OI, Greeks built-in
+- Works during market hours and after (returns last available data)
 
-Configuration:
-- Set USE_POLYGON_FOR_STOCKS = True when stock subscription is upgraded
-- All options data always comes from Polygon/Massive
+Polygon provides:
+- Backup for stock quotes when Yahoo fails
+- Options aggregates (no IV/OI in basic plan)
 
 This is the SINGLE SOURCE OF TRUTH for data sourcing logic.
-Do not implement data fetching elsewhere in the codebase.
+All screeners and pages should use these functions for consistency.
 """
 
 import os
 import logging
 import asyncio
-import aiohttp
 import httpx
 from datetime import datetime, timedelta
 from typing import Optional, List, Dict, Any
+from concurrent.futures import ThreadPoolExecutor
 import pytz
 
 # =============================================================================
-# CONFIGURATION - Change this when upgrading Polygon stock subscription
+# CONFIGURATION
 # =============================================================================
-USE_POLYGON_FOR_STOCKS = False  # Set to True when stock subscription is upgraded
-
-# API Settings
 HTTP_TIMEOUT = httpx.Timeout(30.0, connect=10.0)
 POLYGON_BASE_URL = "https://api.polygon.io"
+
+# Thread pool for blocking yfinance calls
+_yahoo_executor = ThreadPoolExecutor(max_workers=8)
 
 # =============================================================================
 # MARKET STATUS HELPERS
@@ -59,400 +62,364 @@ def is_market_closed() -> bool:
         return False
 
 
+def get_last_trading_day() -> str:
+    """Get the last trading day date string (YYYY-MM-DD)"""
+    eastern = pytz.timezone('US/Eastern')
+    now = datetime.now(eastern)
+    
+    # If weekend, go back to Friday
+    if now.weekday() == 5:  # Saturday
+        now = now - timedelta(days=1)
+    elif now.weekday() == 6:  # Sunday
+        now = now - timedelta(days=2)
+    elif now.weekday() == 0 and now.hour < 9:  # Monday before market open
+        now = now - timedelta(days=3)
+    elif now.hour < 9 or (now.hour == 9 and now.minute < 30):
+        # Before market open on weekday
+        now = now - timedelta(days=1)
+        if now.weekday() == 6:  # Sunday
+            now = now - timedelta(days=2)
+    
+    return now.strftime('%Y-%m-%d')
+
+
 def calculate_dte(expiry_date: str) -> int:
-    """Calculate days to expiration from expiry date string (YYYY-MM-DD)"""
-    if not expiry_date:
-        return 0
+    """Calculate days to expiration from date string"""
     try:
-        expiry = datetime.strptime(expiry_date, "%Y-%m-%d")
+        exp = datetime.strptime(expiry_date, '%Y-%m-%d')
         today = datetime.now()
-        return max(0, (expiry - today).days)
+        return max(0, (exp - today).days)
     except Exception:
         return 0
 
 
 # =============================================================================
-# OPTIONS DATA - POLYGON/MASSIVE ONLY
+# YAHOO FINANCE - PRIMARY DATA SOURCE
 # =============================================================================
 
-async def fetch_options_chain(
-    symbol: str, 
-    api_key: str, 
-    contract_type: str = "call", 
-    max_dte: int = 45, 
-    min_dte: int = 1, 
-    current_price: float = 0
-) -> List[Dict[str, Any]]:
+def _fetch_stock_quote_yahoo_sync(symbol: str) -> Dict[str, Any]:
     """
-    Fetch options chain data from Polygon/Massive ONLY.
-    
-    This is the ONLY function for fetching options data.
-    Yahoo Finance is NOT used for options under any circumstances.
-    
-    Args:
-        symbol: Stock ticker symbol
-        api_key: Polygon/Massive API key
-        contract_type: "call" or "put"
-        max_dte: Maximum days to expiration
-        min_dte: Minimum days to expiration
-        current_price: Current stock price for filtering strikes
+    Fetch stock quote from Yahoo Finance (blocking call).
+    Returns previous close data when market is closed.
+    """
+    try:
+        import yfinance as yf
+        ticker = yf.Ticker(symbol)
+        info = ticker.info
         
-    Returns:
-        List of option contract data with pricing
+        # Get current or last available price
+        current_price = info.get("regularMarketPrice") or info.get("currentPrice") or info.get("previousClose", 0)
+        previous_close = info.get("previousClose", current_price)
+        
+        change = current_price - previous_close if previous_close else 0
+        change_pct = (change / previous_close * 100) if previous_close else 0
+        
+        # Get analyst rating
+        recommendation = info.get("recommendationKey", "")
+        rating_map = {
+            "strong_buy": "Strong Buy",
+            "buy": "Buy",
+            "hold": "Hold",
+            "underperform": "Sell",
+            "sell": "Sell"
+        }
+        analyst_rating = rating_map.get(recommendation, recommendation.replace("_", " ").title() if recommendation else None)
+        
+        return {
+            "symbol": symbol,
+            "price": round(current_price, 2) if current_price else 0,
+            "previous_close": round(previous_close, 2) if previous_close else 0,
+            "change": round(change, 2),
+            "change_pct": round(change_pct, 2),
+            "analyst_rating": analyst_rating,
+            "source": "yahoo"
+        }
+    except Exception as e:
+        logging.warning(f"Yahoo stock quote failed for {symbol}: {e}")
+        return None
+
+
+def _fetch_options_chain_yahoo_sync(
+    symbol: str, 
+    max_dte: int = 45, 
+    min_dte: int = 1,
+    option_type: str = "call",
+    current_price: float = None
+) -> List[Dict]:
     """
-    if not api_key:
-        logging.warning(f"No API key provided for options chain fetch: {symbol}")
+    Fetch options chain from Yahoo Finance (blocking call).
+    Returns options with IV, OI, and Greeks built-in.
+    """
+    try:
+        import yfinance as yf
+        ticker = yf.Ticker(symbol)
+        
+        # Get current price if not provided
+        if not current_price:
+            info = ticker.info
+            current_price = info.get("regularMarketPrice") or info.get("currentPrice") or info.get("previousClose", 0)
+        
+        if not current_price:
+            return []
+        
+        # Get available expirations
+        try:
+            expirations = ticker.options
+        except Exception:
+            return []
+        
+        if not expirations:
+            return []
+        
+        # Filter expirations within DTE range
+        today = datetime.now()
+        valid_expiries = []
+        for exp_str in expirations:
+            try:
+                exp_date = datetime.strptime(exp_str, "%Y-%m-%d")
+                dte = (exp_date - today).days
+                if min_dte <= dte <= max_dte:
+                    valid_expiries.append((exp_str, dte))
+            except Exception:
+                continue
+        
+        if not valid_expiries:
+            return []
+        
+        options = []
+        
+        # Fetch options for each valid expiry (limit to 3 for performance)
+        for expiry, dte in valid_expiries[:3]:
+            try:
+                opt_chain = ticker.option_chain(expiry)
+                chain_data = opt_chain.calls if option_type == "call" else opt_chain.puts
+                
+                for _, row in chain_data.iterrows():
+                    strike = row.get('strike', 0)
+                    if not strike:
+                        continue
+                    
+                    # Filter strikes based on moneyness
+                    if option_type == "call":
+                        # For calls, focus on ATM to OTM
+                        if strike < current_price * 0.95 or strike > current_price * 1.15:
+                            continue
+                    else:
+                        # For puts, focus on ATM to OTM
+                        if strike > current_price * 1.05 or strike < current_price * 0.85:
+                            continue
+                    
+                    # Get premium - use last price or mid of bid/ask
+                    last_price = row.get('lastPrice', 0)
+                    bid = row.get('bid', 0)
+                    ask = row.get('ask', 0)
+                    premium = last_price if last_price > 0 else ((bid + ask) / 2 if bid > 0 and ask > 0 else 0)
+                    
+                    if premium <= 0:
+                        continue
+                    
+                    # Get IV and OI
+                    iv = row.get('impliedVolatility', 0)
+                    oi = row.get('openInterest', 0)
+                    volume = row.get('volume', 0)
+                    
+                    # Skip if IV is unrealistic (< 1% or > 500%)
+                    if iv and (iv < 0.01 or iv > 5.0):
+                        iv = 0
+                    
+                    options.append({
+                        "contract_ticker": row.get('contractSymbol', ''),
+                        "underlying": symbol,
+                        "strike": float(strike),
+                        "expiry": expiry,
+                        "dte": dte,
+                        "type": option_type,
+                        "close": round(float(premium), 2),
+                        "bid": float(bid) if bid else 0,
+                        "ask": float(ask) if ask else 0,
+                        "volume": int(volume) if volume else 0,
+                        "open_interest": int(oi) if oi else 0,
+                        "implied_volatility": float(iv) if iv else 0,
+                        "source": "yahoo"
+                    })
+                    
+            except Exception as e:
+                logging.debug(f"Error fetching {symbol} options for {expiry}: {e}")
+                continue
+        
+        logging.info(f"Yahoo: fetched {len(options)} {option_type} options for {symbol}")
+        return options
+        
+    except Exception as e:
+        logging.warning(f"Yahoo options chain failed for {symbol}: {e}")
         return []
+
+
+async def fetch_stock_quote(symbol: str, api_key: str = None) -> Dict[str, Any]:
+    """
+    Fetch stock quote - Yahoo primary, Polygon backup.
+    Always returns data (at minimum, previous close).
+    """
+    loop = asyncio.get_event_loop()
     
-    options = []
-    today = datetime.now()
-    min_expiry = (today + timedelta(days=min_dte)).strftime("%Y-%m-%d")
-    max_expiry = (today + timedelta(days=max_dte)).strftime("%Y-%m-%d")
+    # Try Yahoo first
+    result = await loop.run_in_executor(_yahoo_executor, _fetch_stock_quote_yahoo_sync, symbol)
     
+    if result and result.get("price", 0) > 0:
+        return result
+    
+    # Fallback to Polygon
+    if api_key:
+        try:
+            async with httpx.AsyncClient(timeout=HTTP_TIMEOUT) as client:
+                response = await client.get(
+                    f"{POLYGON_BASE_URL}/v2/aggs/ticker/{symbol}/prev",
+                    params={"apiKey": api_key}
+                )
+                if response.status_code == 200:
+                    data = response.json()
+                    if data.get("results") and len(data["results"]) > 0:
+                        r = data["results"][0]
+                        return {
+                            "symbol": symbol,
+                            "price": r.get("c", 0),
+                            "previous_close": r.get("c", 0),
+                            "change": r.get("c", 0) - r.get("o", r.get("c", 0)),
+                            "change_pct": 0,
+                            "source": "polygon"
+                        }
+        except Exception as e:
+            logging.debug(f"Polygon stock quote backup failed for {symbol}: {e}")
+    
+    return None
+
+
+async def fetch_options_chain(
+    symbol: str,
+    api_key: str = None,
+    option_type: str = "call",
+    max_dte: int = 45,
+    min_dte: int = 1,
+    current_price: float = None
+) -> List[Dict]:
+    """
+    Fetch options chain - Yahoo primary, Polygon backup.
+    Yahoo includes IV, OI, and Greeks by default.
+    """
+    loop = asyncio.get_event_loop()
+    
+    # Try Yahoo first
+    options = await loop.run_in_executor(
+        _yahoo_executor,
+        _fetch_options_chain_yahoo_sync,
+        symbol, max_dte, min_dte, option_type, current_price
+    )
+    
+    if options and len(options) > 0:
+        return options
+    
+    # Fallback to Polygon (basic plan - no IV/OI)
+    if api_key:
+        options = await _fetch_options_chain_polygon(symbol, api_key, option_type, max_dte, min_dte, current_price)
+        if options:
+            return options
+    
+    return []
+
+
+async def _fetch_options_chain_polygon(
+    symbol: str,
+    api_key: str,
+    option_type: str = "call",
+    max_dte: int = 45,
+    min_dte: int = 1,
+    current_price: float = None
+) -> List[Dict]:
+    """Polygon options chain backup (no IV/OI in basic plan)"""
     try:
         async with httpx.AsyncClient(timeout=HTTP_TIMEOUT) as client:
-            # Step 1: Get available contracts from Polygon
-            contracts_url = f"{POLYGON_BASE_URL}/v3/reference/options/contracts"
-            params = {
-                "underlying_ticker": symbol.upper(),
-                "contract_type": contract_type,
-                "expiration_date.gte": min_expiry,
-                "expiration_date.lte": max_expiry,
-                "limit": 250,
-                "apiKey": api_key
-            }
+            # Get contracts
+            today = datetime.now()
+            min_expiry = (today + timedelta(days=min_dte)).strftime('%Y-%m-%d')
+            max_expiry = (today + timedelta(days=max_dte)).strftime('%Y-%m-%d')
             
-            response = await client.get(contracts_url, params=params)
+            response = await client.get(
+                f"{POLYGON_BASE_URL}/v3/reference/options/contracts",
+                params={
+                    "underlying_ticker": symbol.upper(),
+                    "contract_type": option_type,
+                    "expiration_date.gte": min_expiry,
+                    "expiration_date.lte": max_expiry,
+                    "limit": 50,
+                    "apiKey": api_key
+                }
+            )
             
             if response.status_code != 200:
-                logging.warning(f"Polygon contracts API error for {symbol}: {response.status_code}")
                 return []
             
             data = response.json()
             contracts = data.get("results", [])
             
             if not contracts:
-                logging.info(f"No options contracts found for {symbol} (DTE: {min_dte}-{max_dte})")
                 return []
             
-            logging.info(f"Found {len(contracts)} {contract_type} contracts for {symbol}")
-            
-            # Filter contracts by strike range if current_price provided
-            if current_price > 0:
-                if min_dte >= 150:  # LEAPS - want ITM (40-95% of price)
-                    valid_contracts = [c for c in contracts 
-                                      if current_price * 0.40 <= c.get("strike_price", 0) <= current_price * 0.95]
-                    logging.info(f"{symbol} LEAPS: {len(valid_contracts)} contracts in ITM range")
-                else:  # Short-term calls - want OTM (95-150% of price)
-                    valid_contracts = [c for c in contracts 
-                                      if current_price * 0.95 <= c.get("strike_price", 0) <= current_price * 1.50]
-                    logging.info(f"{symbol} Short: {len(valid_contracts)} contracts in OTM range")
+            # Get prices for contracts
+            options = []
+            for contract in contracts[:30]:
+                ticker = contract.get("ticker", "")
+                strike = contract.get("strike_price", 0)
+                expiry = contract.get("expiration_date", "")
                 
-                if valid_contracts:
-                    contracts = valid_contracts
-                else:
-                    contracts = contracts[:50]
-            
-            # Limit contracts for price fetching
-            contracts_to_fetch = contracts[:40]
-            
-            # Step 2: Try to get IV from options snapshot (more reliable)
-            iv_data = {}
-            try:
-                snapshot_url = f"{POLYGON_BASE_URL}/v3/snapshot/options/{symbol.upper()}"
-                snapshot_response = await client.get(snapshot_url, params={"apiKey": api_key})
-                if snapshot_response.status_code == 200:
-                    snapshot_data = snapshot_response.json()
-                    for result in snapshot_data.get("results", []):
-                        details = result.get("details", {})
-                        greeks = result.get("greeks", {})
-                        contract_ticker = details.get("ticker", "")
-                        if contract_ticker and greeks.get("implied_volatility"):
-                            iv_data[contract_ticker] = greeks.get("implied_volatility", 0)
-                    logging.info(f"Fetched IV data for {len(iv_data)} contracts from snapshot")
-            except Exception as e:
-                logging.debug(f"Snapshot IV fetch failed for {symbol}: {e}")
-            
-            # Step 3: Fetch prices in parallel
-            semaphore = asyncio.Semaphore(15)
-            
-            async def fetch_contract_price(contract):
-                async with semaphore:
-                    contract_ticker = contract.get("ticker", "")
-                    if not contract_ticker:
-                        return None
+                try:
+                    price_response = await client.get(
+                        f"{POLYGON_BASE_URL}/v2/aggs/ticker/{ticker}/prev",
+                        params={"apiKey": api_key}
+                    )
                     
-                    try:
-                        price_response = await client.get(
-                            f"{POLYGON_BASE_URL}/v2/aggs/ticker/{contract_ticker}/prev",
-                            params={"apiKey": api_key}
-                        )
+                    if price_response.status_code == 200:
+                        price_data = price_response.json()
+                        results = price_data.get("results", [])
                         
-                        if price_response.status_code == 200:
-                            price_data = price_response.json()
-                            results = price_data.get("results", [])
-                            
-                            if results:
-                                result = results[0]
-                                strike = contract.get("strike_price", 0)
-                                expiry = contract.get("expiration_date", "")
-                                
-                                # Get IV from snapshot data or default
-                                iv = iv_data.get(contract_ticker, 0)
-                                
-                                return {
-                                    "contract_ticker": contract_ticker,
-                                    "underlying": symbol.upper(),
-                                    "strike": strike,
-                                    "expiry": expiry,
-                                    "dte": calculate_dte(expiry),
-                                    "type": contract.get("contract_type", "call"),
-                                    "close": result.get("c", 0),
-                                    "open": result.get("o", 0),
-                                    "high": result.get("h", 0),
-                                    "low": result.get("l", 0),
-                                    "volume": result.get("v", 0),
-                                    "vwap": result.get("vw", 0),
-                                    "implied_volatility": iv,
-                                }
-                    except Exception as e:
-                        logging.debug(f"Error fetching price for {contract_ticker}: {e}")
-                    return None
+                        if results:
+                            r = results[0]
+                            options.append({
+                                "contract_ticker": ticker,
+                                "underlying": symbol.upper(),
+                                "strike": strike,
+                                "expiry": expiry,
+                                "dte": calculate_dte(expiry),
+                                "type": option_type,
+                                "close": r.get("c", 0),
+                                "volume": r.get("v", 0),
+                                "open_interest": 0,  # Not available in basic plan
+                                "implied_volatility": 0,  # Not available in basic plan
+                                "source": "polygon"
+                            })
+                except Exception:
+                    continue
             
-            # Execute all fetches in parallel
-            results = await asyncio.gather(
-                *[fetch_contract_price(c) for c in contracts_to_fetch],
-                return_exceptions=True
-            )
-            
-            # Filter valid results
-            for result in results:
-                if result and not isinstance(result, Exception):
-                    options.append(result)
-            
-            logging.info(f"Successfully fetched {len(options)} option prices for {symbol}")
             return options
             
     except Exception as e:
-        logging.error(f"Error fetching options chain for {symbol}: {e}")
+        logging.warning(f"Polygon options chain failed for {symbol}: {e}")
         return []
 
 
-# =============================================================================
-# STOCK DATA - POLYGON PRIMARY, YAHOO FALLBACK
-# =============================================================================
-
-async def _fetch_stock_from_polygon(symbol: str, api_key: str) -> Optional[Dict[str, Any]]:
-    """Fetch stock data from Polygon/Massive (primary source)"""
-    if not api_key:
-        return None
-        
-    try:
-        async with aiohttp.ClientSession() as session:
-            url = f"{POLYGON_BASE_URL}/v2/aggs/ticker/{symbol.upper()}/prev"
-            params = {"apiKey": api_key}
-            
-            async with session.get(url, params=params, timeout=10) as response:
-                if response.status == 200:
-                    data = await response.json()
-                    results = data.get("results", [])
-                    if results:
-                        r = results[0]
-                        return {
-                            "symbol": symbol.upper(),
-                            "price": r.get("c", 0),
-                            "open": r.get("o", 0),
-                            "high": r.get("h", 0),
-                            "low": r.get("l", 0),
-                            "volume": r.get("v", 0),
-                            "source": "polygon"
-                        }
-    except Exception as e:
-        logging.warning(f"Polygon stock fetch error for {symbol}: {e}")
-    return None
-
-
-async def _fetch_stock_from_yahoo(symbol: str) -> Optional[Dict[str, Any]]:
-    """Fetch stock data from Yahoo Finance (fallback source)"""
-    yahoo_symbol = symbol.replace(' ', '-').replace('.', '-')
+async def fetch_stock_quotes_batch(symbols: List[str], api_key: str = None) -> Dict[str, Dict]:
+    """Fetch stock quotes for multiple symbols in parallel."""
+    if not symbols:
+        return {}
     
-    try:
-        async with aiohttp.ClientSession() as session:
-            url = f"https://query1.finance.yahoo.com/v8/finance/chart/{yahoo_symbol}?interval=1d&range=1d"
-            headers = {"User-Agent": "Mozilla/5.0"}
-            
-            async with session.get(url, headers=headers, timeout=10) as response:
-                if response.status == 200:
-                    data = await response.json()
-                    result = data.get("chart", {}).get("result", [])
-                    if result:
-                        meta = result[0].get("meta", {})
-                        price = meta.get("regularMarketPrice", 0)
-                        if price:
-                            return {
-                                "symbol": symbol.upper(),
-                                "price": price,
-                                "open": meta.get("regularMarketOpen", 0),
-                                "high": meta.get("regularMarketDayHigh", 0),
-                                "low": meta.get("regularMarketDayLow", 0),
-                                "volume": meta.get("regularMarketVolume", 0),
-                                "source": "yahoo"
-                            }
-    except Exception as e:
-        logging.warning(f"Yahoo stock fetch error for {symbol}: {e}")
-    return None
-
-
-async def fetch_stock_quote(symbol: str, api_key: str = None) -> Optional[Dict[str, Any]]:
-    """
-    Fetch current stock quote.
+    tasks = [fetch_stock_quote(symbol, api_key) for symbol in set(symbols)]
+    results = await asyncio.gather(*tasks, return_exceptions=True)
     
-    Strategy:
-    - If USE_POLYGON_FOR_STOCKS is True: Use Polygon only
-    - If USE_POLYGON_FOR_STOCKS is False: Try Polygon first, fallback to Yahoo
+    quotes = {}
+    for result in results:
+        if isinstance(result, dict) and result.get("symbol"):
+            quotes[result["symbol"]] = result
     
-    This allows easy switching when Polygon stock subscription is upgraded.
-    
-    Args:
-        symbol: Stock ticker symbol
-        api_key: Polygon/Massive API key
-        
-    Returns:
-        Stock quote data or None if unavailable
-    """
-    # Try Polygon first (primary source)
-    if api_key:
-        polygon_data = await _fetch_stock_from_polygon(symbol, api_key)
-        if polygon_data:
-            return polygon_data
-    
-    # If Polygon-only mode is enabled, don't fall back to Yahoo
-    if USE_POLYGON_FOR_STOCKS:
-        logging.warning(f"Polygon-only mode enabled but no data for {symbol}")
-        return None
-    
-    # Fallback to Yahoo for stock data
-    yahoo_data = await _fetch_stock_from_yahoo(symbol)
-    if yahoo_data:
-        return yahoo_data
-    
-    logging.warning(f"No stock data available for {symbol} from any source")
-    return None
-
-
-async def fetch_stock_quotes_batch(
-    symbols: List[str], 
-    api_key: str = None
-) -> Dict[str, Dict[str, Any]]:
-    """
-    Fetch stock quotes for multiple symbols in parallel.
-    
-    Args:
-        symbols: List of stock ticker symbols
-        api_key: Polygon/Massive API key
-        
-    Returns:
-        Dictionary mapping symbols to their quote data
-    """
-    results = {}
-    
-    async def fetch_single(symbol):
-        quote = await fetch_stock_quote(symbol, api_key)
-        if quote:
-            results[symbol.upper()] = quote
-    
-    # Fetch all quotes in parallel
-    await asyncio.gather(*[fetch_single(s) for s in symbols], return_exceptions=True)
-    
-    return results
-
-
-# =============================================================================
-# HISTORICAL DATA (for trends, charts, etc.)
-# =============================================================================
-
-async def fetch_historical_prices(
-    symbol: str, 
-    api_key: str = None,
-    days: int = 365
-) -> List[Dict[str, Any]]:
-    """
-    Fetch historical daily prices for a symbol.
-    
-    Uses same sourcing strategy as stock quotes:
-    - Polygon primary, Yahoo fallback (until subscription upgrade)
-    
-    Args:
-        symbol: Stock ticker symbol
-        api_key: Polygon/Massive API key
-        days: Number of days of history to fetch
-        
-    Returns:
-        List of daily price data (oldest to newest)
-    """
-    end_date = datetime.now()
-    start_date = end_date - timedelta(days=days)
-    
-    # Try Polygon first
-    if api_key:
-        try:
-            async with aiohttp.ClientSession() as session:
-                url = f"{POLYGON_BASE_URL}/v2/aggs/ticker/{symbol.upper()}/range/1/day/{start_date.strftime('%Y-%m-%d')}/{end_date.strftime('%Y-%m-%d')}"
-                params = {"apiKey": api_key, "sort": "asc", "limit": 500}
-                
-                async with session.get(url, params=params, timeout=15) as response:
-                    if response.status == 200:
-                        data = await response.json()
-                        results = data.get("results", [])
-                        if results:
-                            return [
-                                {
-                                    "date": datetime.fromtimestamp(r["t"] / 1000).strftime("%Y-%m-%d"),
-                                    "open": r.get("o", 0),
-                                    "high": r.get("h", 0),
-                                    "low": r.get("l", 0),
-                                    "close": r.get("c", 0),
-                                    "volume": r.get("v", 0),
-                                    "source": "polygon"
-                                }
-                                for r in results
-                            ]
-        except Exception as e:
-            logging.warning(f"Polygon historical fetch error for {symbol}: {e}")
-    
-    # If Polygon-only mode, don't fall back
-    if USE_POLYGON_FOR_STOCKS:
-        return []
-    
-    # Fallback to Yahoo for historical data
-    try:
-        import yfinance as yf
-        
-        def fetch_yahoo_history():
-            ticker = yf.Ticker(symbol)
-            hist = ticker.history(period=f"{days}d")
-            if hist.empty:
-                return []
-            return [
-                {
-                    "date": idx.strftime("%Y-%m-%d"),
-                    "open": row["Open"],
-                    "high": row["High"],
-                    "low": row["Low"],
-                    "close": row["Close"],
-                    "volume": int(row["Volume"]),
-                    "source": "yahoo"
-                }
-                for idx, row in hist.iterrows()
-            ]
-        
-        loop = asyncio.get_event_loop()
-        return await loop.run_in_executor(None, fetch_yahoo_history)
-        
-    except Exception as e:
-        logging.warning(f"Yahoo historical fetch error for {symbol}: {e}")
-    
-    return []
+    return quotes
 
 
 # =============================================================================
@@ -460,147 +427,47 @@ async def fetch_historical_prices(
 # =============================================================================
 
 def get_data_source_status() -> Dict[str, Any]:
-    """
-    Get current data source configuration status.
-    Useful for admin dashboards and debugging.
-    """
+    """Get current data source configuration status."""
     return {
-        "options_source": "polygon_only",
-        "stock_source": "polygon_primary_yahoo_fallback" if not USE_POLYGON_FOR_STOCKS else "polygon_only",
-        "use_polygon_for_stocks": USE_POLYGON_FOR_STOCKS,
-        "polygon_base_url": POLYGON_BASE_URL,
-        "market_closed": is_market_closed()
+        "primary_source": "yahoo",
+        "backup_source": "polygon",
+        "market_closed": is_market_closed(),
+        "last_trading_day": get_last_trading_day()
     }
 
 
 # =============================================================================
-# YAHOO FINANCE OPTIONS DATA (for IV, OI enrichment)
+# HISTORICAL DATA (for charts, etc.)
 # =============================================================================
 
-async def fetch_options_iv_oi_from_yahoo(symbol: str, max_dte: int = 45) -> Dict[str, Dict]:
-    """
-    Fetch options IV and Open Interest data from Yahoo Finance.
-    
-    This is used to enrich Polygon options data with IV and OI
-    which are not available in Polygon basic plan.
-    
-    Args:
-        symbol: Stock ticker symbol
-        max_dte: Maximum days to expiration to fetch
-        
-    Returns:
-        Dictionary mapping (strike, expiry) tuples to {iv, open_interest} data
-    """
+async def fetch_historical_data(
+    symbol: str,
+    api_key: str = None,
+    days: int = 30
+) -> List[Dict]:
+    """Fetch historical OHLCV data - Yahoo primary."""
     try:
         import yfinance as yf
-        from concurrent.futures import ThreadPoolExecutor
         
-        def _fetch_yahoo_options():
+        def _fetch_history():
             ticker = yf.Ticker(symbol)
+            hist = ticker.history(period=f"{days}d")
             
-            # Get available expiration dates
-            try:
-                expirations = ticker.options
-            except Exception:
-                return {}
-            
-            if not expirations:
-                return {}
-            
-            # Filter expirations within max_dte
-            today = datetime.now()
-            valid_expiries = []
-            for exp_str in expirations:
-                try:
-                    exp_date = datetime.strptime(exp_str, "%Y-%m-%d")
-                    dte = (exp_date - today).days
-                    if 0 < dte <= max_dte:
-                        valid_expiries.append(exp_str)
-                except Exception:
-                    continue
-            
-            if not valid_expiries:
-                return {}
-            
-            iv_oi_data = {}
-            
-            # Fetch options chain for each expiry
-            for expiry in valid_expiries[:3]:  # Limit to 3 expiries for performance
-                try:
-                    opt_chain = ticker.option_chain(expiry)
-                    calls = opt_chain.calls
-                    
-                    for _, row in calls.iterrows():
-                        strike = row.get('strike', 0)
-                        iv = row.get('impliedVolatility', 0)
-                        oi = row.get('openInterest', 0)
-                        
-                        if strike > 0:
-                            key = f"{strike}_{expiry}"
-                            iv_oi_data[key] = {
-                                "iv": iv if iv and iv > 0 else 0,
-                                "open_interest": int(oi) if oi and oi > 0 else 0
-                            }
-                except Exception as e:
-                    logging.debug(f"Error fetching Yahoo options for {symbol} {expiry}: {e}")
-                    continue
-            
-            return iv_oi_data
+            data = []
+            for date, row in hist.iterrows():
+                data.append({
+                    "date": date.strftime('%Y-%m-%d'),
+                    "open": round(row['Open'], 2),
+                    "high": round(row['High'], 2),
+                    "low": round(row['Low'], 2),
+                    "close": round(row['Close'], 2),
+                    "volume": int(row['Volume'])
+                })
+            return data
         
         loop = asyncio.get_event_loop()
-        return await loop.run_in_executor(None, _fetch_yahoo_options)
+        return await loop.run_in_executor(_yahoo_executor, _fetch_history)
         
     except Exception as e:
-        logging.warning(f"Yahoo options fetch error for {symbol}: {e}")
-        return {}
-
-
-async def enrich_options_with_yahoo_data(
-    options: List[Dict], 
-    symbol: str
-) -> List[Dict]:
-    """
-    Enrich Polygon options data with IV and OI from Yahoo Finance.
-    
-    Args:
-        options: List of option contracts from Polygon
-        symbol: Stock ticker symbol
-        
-    Returns:
-        Enriched options list with IV and OI data
-    """
-    if not options:
-        return options
-    
-    # Get max DTE from options
-    max_dte = max(opt.get("dte", 45) for opt in options)
-    
-    # Fetch Yahoo data
-    yahoo_data = await fetch_options_iv_oi_from_yahoo(symbol, max_dte + 5)
-    
-    enriched_count = 0
-    
-    # Enrich options
-    for opt in options:
-        strike = opt.get("strike", 0)
-        expiry = opt.get("expiry", "")
-        key = f"{strike}_{expiry}"
-        
-        if key in yahoo_data:
-            yahoo_info = yahoo_data[key]
-            # Only update if Yahoo has valid data (IV > 1% and OI > 0)
-            yahoo_iv = yahoo_info.get("iv", 0)
-            yahoo_oi = yahoo_info.get("open_interest", 0)
-            
-            if yahoo_iv > 0.01:  # IV must be > 1% to be valid
-                opt["implied_volatility"] = yahoo_iv
-                enriched_count += 1
-            
-            if yahoo_oi > 0:
-                opt["open_interest"] = yahoo_oi
-    
-    if enriched_count > 0:
-        logging.info(f"Enriched {enriched_count}/{len(options)} options with Yahoo IV/OI data for {symbol}")
-    
-    return options
-
+        logging.warning(f"Historical data fetch failed for {symbol}: {e}")
+        return []
