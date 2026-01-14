@@ -287,12 +287,6 @@ async def screen_covered_calls(
                         logging.debug(f"Skipping {symbol} ${strike}C: premium ${premium} exceeds reasonable max ${max_reasonable_premium:.2f}")
                         continue
                     
-                    # Rule 2: ROI sanity check - anything over 20% per month is suspicious for OTM
-                    preliminary_roi = (premium / underlying_price) * 100
-                    if strike > underlying_price and preliminary_roi > 20:
-                        logging.debug(f"Skipping {symbol} ${strike}C: ROI {preliminary_roi:.2f}% is unrealistically high for OTM")
-                        continue
-                    
                     # DATA QUALITY FILTER: Minimum open interest to ensure liquidity
                     open_interest = opt.get("open_interest", 0) or 0
                     # Note: Polygon basic plan doesn't return OI, so we can't filter on it
