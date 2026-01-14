@@ -104,6 +104,21 @@ Build a web-based application named "Covered Call Engine" to identify, analyze, 
 ### 🔄 In Progress
 - None currently
 
+### ✅ Completed (Jan 14, 2026) - Added OI Column to Dashboard & Screener
+- [x] **Dashboard Top 10 Table**
+  - Added OI (Open Interest) column between IV and AI Score
+  - Added Yahoo enrichment for IV and OI data
+  - Shows real values during market hours
+- [x] **Screener Table**
+  - Replaced IV Rank with OI column for better liquidity visibility
+  - Shows real OI values: 11,749 (XLE), 2,732 (XLK), 1,647 (AAL), etc.
+  - Shows real IV values: 84.6% (INTC), 58.2% (AAL), 50.7% (XLK), etc.
+- [x] **Files Updated**
+  - `/app/frontend/src/pages/Dashboard.js` - Added OI column to table header and rows
+  - `/app/frontend/src/pages/Screener.js` - Replaced IV Rank with OI column
+  - `/app/backend/routes/screener.py` - Added Yahoo enrichment to dashboard endpoint
+- [x] **Note**: Dashboard shows default IV (30%) and OI (-) when market is closed due to Yahoo Finance data limitations
+
 ### ✅ Completed (Jan 14, 2026) - Yahoo Finance Data Enrichment
 - [x] **Yahoo Finance Integration for IV & OI**
   - Created `fetch_options_iv_oi_from_yahoo()` in data_provider.py
