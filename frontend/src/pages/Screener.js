@@ -734,10 +734,10 @@ const Screener = () => {
         </div>
       </div>
 
-      <div className="grid lg:grid-cols-5 gap-4">
+      <div className="grid lg:grid-cols-5 gap-3">
         {/* Filters Panel - Compact width */}
         {filtersOpen && (
-          <Card className="glass-card lg:col-span-1 max-h-[calc(100vh-200px)] overflow-y-auto max-w-[220px]" data-testid="filters-panel">
+          <Card className="glass-card lg:col-span-1 max-h-[calc(100vh-200px)] overflow-y-auto" style={{maxWidth: '200px'}} data-testid="filters-panel">
             <CardHeader className="pb-2">
               <CardTitle className="text-lg flex items-center gap-2">
                 <Filter className="w-5 h-5 text-emerald-400" />

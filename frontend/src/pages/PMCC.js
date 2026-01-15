@@ -595,10 +595,10 @@ const PMCC = () => {
         </CardContent>
       </Card>
 
-      <div className="grid lg:grid-cols-5 gap-4">
+      <div className="grid lg:grid-cols-5 gap-3">
         {/* Filters Panel - Compact width */}
         {filtersOpen && (
-          <Card className="glass-card lg:col-span-1 h-fit max-w-[220px]" data-testid="pmcc-filters-panel">
+          <Card className="glass-card lg:col-span-1 h-fit" style={{maxWidth: '200px'}} data-testid="pmcc-filters-panel">
             <CardHeader className="pb-2">
               <div className="flex items-center justify-between">
                 <CardTitle className="text-lg flex items-center gap-2">
