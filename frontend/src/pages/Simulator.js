@@ -145,6 +145,17 @@ const Simulator = () => {
   const [newProfileName, setNewProfileName] = useState('');
   const [savingProfile, setSavingProfile] = useState(false);
   
+  // Income-Optimised Decision Engine State (NEW)
+  const [decisions, setDecisions] = useState([]);
+  const [decisionSummary, setDecisionSummary] = useState(null);
+  const [decisionsLoading, setDecisionsLoading] = useState(false);
+  const [settings, setSettings] = useState(null);
+  const [settingsLoading, setSettingsLoading] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [selectedDecision, setSelectedDecision] = useState(null);
+  const [decisionDetailOpen, setDecisionDetailOpen] = useState(false);
+  const [redeploymentROI, setRedeploymentROI] = useState(null);
+  
   // Filters
   const [statusFilter, setStatusFilter] = useState('');
   const [strategyFilter, setStrategyFilter] = useState('');
