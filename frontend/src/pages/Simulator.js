@@ -2391,9 +2391,9 @@ const Simulator = () => {
             <Activity className="w-4 h-4 mr-2" />
             Trades
           </TabsTrigger>
-          <TabsTrigger value="rules" className="data-[state=active]:bg-violet-600 data-[state=active]:text-white">
-            <Settings className="w-4 h-4 mr-2" />
-            Rules
+          <TabsTrigger value="decisions" className="data-[state=active]:bg-emerald-600 data-[state=active]:text-white">
+            <Target className="w-4 h-4 mr-2" />
+            Decisions
           </TabsTrigger>
           <TabsTrigger value="logs" className="data-[state=active]:bg-violet-600 data-[state=active]:text-white">
             <History className="w-4 h-4 mr-2" />
@@ -2413,8 +2413,8 @@ const Simulator = () => {
           {renderTradesTab()}
         </TabsContent>
 
-        <TabsContent value="rules" className="space-y-6">
-          {renderRulesTab()}
+        <TabsContent value="decisions" className="space-y-6">
+          {renderDecisionsTab()}
         </TabsContent>
 
         <TabsContent value="logs" className="space-y-6">
