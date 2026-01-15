@@ -1397,11 +1397,11 @@ const Screener = () => {
                               setSimulateOpp(opp);
                               setSimulateModalOpen(true);
                             }}
-                            className="bg-violet-500/10 border-violet-500/30 text-violet-400 hover:bg-violet-500/20 hover:text-violet-300"
+                            className="bg-violet-500/10 border-violet-500/30 text-violet-400 hover:bg-violet-500/20 hover:text-violet-300 px-2"
                             data-testid={`simulate-btn-${opp.symbol}`}
+                            title="Simulate Trade"
                           >
-                            <Play className="w-3 h-3 mr-1" />
-                            Simulate
+                            <Play className="w-4 h-4" />
                           </Button>
                         </td>
                       </tr>
