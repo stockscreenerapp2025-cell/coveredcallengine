@@ -1313,7 +1313,6 @@ const Screener = () => {
                       {activeScan && <th>Sector</th>}
                       <SortHeader field="score" label="Score" />
                       <th>Analyst</th>
-                      <SortHeader field="days_to_earnings" label="Earnings" />
                       <th className="text-center">Action</th>
                     </tr>
                   </thead>
