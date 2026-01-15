@@ -806,7 +806,7 @@ const PMCC = () => {
         )}
 
         {/* Results Section */}
-        <div className={`space-y-4 ${filtersOpen ? 'lg:col-span-3' : 'lg:col-span-4'}`}>
+        <div className={`space-y-4 ${filtersOpen ? 'lg:col-span-4' : 'lg:col-span-5'}`}>
           {/* LEAPS Data Info */}
           <div className="glass-card p-4 border-l-4 border-emerald-500">
             <div className="flex items-start gap-3">
