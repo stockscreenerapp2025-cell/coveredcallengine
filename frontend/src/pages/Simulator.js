@@ -920,6 +920,545 @@ const Simulator = () => {
     </>
   );
 
+  // ==================== INCOME-OPTIMISED DECISIONS TAB (NEW) ====================
+  const renderDecisionsTab = () => (
+    <div className="space-y-6">
+      {/* Decisions Header */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div>
+          <h2 className="text-xl font-semibold text-white flex items-center gap-2">
+            <Target className="w-5 h-5 text-emerald-400" />
+            Income-Optimised Decision Analysis
+          </h2>
+          <p className="text-zinc-400 text-sm mt-1">
+            Evaluate whether to hold, roll, close, or redeploy capital based on ROI efficiency
+          </p>
+        </div>
+        <div className="flex gap-2">
+          <Button
+            variant="outline"
+            onClick={fetchDecisions}
+            disabled={decisionsLoading}
+            className="btn-outline"
+            data-testid="refresh-decisions-btn"
+          >
+            <RefreshCw className={`w-4 h-4 mr-2 ${decisionsLoading ? 'animate-spin' : ''}`} />
+            Refresh
+          </Button>
+          <Button
+            variant="outline"
+            onClick={() => setSettingsOpen(true)}
+            className="btn-outline"
+            data-testid="settings-btn"
+          >
+            <Settings className="w-4 h-4 mr-2" />
+            Settings
+          </Button>
+        </div>
+      </div>
+
+      {/* Decision Summary Cards */}
+      {decisionSummary && (
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+          <Card className="glass-card p-4">
+            <div className="flex items-center gap-2 text-zinc-400 text-xs mb-1">
+              <Activity className="w-3 h-3" />
+              Active Trades
+            </div>
+            <div className="text-2xl font-bold text-white">{decisionSummary.total}</div>
+          </Card>
+          <Card className="glass-card p-4">
+            <div className="flex items-center gap-2 text-emerald-400 text-xs mb-1">
+              <CheckCircle2 className="w-3 h-3" />
+              Hold
+            </div>
+            <div className="text-2xl font-bold text-emerald-400">{decisionSummary.hold}</div>
+          </Card>
+          <Card className="glass-card p-4">
+            <div className="flex items-center gap-2 text-amber-400 text-xs mb-1">
+              <AlertTriangle className="w-3 h-3" />
+              Action Required
+            </div>
+            <div className="text-2xl font-bold text-amber-400">{decisionSummary.action_required}</div>
+          </Card>
+          <Card className="glass-card p-4">
+            <div className="flex items-center gap-2 text-cyan-400 text-xs mb-1">
+              <TrendingUp className="w-3 h-3" />
+              Close Recommended
+            </div>
+            <div className="text-2xl font-bold text-cyan-400">{decisionSummary.close_recommended}</div>
+          </Card>
+          <Card className="glass-card p-4">
+            <div className="flex items-center gap-2 text-violet-400 text-xs mb-1">
+              <RefreshCw className="w-3 h-3" />
+              Roll Recommended
+            </div>
+            <div className="text-2xl font-bold text-violet-400">{decisionSummary.roll_recommended}</div>
+          </Card>
+        </div>
+      )}
+
+      {/* Decisions List */}
+      <Card className="glass-card" data-testid="decisions-list-card">
+        <CardHeader className="pb-2">
+          <CardTitle className="flex items-center gap-2">
+            <Lightbulb className="w-5 h-5 text-amber-400" />
+            Trade Decisions
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          {decisionsLoading ? (
+            <div className="space-y-3">
+              {[1,2,3].map(i => <Skeleton key={i} className="h-24 bg-zinc-800" />)}
+            </div>
+          ) : decisions.length === 0 ? (
+            <div className="text-center py-8">
+              <AlertCircle className="w-12 h-12 text-zinc-600 mx-auto mb-3" />
+              <p className="text-zinc-400 text-sm">No active trades to analyze</p>
+              <p className="text-zinc-500 text-xs mt-1">Add trades from the Screener to see decision analysis</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {decisions.map((decision, idx) => (
+                <div 
+                  key={idx}
+                  className="p-4 bg-zinc-800/50 rounded-lg border border-zinc-700/50 hover:border-violet-500/30 transition-colors cursor-pointer"
+                  onClick={() => {
+                    setSelectedDecision(decision);
+                    setDecisionDetailOpen(true);
+                  }}
+                  data-testid={`decision-row-${decision.symbol}`}
+                >
+                  <div className="flex items-start justify-between">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-3 mb-2">
+                        <span className="font-bold text-white text-lg">{decision.symbol}</span>
+                        <Badge className={STRATEGY_COLORS[decision.strategy_type]}>
+                          {decision.strategy_type === 'covered_call' ? 'CC' : 'PMCC'}
+                        </Badge>
+                        <Badge className={
+                          decision.recommendation === 'hold' 
+                            ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30'
+                            : decision.recommendation.includes('close') 
+                              ? 'bg-cyan-500/20 text-cyan-400 border-cyan-500/30'
+                              : decision.recommendation.includes('roll')
+                                ? 'bg-violet-500/20 text-violet-400 border-violet-500/30'
+                                : 'bg-amber-500/20 text-amber-400 border-amber-500/30'
+                        }>
+                          {decision.recommendation.replace('_', ' ').toUpperCase()}
+                        </Badge>
+                      </div>
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                        <div>
+                          <span className="text-zinc-500">Premium Captured</span>
+                          <p className={`font-medium ${decision.current_metrics?.premium_captured_pct >= 80 ? 'text-emerald-400' : 'text-white'}`}>
+                            {decision.current_metrics?.premium_captured_pct?.toFixed(1)}%
+                          </p>
+                        </div>
+                        <div>
+                          <span className="text-zinc-500">DTE Remaining</span>
+                          <p className={`font-medium ${decision.current_metrics?.dte_remaining <= 7 ? 'text-red-400' : decision.current_metrics?.dte_remaining <= 14 ? 'text-amber-400' : 'text-white'}`}>
+                            {decision.current_metrics?.dte_remaining} days
+                          </p>
+                        </div>
+                        <div>
+                          <span className="text-zinc-500">ROI/Day (Current)</span>
+                          <p className="font-medium text-cyan-400">
+                            {decision.current_metrics?.current_roi_per_day?.toFixed(3)}%
+                          </p>
+                        </div>
+                        <div>
+                          <span className="text-zinc-500">ROI/Day (Redeploy)</span>
+                          <p className="font-medium text-violet-400">
+                            {decision.redeployment?.expected_roi_per_day?.toFixed(3)}%
+                          </p>
+                        </div>
+                      </div>
+                      {decision.rules_triggered?.length > 0 && (
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          {decision.rules_triggered.slice(0, 3).map((rule, ridx) => (
+                            <Badge 
+                              key={ridx}
+                              variant="outline"
+                              className={
+                                rule.severity === 'high' 
+                                  ? 'text-red-400 border-red-500/30'
+                                  : rule.severity === 'medium'
+                                    ? 'text-amber-400 border-amber-500/30'
+                                    : 'text-zinc-400 border-zinc-500/30'
+                              }
+                            >
+                              {rule.rule.replace('_', ' ')}
+                            </Badge>
+                          ))}
+                          {decision.rules_triggered.length > 3 && (
+                            <Badge variant="outline" className="text-zinc-500">
+                              +{decision.rules_triggered.length - 3} more
+                            </Badge>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                    <ChevronRight className="w-5 h-5 text-zinc-500" />
+                  </div>
+                  <p className="text-xs text-zinc-500 mt-2 italic">
+                    {decision.recommendation_reason}
+                  </p>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Decision Detail Modal */}
+      <Dialog open={decisionDetailOpen} onOpenChange={setDecisionDetailOpen}>
+        <DialogContent className="bg-zinc-900 border-zinc-800 max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Target className="w-5 h-5 text-emerald-400" />
+              Decision Analysis: {selectedDecision?.symbol}
+            </DialogTitle>
+          </DialogHeader>
+          
+          {selectedDecision && (
+            <div className="space-y-6">
+              {/* Recommendation */}
+              <div className="p-4 rounded-lg bg-zinc-800/50 border border-zinc-700">
+                <h4 className="font-medium text-white mb-2">Recommendation</h4>
+                <Badge className={`text-lg px-3 py-1 ${
+                  selectedDecision.recommendation === 'hold' 
+                    ? 'bg-emerald-500/20 text-emerald-400'
+                    : selectedDecision.recommendation.includes('close') 
+                      ? 'bg-cyan-500/20 text-cyan-400'
+                      : 'bg-amber-500/20 text-amber-400'
+                }`}>
+                  {selectedDecision.recommendation.replace('_', ' ').toUpperCase()}
+                </Badge>
+                <p className="text-zinc-400 text-sm mt-2">{selectedDecision.recommendation_reason}</p>
+              </div>
+
+              {/* Current Metrics */}
+              <div>
+                <h4 className="font-medium text-white mb-3">Current Trade Metrics</h4>
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                  <div className="p-3 bg-zinc-800/50 rounded-lg">
+                    <span className="text-xs text-zinc-500">Premium Captured</span>
+                    <p className="text-lg font-bold text-emerald-400">
+                      {selectedDecision.current_metrics?.premium_captured_pct?.toFixed(1)}%
+                    </p>
+                  </div>
+                  <div className="p-3 bg-zinc-800/50 rounded-lg">
+                    <span className="text-xs text-zinc-500">DTE Remaining</span>
+                    <p className="text-lg font-bold text-white">
+                      {selectedDecision.current_metrics?.dte_remaining}d
+                    </p>
+                  </div>
+                  <div className="p-3 bg-zinc-800/50 rounded-lg">
+                    <span className="text-xs text-zinc-500">Days Held</span>
+                    <p className="text-lg font-bold text-white">
+                      {selectedDecision.current_metrics?.days_held}d
+                    </p>
+                  </div>
+                  <div className="p-3 bg-zinc-800/50 rounded-lg">
+                    <span className="text-xs text-zinc-500">Current Delta</span>
+                    <p className="text-lg font-bold text-white">
+                      {selectedDecision.current_metrics?.current_delta?.toFixed(3)}
+                    </p>
+                  </div>
+                  <div className="p-3 bg-zinc-800/50 rounded-lg">
+                    <span className="text-xs text-zinc-500">Unrealized P&L</span>
+                    <p className={`text-lg font-bold ${selectedDecision.current_metrics?.unrealized_pnl >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                      ${selectedDecision.current_metrics?.unrealized_pnl?.toFixed(2)}
+                    </p>
+                  </div>
+                  <div className="p-3 bg-zinc-800/50 rounded-lg">
+                    <span className="text-xs text-zinc-500">Total ROI</span>
+                    <p className="text-lg font-bold text-cyan-400">
+                      {selectedDecision.current_metrics?.current_roi_total_pct?.toFixed(2)}%
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* ROI Comparison */}
+              <div>
+                <h4 className="font-medium text-white mb-3">ROI Efficiency Comparison</h4>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="p-4 bg-cyan-500/10 border border-cyan-500/30 rounded-lg">
+                    <span className="text-xs text-cyan-400">Current ROI/Day</span>
+                    <p className="text-2xl font-bold text-cyan-400">
+                      {selectedDecision.current_metrics?.current_roi_per_day?.toFixed(4)}%
+                    </p>
+                  </div>
+                  <div className="p-4 bg-violet-500/10 border border-violet-500/30 rounded-lg">
+                    <span className="text-xs text-violet-400">Redeployment ROI/Day</span>
+                    <p className="text-2xl font-bold text-violet-400">
+                      {selectedDecision.redeployment?.expected_roi_per_day?.toFixed(4)}%
+                    </p>
+                    <span className="text-xs text-zinc-500">
+                      Source: {selectedDecision.redeployment?.source} ({selectedDecision.redeployment?.confidence} confidence)
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Scenario Comparison */}
+              <div>
+                <h4 className="font-medium text-white mb-3">Scenario Comparison</h4>
+                <div className="space-y-2">
+                  {selectedDecision.comparison && Object.entries(selectedDecision.comparison).map(([key, scenario]) => (
+                    <div key={key} className="p-3 bg-zinc-800/50 rounded-lg flex justify-between items-center">
+                      <div>
+                        <span className="font-medium text-white">
+                          {key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                        </span>
+                        <p className="text-xs text-zinc-500">{scenario.description}</p>
+                      </div>
+                      <span className={`text-lg font-bold ${scenario.value >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                        ${scenario.value?.toFixed(2)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Rules Triggered */}
+              {selectedDecision.rules_triggered?.length > 0 && (
+                <div>
+                  <h4 className="font-medium text-white mb-3">Rules Triggered</h4>
+                  <div className="space-y-2">
+                    {selectedDecision.rules_triggered.map((rule, idx) => (
+                      <div 
+                        key={idx}
+                        className={`p-3 rounded-lg border ${
+                          rule.severity === 'high' 
+                            ? 'bg-red-500/10 border-red-500/30'
+                            : rule.severity === 'medium'
+                              ? 'bg-amber-500/10 border-amber-500/30'
+                              : 'bg-zinc-800/50 border-zinc-700/50'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="font-medium text-white">
+                            {rule.rule.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                          </span>
+                          <Badge className={
+                            rule.severity === 'high' ? 'bg-red-500/20 text-red-400' :
+                            rule.severity === 'medium' ? 'bg-amber-500/20 text-amber-400' :
+                            'bg-zinc-500/20 text-zinc-400'
+                          }>
+                            {rule.severity}
+                          </Badge>
+                        </div>
+                        <p className="text-sm text-zinc-400 mt-1">{rule.message}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Fees */}
+              <div className="p-3 bg-zinc-800/50 rounded-lg">
+                <div className="flex items-center justify-between">
+                  <span className="text-zinc-400">Transaction Fees (Round-trip)</span>
+                  <span className="text-white font-medium">${selectedDecision.fees?.round_trip?.toFixed(2)}</span>
+                </div>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Settings Modal */}
+      <Dialog open={settingsOpen} onOpenChange={setSettingsOpen}>
+        <DialogContent className="bg-zinc-900 border-zinc-800 max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Settings className="w-5 h-5 text-violet-400" />
+              Income Optimization Settings
+            </DialogTitle>
+          </DialogHeader>
+          
+          {settings && (
+            <div className="space-y-6">
+              {/* Fee Settings */}
+              <div>
+                <h4 className="font-medium text-white mb-3">Transaction Fees</h4>
+                <div className="space-y-3">
+                  <div>
+                    <Label className="text-zinc-400 text-sm">Per Contract Fee ($)</Label>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      value={settings.fee_settings?.per_contract_fee || 0.65}
+                      onChange={(e) => setSettings(prev => ({
+                        ...prev,
+                        fee_settings: { ...prev.fee_settings, per_contract_fee: parseFloat(e.target.value) }
+                      }))}
+                      className="bg-zinc-800 border-zinc-700 text-white mt-1"
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-zinc-400 text-sm">Base Commission ($)</Label>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      value={settings.fee_settings?.base_commission || 0}
+                      onChange={(e) => setSettings(prev => ({
+                        ...prev,
+                        fee_settings: { ...prev.fee_settings, base_commission: parseFloat(e.target.value) }
+                      }))}
+                      className="bg-zinc-800 border-zinc-700 text-white mt-1"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Income Settings */}
+              <div>
+                <h4 className="font-medium text-white mb-3">Income Optimization</h4>
+                <div className="space-y-3">
+                  <div>
+                    <Label className="text-zinc-400 text-sm">Target ROI per Week (%)</Label>
+                    <Input
+                      type="number"
+                      step="0.1"
+                      value={settings.income_settings?.target_roi_per_week || 1.5}
+                      onChange={(e) => setSettings(prev => ({
+                        ...prev,
+                        income_settings: { ...prev.income_settings, target_roi_per_week: parseFloat(e.target.value) }
+                      }))}
+                      className="bg-zinc-800 border-zinc-700 text-white mt-1"
+                    />
+                    <p className="text-xs text-zinc-500 mt-1">Fallback ROI target when scan/history unavailable</p>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <Label className="text-zinc-400 text-sm">Premium Exit Threshold (%)</Label>
+                      <Input
+                        type="number"
+                        value={settings.income_settings?.premium_exit_threshold || 80}
+                        onChange={(e) => setSettings(prev => ({
+                          ...prev,
+                          income_settings: { ...prev.income_settings, premium_exit_threshold: parseFloat(e.target.value) }
+                        }))}
+                        className="bg-zinc-800 border-zinc-700 text-white mt-1"
+                      />
+                    </div>
+                    <div>
+                      <Label className="text-zinc-400 text-sm">Auto-Exit Threshold (%)</Label>
+                      <Input
+                        type="number"
+                        value={settings.income_settings?.premium_auto_exit || 90}
+                        onChange={(e) => setSettings(prev => ({
+                          ...prev,
+                          income_settings: { ...prev.income_settings, premium_auto_exit: parseFloat(e.target.value) }
+                        }))}
+                        className="bg-zinc-800 border-zinc-700 text-white mt-1"
+                      />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <Label className="text-zinc-400 text-sm">DTE Warning</Label>
+                      <Input
+                        type="number"
+                        value={settings.income_settings?.dte_warning_threshold || 14}
+                        onChange={(e) => setSettings(prev => ({
+                          ...prev,
+                          income_settings: { ...prev.income_settings, dte_warning_threshold: parseInt(e.target.value) }
+                        }))}
+                        className="bg-zinc-800 border-zinc-700 text-white mt-1"
+                      />
+                    </div>
+                    <div>
+                      <Label className="text-zinc-400 text-sm">DTE Force Decision</Label>
+                      <Input
+                        type="number"
+                        value={settings.income_settings?.dte_force_decision || 7}
+                        onChange={(e) => setSettings(prev => ({
+                          ...prev,
+                          income_settings: { ...prev.income_settings, dte_force_decision: parseInt(e.target.value) }
+                        }))}
+                        className="bg-zinc-800 border-zinc-700 text-white mt-1"
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <Label className="text-zinc-400 text-sm">Min Improvement Multiplier (× fees)</Label>
+                    <Input
+                      type="number"
+                      step="0.1"
+                      value={settings.income_settings?.min_improvement_multiplier || 2}
+                      onChange={(e) => setSettings(prev => ({
+                        ...prev,
+                        income_settings: { ...prev.income_settings, min_improvement_multiplier: parseFloat(e.target.value) }
+                      }))}
+                      className="bg-zinc-800 border-zinc-700 text-white mt-1"
+                    />
+                    <p className="text-xs text-zinc-500 mt-1">Only recommend action if improvement ≥ this × fees</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* PMCC Settings */}
+              <div>
+                <h4 className="font-medium text-white mb-3">PMCC Safety Rules</h4>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <Label className="text-zinc-400 text-sm">Width Protection (%)</Label>
+                    <Input
+                      type="number"
+                      value={settings.income_settings?.pmcc_width_protection_pct || 25}
+                      onChange={(e) => setSettings(prev => ({
+                        ...prev,
+                        income_settings: { ...prev.income_settings, pmcc_width_protection_pct: parseFloat(e.target.value) }
+                      }))}
+                      className="bg-zinc-800 border-zinc-700 text-white mt-1"
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-zinc-400 text-sm">LEAPS Min DTE</Label>
+                    <Input
+                      type="number"
+                      value={settings.income_settings?.pmcc_leaps_min_dte || 180}
+                      onChange={(e) => setSettings(prev => ({
+                        ...prev,
+                        income_settings: { ...prev.income_settings, pmcc_leaps_min_dte: parseInt(e.target.value) }
+                      }))}
+                      className="bg-zinc-800 border-zinc-700 text-white mt-1"
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+          
+          <DialogFooter className="mt-6">
+            <Button variant="outline" onClick={() => setSettingsOpen(false)} className="btn-outline">
+              Cancel
+            </Button>
+            <Button 
+              onClick={async () => {
+                if (settings) {
+                  await handleUpdateFeeSettings(settings.fee_settings);
+                  await handleUpdateIncomeSettings(settings.income_settings);
+                  setSettingsOpen(false);
+                }
+              }}
+              className="bg-violet-600 hover:bg-violet-700 text-white"
+            >
+              <Save className="w-4 h-4 mr-2" />
+              Save Settings
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+
+  // Legacy Rules Tab (hidden from UI, preserved for future use)
   const renderRulesTab = () => (
     <div className="space-y-6">
       {/* Rules Header */}
