@@ -734,10 +734,10 @@ const Screener = () => {
         </div>
       </div>
 
-      <div className="grid lg:grid-cols-5 gap-3">
-        {/* Filters Panel - Compact width */}
+      <div className="grid lg:grid-cols-4 gap-6">
+        {/* Filters Panel */}
         {filtersOpen && (
-          <Card className="glass-card lg:col-span-1 max-h-[calc(100vh-200px)] overflow-y-auto" style={{maxWidth: '200px'}} data-testid="filters-panel">
+          <Card className="glass-card lg:col-span-1 max-h-[calc(100vh-200px)] overflow-y-auto" data-testid="filters-panel">
             <CardHeader className="pb-2">
               <CardTitle className="text-lg flex items-center gap-2">
                 <Filter className="w-5 h-5 text-emerald-400" />
@@ -1260,7 +1260,7 @@ const Screener = () => {
         )}
 
         {/* Results Table - Enhanced for Pre-computed Scans */}
-        <Card className={`glass-card ${filtersOpen ? 'lg:col-span-4' : 'lg:col-span-5'}`} data-testid="results-table">
+        <Card className={`glass-card ${filtersOpen ? 'lg:col-span-3' : 'lg:col-span-4'}`} data-testid="results-table">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-lg flex items-center gap-2">
               Results
@@ -1313,6 +1313,7 @@ const Screener = () => {
                       {activeScan && <th>Sector</th>}
                       <SortHeader field="score" label="Score" />
                       <th>Analyst</th>
+                      <SortHeader field="days_to_earnings" label="Earnings" />
                       <th className="text-center">Action</th>
                     </tr>
                   </thead>
@@ -1397,11 +1398,11 @@ const Screener = () => {
                               setSimulateOpp(opp);
                               setSimulateModalOpen(true);
                             }}
-                            className="bg-violet-500/10 border-violet-500/30 text-violet-400 hover:bg-violet-500/20 hover:text-violet-300 px-2"
+                            className="bg-violet-500/10 border-violet-500/30 text-violet-400 hover:bg-violet-500/20 hover:text-violet-300"
                             data-testid={`simulate-btn-${opp.symbol}`}
-                            title="Simulate Trade"
                           >
-                            <Play className="w-4 h-4" />
+                            <Play className="w-3 h-3 mr-1" />
+                            Simulate
                           </Button>
                         </td>
                       </tr>
