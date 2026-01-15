@@ -235,6 +235,53 @@ const Simulator = () => {
     }
   };
 
+  // Income-Optimised Decision Functions (NEW)
+  const fetchDecisions = async () => {
+    setDecisionsLoading(true);
+    try {
+      const res = await simulatorApi.getAllDecisions();
+      setDecisions(res.data.decisions || []);
+      setDecisionSummary(res.data.summary || null);
+    } catch (error) {
+      console.error('Error fetching decisions:', error);
+      toast.error('Failed to load decision analysis');
+    } finally {
+      setDecisionsLoading(false);
+    }
+  };
+
+  const fetchSettings = async () => {
+    setSettingsLoading(true);
+    try {
+      const res = await simulatorApi.getSettings();
+      setSettings(res.data);
+    } catch (error) {
+      console.error('Error fetching settings:', error);
+    } finally {
+      setSettingsLoading(false);
+    }
+  };
+
+  const handleUpdateIncomeSettings = async (newSettings) => {
+    try {
+      await simulatorApi.updateIncomeSettings(newSettings);
+      toast.success('Income settings updated');
+      fetchSettings();
+    } catch (error) {
+      toast.error('Failed to update settings');
+    }
+  };
+
+  const handleUpdateFeeSettings = async (newSettings) => {
+    try {
+      await simulatorApi.updateFeeSettings(newSettings);
+      toast.success('Fee settings updated');
+      fetchSettings();
+    } catch (error) {
+      toast.error('Failed to update settings');
+    }
+  };
+
   const fetchRules = async () => {
     setRulesLoading(true);
     try {
