@@ -1226,6 +1226,256 @@ async def get_simulator_summary(user: dict = Depends(get_current_user)):
     }
 
 
+# ==================== INCOME-OPTIMISED ENDPOINTS ====================
+
+@simulator_router.get("/decision/{trade_id}")
+async def get_trade_decision_analysis(trade_id: str, user: dict = Depends(get_current_user)):
+    """
+    Get income-optimised decision analysis for a specific trade.
+    Evaluates all rules and returns recommendation: hold, close, roll, or accept assignment.
+    """
+    funcs = _get_server_functions()
+    
+    # Get the trade
+    trade = await db.simulator_trades.find_one(
+        {"id": trade_id, "user_id": user["id"]},
+        {"_id": 0}
+    )
+    
+    if not trade:
+        raise HTTPException(status_code=404, detail="Trade not found")
+    
+    if trade.get("status") != "active":
+        raise HTTPException(status_code=400, detail="Decision analysis only available for active trades")
+    
+    # Get user settings
+    settings = await db.simulator_settings.find_one(
+        {"user_id": user["id"]},
+        {"_id": 0}
+    )
+    
+    if not settings:
+        settings = {
+            "fee_settings": {"per_contract_fee": 0.65, "base_commission": 0},
+            "income_settings": {
+                "target_roi_per_week": 1.5,
+                "premium_exit_threshold": 80,
+                "premium_auto_exit": 90,
+                "min_improvement_multiplier": 2.0,
+                "dte_warning_threshold": 14,
+                "dte_force_decision": 7,
+                "pmcc_width_protection_pct": 25,
+                "pmcc_leaps_min_dte": 180
+            }
+        }
+    
+    # Get current price
+    try:
+        quote = await funcs['fetch_stock_quote'](trade["symbol"])
+        current_price = quote.get("price", trade.get("current_underlying_price", 0))
+    except:
+        current_price = trade.get("current_underlying_price", trade.get("entry_underlying_price", 0))
+    
+    # Get redeployment ROI estimate
+    strategy_type = trade.get("strategy_type", "covered_call")
+    strategy_map = {"covered_call": "covered_call", "pmcc": "pmcc"}
+    
+    redeployment_roi = await get_redeployment_roi(
+        user_id=user["id"],
+        strategy_type=strategy_map.get(strategy_type, "covered_call"),
+        risk_profile="balanced"
+    )
+    
+    # Run decision analysis
+    analysis = evaluate_income_rules(trade, current_price, settings, redeployment_roi)
+    
+    return analysis
+
+
+@simulator_router.post("/settings/income")
+async def update_income_settings(
+    settings: IncomeSettings,
+    user: dict = Depends(get_current_user)
+):
+    """Update user's income optimization settings"""
+    
+    now = datetime.now(timezone.utc)
+    
+    await db.simulator_settings.update_one(
+        {"user_id": user["id"]},
+        {
+            "$set": {
+                "income_settings": settings.dict(),
+                "updated_at": now.isoformat()
+            },
+            "$setOnInsert": {
+                "user_id": user["id"],
+                "created_at": now.isoformat()
+            }
+        },
+        upsert=True
+    )
+    
+    return {"message": "Income settings updated", "settings": settings.dict()}
+
+
+@simulator_router.post("/settings/fees")
+async def update_fee_settings(
+    settings: FeeSettings,
+    user: dict = Depends(get_current_user)
+):
+    """Update user's transaction fee settings"""
+    
+    now = datetime.now(timezone.utc)
+    
+    await db.simulator_settings.update_one(
+        {"user_id": user["id"]},
+        {
+            "$set": {
+                "fee_settings": settings.dict(),
+                "updated_at": now.isoformat()
+            },
+            "$setOnInsert": {
+                "user_id": user["id"],
+                "created_at": now.isoformat()
+            }
+        },
+        upsert=True
+    )
+    
+    return {"message": "Fee settings updated", "settings": settings.dict()}
+
+
+@simulator_router.get("/settings")
+async def get_simulator_settings(user: dict = Depends(get_current_user)):
+    """Get user's simulator settings including income and fee configurations"""
+    
+    settings = await db.simulator_settings.find_one(
+        {"user_id": user["id"]},
+        {"_id": 0}
+    )
+    
+    # Return defaults if no settings exist
+    if not settings:
+        settings = {
+            "user_id": user["id"],
+            "fee_settings": {
+                "per_contract_fee": 0.65,
+                "base_commission": 0,
+                "assignment_fee": 0
+            },
+            "income_settings": {
+                "target_roi_per_week": 1.5,
+                "premium_exit_threshold": 80,
+                "premium_auto_exit": 90,
+                "min_improvement_multiplier": 2.0,
+                "dte_warning_threshold": 14,
+                "dte_force_decision": 7,
+                "pmcc_width_protection_pct": 25,
+                "pmcc_leaps_min_dte": 180
+            }
+        }
+    
+    return settings
+
+
+@simulator_router.get("/decisions/all")
+async def get_all_decisions(user: dict = Depends(get_current_user)):
+    """Get decision analysis for all active trades"""
+    funcs = _get_server_functions()
+    
+    # Get all active trades
+    active_trades = await db.simulator_trades.find(
+        {"user_id": user["id"], "status": "active"},
+        {"_id": 0}
+    ).to_list(100)
+    
+    if not active_trades:
+        return {"decisions": [], "summary": {"total": 0}}
+    
+    # Get user settings
+    settings = await db.simulator_settings.find_one(
+        {"user_id": user["id"]},
+        {"_id": 0}
+    )
+    
+    if not settings:
+        settings = {
+            "fee_settings": {"per_contract_fee": 0.65, "base_commission": 0},
+            "income_settings": {
+                "target_roi_per_week": 1.5,
+                "premium_exit_threshold": 80,
+                "premium_auto_exit": 90,
+                "min_improvement_multiplier": 2.0,
+                "dte_warning_threshold": 14,
+                "dte_force_decision": 7,
+                "pmcc_width_protection_pct": 25,
+                "pmcc_leaps_min_dte": 180
+            }
+        }
+    
+    # Get unique symbols and fetch prices
+    symbols = list(set(t["symbol"] for t in active_trades))
+    price_cache = {}
+    for symbol in symbols:
+        try:
+            quote = await funcs['fetch_stock_quote'](symbol)
+            if quote and quote.get("price"):
+                price_cache[symbol] = quote["price"]
+        except:
+            pass
+    
+    decisions = []
+    action_required = 0
+    close_recommended = 0
+    roll_recommended = 0
+    
+    for trade in active_trades:
+        current_price = price_cache.get(trade["symbol"], trade.get("current_underlying_price", 0))
+        
+        # Get redeployment ROI
+        redeployment_roi = await get_redeployment_roi(
+            user_id=user["id"],
+            strategy_type=trade.get("strategy_type", "covered_call"),
+            risk_profile="balanced"
+        )
+        
+        analysis = evaluate_income_rules(trade, current_price, settings, redeployment_roi)
+        decisions.append(analysis)
+        
+        # Count recommendations
+        rec = analysis.get("recommendation", "hold")
+        if rec in ["close", "consider_close"]:
+            close_recommended += 1
+        if rec in ["roll", "roll_up", "roll_down"]:
+            roll_recommended += 1
+        if rec != "hold":
+            action_required += 1
+    
+    return {
+        "decisions": decisions,
+        "summary": {
+            "total": len(active_trades),
+            "action_required": action_required,
+            "close_recommended": close_recommended,
+            "roll_recommended": roll_recommended,
+            "hold": len(active_trades) - action_required
+        }
+    }
+
+
+@simulator_router.get("/redeployment-roi")
+async def get_redeployment_roi_estimate(
+    strategy_type: str = Query("covered_call", description="covered_call or pmcc"),
+    risk_profile: str = Query("balanced", description="conservative, balanced, or aggressive"),
+    user: dict = Depends(get_current_user)
+):
+    """Get current redeployment ROI estimate with source information"""
+    
+    roi = await get_redeployment_roi(user["id"], strategy_type, risk_profile)
+    return roi
+
+
 @simulator_router.delete("/clear")
 async def clear_simulator_data(user: dict = Depends(get_current_user)):
     """Clear all simulator trades for user"""
