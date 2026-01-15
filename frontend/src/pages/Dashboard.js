@@ -290,7 +290,7 @@ const Dashboard = () => {
                 {marketStatus.is_open ? (
                   <><Sun className="w-3 h-3 mr-1" /> Market Open</>
                 ) : (
-                  <><Moon className="w-3 h-3 mr-1" /> Market Closed</>
+                  <><Moon className="w-3 h-3 mr-1" /> US Market Closed</>
                 )}
               </Badge>
             )}
