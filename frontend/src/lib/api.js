@@ -154,7 +154,16 @@ export const simulatorApi = {
   getSummary: () => api.get('/simulator/summary'),
   clearAll: () => api.delete('/simulator/clear'),
   
-  // Phase 3: Rules Management
+  // Income-Optimised Decision Engine (NEW)
+  getTradeDecision: (tradeId) => api.get(`/simulator/decision/${tradeId}`),
+  getAllDecisions: () => api.get('/simulator/decisions/all'),
+  getRedeploymentROI: (strategyType = 'covered_call', riskProfile = 'balanced') => 
+    api.get(`/simulator/redeployment-roi?strategy_type=${strategyType}&risk_profile=${riskProfile}`),
+  getSettings: () => api.get('/simulator/settings'),
+  updateIncomeSettings: (settings) => api.post('/simulator/settings/income', settings),
+  updateFeeSettings: (settings) => api.post('/simulator/settings/fees', settings),
+  
+  // Legacy Rules Management (preserved for future use)
   getRules: (params = {}) => {
     const queryParams = new URLSearchParams();
     if (params.strategy) queryParams.append('strategy', params.strategy);
