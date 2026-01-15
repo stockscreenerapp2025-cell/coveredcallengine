@@ -883,7 +883,6 @@ const PMCC = () => {
                         <th>Ann. ROI</th>
                         <SortHeader field="score" label="AI Score" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
                         <th>Analyst</th>
-                        <SortHeader field="days_to_earnings" label="Earnings" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
                         <th className="text-center">Action</th>
                       </tr>
                     </thead>
@@ -941,21 +940,6 @@ const PMCC = () => {
                                         : 'bg-red-500/20 text-red-400 border-red-500/30'
                                 }`}>
                                   {opp.analyst_rating}
-                                </Badge>
-                              ) : (
-                                <span className="text-zinc-600 text-xs">-</span>
-                              )}
-                            </td>
-                            <td>
-                              {opp.days_to_earnings !== null && opp.days_to_earnings !== undefined && opp.days_to_earnings >= 0 ? (
-                                <Badge className={`text-xs ${
-                                  opp.days_to_earnings <= 7 
-                                    ? 'bg-red-500/20 text-red-400 border-red-500/30'
-                                    : opp.days_to_earnings <= 14
-                                      ? 'bg-amber-500/20 text-amber-400 border-amber-500/30'
-                                      : 'bg-zinc-500/20 text-zinc-400 border-zinc-500/30'
-                                }`}>
-                                  {opp.days_to_earnings}d
                                 </Badge>
                               ) : (
                                 <span className="text-zinc-600 text-xs">-</span>

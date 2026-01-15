@@ -104,6 +104,9 @@ Build a web-based application named "Covered Call Engine" to identify, analyze, 
 ### 🔄 In Progress
 - None currently
 
+### ⚠️ Known Issues
+- Inbound email replies not reaching support dashboard (BLOCKED - requires IMAP debugging)
+
 ### ✅ Completed (Jan 15, 2026) - Earnings Column & Strike Column Fix
 - [x] **Earnings Column Added to All Pages**
   - Dashboard Top 10 CC: Added "Earnings" column showing days to next earnings
