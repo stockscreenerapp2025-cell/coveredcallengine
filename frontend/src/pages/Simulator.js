@@ -189,9 +189,9 @@ const Simulator = () => {
   }, [trades, loading, initialUpdateDone]);
 
   useEffect(() => {
-    if (activeTab === 'rules') {
-      fetchRules();
-      fetchTemplates();
+    if (activeTab === 'decisions') {
+      fetchDecisions();
+      fetchSettings();
     } else if (activeTab === 'logs') {
       fetchActionLogs();
     } else if (activeTab === 'pmcc') {
