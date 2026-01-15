@@ -107,6 +107,42 @@ Build a web-based application named "Covered Call Engine" to identify, analyze, 
 ### ⚠️ Known Issues
 - Inbound email replies not reaching support dashboard (BLOCKED - requires IMAP debugging)
 
+### ✅ Completed (Jan 15, 2026) - Income-Optimised Simulator Redesign
+- [x] **Income-Optimised Decision Engine (Major Feature)**
+  - Replaced traditional stop-loss/take-profit rules with income-focused trade management
+  - Core Design Principles:
+    - Covered calls and PMCCs are income strategies, not directional trades
+    - Decisions optimize ROI per unit time, not max profit
+    - Early exit is often optimal when remaining premium is inefficient
+    - All decisions are fee-aware
+  - **8 New Rule Categories Implemented:**
+    1. Premium Efficiency Exit Rule (80%/90% thresholds)
+    2. ROI per Day Rule (compare current vs redeployment)
+    3. Time-to-Expiry Efficiency Rule (21/14/7 DTE thresholds)
+    4. Roll-Up Rule (delta > 0.45, remaining premium < 30%)
+    5. Roll-Down Rule (call value < 20% original)
+    6. Assignment Acceptance Rule
+    7. PMCC Width Protection Rule (< 25% of original width)
+    8. PMCC LEAPS Time Rule (< 180 DTE warning)
+    9. Transaction Cost Gate (2× fees minimum)
+  - **Tiered Redeployment ROI Estimation:**
+    - Primary: Average ROI from pre-computed scans (same strategy/risk)
+    - Secondary: User's historical average ROI
+    - Fallback: Configurable target (default 1.5%/week)
+  - **New API Endpoints:**
+    - `GET /api/simulator/decision/{trade_id}` - Individual trade analysis
+    - `GET /api/simulator/decisions/all` - All active trades analysis
+    - `GET /api/simulator/settings` - User settings
+    - `POST /api/simulator/settings/income` - Update income settings
+    - `POST /api/simulator/settings/fees` - Update fee settings
+    - `GET /api/simulator/redeployment-roi` - Get ROI estimates
+  - **New Frontend "Decisions" Tab:**
+    - Summary cards showing: Active Trades, Hold, Action Required, Close/Roll Recommended
+    - Decision cards for each trade with recommendation badges
+    - Detailed modal showing metrics, ROI comparison, scenario analysis, rules triggered
+    - Settings modal for fee and income optimization configuration
+  - Legacy Rules UI hidden (backend preserved for future use)
+
 ### ✅ Completed (Jan 15, 2026) - Earnings Column & Strike Column Fix
 - [x] **Earnings Column Added to All Pages**
   - Dashboard Top 10 CC: Added "Earnings" column showing days to next earnings
