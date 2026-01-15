@@ -595,10 +595,10 @@ const PMCC = () => {
         </CardContent>
       </Card>
 
-      <div className="grid lg:grid-cols-5 gap-3">
-        {/* Filters Panel - Compact width */}
+      <div className="grid lg:grid-cols-4 gap-6">
+        {/* Filters Panel */}
         {filtersOpen && (
-          <Card className="glass-card lg:col-span-1 h-fit" style={{maxWidth: '200px'}} data-testid="pmcc-filters-panel">
+          <Card className="glass-card lg:col-span-1 h-fit" data-testid="pmcc-filters-panel">
             <CardHeader className="pb-2">
               <div className="flex items-center justify-between">
                 <CardTitle className="text-lg flex items-center gap-2">
@@ -806,7 +806,7 @@ const PMCC = () => {
         )}
 
         {/* Results Section */}
-        <div className={`space-y-4 ${filtersOpen ? 'lg:col-span-4' : 'lg:col-span-5'}`}>
+        <div className={`space-y-4 ${filtersOpen ? 'lg:col-span-3' : 'lg:col-span-4'}`}>
           {/* LEAPS Data Info */}
           <div className="glass-card p-4 border-l-4 border-emerald-500">
             <div className="flex items-start gap-3">
@@ -954,11 +954,11 @@ const PMCC = () => {
                                   setSimulateOpp(opp);
                                   setSimulateModalOpen(true);
                                 }}
-                                className="bg-violet-500/10 border-violet-500/30 text-violet-400 hover:bg-violet-500/20 hover:text-violet-300 px-2"
+                                className="bg-violet-500/10 border-violet-500/30 text-violet-400 hover:bg-violet-500/20 hover:text-violet-300"
                                 data-testid={`simulate-btn-${opp.symbol}`}
-                                title="Simulate Trade"
                               >
-                                <Play className="w-4 h-4" />
+                                <Play className="w-3 h-3 mr-1" />
+                                Simulate
                               </Button>
                             </td>
                           </tr>
