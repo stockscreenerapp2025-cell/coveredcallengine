@@ -133,7 +133,7 @@ class SimulatorTradeEntry(BaseModel):
 
 
 class TradeRuleCreate(BaseModel):
-    """Model for creating trade management rules"""
+    """Model for creating trade management rules (legacy - preserved for future use)"""
     name: str
     description: Optional[str] = None
     rule_type: str  # "profit_target", "stop_loss", "time_based", "delta_target", "roll", "custom"
@@ -148,6 +148,402 @@ class TradeRuleCreate(BaseModel):
     # Priority and settings
     priority: int = 0
     is_enabled: bool = True
+
+
+class FeeSettings(BaseModel):
+    """User's transaction fee configuration"""
+    per_contract_fee: float = 0.65  # Default $0.65 per contract
+    base_commission: float = 0.0  # Base commission per trade
+    assignment_fee: float = 0.0  # Fee for assignment
+
+
+class IncomeSettings(BaseModel):
+    """User's income optimization settings"""
+    target_roi_per_week: float = 1.5  # Default 1.5% per week target
+    premium_exit_threshold: float = 80.0  # Close when 80%+ premium captured
+    premium_auto_exit: float = 90.0  # Auto-close at 90% captured
+    min_improvement_multiplier: float = 2.0  # Require 2x fees for any action
+    dte_warning_threshold: int = 14  # Warning at 14 DTE
+    dte_force_decision: int = 7  # Force decision at 7 DTE
+    pmcc_width_protection_pct: float = 25.0  # Roll if width < 25% of original
+    pmcc_leaps_min_dte: int = 180  # Warning if LEAPS < 180 DTE
+
+
+# ==================== INCOME-OPTIMISED DECISION ENGINE ====================
+
+async def get_redeployment_roi(user_id: str, strategy_type: str, risk_profile: str = "balanced") -> Dict[str, Any]:
+    """
+    Get expected ROI for redeployment using tiered fallback:
+    1. Average ROI from recent pre-computed scans (same strategy/risk)
+    2. User's historical average ROI
+    3. Configurable target (fallback)
+    """
+    result = {
+        "source": None,
+        "roi_per_day": None,
+        "roi_per_week": None,
+        "confidence": "low"
+    }
+    
+    # 1. Try pre-computed scans first (most objective)
+    try:
+        scan = await db.precomputed_scans.find_one(
+            {"strategy": strategy_type, "risk_profile": risk_profile},
+            {"_id": 0, "opportunities": 1, "computed_at": 1}
+        )
+        
+        if scan and scan.get("opportunities"):
+            opps = scan["opportunities"]
+            if len(opps) >= 5:
+                # Calculate median ROI per week from scans
+                rois = []
+                for opp in opps:
+                    roi_pct = opp.get("roi_pct") or opp.get("premium_yield", 0)
+                    dte = opp.get("dte", 30) or 30
+                    if roi_pct and dte > 0:
+                        roi_per_week = (roi_pct / dte) * 7
+                        rois.append(roi_per_week)
+                
+                if rois:
+                    rois.sort()
+                    median_roi = rois[len(rois) // 2]
+                    result["source"] = "precomputed_scan"
+                    result["roi_per_week"] = round(median_roi, 3)
+                    result["roi_per_day"] = round(median_roi / 7, 4)
+                    result["confidence"] = "high"
+                    result["sample_size"] = len(rois)
+                    return result
+    except Exception as e:
+        logging.warning(f"Could not fetch pre-computed scan ROI: {e}")
+    
+    # 2. Try user's historical average
+    try:
+        closed_trades = await db.simulator_trades.find(
+            {
+                "user_id": user_id,
+                "status": {"$in": ["closed", "expired"]},
+                "strategy_type": strategy_type,
+                "realized_pnl": {"$exists": True}
+            },
+            {"_id": 0, "realized_pnl": 1, "capital_deployed": 1, "days_held": 1}
+        ).sort("updated_at", -1).limit(20).to_list(20)
+        
+        if len(closed_trades) >= 5:
+            rois_per_week = []
+            for t in closed_trades:
+                pnl = t.get("realized_pnl", 0)
+                capital = t.get("capital_deployed", 0)
+                days = t.get("days_held", 1) or 1
+                if capital > 0:
+                    roi_pct = (pnl / capital) * 100
+                    roi_per_week = (roi_pct / days) * 7
+                    rois_per_week.append(roi_per_week)
+            
+            if rois_per_week:
+                avg_roi = sum(rois_per_week) / len(rois_per_week)
+                result["source"] = "user_history"
+                result["roi_per_week"] = round(avg_roi, 3)
+                result["roi_per_day"] = round(avg_roi / 7, 4)
+                result["confidence"] = "medium"
+                result["sample_size"] = len(rois_per_week)
+                return result
+    except Exception as e:
+        logging.warning(f"Could not fetch user history ROI: {e}")
+    
+    # 3. Fallback to user settings or default
+    try:
+        user_settings = await db.simulator_settings.find_one(
+            {"user_id": user_id},
+            {"_id": 0, "income_settings": 1}
+        )
+        target = 1.5  # Default 1.5% per week
+        if user_settings and user_settings.get("income_settings"):
+            target = user_settings["income_settings"].get("target_roi_per_week", 1.5)
+        
+        result["source"] = "target_default"
+        result["roi_per_week"] = target
+        result["roi_per_day"] = round(target / 7, 4)
+        result["confidence"] = "low"
+        return result
+    except:
+        result["source"] = "fallback"
+        result["roi_per_week"] = 1.5
+        result["roi_per_day"] = 0.214
+        result["confidence"] = "low"
+        return result
+
+
+def calculate_transaction_fees(contracts: int, fee_settings: Dict) -> Dict[str, float]:
+    """Calculate total transaction fees for a trade action"""
+    per_contract = fee_settings.get("per_contract_fee", 0.65)
+    base = fee_settings.get("base_commission", 0)
+    
+    # Round-trip = open + close
+    one_way = (contracts * per_contract) + base
+    round_trip = one_way * 2
+    
+    return {
+        "one_way": round(one_way, 2),
+        "round_trip": round(round_trip, 2),
+        "per_contract": per_contract
+    }
+
+
+def evaluate_income_rules(trade: dict, current_price: float, settings: dict, redeployment_roi: dict) -> Dict[str, Any]:
+    """
+    Evaluate all income-optimised rules and return decision analysis.
+    Returns recommendations for: hold, close, roll_up, roll_down, or accept_assignment
+    """
+    income_settings = settings.get("income_settings", {})
+    fee_settings = settings.get("fee_settings", {})
+    
+    # Extract trade data
+    entry_premium = trade.get("short_call_premium", 0)
+    current_option_value = trade.get("current_option_value", 0)
+    premium_captured_pct = trade.get("premium_capture_pct", 0)
+    dte_remaining = trade.get("dte_remaining", 30)
+    days_held = trade.get("days_held", 0) or 1
+    capital_deployed = trade.get("capital_deployed", 0)
+    current_delta = trade.get("current_delta", 0.3)
+    unrealized_pnl = trade.get("unrealized_pnl", 0)
+    strategy_type = trade.get("strategy_type", "covered_call")
+    contracts = trade.get("contracts", 1)
+    
+    # Calculate fees
+    fees = calculate_transaction_fees(contracts, fee_settings)
+    
+    # Calculate current ROI per day
+    if capital_deployed > 0 and days_held > 0:
+        current_roi_total = (unrealized_pnl / capital_deployed) * 100
+        current_roi_per_day = current_roi_total / days_held
+    else:
+        current_roi_total = 0
+        current_roi_per_day = 0
+    
+    # Redeployment ROI
+    redeploy_roi_per_day = redeployment_roi.get("roi_per_day", 0.214)
+    
+    # Get thresholds from settings
+    premium_exit_threshold = income_settings.get("premium_exit_threshold", 80)
+    premium_auto_exit = income_settings.get("premium_auto_exit", 90)
+    dte_warning = income_settings.get("dte_warning_threshold", 14)
+    dte_force = income_settings.get("dte_force_decision", 7)
+    min_improvement_mult = income_settings.get("min_improvement_multiplier", 2.0)
+    
+    # Initialize decision analysis
+    analysis = {
+        "trade_id": trade.get("id"),
+        "symbol": trade.get("symbol"),
+        "strategy_type": strategy_type,
+        "current_metrics": {
+            "premium_captured_pct": round(premium_captured_pct, 1),
+            "dte_remaining": dte_remaining,
+            "days_held": days_held,
+            "current_delta": round(current_delta, 3),
+            "unrealized_pnl": round(unrealized_pnl, 2),
+            "current_roi_total_pct": round(current_roi_total, 2),
+            "current_roi_per_day": round(current_roi_per_day, 4),
+            "current_option_value": round(current_option_value, 2),
+            "remaining_premium": round(entry_premium - (entry_premium * premium_captured_pct / 100), 2)
+        },
+        "redeployment": {
+            "expected_roi_per_day": round(redeploy_roi_per_day, 4),
+            "expected_roi_per_week": round(redeploy_roi_per_day * 7, 3),
+            "source": redeployment_roi.get("source", "unknown"),
+            "confidence": redeployment_roi.get("confidence", "low")
+        },
+        "fees": fees,
+        "rules_triggered": [],
+        "recommendation": "hold",
+        "recommendation_reason": "",
+        "comparison": {}
+    }
+    
+    # ==================== RULE EVALUATIONS ====================
+    
+    # Rule 1: Premium Efficiency Exit (Primary)
+    if premium_captured_pct >= premium_auto_exit:
+        analysis["rules_triggered"].append({
+            "rule": "premium_efficiency_auto",
+            "severity": "high",
+            "message": f"Auto-exit threshold reached: {premium_captured_pct:.1f}% premium captured (≥{premium_auto_exit}%)",
+            "action": "close"
+        })
+    elif premium_captured_pct >= premium_exit_threshold:
+        analysis["rules_triggered"].append({
+            "rule": "premium_efficiency",
+            "severity": "medium",
+            "message": f"Exit threshold reached: {premium_captured_pct:.1f}% premium captured (≥{premium_exit_threshold}%)",
+            "action": "recommend_close"
+        })
+    
+    # Rule 2: ROI per Day Comparison (Most Important)
+    if current_roi_per_day < redeploy_roi_per_day and days_held >= 7:
+        improvement = redeploy_roi_per_day - current_roi_per_day
+        analysis["rules_triggered"].append({
+            "rule": "roi_per_day",
+            "severity": "medium",
+            "message": f"Capital efficiency declining: current {current_roi_per_day:.3f}%/day vs redeployment {redeploy_roi_per_day:.3f}%/day",
+            "potential_improvement": f"+{improvement:.3f}%/day",
+            "action": "recommend_close"
+        })
+    
+    # Rule 3: Time-to-Expiry Efficiency
+    if dte_remaining <= dte_force:
+        analysis["rules_triggered"].append({
+            "rule": "dte_force_decision",
+            "severity": "high",
+            "message": f"Force decision required: only {dte_remaining} DTE remaining (≤{dte_force})",
+            "action": "force_close_or_roll"
+        })
+    elif dte_remaining <= dte_warning:
+        analysis["rules_triggered"].append({
+            "rule": "dte_warning",
+            "severity": "medium",
+            "message": f"Low DTE warning: {dte_remaining} DTE remaining (≤{dte_warning})",
+            "action": "evaluate_roll_or_close"
+        })
+    
+    # Rule 4: Roll-Up Rule (Upside Management)
+    remaining_premium_pct = 100 - premium_captured_pct
+    if current_delta > 0.45 and remaining_premium_pct < 30:
+        analysis["rules_triggered"].append({
+            "rule": "roll_up",
+            "severity": "medium",
+            "message": f"Roll-up opportunity: delta {current_delta:.2f} (>0.45) with only {remaining_premium_pct:.1f}% premium remaining",
+            "action": "recommend_roll_up"
+        })
+    
+    # Rule 5: Roll-Down Rule (Income Recovery)
+    current_value_pct = (current_option_value / entry_premium * 100) if entry_premium > 0 else 0
+    if current_value_pct < 20 and dte_remaining > 14:
+        analysis["rules_triggered"].append({
+            "rule": "roll_down",
+            "severity": "low",
+            "message": f"Roll-down opportunity: option value at {current_value_pct:.1f}% of entry with {dte_remaining} DTE remaining",
+            "action": "recommend_roll_down"
+        })
+    
+    # Rule 6: Assignment Acceptance (for covered calls ITM at expiry)
+    strike = trade.get("short_call_strike", 0)
+    if strategy_type == "covered_call" and current_price > strike and dte_remaining <= 3:
+        total_return = unrealized_pnl
+        entry_price = trade.get("entry_underlying_price", current_price)
+        if capital_deployed > 0:
+            roi_if_assigned = ((strike - entry_price + entry_premium) * 100 * contracts) / capital_deployed * 100
+            analysis["rules_triggered"].append({
+                "rule": "assignment_acceptance",
+                "severity": "info",
+                "message": f"Assignment likely: stock at ${current_price:.2f} vs strike ${strike:.2f}. ROI if assigned: {roi_if_assigned:.1f}%",
+                "action": "accept_assignment"
+            })
+    
+    # PMCC-Specific Rules
+    if strategy_type == "pmcc":
+        leaps_strike = trade.get("leaps_strike", 0)
+        leaps_dte = trade.get("leaps_dte_remaining", 365)
+        short_strike = trade.get("short_call_strike", 0)
+        
+        # Rule 7A: PMCC Width Protection
+        if leaps_strike > 0 and short_strike > 0:
+            original_width = short_strike - leaps_strike
+            current_width = short_strike - current_price
+            width_pct = (current_width / original_width * 100) if original_width > 0 else 100
+            protection_threshold = income_settings.get("pmcc_width_protection_pct", 25)
+            
+            if width_pct < protection_threshold:
+                analysis["rules_triggered"].append({
+                    "rule": "pmcc_width_protection",
+                    "severity": "high",
+                    "message": f"PMCC width at risk: current width {width_pct:.1f}% of original (threshold: {protection_threshold}%)",
+                    "action": "roll_required"
+                })
+        
+        # Rule 7B: PMCC LEAPS Time Rule
+        leaps_min_dte = income_settings.get("pmcc_leaps_min_dte", 180)
+        if leaps_dte < leaps_min_dte:
+            analysis["rules_triggered"].append({
+                "rule": "pmcc_leaps_time",
+                "severity": "high",
+                "message": f"LEAPS time decay risk: only {leaps_dte} DTE remaining on LEAPS (minimum: {leaps_min_dte})",
+                "action": "restructure_or_close"
+            })
+    
+    # Rule 8: Transaction Cost Gate
+    remaining_premium_value = (entry_premium - current_option_value) * 100 * contracts
+    min_improvement_required = fees["round_trip"] * min_improvement_mult
+    
+    # ==================== GENERATE RECOMMENDATION ====================
+    
+    # Calculate comparison scenarios
+    hold_to_expiry_value = entry_premium * 100 * contracts  # Max premium if expires worthless
+    close_now_value = remaining_premium_value - fees["one_way"]
+    
+    # Estimate redeployment value (remaining DTE at redeployment ROI)
+    remaining_days = max(dte_remaining, 1)
+    redeploy_value = (capital_deployed * redeploy_roi_per_day / 100) * remaining_days - fees["round_trip"]
+    
+    analysis["comparison"] = {
+        "hold_to_expiry": {
+            "value": round(hold_to_expiry_value, 2),
+            "description": "Maximum premium if option expires worthless",
+            "risk": "Assignment risk if ITM, gamma risk"
+        },
+        "close_now": {
+            "value": round(close_now_value, 2),
+            "description": f"Close position now (premium captured: ${remaining_premium_value:.2f} - fees: ${fees['one_way']:.2f})",
+            "risk": "Foregoes remaining time value"
+        },
+        "close_and_redeploy": {
+            "value": round(close_now_value + redeploy_value, 2),
+            "description": f"Close and redeploy capital at expected {redeploy_roi_per_day:.3f}%/day",
+            "risk": "Execution risk, market conditions may differ"
+        }
+    }
+    
+    # Determine final recommendation based on rules triggered
+    high_severity_rules = [r for r in analysis["rules_triggered"] if r.get("severity") == "high"]
+    medium_severity_rules = [r for r in analysis["rules_triggered"] if r.get("severity") == "medium"]
+    
+    if high_severity_rules:
+        # High severity rule triggered
+        rule = high_severity_rules[0]
+        if "roll" in rule.get("action", "").lower():
+            analysis["recommendation"] = "roll"
+            analysis["recommendation_reason"] = rule["message"]
+        elif "close" in rule.get("action", "").lower() or "force" in rule.get("action", "").lower():
+            # Check fee gate
+            if close_now_value > min_improvement_required:
+                analysis["recommendation"] = "close"
+                analysis["recommendation_reason"] = f"{rule['message']} Net after fees: ${close_now_value:.2f}"
+            else:
+                analysis["recommendation"] = "hold"
+                analysis["recommendation_reason"] = f"Rule suggests close but does not meet fee gate (${close_now_value:.2f} < ${min_improvement_required:.2f} required)"
+        elif "restructure" in rule.get("action", "").lower():
+            analysis["recommendation"] = "restructure"
+            analysis["recommendation_reason"] = rule["message"]
+        else:
+            analysis["recommendation"] = "evaluate"
+            analysis["recommendation_reason"] = rule["message"]
+    elif medium_severity_rules:
+        # Medium severity - recommend but don't force
+        rule = medium_severity_rules[0]
+        if analysis["comparison"]["close_and_redeploy"]["value"] > analysis["comparison"]["hold_to_expiry"]["value"]:
+            if close_now_value > min_improvement_required:
+                analysis["recommendation"] = "consider_close"
+                analysis["recommendation_reason"] = f"{rule['message']} Redeployment potentially more efficient."
+            else:
+                analysis["recommendation"] = "hold"
+                analysis["recommendation_reason"] = f"Potential improvement but below fee threshold"
+        else:
+            analysis["recommendation"] = "hold"
+            analysis["recommendation_reason"] = "Hold to expiry appears optimal"
+    else:
+        # No significant rules triggered
+        analysis["recommendation"] = "hold"
+        analysis["recommendation_reason"] = "No action required - trade performing within parameters"
+    
+    return analysis
 
 
 # ==================== HELPER FUNCTIONS ====================
