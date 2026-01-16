@@ -296,14 +296,25 @@ async def screen_covered_calls(
         if precomputed and precomputed.get("opportunities"):
             computed_date = precomputed.get("computed_date", "unknown")
             freshness = get_data_freshness_status(computed_date) if computed_date != "unknown" else {"status": "amber"}
+            
+            # Calculate weekly/monthly counts from precomputed data
+            opps = precomputed["opportunities"]
+            weekly_count = sum(1 for o in opps if o.get("expiry_type") == "weekly" or o.get("timeframe") == "weekly")
+            monthly_count = sum(1 for o in opps if o.get("expiry_type") == "monthly" or o.get("timeframe") == "monthly")
+            
             return {
-                "opportunities": precomputed["opportunities"],
-                "total": len(precomputed["opportunities"]),
+                "opportunities": opps,
+                "total": len(opps),
+                "weekly_count": weekly_count,
+                "monthly_count": monthly_count,
                 "from_cache": True,
                 "is_precomputed": True,
                 "precomputed_profile": "balanced",
                 "computed_at": precomputed.get("computed_at"),
-                "metadata": t1_info,
+                "metadata": {
+                    **t1_info,
+                    "options_snapshot_time": precomputed.get("computed_at", "Pre-computed scan")
+                },
                 "data_freshness": freshness
             }
     
