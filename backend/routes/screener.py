@@ -791,34 +791,34 @@ async def screen_pmcc(
 ):
     """
     Screen for Poor Man's Covered Call (PMCC) opportunities.
-    Generates multiple combinations per symbol for better coverage.
     
-    T-1 DATA PRINCIPLE:
-    - Always uses previous trading day market close data
-    - No intraday or partial data
-    - All expiry dates validated (no weekend/holiday expirations)
+    TWO-SOURCE DATA MODEL:
+    - Equity Price: T-1 market close (hard rule)
+    - Options Chain: Latest fully available snapshot with IV/OI
+    - Only uses expirations that ACTUALLY exist in Yahoo Finance
+    - Only Friday expirations for short leg
     """
     funcs = _get_server_functions()
     t1_info = _get_t1_data_info()
-    t1_date = t1_info["data_date"]
+    equity_date = t1_info["equity_price_date"]
     
     cache_params = {
-        "t1_date": t1_date,
+        "equity_date": equity_date,
         "min_price": min_price, "max_price": max_price,
         "min_leaps_dte": min_leaps_dte, "max_leaps_dte": max_leaps_dte,
         "min_short_dte": min_short_dte, "max_short_dte": max_short_dte,
         "min_roi": min_roi, "min_annualized_roi": min_annualized_roi
     }
-    cache_key = funcs['generate_cache_key']("pmcc_screener_t1_v1", cache_params)
+    cache_key = funcs['generate_cache_key']("pmcc_screener_v2", cache_params)
     
-    logging.info(f"PMCC scan (T-1: {t1_date}), bypass_cache: {bypass_cache}")
+    logging.info(f"PMCC scan (Equity: {equity_date}), bypass_cache: {bypass_cache}")
     
-    # T-1 DATA: Cache is valid for entire day
+    # Check cache first
     if not bypass_cache:
         cached_data = await funcs['get_cached_data'](cache_key, max_age_seconds=86400)
         if cached_data and cached_data.get("opportunities"):
             cached_data["from_cache"] = True
-            cached_data["t1_data"] = t1_info
+            cached_data["metadata"] = t1_info
             return cached_data
         
         # Check precomputed scans
@@ -837,7 +837,7 @@ async def screen_pmcc(
                     "is_precomputed": True,
                     "precomputed_profile": profile,
                     "computed_at": precomputed.get("computed_at"),
-                    "t1_data": t1_info,
+                    "metadata": t1_info,
                     "data_freshness": freshness
                 }
     
