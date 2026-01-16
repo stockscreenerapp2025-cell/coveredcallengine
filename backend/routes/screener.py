@@ -154,8 +154,14 @@ async def screen_covered_calls(
     DATA SOURCES:
     - Options: Polygon/Massive ONLY
     - Stock prices: Polygon primary, Yahoo fallback
+    
+    DATA QUALITY:
+    - When market is OPEN: Always fetch live data (cache only used for rate limiting)
+    - When market is CLOSED: Use cached data from last trading day
+    - All responses include data freshness indicators
     """
     funcs = _get_server_functions()
+    market_closed = funcs['is_market_closed']()
     
     # Generate cache key based on all filter parameters
     cache_params = {
@@ -165,23 +171,52 @@ async def screen_covered_calls(
         "min_volume": min_volume, "min_open_interest": min_open_interest,
         "weekly_only": weekly_only, "monthly_only": monthly_only
     }
-    cache_key = funcs['generate_cache_key']("screener_covered_calls_v2", cache_params)
+    cache_key = funcs['generate_cache_key']("screener_covered_calls_v3", cache_params)
     
-    # Check cache first (unless bypassed)
-    if not bypass_cache:
+    # DATA QUALITY PRINCIPLE: Only use cache when market is CLOSED
+    # When market is open, we want fresh data (use short cache for rate limiting only)
+    if market_closed and not bypass_cache:
+        # Market closed - prefer cached data
         cached_data = await funcs['get_cached_data'](cache_key)
-        if cached_data:
+        if cached_data and cached_data.get("opportunities"):
             cached_data["from_cache"] = True
-            cached_data["market_closed"] = funcs['is_market_closed']()
+            cached_data["market_closed"] = True
+            cached_data["data_note"] = "Cached data from last market session"
             return cached_data
         
-        # If market is closed and no recent cache, try last trading day data
-        if funcs['is_market_closed']():
-            ltd_data = await funcs['get_last_trading_day_data'](cache_key)
-            if ltd_data:
-                ltd_data["from_cache"] = True
-                ltd_data["market_closed"] = True
-                return ltd_data
+        # Try last trading day data
+        ltd_data = await funcs['get_last_trading_day_data'](cache_key)
+        if ltd_data and ltd_data.get("opportunities"):
+            ltd_data["from_cache"] = True
+            ltd_data["market_closed"] = True
+            ltd_data["is_last_trading_day"] = True
+            ltd_data["data_note"] = "Data from last trading day"
+            return ltd_data
+        
+        # Fallback to precomputed balanced scan
+        precomputed = await db.precomputed_scans.find_one(
+            {"strategy": "covered_call", "risk_profile": "balanced"},
+            {"_id": 0}
+        )
+        if precomputed and precomputed.get("opportunities"):
+            return {
+                "opportunities": precomputed["opportunities"],
+                "total": len(precomputed["opportunities"]),
+                "from_cache": True,
+                "market_closed": True,
+                "is_precomputed_fallback": True,
+                "precomputed_profile": "balanced",
+                "computed_at": precomputed.get("computed_at"),
+                "data_note": f"Pre-computed scan from {precomputed.get('computed_date', 'unknown')}"
+            }
+    elif not bypass_cache:
+        # Market open - use short cache (5 min) for rate limiting only
+        cached_data = await funcs['get_cached_data'](cache_key, max_age_seconds=300)
+        if cached_data and cached_data.get("opportunities"):
+            cached_data["from_cache"] = True
+            cached_data["market_closed"] = False
+            cached_data["data_note"] = "Live data (cached < 5 min)"
+            return cached_data
     
     # Get API key for Polygon/Massive
     api_key = await funcs['get_massive_api_key']()
