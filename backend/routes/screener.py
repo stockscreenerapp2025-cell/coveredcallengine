@@ -1050,7 +1050,7 @@ async def refresh_precomputed_scans(user: dict = Depends(get_current_user)):
         logging.info(f"Manual precomputed scan refresh triggered by {user.get('email')}")
         
         # Run the scan computation
-        results = await service.compute_all_scans()
+        results = await service.run_all_scans()
         
         return {
             "message": "Precomputed scans refreshed successfully",
