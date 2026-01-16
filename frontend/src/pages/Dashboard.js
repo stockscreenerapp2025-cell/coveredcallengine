@@ -259,25 +259,32 @@ const Dashboard = () => {
 
   return (
     <div className="space-y-6" data-testid="dashboard-page">
-      {/* Market Status Banner */}
-      {marketStatus && !marketStatus.is_open && (
-        <div className="glass-card p-3 flex items-center justify-between bg-zinc-800/50 border-amber-500/30">
-          <div className="flex items-center gap-3">
-            {marketStatus.is_weekend ? (
-              <Moon className="w-5 h-5 text-amber-400" />
-            ) : (
-              <Clock className="w-5 h-5 text-amber-400" />
-            )}
-            <div>
-              <span className="text-amber-400 font-medium">{marketStatus.reason}</span>
-              <span className="text-zinc-400 ml-2 text-sm">• {marketStatus.data_note}</span>
-            </div>
+      {/* T-1 Data Status Banner - Always Show */}
+      <div className="glass-card p-3 flex items-center justify-between bg-zinc-800/50 border-emerald-500/30">
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
+            <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+            <span className="text-emerald-400 font-medium text-sm">T-1 Market Data</span>
           </div>
-          <Badge className="bg-amber-500/20 text-amber-400 border-amber-500/30">
-            {marketStatus.current_time_et}
+          <span className="text-zinc-400 text-sm">
+            {marketStatus?.t1_data ? (
+              <>Data from: <span className="text-white font-medium">{marketStatus.t1_data.date}</span> (Market Close)</>
+            ) : (
+              <>Using previous trading day close data</>
+            )}
+          </span>
+        </div>
+        <div className="flex items-center gap-2">
+          {marketStatus?.t1_data?.next_refresh && (
+            <span className="text-xs text-zinc-500">
+              Next refresh: {marketStatus.t1_data.next_refresh}
+            </span>
+          )}
+          <Badge className="bg-emerald-500/20 text-emerald-400 border-emerald-500/30 text-xs">
+            {marketStatus?.current_time_et || 'Loading...'}
           </Badge>
         </div>
-      )}
+      </div>
 
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -296,8 +303,8 @@ const Dashboard = () => {
             )}
           </h1>
           <p className="text-zinc-400 mt-1">
-            {marketStatus && !marketStatus.is_open 
-              ? "Showing data from last market session" 
+            {marketStatus?.t1_data
+              ? `Showing T-1 market data from ${marketStatus.t1_data.date}` 
               : "Real-time market overview and opportunities"}
           </p>
         </div>
