@@ -201,8 +201,7 @@ const Screener = () => {
   });
 
   useEffect(() => {
-    // On initial load, fetch available scans but do NOT auto-run a scan
-    // User should click "Run Scan" or select a pre-computed scan
+    // On initial load, fetch available scans and auto-run custom scan
     const initializeData = async () => {
       fetchSavedFilters();
       fetchMarketStatus();
@@ -213,6 +212,9 @@ const Screener = () => {
       } catch (error) {
         console.log('Could not fetch available scans:', error);
       }
+      
+      // Auto-run custom scan to show results immediately
+      fetchOpportunities();
     };
     
     initializeData();
