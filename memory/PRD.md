@@ -107,18 +107,26 @@ Build a web-based application named "Covered Call Engine" to identify, analyze, 
 ### ⚠️ Known Issues
 - Inbound email replies not reaching support dashboard (BLOCKED - requires IMAP debugging)
 
-### ✅ Completed (Jan 16, 2026) - 5 Bug Fixes Verified
+### ✅ Completed (Jan 16, 2026) - 4 Bug Fixes (Second Batch)
+- [x] **Issue 1: Screener Auto-Load** - Screener page now auto-loads custom scan results
+  - Re-added `fetchOpportunities()` call to useEffect (user preference reversed)
+  - Added `days_to_earnings` and `earnings_date` to screener response
+- [x] **Issue 2: PMCC Auto-Load** - PMCC page now auto-loads custom scan results
+  - Re-added `fetchOpportunities()` call to useEffect
+- [x] **Issue 3: Simulator PMCC Tracker Blank** - PMCC Tracker now shows position data
+  - Fixed backend `/api/simulator/pmcc-summary` to return `{summary: [...], overall: {...}}` structure
+  - Added position fields: `leaps_cost`, `total_premium_received`, `income_to_cost_ratio`, `estimated_leaps_decay_pct`, `health`
+- [x] **Issue 4: Watchlist Missing Data** - Enhanced data persistence for analyst/earnings
+  - Added secondary yfinance fallback in POST endpoint when initial fetch fails
+  - Added new `POST /api/watchlist/refresh-data` endpoint to update missing data
+  - Existing items automatically refreshed (10 items updated)
+
+### ✅ Completed (Jan 16, 2026) - 5 Bug Fixes (First Batch)
 - [x] **Issue 1: Simulator IV Fields** - IV, IV Rank, and Open Interest fields now saved when adding trades
   - Backend model `SimulatorTradeEntry` accepts `short_call_iv_rank` and `short_call_open_interest`
   - Fields stored in trade document for display in Simulator page
 - [x] **Issue 2: Dashboard Badge** - "Market Closed" badge now shows "US Market Closed"
   - Updated text in Dashboard.js line 293
-- [x] **Issue 3: Screener Auto-Load** - Screener page no longer auto-loads data on page load
-  - Removed `fetchOpportunities()` call from useEffect
-  - Page shows empty state with filter form until user clicks "Custom Scan" or selects pre-computed scan
-- [x] **Issue 4: PMCC Auto-Load** - PMCC page no longer auto-loads data on page load
-  - Removed `fetchOpportunities()` call from useEffect
-  - Page shows empty state with filter form until user clicks "Scan" or selects pre-computed scan
 - [x] **Issue 5: Watchlist Analyst Rating** - Analyst rating now saved when adding stocks
   - Backend saves `analyst_rating_at_add` field when adding to watchlist
   - GET endpoint uses stored rating as fallback if live fetch fails
