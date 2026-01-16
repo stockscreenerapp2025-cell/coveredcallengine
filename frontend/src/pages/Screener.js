@@ -643,6 +643,30 @@ const Screener = () => {
                 ? "Showing data from last market session" 
                 : "Advanced filtering for optimal premium opportunities"}
           </p>
+          {/* Data Freshness Indicator */}
+          {dataInfo && (
+            <div className="mt-2 flex items-center gap-2 text-xs">
+              <span className={`inline-flex items-center px-2 py-0.5 rounded-full ${
+                dataInfo.data_freshness_score === 100 
+                  ? 'bg-emerald-500/20 text-emerald-400' 
+                  : dataInfo.data_freshness_score >= 80 
+                    ? 'bg-yellow-500/20 text-yellow-400'
+                    : 'bg-red-500/20 text-red-400'
+              }`}>
+                {dataInfo.data_freshness_score === 100 ? '● Live Data' : 
+                 dataInfo.is_precomputed_fallback ? '● Pre-computed Data' :
+                 dataInfo.from_cache ? '● Cached Data' : '● Data'}
+              </span>
+              {dataInfo.data_note && (
+                <span className="text-zinc-500">{dataInfo.data_note}</span>
+              )}
+              {dataInfo.fetched_at && (
+                <span className="text-zinc-600">
+                  • {new Date(dataInfo.fetched_at).toLocaleTimeString()}
+                </span>
+              )}
+            </div>
+          )}
         </div>
         <div className="flex flex-wrap gap-3">
           <Button
