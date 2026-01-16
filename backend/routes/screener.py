@@ -923,11 +923,22 @@ async def screen_pmcc(
         symbols = [opp["symbol"] for opp in opportunities]
         analyst_ratings = await fetch_analyst_ratings_batch(symbols)
         
-        # Add analyst ratings to opportunities
+        # Add analyst ratings and data quality flag to opportunities
         for opp in opportunities:
             opp["analyst_rating"] = analyst_ratings.get(opp["symbol"])
+            opp["data_quality"] = "fresh"  # Live data is always fresh
         
-        result = {"opportunities": opportunities, "total": len(opportunities), "is_live": True, "data_source": "polygon"}
+        result = {
+            "opportunities": opportunities, 
+            "total": len(opportunities), 
+            "is_live": True, 
+            "from_cache": False,
+            "market_closed": market_closed,
+            "data_source": "polygon",
+            "fetched_at": datetime.now(timezone.utc).isoformat(),
+            "data_freshness_score": 100.0,  # Live data = 100% fresh
+            "data_note": "Live market data"
+        }
         await funcs['set_cached_data'](cache_key, result)
         return result
         
