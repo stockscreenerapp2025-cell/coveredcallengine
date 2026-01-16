@@ -91,7 +91,14 @@ const PMCC = () => {
     const leapsDelta = opp.leaps_delta || opp.long_delta;
     const leapsExpiry = opp.leaps_expiry || opp.long_expiry;
     const shortPremium = opp.short_premium || 0;
-    const shortPremiumTotal = shortPremium < 10 ? shortPremium * 100 : shortPremium; // Normalize to total
+    
+    // Determine if short_premium is per-share or per-contract
+    // If we have net_debit that's > 100, premiums are likely per-share
+    // If short_premium is less than stock_price * 0.5, it's likely per-share
+    const stockPrice = opp.stock_price || 0;
+    const isPerShare = stockPrice > 0 && shortPremium < stockPrice * 0.5;
+    const shortPremiumTotal = isPerShare ? shortPremium * 100 : shortPremium;
+    
     const netDebit = opp.net_debit || (leapsCost - shortPremiumTotal);
     const strikeWidth = opp.strike_width || (opp.short_strike && leapsStrike ? opp.short_strike - leapsStrike : 0);
     const roiPerCycle = opp.roi_per_cycle || opp.roi_pct || (netDebit > 0 ? (shortPremiumTotal / netDebit) * 100 : 0);
