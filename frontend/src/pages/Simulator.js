@@ -1207,16 +1207,101 @@ const Simulator = () => {
                 </div>
               </div>
 
+              {/* Roll Economics (NEW) */}
+              {selectedDecision.roll_economics && (
+                <div>
+                  <h4 className="font-medium text-white mb-3">Roll Economics Analysis</h4>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                    <div className="p-3 bg-zinc-800/50 rounded-lg">
+                      <span className="text-xs text-zinc-500">Cost to Close</span>
+                      <p className="text-lg font-bold text-red-400">
+                        -${selectedDecision.roll_economics.cost_to_close?.toFixed(2)}
+                      </p>
+                    </div>
+                    <div className="p-3 bg-zinc-800/50 rounded-lg">
+                      <span className="text-xs text-zinc-500">New Premium</span>
+                      <p className="text-lg font-bold text-emerald-400">
+                        +${selectedDecision.roll_economics.new_premium_value?.toFixed(2)}
+                      </p>
+                    </div>
+                    <div className="p-3 bg-zinc-800/50 rounded-lg">
+                      <span className="text-xs text-zinc-500">Roll Fees</span>
+                      <p className="text-lg font-bold text-amber-400">
+                        -${selectedDecision.roll_economics.roll_fees?.toFixed(2)}
+                      </p>
+                    </div>
+                    <div className="p-3 bg-zinc-800/50 rounded-lg">
+                      <span className="text-xs text-zinc-500">Net Roll Value</span>
+                      <p className={`text-lg font-bold ${selectedDecision.roll_economics.net_roll_value >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                        ${selectedDecision.roll_economics.net_roll_value?.toFixed(2)}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="mt-3 p-3 bg-zinc-800/50 rounded-lg flex justify-between items-center">
+                    <div>
+                      <span className="text-zinc-400">Roll vs Expire Comparison</span>
+                      <p className="text-xs text-zinc-500">
+                        Expire value: ${selectedDecision.roll_economics.expire_value?.toFixed(2)} | 
+                        Roll net: ${selectedDecision.roll_economics.net_roll_value?.toFixed(2)}
+                      </p>
+                    </div>
+                    <Badge className={selectedDecision.roll_economics.roll_justified 
+                      ? 'bg-emerald-500/20 text-emerald-400' 
+                      : 'bg-zinc-500/20 text-zinc-400'
+                    }>
+                      {selectedDecision.roll_economics.roll_justified ? 'Roll Justified' : 'Roll Not Justified'}
+                    </Badge>
+                  </div>
+                </div>
+              )}
+
+              {/* Assignment Analysis (NEW) */}
+              {selectedDecision.assignment_analysis && (
+                <div>
+                  <h4 className="font-medium text-white mb-3">Assignment Analysis</h4>
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                    <div className="p-3 bg-blue-500/10 border border-blue-500/30 rounded-lg">
+                      <span className="text-xs text-blue-400">Assignment Profit</span>
+                      <p className="text-lg font-bold text-blue-400">
+                        ${selectedDecision.assignment_analysis.assignment_profit?.toFixed(2)}
+                      </p>
+                    </div>
+                    <div className="p-3 bg-blue-500/10 border border-blue-500/30 rounded-lg">
+                      <span className="text-xs text-blue-400">Assignment ROI</span>
+                      <p className="text-lg font-bold text-blue-400">
+                        {selectedDecision.assignment_analysis.assignment_roi_pct?.toFixed(2)}%
+                      </p>
+                    </div>
+                    <div className="p-3 bg-violet-500/10 border border-violet-500/30 rounded-lg">
+                      <span className="text-xs text-violet-400">CSP ROI/Week Est.</span>
+                      <p className="text-lg font-bold text-violet-400">
+                        {selectedDecision.assignment_analysis.csp_roi_per_week_estimate?.toFixed(3)}%
+                      </p>
+                    </div>
+                  </div>
+                  <p className="text-xs text-zinc-500 mt-2">
+                    After assignment, continue income cycle by selling Cash-Secured Put (CSP) at same strike.
+                  </p>
+                </div>
+              )}
+
               {/* Scenario Comparison */}
               <div>
                 <h4 className="font-medium text-white mb-3">Scenario Comparison</h4>
                 <div className="space-y-2">
                   {selectedDecision.comparison && Object.entries(selectedDecision.comparison).map(([key, scenario]) => (
-                    <div key={key} className="p-3 bg-zinc-800/50 rounded-lg flex justify-between items-center">
+                    <div key={key} className={`p-3 rounded-lg flex justify-between items-center ${
+                      scenario.recommended ? 'bg-emerald-500/10 border border-emerald-500/30' : 'bg-zinc-800/50'
+                    }`}>
                       <div>
-                        <span className="font-medium text-white">
-                          {key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
-                        </span>
+                        <div className="flex items-center gap-2">
+                          <span className="font-medium text-white">
+                            {key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                          </span>
+                          {scenario.recommended && (
+                            <Badge className="bg-emerald-500/20 text-emerald-400 text-xs">Recommended</Badge>
+                          )}
+                        </div>
                         <p className="text-xs text-zinc-500">{scenario.description}</p>
                       </div>
                       <span className={`text-lg font-bold ${scenario.value >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
@@ -1240,7 +1325,9 @@ const Simulator = () => {
                             ? 'bg-red-500/10 border-red-500/30'
                             : rule.severity === 'medium'
                               ? 'bg-amber-500/10 border-amber-500/30'
-                              : 'bg-zinc-800/50 border-zinc-700/50'
+                              : rule.severity === 'info'
+                                ? 'bg-blue-500/10 border-blue-500/30'
+                                : 'bg-zinc-800/50 border-zinc-700/50'
                         }`}
                       >
                         <div className="flex items-center justify-between">
@@ -1250,6 +1337,7 @@ const Simulator = () => {
                           <Badge className={
                             rule.severity === 'high' ? 'bg-red-500/20 text-red-400' :
                             rule.severity === 'medium' ? 'bg-amber-500/20 text-amber-400' :
+                            rule.severity === 'info' ? 'bg-blue-500/20 text-blue-400' :
                             'bg-zinc-500/20 text-zinc-400'
                           }>
                             {rule.severity}
