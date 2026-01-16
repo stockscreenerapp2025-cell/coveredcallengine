@@ -697,9 +697,9 @@ async def get_dashboard_opportunities(user: dict = Depends(get_current_user)):
                     roi_pct = (premium / current_price) * 100
                     
                     # ROI filters - Weekly needs at least 0.8%, Monthly needs at least 2.5%
-                    if expiry_type == "Weekly" and roi_pct < 0.8:
+                    if expiry_type == "weekly" and roi_pct < 0.8:
                         continue
-                    if expiry_type == "Monthly" and roi_pct < 2.5:
+                    if expiry_type == "monthly" and roi_pct < 2.5:
                         continue
                     
                     annualized_roi = (roi_pct / max(dte, 1)) * 365
