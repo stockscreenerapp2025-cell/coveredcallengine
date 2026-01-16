@@ -1,0 +1,83 @@
+{
+  "summary": "Tested 5 user-reported issues. 3 issues FIXED (Issue 1: Simulator IV fields, Issue 2: Dashboard 'US Market Closed' badge, Issue 5: Watchlist analyst rating). 2 issues NOT FIXED (Issue 3: Screener auto-load, Issue 4: PMCC auto-load). The Screener and PMCC pages still call fetchOpportunities() in their useEffect hooks on page load.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [
+      {
+        "flow": "Screener page auto-load",
+        "issue": "Screener.js still calls fetchOpportunities() on page load in useEffect (lines 203-223). Should NOT auto-load data - user should click 'Run Scan' or select a pre-computed scan first.",
+        "affected_selectors": ["[data-testid='screener-page']"],
+        "priority": "HIGH"
+      },
+      {
+        "flow": "PMCC page auto-load",
+        "issue": "PMCC.js still calls fetchOpportunities() on page load in useEffect (lines 185-201). Should NOT auto-load data - user should click 'Custom Scan' or select a pre-computed scan first.",
+        "affected_selectors": ["[data-testid='pmcc-page']"],
+        "priority": "HIGH"
+      }
+    ],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/tests/test_5_issues.py",
+    "/app/test_reports/pytest/pytest_5_issues.xml"
+  ],
+  "action_items": [
+    "FIX REQUIRED: Screener.js - Remove fetchOpportunities() call from useEffect (lines 215, 218). Page should show empty state until user triggers a scan.",
+    "FIX REQUIRED: PMCC.js - Remove fetchOpportunities() call from useEffect (lines 193, 196). Page should show empty state until user triggers a scan.",
+    "VERIFIED FIXED: Issue 1 - Simulator accepts and displays IV, IV Rank, and Open Interest fields",
+    "VERIFIED FIXED: Issue 2 - Dashboard shows 'US Market Closed' badge",
+    "VERIFIED FIXED: Issue 5 - Watchlist saves analyst_rating_at_add when adding stocks"
+  ],
+  "critical_code_review_comments": [
+    "Screener.js line 215: fetchOpportunities() is called inside initializeData() which runs on page load - this should be removed",
+    "Screener.js line 218: fetchOpportunities() is also called in the catch block - this should be removed",
+    "PMCC.js line 193: fetchOpportunities() is called inside initializeData() which runs on page load - this should be removed",
+    "PMCC.js line 196: fetchOpportunities() is also called in the catch block - this should be removed",
+    "The comment in Screener.js says 'Default to custom scan - user can select pre-computed scans if desired' but then immediately calls fetchOpportunities() which defeats the purpose"
+  ],
+  "updated_files": [],
+  "success_rate": {
+    "backend": "100% - All APIs working correctly",
+    "frontend": "60% - 3 of 5 issues fixed, 2 issues (Screener/PMCC auto-load) still not fixed"
+  },
+  "test_credentials": {
+    "email": "admin@premiumhunter.com",
+    "password": "admin123"
+  },
+  "seed_data_creation": "Created test trades TEST_IV_CHECK and TEST_AAPL to verify IV fields",
+  "retest_needed": true,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Issues 3 and 4 require code changes to Screener.js and PMCC.js. The useEffect hooks in both files need to be modified to NOT call fetchOpportunities() on page load. The pages should show an empty state with the filter form visible until the user clicks 'Custom Scan' or selects a pre-computed scan.",
+  "issues_summary": {
+    "issue_1_simulator_iv_fields": {
+      "status": "FIXED",
+      "evidence": "Simulator page shows IV, IV Rank, OI columns. Test trades show IV Rank=46%, OI=5,000",
+      "code_location": "backend/routes/simulator.py lines 106-121, frontend/src/pages/Screener.js lines 99-110"
+    },
+    "issue_2_dashboard_market_badge": {
+      "status": "FIXED",
+      "evidence": "Dashboard shows 'US Market Closed' badge next to title",
+      "code_location": "frontend/src/pages/Dashboard.js line 293"
+    },
+    "issue_3_screener_auto_load": {
+      "status": "NOT FIXED",
+      "evidence": "Screener auto-loaded 43 results on page load. Code still calls fetchOpportunities() in useEffect",
+      "code_location": "frontend/src/pages/Screener.js lines 203-223, specifically lines 215 and 218"
+    },
+    "issue_4_pmcc_auto_load": {
+      "status": "NOT FIXED",
+      "evidence": "PMCC page shows loading spinner on page load. Code still calls fetchOpportunities() in useEffect",
+      "code_location": "frontend/src/pages/PMCC.js lines 185-201, specifically lines 193 and 196"
+    },
+    "issue_5_watchlist_analyst_rating": {
+      "status": "FIXED",
+      "evidence": "API test confirmed analyst_rating_at_add is saved when adding stocks to watchlist",
+      "code_location": "backend/routes/watchlist.py lines 218-230"
+    }
+  }
+}
