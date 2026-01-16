@@ -295,7 +295,14 @@ const Screener = () => {
       setDataInfo({
         from_cache: response.data.from_cache,
         market_closed: response.data.market_closed,
-        is_last_trading_day: response.data.is_last_trading_day
+        is_last_trading_day: response.data.is_last_trading_day,
+        is_precomputed_fallback: response.data.is_precomputed_fallback,
+        precomputed_profile: response.data.precomputed_profile,
+        data_freshness_score: response.data.data_freshness_score,
+        data_note: response.data.data_note,
+        fetched_at: response.data.fetched_at,
+        computed_at: response.data.computed_at,
+        data_source: response.data.data_source
       });
       
       // Client-side filtering for moneyness
