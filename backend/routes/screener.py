@@ -250,42 +250,45 @@ async def screen_covered_calls(
     """
     Screen for covered call opportunities with advanced filters.
     
-    T-1 DATA PRINCIPLE:
-    - Always uses previous trading day market close data
-    - No intraday or partial data
-    - Data is cached and refreshed daily after market close (4 PM ET)
+    TWO-SOURCE DATA MODEL:
+    - Equity Price: T-1 market close (hard rule)
+    - Options Chain: Latest fully available snapshot from Yahoo Finance
     
-    DATA SOURCES:
-    - Options: Yahoo Finance primary, Polygon backup
-    - Stock prices: Yahoo Finance primary, Polygon backup
+    WEEKLY/MONTHLY MIX:
+    - Returns 50/50 mix of best weekly and monthly options by default
+    - Use weekly_only=True or monthly_only=True to filter
+    
+    VALIDATION:
+    - Only uses expirations that ACTUALLY exist in Yahoo Finance
+    - Only Friday expirations (standard weeklies)
+    - Rejects options with missing IV or OI
     """
     funcs = _get_server_functions()
     
     # Get T-1 data info for response
     t1_info = _get_t1_data_info()
-    t1_date = t1_info["data_date"]
+    equity_date = t1_info["equity_price_date"]
     
-    # Generate cache key based on T-1 date and filter parameters
+    # Generate cache key
     cache_params = {
-        "t1_date": t1_date,  # Include T-1 date in cache key
+        "equity_date": equity_date,
         "min_roi": min_roi, "max_dte": max_dte, "min_delta": min_delta, "max_delta": max_delta,
         "min_iv_rank": min_iv_rank, "min_price": min_price, "max_price": max_price,
         "include_stocks": include_stocks, "include_etfs": include_etfs, "include_index": include_index,
         "min_volume": min_volume, "min_open_interest": min_open_interest,
         "weekly_only": weekly_only, "monthly_only": monthly_only
     }
-    cache_key = funcs['generate_cache_key']("screener_cc_t1_v1", cache_params)
+    cache_key = funcs['generate_cache_key']("screener_cc_v2", cache_params)
     
-    # T-1 DATA: Cache is valid for the entire day (until next T-1)
-    # Check cache first - T-1 data doesn't change until next trading day
+    # Check cache first
     if not bypass_cache:
-        cached_data = await funcs['get_cached_data'](cache_key, max_age_seconds=86400)  # 24 hours
+        cached_data = await funcs['get_cached_data'](cache_key, max_age_seconds=86400)
         if cached_data and cached_data.get("opportunities"):
             cached_data["from_cache"] = True
-            cached_data["t1_data"] = t1_info
+            cached_data["metadata"] = t1_info
             return cached_data
         
-        # Check precomputed scans (already T-1 data)
+        # Check precomputed scans
         precomputed = await db.precomputed_scans.find_one(
             {"strategy": "covered_call", "risk_profile": "balanced"},
             {"_id": 0}
@@ -300,23 +303,23 @@ async def screen_covered_calls(
                 "is_precomputed": True,
                 "precomputed_profile": "balanced",
                 "computed_at": precomputed.get("computed_at"),
-                "t1_data": t1_info,
+                "metadata": t1_info,
                 "data_freshness": freshness
             }
     
     # Get API key for backup data source
     api_key = await funcs['get_massive_api_key']()
     
-    logging.info(f"Covered Calls Screener (T-1: {t1_date}): api_key={'present' if api_key else 'missing'}, min_roi={min_roi}, max_dte={max_dte}")
+    logging.info(f"CC Screener (Equity: {equity_date}): api_key={'present' if api_key else 'missing'}, min_roi={min_roi}, max_dte={max_dte}")
     
     if not api_key:
-        # No API key - return mock data
         opportunities = funcs['generate_mock_covered_call_opportunities']()
         filtered = [o for o in opportunities if o["roi_pct"] >= min_roi and o["dte"] <= max_dte]
         return {"opportunities": filtered[:20], "total": len(filtered), "is_mock": True, "message": "API key required for live data"}
     
     try:
         opportunities = []
+        options_snapshot_time = None
         
         # Symbol lists for scanning
         tier1_symbols = [
