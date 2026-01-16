@@ -262,7 +262,8 @@ def _fetch_options_chain_yahoo_sync(
     option_type: str = "call",
     current_price: float = None,
     friday_only: bool = True,
-    require_complete_data: bool = True
+    require_complete_data: bool = True,
+    is_leaps: bool = False
 ) -> Tuple[List[Dict], Dict[str, Any]]:
     """
     Fetch options chain from Yahoo Finance with STRICT validation.
@@ -281,6 +282,7 @@ def _fetch_options_chain_yahoo_sync(
         current_price: Current stock price (T-1 close)
         friday_only: Only include Friday expirations
         require_complete_data: Reject options missing IV/OI
+        is_leaps: If True, use wider strike range for deep ITM LEAPS
     
     Returns:
         Tuple of (list of options, metadata dict)
@@ -370,14 +372,27 @@ def _fetch_options_chain_yahoo_sync(
                         continue
                     
                     # Filter strikes based on moneyness
-                    if option_type == "call":
-                        if strike < current_price * 0.95 or strike > current_price * 1.15:
-                            rejection_reasons["out_of_range"] += 1
-                            continue
+                    # For LEAPS, use much wider range to include deep ITM strikes
+                    if is_leaps:
+                        # LEAPS: allow strikes from 40% to 110% of current price
+                        if option_type == "call":
+                            if strike < current_price * 0.40 or strike > current_price * 1.10:
+                                rejection_reasons["out_of_range"] += 1
+                                continue
+                        else:
+                            if strike > current_price * 1.60 or strike < current_price * 0.90:
+                                rejection_reasons["out_of_range"] += 1
+                                continue
                     else:
-                        if strike > current_price * 1.05 or strike < current_price * 0.85:
-                            rejection_reasons["out_of_range"] += 1
-                            continue
+                        # Regular options: tighter range around current price
+                        if option_type == "call":
+                            if strike < current_price * 0.95 or strike > current_price * 1.15:
+                                rejection_reasons["out_of_range"] += 1
+                                continue
+                        else:
+                            if strike > current_price * 1.05 or strike < current_price * 0.85:
+                                rejection_reasons["out_of_range"] += 1
+                                continue
                     
                     # Get premium - use last price or mid of bid/ask
                     last_price = row.get('lastPrice', 0)
