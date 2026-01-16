@@ -736,40 +736,11 @@ async def screen_pmcc(
                     "t1_data": t1_info,
                     "data_freshness": freshness
                 }
-            ltd_data["is_last_trading_day"] = True
-            ltd_data["data_note"] = "Data from last trading day"
-            return ltd_data
-        
-        # Fallback to precomputed scans
-        for profile in ["balanced", "aggressive", "conservative"]:
-            precomputed = await db.precomputed_scans.find_one(
-                {"strategy": "pmcc", "risk_profile": profile},
-                {"_id": 0}
-            )
-            if precomputed and precomputed.get("opportunities"):
-                return {
-                    "opportunities": precomputed["opportunities"],
-                    "total": len(precomputed["opportunities"]),
-                    "from_cache": True,
-                    "market_closed": True,
-                    "is_precomputed_fallback": True,
-                    "precomputed_profile": profile,
-                    "computed_at": precomputed.get("computed_at"),
-                    "data_note": f"Pre-computed {profile} scan from {precomputed.get('computed_date', 'unknown')}"
-                }
-    elif not bypass_cache:
-        # Market open - use short cache (5 min) for rate limiting only
-        cached_data = await funcs['get_cached_data'](cache_key, max_age_seconds=300)
-        if cached_data and cached_data.get("opportunities"):
-            cached_data["from_cache"] = True
-            cached_data["market_closed"] = False
-            cached_data["data_note"] = "Live data (cached < 5 min)"
-            return cached_data
     
     api_key = await funcs['get_massive_api_key']()
     
     if not api_key:
-        return {"opportunities": [], "total": 0, "message": "API key required for PMCC screening", "is_mock": True}
+        return {"opportunities": [], "total": 0, "message": "API key required for PMCC screening", "is_mock": True, "t1_data": t1_info}
     
     try:
         # Expanded symbol list for more opportunities
@@ -796,7 +767,7 @@ async def screen_pmcc(
         
         for symbol in symbols_to_scan:
             try:
-                # Get stock price using centralized data provider
+                # Get stock price using centralized data provider (T-1)
                 stock_data = await fetch_stock_quote(symbol, api_key)
                 
                 if not stock_data or stock_data.get("price", 0) == 0:
@@ -807,12 +778,12 @@ async def screen_pmcc(
                 if current_price < min_price or current_price > max_price:
                     continue
                 
-                # Get LEAPS options from Polygon ONLY (long leg)
+                # Get LEAPS options (long leg) - T-1 data
                 leaps_options = await fetch_options_chain(
                     symbol, api_key, "call", max_leaps_dte, min_dte=min_leaps_dte, current_price=current_price
                 )
                 
-                # Get short-term options from Polygon ONLY (short leg)
+                # Get short-term options (short leg) - T-1 data
                 short_options = await fetch_options_chain(
                     symbol, api_key, "call", max_short_dte, min_dte=min_short_dte, current_price=current_price
                 )
