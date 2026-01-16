@@ -932,8 +932,20 @@ async def health():
 
 @api_router.get("/market-status")
 async def get_market_status():
-    """Get current market status (open/closed) and relevant times"""
+    """
+    Get current market status and T-1 data information.
+    
+    T-1 DATA PRINCIPLE:
+    CCE always uses T-1 (previous trading day) market close data.
+    This endpoint returns the current T-1 date and data status.
+    """
     try:
+        from services.trading_calendar import get_t_minus_1, get_market_data_status
+        
+        # Get T-1 information
+        market_status = get_market_data_status()
+        t1_date, t1_datetime = get_t_minus_1()
+        
         eastern = pytz.timezone('US/Eastern')
         now_eastern = datetime.now(eastern)
         
@@ -944,11 +956,8 @@ async def get_market_status():
         is_before_open = now_eastern < market_open_time
         is_after_close = now_eastern > market_close_time
         
-        market_closed = is_weekend or is_before_open or is_after_close
-        
+        # Current market status
         status = "closed"
-        reason = ""
-        
         if is_weekend:
             status = "closed"
             reason = "Weekend - Market is closed"
@@ -964,13 +973,20 @@ async def get_market_status():
         
         return {
             "status": status,
-            "is_open": not market_closed,
+            "is_open": status == "open",
             "is_weekend": is_weekend,
             "reason": reason,
             "current_time_et": now_eastern.strftime("%Y-%m-%d %H:%M:%S ET"),
             "market_open": "9:30 AM ET",
             "market_close": "4:00 PM ET",
-            "data_note": "Data shown is from Friday's market close" if is_weekend else ("Data is cached from market hours" if market_closed else "Live market data")
+            # T-1 Data Information
+            "t1_data": {
+                "date": t1_date,
+                "description": f"Market close data from {t1_date}",
+                "data_age_hours": market_status["data_age_hours"],
+                "next_refresh": market_status["next_data_refresh"]
+            },
+            "data_note": f"All scans use T-1 (previous trading day) close data from {t1_date}"
         }
     except Exception as e:
         logging.error(f"Market status error: {e}")
