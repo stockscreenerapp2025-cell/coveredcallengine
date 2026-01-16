@@ -2086,7 +2086,7 @@ async def get_action_logs(
 
 @simulator_router.get("/pmcc-summary")
 async def get_pmcc_summary(user: dict = Depends(get_current_user)):
-    """Get PMCC-specific summary statistics"""
+    """Get PMCC-specific summary statistics with position details for frontend tracker"""
     
     pmcc_trades = await db.simulator_trades.find(
         {"user_id": user["id"], "strategy_type": "pmcc"},
@@ -2095,15 +2095,16 @@ async def get_pmcc_summary(user: dict = Depends(get_current_user)):
     
     if not pmcc_trades:
         return {
-            "total_pmcc_trades": 0,
-            "active_trades": 0,
-            "completed_trades": 0,
-            "total_leaps_cost": 0,
-            "total_premium_collected": 0,
-            "premium_to_cost_ratio": 0,
-            "avg_rolls_per_position": 0,
-            "realized_pnl": 0,
-            "unrealized_pnl": 0
+            "summary": [],
+            "overall": {
+                "total_pmcc_positions": 0,
+                "active_positions": 0,
+                "total_leaps_investment": 0,
+                "total_premium_income": 0,
+                "overall_income_ratio": 0,
+                "realized_pnl": 0,
+                "unrealized_pnl": 0
+            }
         }
     
     active = [t for t in pmcc_trades if t.get("status") == "active"]
@@ -2117,16 +2118,44 @@ async def get_pmcc_summary(user: dict = Depends(get_current_user)):
     realized_pnl = sum(t.get("realized_pnl", 0) or t.get("final_pnl", 0) for t in completed)
     unrealized_pnl = sum(t.get("unrealized_pnl", 0) for t in active)
     
+    # Build individual position summaries for the tracker
+    position_summaries = []
+    for trade in pmcc_trades:
+        leaps_investment = (trade.get("leaps_premium", 0) * 100 * trade.get("contracts", 1))
+        premium_income = trade.get("premium_received", 0)
+        income_ratio = (premium_income / leaps_investment * 100) if leaps_investment > 0 else 0
+        
+        position_summaries.append({
+            "original_trade_id": trade.get("id"),
+            "symbol": trade.get("symbol"),
+            "status": trade.get("status"),
+            "leaps_strike": trade.get("leaps_strike"),
+            "leaps_expiry": trade.get("leaps_expiry"),
+            "leaps_dte_remaining": trade.get("leaps_dte_remaining", 0),
+            "short_call_strike": trade.get("short_call_strike"),
+            "short_call_expiry": trade.get("short_call_expiry"),
+            "contracts": trade.get("contracts", 1),
+            "leaps_investment": round(leaps_investment, 2),
+            "total_premium_income": round(premium_income, 2),
+            "income_ratio": round(income_ratio, 1),
+            "roll_count": len([log for log in trade.get("action_log", []) if log.get("action") == "rolled"]),
+            "unrealized_pnl": round(trade.get("unrealized_pnl", 0), 2),
+            "current_underlying_price": trade.get("current_underlying_price"),
+            "entry_date": trade.get("entry_date"),
+            "days_held": trade.get("days_held", 0)
+        })
+    
     return {
-        "total_pmcc_trades": len(pmcc_trades),
-        "active_trades": len(active),
-        "completed_trades": len(completed),
-        "total_leaps_cost": round(total_leaps_cost, 2),
-        "total_premium_collected": round(total_premium, 2),
-        "premium_to_cost_ratio": round(premium_ratio, 1),
-        "avg_rolls_per_position": 0,  # Would need roll tracking
-        "realized_pnl": round(realized_pnl, 2),
-        "unrealized_pnl": round(unrealized_pnl, 2)
+        "summary": position_summaries,
+        "overall": {
+            "total_pmcc_positions": len(pmcc_trades),
+            "active_positions": len(active),
+            "total_leaps_investment": round(total_leaps_cost, 2),
+            "total_premium_income": round(total_premium, 2),
+            "overall_income_ratio": round(premium_ratio, 1),
+            "realized_pnl": round(realized_pnl, 2),
+            "unrealized_pnl": round(unrealized_pnl, 2)
+        }
     }
 
 
