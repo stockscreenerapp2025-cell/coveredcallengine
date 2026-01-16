@@ -170,6 +170,19 @@ const Watchlist = () => {
 
   return (
     <div className="space-y-6" data-testid="watchlist-page">
+      {/* T-1 Data Status Banner */}
+      <div className="glass-card p-3 flex items-center justify-between bg-zinc-800/50 border-emerald-500/30">
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
+            <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+            <span className="text-emerald-400 font-medium text-sm">T-1 Market Data</span>
+          </div>
+          <span className="text-zinc-400 text-sm">
+            Using previous trading day close data
+          </span>
+        </div>
+      </div>
+
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
