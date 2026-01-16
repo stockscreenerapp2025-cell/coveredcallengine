@@ -1037,15 +1037,19 @@ const Simulator = () => {
                           {decision.strategy_type === 'covered_call' ? 'CC' : 'PMCC'}
                         </Badge>
                         <Badge className={
-                          decision.recommendation === 'hold' 
+                          {decision.recommendation === 'hold' 
                             ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30'
-                            : decision.recommendation.includes('close') 
-                              ? 'bg-cyan-500/20 text-cyan-400 border-cyan-500/30'
-                              : decision.recommendation.includes('roll')
-                                ? 'bg-violet-500/20 text-violet-400 border-violet-500/30'
-                                : 'bg-amber-500/20 text-amber-400 border-amber-500/30'
+                            : decision.recommendation === 'expire_worthless'
+                              ? 'bg-green-500/20 text-green-400 border-green-500/30'
+                              : decision.recommendation === 'accept_assignment'
+                                ? 'bg-blue-500/20 text-blue-400 border-blue-500/30'
+                                : decision.recommendation.includes('close') 
+                                  ? 'bg-cyan-500/20 text-cyan-400 border-cyan-500/30'
+                                  : decision.recommendation.includes('roll')
+                                    ? 'bg-violet-500/20 text-violet-400 border-violet-500/30'
+                                    : 'bg-amber-500/20 text-amber-400 border-amber-500/30'
                         }>
-                          {decision.recommendation.replace('_', ' ').toUpperCase()}
+                          {decision.recommendation.replace(/_/g, ' ').toUpperCase()}
                         </Badge>
                       </div>
                       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
