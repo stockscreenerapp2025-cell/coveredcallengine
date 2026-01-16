@@ -671,7 +671,7 @@ async def screen_pmcc(
         
         # Fallback to pre-computed "balanced" PMCC scan (most comprehensive)
         precomputed_scan = await db.precomputed_scans.find_one(
-            {"scan_type": "pmcc", "risk_profile": "balanced"},
+            {"strategy": "pmcc", "risk_profile": "balanced"},
             {"_id": 0}
         )
         if precomputed_scan and precomputed_scan.get("opportunities"):
@@ -689,7 +689,7 @@ async def screen_pmcc(
         # Try aggressive or conservative as last resort
         for profile in ["aggressive", "conservative"]:
             fallback_scan = await db.precomputed_scans.find_one(
-                {"scan_type": "pmcc", "risk_profile": profile},
+                {"strategy": "pmcc", "risk_profile": profile},
                 {"_id": 0}
             )
             if fallback_scan and fallback_scan.get("opportunities"):
