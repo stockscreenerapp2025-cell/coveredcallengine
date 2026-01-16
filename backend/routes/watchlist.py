@@ -30,9 +30,17 @@ def _get_server_functions():
 async def _get_best_opportunity(symbol: str, api_key: str, underlying_price: float) -> dict:
     """Get the best covered call opportunity for a symbol using unified data provider"""
     try:
-        # Fetch options chain (Yahoo primary with IV/OI, Polygon backup)
-        options = await fetch_options_chain(
-            symbol, api_key, "call", 45, min_dte=1, current_price=underlying_price
+        # Fetch options chain (Yahoo primary with IV/OI)
+        # Function returns (options, metadata) tuple
+        options, metadata = await fetch_options_chain(
+            symbol=symbol,
+            api_key=api_key,
+            option_type="call",
+            max_dte=45,
+            min_dte=1,
+            current_price=underlying_price,
+            friday_only=True,
+            require_complete_data=True
         )
         
         if not options:
