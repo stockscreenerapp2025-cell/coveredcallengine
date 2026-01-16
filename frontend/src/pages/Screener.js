@@ -467,32 +467,49 @@ const Screener = () => {
     </th>
   );
 
+  // Get metadata from apiInfo
+  const metadata = apiInfo?.metadata || apiInfo?.t1_data;
+  const equityDate = metadata?.equity_price_date || metadata?.data_date;
+  const optionsSnapshot = metadata?.options_snapshot_time;
+
   return (
     <div className="space-y-6" data-testid="screener-page">
-      {/* T-1 Data Status Banner - Always Show */}
-      <div className="glass-card p-3 flex items-center justify-between bg-zinc-800/50 border-emerald-500/30">
-        <div className="flex items-center gap-3">
-          <div className="flex items-center gap-2">
-            <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-            <span className="text-emerald-400 font-medium text-sm">T-1 Market Data</span>
-          </div>
-          <span className="text-zinc-400 text-sm">
-            {marketStatus?.t1_data ? (
-              <>Data from: <span className="text-white font-medium">{marketStatus.t1_data.date}</span> (Market Close)</>
-            ) : (
-              <>Using previous trading day close data</>
+      {/* Two-Source Data Model Banner */}
+      <div className="glass-card p-3 bg-zinc-800/50 border-emerald-500/30">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-2">
+          <div className="flex flex-wrap items-center gap-4">
+            <div className="flex items-center gap-2">
+              <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+              <span className="text-emerald-400 font-medium text-sm">Two-Source Data</span>
+            </div>
+            <div className="flex items-center gap-2 text-sm">
+              <span className="text-zinc-500">Equity:</span>
+              <span className="text-white font-medium">
+                {equityDate || marketStatus?.t1_data?.date || 'Loading...'} (T-1 Close)
+              </span>
+            </div>
+            {optionsSnapshot && (
+              <div className="flex items-center gap-2 text-sm">
+                <span className="text-zinc-500">Options Snapshot:</span>
+                <span className="text-white">{optionsSnapshot}</span>
+              </div>
             )}
-          </span>
-        </div>
-        <div className="flex items-center gap-2">
-          {marketStatus?.t1_data?.next_refresh && (
-            <span className="text-xs text-zinc-500">
-              Next refresh: {marketStatus.t1_data.next_refresh}
-            </span>
-          )}
-          <Badge className="bg-emerald-500/20 text-emerald-400 border-emerald-500/30 text-xs">
-            {marketStatus?.current_time_et || 'Loading...'}
-          </Badge>
+          </div>
+          <div className="flex items-center gap-2">
+            {apiInfo?.weekly_count !== undefined && (
+              <Badge className="bg-blue-500/20 text-blue-400 border-blue-500/30 text-xs">
+                {apiInfo.weekly_count} Weekly
+              </Badge>
+            )}
+            {apiInfo?.monthly_count !== undefined && (
+              <Badge className="bg-violet-500/20 text-violet-400 border-violet-500/30 text-xs">
+                {apiInfo.monthly_count} Monthly
+              </Badge>
+            )}
+            <Badge className="bg-emerald-500/20 text-emerald-400 border-emerald-500/30 text-xs">
+              {marketStatus?.current_time_et || 'Loading...'}
+            </Badge>
+          </div>
         </div>
       </div>
 
