@@ -2121,28 +2121,61 @@ async def get_pmcc_summary(user: dict = Depends(get_current_user)):
     # Build individual position summaries for the tracker
     position_summaries = []
     for trade in pmcc_trades:
-        leaps_investment = (trade.get("leaps_premium", 0) * 100 * trade.get("contracts", 1))
-        premium_income = trade.get("premium_received", 0)
-        income_ratio = (premium_income / leaps_investment * 100) if leaps_investment > 0 else 0
+        leaps_cost = (trade.get("leaps_premium", 0) * 100 * trade.get("contracts", 1))
+        total_premium_received = trade.get("premium_received", 0)
+        income_to_cost_ratio = (total_premium_received / leaps_cost * 100) if leaps_cost > 0 else 0
+        
+        # Calculate days to LEAPS expiry
+        days_to_leaps_expiry = trade.get("leaps_dte_remaining", 0)
+        if not days_to_leaps_expiry and trade.get("leaps_expiry"):
+            try:
+                leaps_exp_dt = datetime.strptime(trade["leaps_expiry"], "%Y-%m-%d")
+                days_to_leaps_expiry = (leaps_exp_dt - datetime.now()).days
+            except:
+                days_to_leaps_expiry = 365
+        
+        # Calculate estimated LEAPS decay based on days elapsed
+        days_held = trade.get("days_held", 0)
+        initial_dte = trade.get("initial_dte", 365) or 365
+        if initial_dte > 0:
+            # Rough theta decay estimate - accelerates as expiry approaches
+            time_elapsed_pct = (days_held / initial_dte) * 100
+            # Use sqrt approximation for time decay
+            estimated_leaps_decay_pct = min(100, (days_held / initial_dte) ** 0.5 * 100)
+        else:
+            estimated_leaps_decay_pct = 0
+        
+        # Determine health status
+        if income_to_cost_ratio >= estimated_leaps_decay_pct * 1.2:
+            health = "good"
+        elif income_to_cost_ratio >= estimated_leaps_decay_pct * 0.5:
+            health = "warning"
+        else:
+            health = "critical"
+        
+        total_realized_pnl = trade.get("realized_pnl", 0) or 0
         
         position_summaries.append({
             "original_trade_id": trade.get("id"),
             "symbol": trade.get("symbol"),
             "status": trade.get("status"),
-            "leaps_strike": trade.get("leaps_strike"),
+            "leaps_strike": trade.get("leaps_strike") or 0,
             "leaps_expiry": trade.get("leaps_expiry"),
-            "leaps_dte_remaining": trade.get("leaps_dte_remaining", 0),
+            "days_to_leaps_expiry": max(0, days_to_leaps_expiry),
             "short_call_strike": trade.get("short_call_strike"),
             "short_call_expiry": trade.get("short_call_expiry"),
             "contracts": trade.get("contracts", 1),
-            "leaps_investment": round(leaps_investment, 2),
-            "total_premium_income": round(premium_income, 2),
-            "income_ratio": round(income_ratio, 1),
+            "leaps_cost": round(leaps_cost, 2),
+            "total_premium_received": round(total_premium_received, 2),
+            "income_to_cost_ratio": round(income_to_cost_ratio, 1),
+            "estimated_leaps_decay_pct": round(estimated_leaps_decay_pct, 1),
+            "total_realized_pnl": round(total_realized_pnl, 2),
             "roll_count": len([log for log in trade.get("action_log", []) if log.get("action") == "rolled"]),
             "unrealized_pnl": round(trade.get("unrealized_pnl", 0), 2),
             "current_underlying_price": trade.get("current_underlying_price"),
             "entry_date": trade.get("entry_date"),
-            "days_held": trade.get("days_held", 0)
+            "days_held": days_held,
+            "health": health
         })
     
     return {
