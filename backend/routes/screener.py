@@ -572,27 +572,28 @@ async def get_dashboard_opportunities(user: dict = Depends(get_current_user)):
     """
     Get top 10 covered call opportunities for dashboard - 5 Weekly + 5 Monthly.
     
-    T-1 DATA PRINCIPLE:
-    - Always uses previous trading day market close data
-    - No intraday or partial data
+    TWO-SOURCE DATA MODEL:
+    - Equity: T-1 market close
+    - Options: Latest available snapshot
+    - Weekly options FIRST, then Monthly to fill remaining slots
     """
     funcs = _get_server_functions()
     t1_info = _get_t1_data_info()
-    t1_date = t1_info["data_date"]
+    equity_date = t1_info["equity_price_date"]
     
-    cache_key = f"dashboard_opportunities_t1_{t1_date}"
+    cache_key = f"dashboard_opportunities_v3_{equity_date}"
     
-    # Check cache (valid for entire T-1 day)
+    # Check cache (valid for entire day)
     cached_data = await funcs['get_cached_data'](cache_key, max_age_seconds=86400)
     if cached_data:
         cached_data["from_cache"] = True
-        cached_data["t1_data"] = t1_info
+        cached_data["metadata"] = t1_info
         return cached_data
     
     api_key = await funcs['get_massive_api_key']()
     
     if not api_key:
-        return {"opportunities": [], "total": 0, "message": "API key not configured", "is_mock": True, "t1_data": t1_info}
+        return {"opportunities": [], "total": 0, "message": "API key not configured", "is_mock": True, "metadata": t1_info}
     
     try:
         symbols_to_scan = [
@@ -611,10 +612,11 @@ async def get_dashboard_opportunities(user: dict = Depends(get_current_user)):
         
         weekly_opportunities = []
         monthly_opportunities = []
+        options_snapshot_time = None
         
-        for symbol in symbols_to_scan[:35]:  # Limit for performance
+        for symbol in symbols_to_scan[:35]:
             try:
-                # Get stock price using centralized data provider (Yahoo primary)
+                # Get stock price (T-1 close)
                 stock_data = await fetch_stock_quote(symbol, api_key)
                 
                 if not stock_data or stock_data.get("price", 0) == 0:
@@ -626,24 +628,44 @@ async def get_dashboard_opportunities(user: dict = Depends(get_current_user)):
                 if current_price < 25 or current_price > 100:
                     continue
                 
-                # Get options - Yahoo primary with IV/OI
-                weekly_options = await fetch_options_chain(
-                    symbol, api_key, "call", 7, min_dte=1, current_price=current_price
+                # Get options with proper tuple unpacking
+                # Weekly: DTE 1-7
+                weekly_result, weekly_meta = await fetch_options_chain(
+                    symbol=symbol,
+                    api_key=api_key,
+                    option_type="call",
+                    max_dte=7,
+                    min_dte=1,
+                    current_price=current_price,
+                    friday_only=True,
+                    require_complete_data=True
                 )
                 
-                monthly_options = await fetch_options_chain(
-                    symbol, api_key, "call", 45, min_dte=8, current_price=current_price
+                # Monthly: DTE 8-45
+                monthly_result, monthly_meta = await fetch_options_chain(
+                    symbol=symbol,
+                    api_key=api_key,
+                    option_type="call",
+                    max_dte=45,
+                    min_dte=8,
+                    current_price=current_price,
+                    friday_only=True,
+                    require_complete_data=True
                 )
+                
+                # Track snapshot time
+                if weekly_meta.get("snapshot_time") and not options_snapshot_time:
+                    options_snapshot_time = weekly_meta["snapshot_time"]
                 
                 all_options = []
-                if weekly_options:
-                    for opt in weekly_options:
-                        opt["expiry_type"] = "Weekly"
-                    all_options.extend(weekly_options)
-                if monthly_options:
-                    for opt in monthly_options:
-                        opt["expiry_type"] = "Monthly"
-                    all_options.extend(monthly_options)
+                if weekly_result:
+                    for opt in weekly_result:
+                        opt["expiry_type"] = "weekly"
+                    all_options.extend(weekly_result)
+                if monthly_result:
+                    for opt in monthly_result:
+                        opt["expiry_type"] = "monthly"
+                    all_options.extend(monthly_result)
                 
                 if not all_options:
                     continue
