@@ -1374,13 +1374,13 @@ const Screener = () => {
                         <td className="font-semibold text-white">
                           <div className="flex items-center gap-2">
                             {opp.symbol}
-                            {activeScan && opp.timeframe && (
+                            {(opp.expiry_type || opp.timeframe) && (
                               <Badge className={`text-xs ${
-                                opp.timeframe === 'weekly' 
+                                (opp.expiry_type === 'weekly' || opp.timeframe === 'weekly')
                                   ? 'bg-blue-500/20 text-blue-400 border-blue-500/30' 
                                   : 'bg-purple-500/20 text-purple-400 border-purple-500/30'
                               }`}>
-                                {opp.timeframe === 'weekly' ? 'W' : 'M'}
+                                {(opp.expiry_type === 'weekly' || opp.timeframe === 'weekly') ? 'W' : 'M'}
                               </Badge>
                             )}
                           </div>
