@@ -74,8 +74,8 @@ def is_market_closed() -> bool:
     Note: For T-1 data principle, market is always considered "closed" 
     since we only use previous trading day data.
     """
-    status = get_market_data_status()
-    return True  # Always return True - we always use T-1 data
+    # Always return True - we always use T-1 data
+    return True
 
 
 def get_last_trading_day() -> str:

@@ -1110,7 +1110,6 @@ async def get_data_quality_dashboard(user: dict = Depends(get_current_user)):
     Returns comprehensive status with actionable information.
     """
     t1_info = _get_t1_data_info()
-    t1_date = t1_info["data_date"]
     
     # Get market data status
     market_status = get_market_data_status()
