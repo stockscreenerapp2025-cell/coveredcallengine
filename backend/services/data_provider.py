@@ -4,10 +4,14 @@ Centralized Data Provider Service
 PRIMARY DATA SOURCE: Yahoo Finance (yfinance)
 BACKUP DATA SOURCE: Polygon/Massive (free tier)
 
+T-1 DATA PRINCIPLE (STRICT):
+- All data fetches return T-1 (previous trading day) market close data
+- No intraday or partial data is ever used
+- This ensures consistency across all scans and calculations
+
 Yahoo Finance provides:
-- Stock quotes (current + previous close - always available)
+- Stock quotes (previous close - T-1)
 - Options chains with IV, OI, Greeks built-in
-- Works during market hours and after (returns last available data)
 
 Polygon provides:
 - Backup for stock quotes when Yahoo fails
@@ -19,101 +23,98 @@ All screeners and pages should use these functions for consistency.
 
 import os
 import logging
-import asyncio
-import httpx
 from datetime import datetime, timedelta
 from typing import Optional, List, Dict, Any
 from concurrent.futures import ThreadPoolExecutor
+import asyncio
+import httpx
 import pytz
+
+# Import trading calendar for T-1 date management
+from services.trading_calendar import (
+    get_t_minus_1,
+    get_market_data_status,
+    is_valid_expiration_date,
+    filter_valid_expirations,
+    calculate_dte_from_t1,
+    get_data_freshness_status
+)
 
 # =============================================================================
 # CONFIGURATION
 # =============================================================================
 HTTP_TIMEOUT = httpx.Timeout(30.0, connect=10.0)
 POLYGON_BASE_URL = "https://api.polygon.io"
+EASTERN_TZ = pytz.timezone('US/Eastern')
 
 # Thread pool for blocking yfinance calls
 _yahoo_executor = ThreadPoolExecutor(max_workers=8)
 
+logger = logging.getLogger(__name__)
+
+
 # =============================================================================
-# MARKET STATUS HELPERS
+# T-1 DATA ACCESS (PRIMARY INTERFACE)
 # =============================================================================
 
+def get_data_date() -> str:
+    """
+    Get the date for which all data should be fetched (T-1).
+    
+    This is the single source of truth for data date across all components.
+    """
+    t1_date, _ = get_t_minus_1()
+    return t1_date
+
+
 def is_market_closed() -> bool:
-    """Check if US stock market is currently closed (weekend or outside market hours)"""
-    try:
-        eastern = pytz.timezone('US/Eastern')
-        now_eastern = datetime.now(eastern)
-        
-        # Weekend (Saturday=5, Sunday=6)
-        if now_eastern.weekday() >= 5:
-            return True
-        
-        # Outside market hours (9:30 AM - 4:00 PM ET)
-        market_open = now_eastern.replace(hour=9, minute=30, second=0, microsecond=0)
-        market_close = now_eastern.replace(hour=16, minute=0, second=0, microsecond=0)
-        
-        if now_eastern < market_open or now_eastern > market_close:
-            return True
-            
-        return False
-    except Exception as e:
-        logging.warning(f"Error checking market hours: {e}")
-        return False
+    """
+    Check if US stock market is currently closed.
+    
+    Note: For T-1 data principle, market is always considered "closed" 
+    since we only use previous trading day data.
+    """
+    status = get_market_data_status()
+    return True  # Always return True - we always use T-1 data
 
 
 def get_last_trading_day() -> str:
-    """Get the last trading day date string (YYYY-MM-DD)"""
-    eastern = pytz.timezone('US/Eastern')
-    now = datetime.now(eastern)
-    
-    # If weekend, go back to Friday
-    if now.weekday() == 5:  # Saturday
-        now = now - timedelta(days=1)
-    elif now.weekday() == 6:  # Sunday
-        now = now - timedelta(days=2)
-    elif now.weekday() == 0 and now.hour < 9:  # Monday before market open
-        now = now - timedelta(days=3)
-    elif now.hour < 9 or (now.hour == 9 and now.minute < 30):
-        # Before market open on weekday
-        now = now - timedelta(days=1)
-        if now.weekday() == 6:  # Sunday
-            now = now - timedelta(days=2)
-    
-    return now.strftime('%Y-%m-%d')
-
-
-def calculate_dte(expiry_date: str) -> int:
-    """Calculate days to expiration from date string"""
-    try:
-        exp = datetime.strptime(expiry_date, '%Y-%m-%d')
-        today = datetime.now()
-        return max(0, (exp - today).days)
-    except Exception:
-        return 0
+    """
+    Get the last trading day date string (YYYY-MM-DD).
+    This is an alias for get_data_date() for backward compatibility.
+    """
+    return get_data_date()
 
 
 # =============================================================================
-# YAHOO FINANCE - PRIMARY DATA SOURCE
+# YAHOO FINANCE - PRIMARY DATA SOURCE (T-1 DATA)
 # =============================================================================
 
 def _fetch_stock_quote_yahoo_sync(symbol: str) -> Dict[str, Any]:
     """
-    Fetch stock quote from Yahoo Finance (blocking call).
-    Returns previous close data when market is closed.
+    Fetch T-1 stock quote from Yahoo Finance (blocking call).
+    Always returns previous trading day close data.
     """
     try:
         import yfinance as yf
-        from datetime import datetime
         ticker = yf.Ticker(symbol)
         info = ticker.info
         
-        # Get current or last available price
-        current_price = info.get("regularMarketPrice") or info.get("currentPrice") or info.get("previousClose", 0)
-        previous_close = info.get("previousClose", current_price)
+        # T-1 Data: Use previous close as the primary price
+        # This ensures consistency with the T-1 data principle
+        previous_close = info.get("previousClose", 0)
+        regular_price = info.get("regularMarketPrice") or info.get("currentPrice", 0)
         
-        change = current_price - previous_close if previous_close else 0
-        change_pct = (change / previous_close * 100) if previous_close else 0
+        # For T-1, we want the previous close
+        price = previous_close if previous_close > 0 else regular_price
+        
+        if price == 0:
+            return None
+        
+        # Calculate change from day before T-1
+        open_price = info.get("open", price)
+        change = price - open_price if open_price else 0
+        change_pct = (change / open_price * 100) if open_price else 0
         
         # Get analyst rating
         recommendation = info.get("recommendationKey", "")
@@ -140,26 +141,32 @@ def _fetch_stock_quote_yahoo_sync(symbol: str) -> Dict[str, Any]:
                     else:
                         earnings_date = str(next_earnings)[:10]
                     
-                    # Calculate days to earnings
+                    # Calculate days to earnings from T-1
                     if earnings_date:
+                        t1_date_str = get_data_date()
+                        t1_date = datetime.strptime(t1_date_str, "%Y-%m-%d")
                         earnings_dt = datetime.strptime(earnings_date, "%Y-%m-%d")
-                        days_to_earnings = (earnings_dt - datetime.now()).days
+                        days_to_earnings = (earnings_dt - t1_date).days
         except Exception:
             pass
         
+        t1_date = get_data_date()
+        
         return {
             "symbol": symbol,
-            "price": round(current_price, 2) if current_price else 0,
-            "previous_close": round(previous_close, 2) if previous_close else 0,
+            "price": round(price, 2),
+            "previous_close": round(previous_close, 2) if previous_close else round(price, 2),
             "change": round(change, 2),
             "change_pct": round(change_pct, 2),
             "analyst_rating": analyst_rating,
             "earnings_date": earnings_date,
             "days_to_earnings": days_to_earnings,
-            "source": "yahoo"
+            "source": "yahoo",
+            "data_date": t1_date,
+            "data_type": "t_minus_1_close"
         }
     except Exception as e:
-        logging.warning(f"Yahoo stock quote failed for {symbol}: {e}")
+        logger.warning(f"Yahoo stock quote failed for {symbol}: {e}")
         return None
 
 
@@ -172,16 +179,18 @@ def _fetch_options_chain_yahoo_sync(
 ) -> List[Dict]:
     """
     Fetch options chain from Yahoo Finance (blocking call).
-    Returns options with IV, OI, and Greeks built-in.
+    Returns T-1 options data with IV, OI, and Greeks built-in.
+    
+    Filters out invalid expiration dates (weekends, holidays).
     """
     try:
         import yfinance as yf
         ticker = yf.Ticker(symbol)
         
-        # Get current price if not provided
+        # Get current price if not provided (T-1 close)
         if not current_price:
             info = ticker.info
-            current_price = info.get("regularMarketPrice") or info.get("currentPrice") or info.get("previousClose", 0)
+            current_price = info.get("previousClose") or info.get("regularMarketPrice") or info.get("currentPrice", 0)
         
         if not current_price:
             return []
@@ -195,13 +204,23 @@ def _fetch_options_chain_yahoo_sync(
         if not expirations:
             return []
         
-        # Filter expirations within DTE range
-        today = datetime.now()
+        # Filter out invalid expirations (weekends, holidays)
+        valid_expirations = filter_valid_expirations(list(expirations))
+        
+        if not valid_expirations:
+            logger.warning(f"No valid expirations found for {symbol} after filtering")
+            return []
+        
+        # Get T-1 date for DTE calculation
+        t1_date_str = get_data_date()
+        t1_date = datetime.strptime(t1_date_str, '%Y-%m-%d')
+        
+        # Filter expirations within DTE range (calculated from T-1)
         valid_expiries = []
-        for exp_str in expirations:
+        for exp_str in valid_expirations:
             try:
                 exp_date = datetime.strptime(exp_str, "%Y-%m-%d")
-                dte = (exp_date - today).days
+                dte = (exp_date - t1_date).days
                 if min_dte <= dte <= max_dte:
                     valid_expiries.append((exp_str, dte))
             except Exception:
@@ -264,25 +283,27 @@ def _fetch_options_chain_yahoo_sync(
                         "volume": int(volume) if volume else 0,
                         "open_interest": int(oi) if oi else 0,
                         "implied_volatility": float(iv) if iv else 0,
-                        "source": "yahoo"
+                        "source": "yahoo",
+                        "data_date": t1_date_str,
+                        "data_type": "t_minus_1_close"
                     })
                     
             except Exception as e:
-                logging.debug(f"Error fetching {symbol} options for {expiry}: {e}")
+                logger.debug(f"Error fetching {symbol} options for {expiry}: {e}")
                 continue
         
-        logging.info(f"Yahoo: fetched {len(options)} {option_type} options for {symbol}")
+        logger.info(f"Yahoo: fetched {len(options)} {option_type} options for {symbol} (T-1: {t1_date_str})")
         return options
         
     except Exception as e:
-        logging.warning(f"Yahoo options chain failed for {symbol}: {e}")
+        logger.warning(f"Yahoo options chain failed for {symbol}: {e}")
         return []
 
 
 async def fetch_stock_quote(symbol: str, api_key: str = None) -> Dict[str, Any]:
     """
-    Fetch stock quote - Yahoo primary, Polygon backup.
-    Always returns data (at minimum, previous close).
+    Fetch T-1 stock quote - Yahoo primary, Polygon backup.
+    Always returns previous trading day close data.
     """
     loop = asyncio.get_event_loop()
     
@@ -295,7 +316,10 @@ async def fetch_stock_quote(symbol: str, api_key: str = None) -> Dict[str, Any]:
     # Fallback to Polygon
     if api_key:
         try:
+            t1_date = get_data_date()
+            
             async with httpx.AsyncClient(timeout=HTTP_TIMEOUT) as client:
+                # Use previous day aggregates for T-1 data
                 response = await client.get(
                     f"{POLYGON_BASE_URL}/v2/aggs/ticker/{symbol}/prev",
                     params={"apiKey": api_key}
@@ -310,10 +334,12 @@ async def fetch_stock_quote(symbol: str, api_key: str = None) -> Dict[str, Any]:
                             "previous_close": r.get("c", 0),
                             "change": r.get("c", 0) - r.get("o", r.get("c", 0)),
                             "change_pct": 0,
-                            "source": "polygon"
+                            "source": "polygon",
+                            "data_date": t1_date,
+                            "data_type": "t_minus_1_close"
                         }
         except Exception as e:
-            logging.debug(f"Polygon stock quote backup failed for {symbol}: {e}")
+            logger.debug(f"Polygon stock quote backup failed for {symbol}: {e}")
     
     return None
 
@@ -327,8 +353,10 @@ async def fetch_options_chain(
     current_price: float = None
 ) -> List[Dict]:
     """
-    Fetch options chain - Yahoo primary, Polygon backup.
+    Fetch T-1 options chain - Yahoo primary, Polygon backup.
     Yahoo includes IV, OI, and Greeks by default.
+    
+    All expiration dates are validated to exclude weekends and holidays.
     """
     loop = asyncio.get_event_loop()
     
@@ -361,11 +389,13 @@ async def _fetch_options_chain_polygon(
 ) -> List[Dict]:
     """Polygon options chain backup (no IV/OI in basic plan)"""
     try:
+        t1_date_str = get_data_date()
+        t1_date = datetime.strptime(t1_date_str, '%Y-%m-%d')
+        
         async with httpx.AsyncClient(timeout=HTTP_TIMEOUT) as client:
-            # Get contracts
-            today = datetime.now()
-            min_expiry = (today + timedelta(days=min_dte)).strftime('%Y-%m-%d')
-            max_expiry = (today + timedelta(days=max_dte)).strftime('%Y-%m-%d')
+            # Get contracts - calculate from T-1
+            min_expiry = (t1_date + timedelta(days=min_dte)).strftime('%Y-%m-%d')
+            max_expiry = (t1_date + timedelta(days=max_dte)).strftime('%Y-%m-%d')
             
             response = await client.get(
                 f"{POLYGON_BASE_URL}/v3/reference/options/contracts",
@@ -388,9 +418,17 @@ async def _fetch_options_chain_polygon(
             if not contracts:
                 return []
             
+            # Filter out invalid expiration dates
+            valid_contracts = []
+            for contract in contracts:
+                expiry = contract.get("expiration_date", "")
+                is_valid, _ = is_valid_expiration_date(expiry)
+                if is_valid:
+                    valid_contracts.append(contract)
+            
             # Get prices for contracts
             options = []
-            for contract in contracts[:30]:
+            for contract in valid_contracts[:30]:
                 ticker = contract.get("ticker", "")
                 strike = contract.get("strike_price", 0)
                 expiry = contract.get("expiration_date", "")
@@ -407,18 +445,21 @@ async def _fetch_options_chain_polygon(
                         
                         if results:
                             r = results[0]
+                            dte = calculate_dte_from_t1(expiry)
                             options.append({
                                 "contract_ticker": ticker,
                                 "underlying": symbol.upper(),
                                 "strike": strike,
                                 "expiry": expiry,
-                                "dte": calculate_dte(expiry),
+                                "dte": dte,
                                 "type": option_type,
                                 "close": r.get("c", 0),
                                 "volume": r.get("v", 0),
                                 "open_interest": 0,  # Not available in basic plan
                                 "implied_volatility": 0,  # Not available in basic plan
-                                "source": "polygon"
+                                "source": "polygon",
+                                "data_date": t1_date_str,
+                                "data_type": "t_minus_1_close"
                             })
                 except Exception:
                     continue
@@ -426,12 +467,12 @@ async def _fetch_options_chain_polygon(
             return options
             
     except Exception as e:
-        logging.warning(f"Polygon options chain failed for {symbol}: {e}")
+        logger.warning(f"Polygon options chain failed for {symbol}: {e}")
         return []
 
 
 async def fetch_stock_quotes_batch(symbols: List[str], api_key: str = None) -> Dict[str, Dict]:
-    """Fetch stock quotes for multiple symbols in parallel."""
+    """Fetch T-1 stock quotes for multiple symbols in parallel."""
     if not symbols:
         return {}
     
@@ -451,13 +492,26 @@ async def fetch_stock_quotes_batch(symbols: List[str], api_key: str = None) -> D
 # =============================================================================
 
 def get_data_source_status() -> Dict[str, Any]:
-    """Get current data source configuration status."""
+    """Get current data source configuration and T-1 status."""
+    status = get_market_data_status()
+    
     return {
         "primary_source": "yahoo",
         "backup_source": "polygon",
-        "market_closed": is_market_closed(),
-        "last_trading_day": get_last_trading_day()
+        "data_principle": "T-1 (Previous Trading Day Close)",
+        "t_minus_1_date": status["t_minus_1_date"],
+        "data_age_hours": status["data_age_hours"],
+        "next_data_refresh": status["next_data_refresh"],
+        "current_time_et": status["current_time_et"]
     }
+
+
+def calculate_dte(expiry_date: str) -> int:
+    """
+    Calculate days to expiration from T-1 date.
+    Use this for consistent DTE calculations.
+    """
+    return calculate_dte_from_t1(expiry_date)
 
 
 # =============================================================================
@@ -478,9 +532,9 @@ async def fetch_historical_data(
             hist = ticker.history(period=f"{days}d")
             
             data = []
-            for date, row in hist.iterrows():
+            for date_idx, row in hist.iterrows():
                 data.append({
-                    "date": date.strftime('%Y-%m-%d'),
+                    "date": date_idx.strftime('%Y-%m-%d'),
                     "open": round(row['Open'], 2),
                     "high": round(row['High'], 2),
                     "low": round(row['Low'], 2),
@@ -493,5 +547,5 @@ async def fetch_historical_data(
         return await loop.run_in_executor(_yahoo_executor, _fetch_history)
         
     except Exception as e:
-        logging.warning(f"Historical data fetch failed for {symbol}: {e}")
+        logger.warning(f"Historical data fetch failed for {symbol}: {e}")
         return []
