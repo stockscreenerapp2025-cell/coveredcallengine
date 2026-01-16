@@ -1008,17 +1008,23 @@ async def screen_pmcc(
                                     "leaps_dte": leaps.get("dte"),
                                     "leaps_delta": round(leaps["delta"], 2),
                                     "leaps_cost": round(leaps["cost"], 2),
+                                    "leaps_iv": round(leaps.get("implied_volatility", 0), 4),
+                                    "leaps_oi": leaps.get("open_interest", 0),
                                     "short_strike": short.get("strike"),
                                     "short_expiry": short.get("expiry"),
                                     "short_dte": short.get("dte"),
                                     "short_delta": round(short["delta"], 2),
                                     "short_premium": round(short["premium"], 2),
+                                    "short_iv": round(short.get("implied_volatility", 0), 4),
+                                    "short_oi": short.get("open_interest", 0),
                                     "net_debit": round(net_debit, 2),
                                     "roi_per_cycle": round(roi_per_cycle, 2),
                                     "annualized_roi": round(annualized_roi, 1),
                                     "score": round(score, 1),
-                                    "data_source": "yahoo",
-                                    "data_date": t1_date
+                                    # Metadata
+                                    "equity_price_date": equity_date,
+                                    "options_snapshot_time": options_snapshot_time,
+                                    "data_source": "yahoo"
                                 })
                     
             except Exception as e:
@@ -1041,16 +1047,21 @@ async def screen_pmcc(
             "opportunities": opportunities, 
             "total": len(opportunities), 
             "from_cache": False,
-            "t1_data": t1_info,
-            "data_source": "yahoo",
-            "fetched_at": datetime.now(timezone.utc).isoformat()
+            "metadata": {
+                "equity_price_date": equity_date,
+                "equity_price_source": "T-1 Market Close",
+                "options_snapshot_time": options_snapshot_time,
+                "data_source": "yahoo",
+                "fetched_at": datetime.now(timezone.utc).isoformat(),
+                "staleness_thresholds": t1_info.get("staleness_thresholds", {})
+            }
         }
         await funcs['set_cached_data'](cache_key, result)
         return result
         
     except Exception as e:
         logging.error(f"PMCC screener error: {e}")
-        return {"opportunities": [], "total": 0, "error": str(e), "is_mock": True, "t1_data": t1_info}
+        return {"opportunities": [], "total": 0, "error": str(e), "is_mock": True, "metadata": t1_info}
 
 
 @screener_router.get("/dashboard-pmcc")
