@@ -1042,7 +1042,10 @@ async def refresh_precomputed_scans(user: dict = Depends(get_current_user)):
         if user.get("role") != "admin":
             raise HTTPException(status_code=403, detail="Admin access required")
         
-        service = PrecomputedScanService()
+        funcs = _get_server_functions()
+        api_key = await funcs['get_massive_api_key']()
+        
+        service = PrecomputedScanService(db, api_key)
         
         logging.info(f"Manual precomputed scan refresh triggered by {user.get('email')}")
         
