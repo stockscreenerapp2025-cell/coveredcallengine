@@ -142,6 +142,20 @@ def _get_server_functions():
     }
 
 
+def _get_t1_data_info() -> Dict[str, Any]:
+    """Get T-1 data information for response metadata"""
+    t1_date, t1_datetime = get_t_minus_1()
+    market_status = get_market_data_status()
+    
+    return {
+        "data_date": t1_date,
+        "data_type": "t_minus_1_close",
+        "data_description": f"Market close data from {t1_date}",
+        "data_age_hours": market_status["data_age_hours"],
+        "next_refresh": market_status["next_data_refresh"]
+    }
+
+
 
 @screener_router.get("/covered-calls")
 async def screen_covered_calls(
