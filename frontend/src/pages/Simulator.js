@@ -1037,7 +1037,7 @@ const Simulator = () => {
                           {decision.strategy_type === 'covered_call' ? 'CC' : 'PMCC'}
                         </Badge>
                         <Badge className={
-                          {decision.recommendation === 'hold' 
+                          decision.recommendation === 'hold' 
                             ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30'
                             : decision.recommendation === 'expire_worthless'
                               ? 'bg-green-500/20 text-green-400 border-green-500/30'
