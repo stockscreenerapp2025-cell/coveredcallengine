@@ -512,21 +512,29 @@ async def fetch_options_chain(
     min_dte: int = 1,
     current_price: float = None,
     friday_only: bool = True,
-    require_complete_data: bool = True
+    require_complete_data: bool = True,
+    is_leaps: bool = False
 ) -> Tuple[List[Dict], Dict[str, Any]]:
     """
     Fetch options chain with STRICT validation.
+    
+    Args:
+        is_leaps: If True, use wider strike range for deep ITM LEAPS (min_dte >= 180)
     
     Returns:
         Tuple of (options list, metadata dict including snapshot time)
     """
     loop = asyncio.get_event_loop()
     
+    # Auto-detect LEAPS mode based on DTE
+    if min_dte >= 180:
+        is_leaps = True
+    
     # Fetch from Yahoo with strict validation
     options, metadata = await loop.run_in_executor(
         _yahoo_executor,
         lambda: _fetch_options_chain_yahoo_sync(
-            symbol, max_dte, min_dte, option_type, current_price, friday_only, require_complete_data
+            symbol, max_dte, min_dte, option_type, current_price, friday_only, require_complete_data, is_leaps
         )
     )
     
