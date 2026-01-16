@@ -913,7 +913,7 @@ const Screener = () => {
                       <Label className="text-xs text-zinc-400">Minimum Option Volume</Label>
                       <Input
                         type="number"
-                        value={optionsFilters.minVolume || ""} placeholder="Min"
+                        value={optionsFilters.minVolume || ""}
                         onChange={(e) => setOptionsFilters(f => ({ ...f, minVolume: parseInt(e.target.value) || 0 }))}
                         className="input-dark mt-2"
                         placeholder="0"
@@ -924,7 +924,7 @@ const Screener = () => {
                       <Label className="text-xs text-zinc-400">Minimum Open Interest</Label>
                       <Input
                         type="number"
-                        value={optionsFilters.minOpenInterest || ""} placeholder="Min"
+                        value={optionsFilters.minOpenInterest || ""}
                         onChange={(e) => setOptionsFilters(f => ({ ...f, minOpenInterest: parseInt(e.target.value) || 0 }))}
                         className="input-dark mt-2"
                         placeholder="100"
