@@ -181,9 +181,10 @@ async def get_watchlist(user: dict = Depends(get_current_user)):
             "price_when_added": price_when_added,
             "movement": round(movement, 2),
             "movement_pct": round(movement_pct, 2),
-            "analyst_rating": data.get("analyst_rating"),
-            "days_to_earnings": data.get("days_to_earnings"),
-            "earnings_date": data.get("earnings_date"),
+            # Use live analyst_rating if available, otherwise use stored value at add time
+            "analyst_rating": data.get("analyst_rating") or item.get("analyst_rating_at_add"),
+            "days_to_earnings": data.get("days_to_earnings") if data.get("days_to_earnings") is not None else item.get("days_to_earnings_at_add"),
+            "earnings_date": data.get("earnings_date") or item.get("earnings_date_at_add"),
             "opportunity": None
         }
         
