@@ -158,17 +158,73 @@ def _get_server_functions():
 
 
 def _get_t1_data_info() -> Dict[str, Any]:
-    """Get T-1 data information for response metadata"""
+    """
+    Get comprehensive data metadata for response.
+    
+    Returns:
+        Dict with equity price date, options snapshot info, staleness thresholds
+    """
+    metadata = get_data_metadata()
     t1_date, t1_datetime = get_t_minus_1()
     market_status = get_market_data_status()
     
     return {
-        "data_date": t1_date,
-        "data_type": "t_minus_1_close",
-        "data_description": f"Market close data from {t1_date}",
+        # Equity price info (T-1 close - hard rule)
+        "equity_price_date": t1_date,
+        "equity_price_source": "T-1 Market Close",
+        # Options snapshot info (may differ from equity date)
+        "options_snapshot_time": None,  # Will be populated per-request
+        # General info
         "data_age_hours": market_status["data_age_hours"],
-        "next_refresh": market_status["next_data_refresh"]
+        "next_refresh": market_status["next_data_refresh"],
+        "current_time_et": market_status["current_time_et"],
+        # Staleness thresholds
+        "staleness_thresholds": metadata["staleness_thresholds"]
     }
+
+
+def _mix_weekly_monthly_opportunities(opportunities: List[Dict], target_count: int = 20) -> List[Dict]:
+    """
+    Mix weekly and monthly opportunities in 50/50 ratio.
+    
+    Args:
+        opportunities: List of opportunity dicts with 'expiry_type' field
+        target_count: Target number of opportunities
+        
+    Returns:
+        Mixed list with roughly 50% weekly, 50% monthly
+    """
+    weekly = [o for o in opportunities if o.get("expiry_type") == "weekly"]
+    monthly = [o for o in opportunities if o.get("expiry_type") == "monthly"]
+    
+    # Sort each by score
+    weekly.sort(key=lambda x: x.get("score", 0), reverse=True)
+    monthly.sort(key=lambda x: x.get("score", 0), reverse=True)
+    
+    # Target 50/50 mix
+    half = target_count // 2
+    
+    # Get best from each category
+    best_weekly = weekly[:half]
+    best_monthly = monthly[:half]
+    
+    # If one category is short, take more from the other
+    remaining_slots = target_count - len(best_weekly) - len(best_monthly)
+    
+    if len(best_weekly) < half and len(monthly) > half:
+        # Need more monthly
+        extra_monthly = monthly[half:half + remaining_slots]
+        best_monthly.extend(extra_monthly)
+    elif len(best_monthly) < half and len(weekly) > half:
+        # Need more weekly
+        extra_weekly = weekly[half:half + remaining_slots]
+        best_weekly.extend(extra_weekly)
+    
+    # Combine and sort by score
+    mixed = best_weekly + best_monthly
+    mixed.sort(key=lambda x: x.get("score", 0), reverse=True)
+    
+    return mixed[:target_count]
 
 
 
