@@ -183,8 +183,7 @@ const PMCC = () => {
   });
 
   useEffect(() => {
-    // On initial load, fetch available scans but do NOT auto-run a scan
-    // User should click "Custom Scan" or select a pre-computed scan
+    // On initial load, fetch available scans and auto-run custom scan
     const initializeData = async () => {
       try {
         const res = await scansApi.getAvailable();
@@ -192,6 +191,9 @@ const PMCC = () => {
       } catch (error) {
         console.log('Could not fetch available scans:', error);
       }
+      
+      // Auto-run custom scan to show results immediately
+      fetchOpportunities();
     };
     
     initializeData();
