@@ -6,6 +6,12 @@ DATA SOURCING STRATEGY (DO NOT CHANGE):
 - OPTIONS DATA: Polygon/Massive ONLY (paid subscription)
 - STOCK DATA: Polygon/Massive primary, Yahoo fallback (until upgrade)
 - All data sourcing is handled by services/data_provider.py
+
+DATA QUALITY PRINCIPLES:
+- Always fetch LIVE data when market is open
+- Only use cached/precomputed data when market is closed
+- Validate expiry dates exist in current option chains
+- Include data freshness indicators in all responses
 """
 from fastapi import APIRouter, Depends, Query, HTTPException
 from pydantic import BaseModel
@@ -27,6 +33,12 @@ from services.data_provider import (
     fetch_options_chain,
     fetch_stock_quote,
     is_market_closed as data_provider_market_closed
+)
+# Import data quality validation
+from services.data_quality import (
+    validate_opportunities_batch,
+    calculate_data_freshness_score,
+    validate_expiry_date
 )
 
 screener_router = APIRouter(tags=["Screener"])
