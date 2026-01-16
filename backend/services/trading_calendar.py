@@ -434,5 +434,140 @@ def get_data_freshness_status(data_date: str) -> Dict:
         }
 
 
+# =============================================================================
+# OPTION CHAIN STALENESS RULES
+# =============================================================================
+# 🟢 Fresh: snapshot ≤ 24h old
+# 🟠 Stale: 24-48h old
+# 🔴 Invalid: >48h old → exclude from scans
+
+OPTION_FRESHNESS_THRESHOLDS = {
+    "fresh_hours": 24,      # 🟢 Fresh: ≤ 24h
+    "stale_hours": 48,      # 🟠 Stale: 24-48h
+    "invalid_hours": 48     # 🔴 Invalid: > 48h (excluded)
+}
+
+
+def get_option_chain_staleness(snapshot_timestamp: datetime) -> Dict:
+    """
+    Evaluate option chain data staleness based on snapshot timestamp.
+    
+    Staleness Rules:
+    - 🟢 Fresh: snapshot ≤ 24h old
+    - 🟠 Stale: 24-48h old  
+    - 🔴 Invalid: >48h old → should be excluded from scans
+    
+    Args:
+        snapshot_timestamp: Datetime of the option chain snapshot
+        
+    Returns:
+        Dict with status, age_hours, is_valid, and description
+    """
+    now = datetime.now(EASTERN_TZ)
+    
+    # Make snapshot timezone-aware if needed
+    if snapshot_timestamp.tzinfo is None:
+        snapshot_timestamp = EASTERN_TZ.localize(snapshot_timestamp)
+    
+    age_hours = (now - snapshot_timestamp).total_seconds() / 3600
+    
+    if age_hours <= OPTION_FRESHNESS_THRESHOLDS["fresh_hours"]:
+        return {
+            "status": "green",
+            "label": "Fresh",
+            "age_hours": round(age_hours, 1),
+            "is_valid": True,
+            "description": f"Option data is fresh ({round(age_hours, 1)}h old)"
+        }
+    elif age_hours <= OPTION_FRESHNESS_THRESHOLDS["stale_hours"]:
+        return {
+            "status": "amber",
+            "label": "Stale",
+            "age_hours": round(age_hours, 1),
+            "is_valid": True,  # Still usable but warn user
+            "description": f"Option data is stale ({round(age_hours, 1)}h old)"
+        }
+    else:
+        return {
+            "status": "red",
+            "label": "Invalid",
+            "age_hours": round(age_hours, 1),
+            "is_valid": False,  # Should be excluded from scans
+            "description": f"Option data is too old ({round(age_hours, 1)}h) - excluded from scans"
+        }
+
+
+def validate_option_chain_data(option: Dict) -> Tuple[bool, List[str]]:
+    """
+    Validate that an option has all required data fields.
+    
+    Validation Rules:
+    - Must have valid strike price
+    - Must have valid premium (close/last price)
+    - Must have IV (implied volatility) - reject if missing
+    - Must have Open Interest
+    - Must have valid expiry date
+    
+    Args:
+        option: Option dictionary with chain data
+        
+    Returns:
+        Tuple of (is_valid, list of missing/invalid fields)
+    """
+    issues = []
+    
+    # Check required fields
+    if not option.get("strike") or option.get("strike", 0) <= 0:
+        issues.append("missing_strike")
+    
+    premium = option.get("close") or option.get("last_price") or option.get("premium", 0)
+    if premium <= 0:
+        issues.append("missing_premium")
+    
+    # IV is critical - reject if missing
+    iv = option.get("implied_volatility") or option.get("iv", 0)
+    if iv <= 0:
+        issues.append("missing_iv")
+    
+    # Open Interest - important for liquidity
+    oi = option.get("open_interest") or option.get("oi", 0)
+    if oi <= 0:
+        issues.append("missing_open_interest")
+    
+    # Expiry validation
+    expiry = option.get("expiry") or option.get("expiration_date")
+    if not expiry:
+        issues.append("missing_expiry")
+    else:
+        is_valid, reason = is_valid_expiration_date(expiry)
+        if not is_valid:
+            issues.append(f"invalid_expiry: {reason}")
+    
+    return len(issues) == 0, issues
+
+
+def get_data_metadata() -> Dict:
+    """
+    Get comprehensive data metadata for display.
+    
+    Returns:
+        Dict with equity date, next refresh, and staleness thresholds
+    """
+    t1_date, t1_datetime = get_t_minus_1()
+    market_status = get_market_data_status()
+    
+    return {
+        "equity_price_date": t1_date,
+        "equity_price_source": "T-1 Market Close",
+        "next_refresh": market_status["next_data_refresh"],
+        "current_time_et": market_status["current_time_et"],
+        "staleness_thresholds": {
+            "fresh_hours": OPTION_FRESHNESS_THRESHOLDS["fresh_hours"],
+            "stale_hours": OPTION_FRESHNESS_THRESHOLDS["stale_hours"],
+            "invalid_hours": OPTION_FRESHNESS_THRESHOLDS["invalid_hours"]
+        }
+    }
+
+
 # Initialize calendar on module load
 _get_nyse_calendar()
