@@ -850,15 +850,26 @@ async def screen_pmcc(
 
 @screener_router.get("/dashboard-pmcc")
 async def get_dashboard_pmcc(user: dict = Depends(get_current_user)):
-    """Get top PMCC opportunities for dashboard"""
+    """Get top PMCC opportunities for dashboard - always shows data (from cache/last trading day when market closed)"""
     funcs = _get_server_functions()
     
     cache_key = "dashboard_pmcc_v2"
     
+    # Check cache first
     cached_data = await funcs['get_cached_data'](cache_key)
     if cached_data:
         cached_data["from_cache"] = True
+        cached_data["market_closed"] = funcs['is_market_closed']()
         return cached_data
+    
+    # If market is closed and no cache, try last trading day data
+    if funcs['is_market_closed']():
+        ltd_data = await funcs['get_last_trading_day_data'](cache_key)
+        if ltd_data:
+            ltd_data["from_cache"] = True
+            ltd_data["market_closed"] = True
+            ltd_data["is_last_trading_day"] = True
+            return ltd_data
     
     # Call the main PMCC screener with explicit default values
     result = await screen_pmcc(
