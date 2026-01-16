@@ -281,18 +281,95 @@ def calculate_transaction_fees(contracts: int, fee_settings: Dict) -> Dict[str, 
     # Round-trip = open + close
     one_way = (contracts * per_contract) + base
     round_trip = one_way * 2
+    # Roll fees = close current + open new (both legs)
+    roll_fees = round_trip * 2  # 4 transactions total for a roll
     
     return {
         "one_way": round(one_way, 2),
         "round_trip": round(round_trip, 2),
+        "roll_total": round(roll_fees, 2),
         "per_contract": per_contract
+    }
+
+
+def calculate_roll_economics(
+    current_option_value: float,
+    entry_premium: float,
+    expected_new_premium: float,
+    contracts: int,
+    fees: Dict,
+    capital_deployed: float,
+    new_dte: int = 30
+) -> Dict[str, Any]:
+    """
+    Calculate explicit roll economics for income-optimised decision.
+    
+    Net Roll Value = New Premium - Cost to Close - Total Roll Fees
+    """
+    # Cost to close = current option value (what you pay to buy back)
+    cost_to_close = current_option_value * 100 * contracts
+    
+    # New premium collected
+    new_premium_value = expected_new_premium * 100 * contracts
+    
+    # Total roll fees (close + open = 4 transactions)
+    roll_fees = fees["roll_total"]
+    
+    # Net roll value
+    net_roll_value = new_premium_value - cost_to_close - roll_fees
+    
+    # Expire value (if let expire worthless)
+    remaining_premium = (entry_premium - current_option_value) * 100 * contracts
+    expire_value = remaining_premium  # Zero fees if expire
+    
+    # ROI calculations
+    roll_roi_pct = (net_roll_value / capital_deployed * 100) if capital_deployed > 0 else 0
+    roll_roi_per_day = (roll_roi_pct / new_dte) if new_dte > 0 else 0
+    
+    # Is roll economically justified?
+    roll_justified = (
+        net_roll_value > expire_value and
+        net_roll_value >= 2 * roll_fees and
+        new_dte >= 14
+    )
+    
+    return {
+        "cost_to_close": round(cost_to_close, 2),
+        "new_premium_value": round(new_premium_value, 2),
+        "roll_fees": round(roll_fees, 2),
+        "net_roll_value": round(net_roll_value, 2),
+        "expire_value": round(expire_value, 2),
+        "roll_vs_expire_diff": round(net_roll_value - expire_value, 2),
+        "roll_roi_pct": round(roll_roi_pct, 2),
+        "roll_roi_per_day": round(roll_roi_per_day, 4),
+        "new_dte": new_dte,
+        "roll_justified": roll_justified,
+        "justification": (
+            "Roll economically justified" if roll_justified else
+            f"Roll not justified: {'net < expire' if net_roll_value <= expire_value else ''}"
+            f"{'net < 2x fees' if net_roll_value < 2 * roll_fees else ''}"
+            f"{'new DTE too short' if new_dte < 14 else ''}"
+        )
     }
 
 
 def evaluate_income_rules(trade: dict, current_price: float, settings: dict, redeployment_roi: dict) -> Dict[str, Any]:
     """
     Evaluate all income-optimised rules and return decision analysis.
-    Returns recommendations for: hold, close, roll_up, roll_down, or accept_assignment
+    
+    REVISED LOGIC (Income-Optimised):
+    - At 1 DTE: "hold" means "let expire", not "do nothing because fees are high"
+    - Explicit roll economics calculation
+    - Assignment acceptance as valid exit path
+    
+    Returns recommendations:
+    - expire_worthless: Let option expire (income maximised, zero fees)
+    - accept_assignment: Accept ITM assignment (valid exit)
+    - roll_up_out: Roll up and out (economically justified)
+    - roll_down_out: Roll down and out (income rescue)
+    - hold: Continue holding (trade performing)
+    - close: Close position early
+    - consider_close: Soft recommendation to close
     """
     income_settings = settings.get("income_settings", {})
     fee_settings = settings.get("fee_settings", {})
@@ -308,6 +385,8 @@ def evaluate_income_rules(trade: dict, current_price: float, settings: dict, red
     unrealized_pnl = trade.get("unrealized_pnl", 0)
     strategy_type = trade.get("strategy_type", "covered_call")
     contracts = trade.get("contracts", 1)
+    strike = trade.get("short_call_strike", 0)
+    entry_price = trade.get("entry_underlying_price", current_price)
     
     # Calculate fees
     fees = calculate_transaction_fees(contracts, fee_settings)
@@ -322,6 +401,7 @@ def evaluate_income_rules(trade: dict, current_price: float, settings: dict, red
     
     # Redeployment ROI
     redeploy_roi_per_day = redeployment_roi.get("roi_per_day", 0.214)
+    redeploy_roi_per_week = redeployment_roi.get("roi_per_week", 1.5)
     
     # Get thresholds from settings
     premium_exit_threshold = income_settings.get("premium_exit_threshold", 80)
@@ -329,6 +409,29 @@ def evaluate_income_rules(trade: dict, current_price: float, settings: dict, red
     dte_warning = income_settings.get("dte_warning_threshold", 14)
     dte_force = income_settings.get("dte_force_decision", 7)
     min_improvement_mult = income_settings.get("min_improvement_multiplier", 2.0)
+    
+    # Calculate key values
+    remaining_premium_value = (entry_premium - current_option_value) * 100 * contracts
+    remaining_option_value = current_option_value * 100 * contracts
+    remaining_value_pct = (current_option_value / entry_premium * 100) if entry_premium > 0 else 0
+    is_otm = current_price < strike if strike > 0 else True
+    is_itm = not is_otm
+    
+    # Estimate new premium for roll (using redeployment data)
+    # Assume rolling to 30 DTE with similar delta
+    estimated_new_premium = entry_premium * (redeploy_roi_per_week / 100 * 4.3)  # ~30 days
+    estimated_new_premium = max(estimated_new_premium, entry_premium * 0.8)  # At least 80% of original
+    
+    # Calculate roll economics
+    roll_economics = calculate_roll_economics(
+        current_option_value=current_option_value,
+        entry_premium=entry_premium,
+        expected_new_premium=estimated_new_premium,
+        contracts=contracts,
+        fees=fees,
+        capital_deployed=capital_deployed,
+        new_dte=30
+    )
     
     # Initialize decision analysis
     analysis = {
@@ -344,22 +447,188 @@ def evaluate_income_rules(trade: dict, current_price: float, settings: dict, red
             "current_roi_total_pct": round(current_roi_total, 2),
             "current_roi_per_day": round(current_roi_per_day, 4),
             "current_option_value": round(current_option_value, 2),
-            "remaining_premium": round(entry_premium - (entry_premium * premium_captured_pct / 100), 2)
+            "remaining_premium": round(entry_premium - current_option_value, 2),
+            "remaining_value_pct": round(remaining_value_pct, 1),
+            "is_otm": is_otm,
+            "is_itm": is_itm,
+            "strike": strike,
+            "current_price": round(current_price, 2)
         },
         "redeployment": {
             "expected_roi_per_day": round(redeploy_roi_per_day, 4),
-            "expected_roi_per_week": round(redeploy_roi_per_day * 7, 3),
+            "expected_roi_per_week": round(redeploy_roi_per_week, 3),
             "source": redeployment_roi.get("source", "unknown"),
             "confidence": redeployment_roi.get("confidence", "low")
         },
         "fees": fees,
+        "roll_economics": roll_economics,
         "rules_triggered": [],
         "recommendation": "hold",
         "recommendation_reason": "",
         "comparison": {}
     }
     
-    # ==================== RULE EVALUATIONS ====================
+    # ==================== 1 DTE SPECIAL LOGIC (Income-Optimised) ====================
+    
+    if dte_remaining <= 1:
+        # CASE A: OTM & Near Worthless → LET EXPIRE
+        if is_otm and remaining_value_pct <= 10:
+            analysis["rules_triggered"].append({
+                "rule": "expire_worthless",
+                "severity": "info",
+                "message": f"Option near worthless ({remaining_value_pct:.1f}% remaining) and OTM. Let expire to maximise income with zero fees.",
+                "action": "expire_worthless"
+            })
+            analysis["recommendation"] = "expire_worthless"
+            analysis["recommendation_reason"] = f"Income Maximised – Let expire worthless. Remaining value ${remaining_option_value:.2f} captured with zero fees."
+            
+            # Comparison shows expire is best
+            analysis["comparison"] = {
+                "expire_worthless": {
+                    "value": round(remaining_premium_value, 2),
+                    "description": "Let option expire worthless (zero fees, maximum theta capture)",
+                    "risk": "None - option is OTM and near worthless",
+                    "recommended": True
+                },
+                "close_now": {
+                    "value": round(remaining_premium_value - fees["one_way"], 2),
+                    "description": f"Close now (pay ${fees['one_way']:.2f} fees for no benefit)",
+                    "risk": "Unnecessary fee expense",
+                    "recommended": False
+                },
+                "roll": {
+                    "value": round(roll_economics["net_roll_value"], 2),
+                    "description": f"Roll to new cycle (pay ${roll_economics['roll_fees']:.2f} fees)",
+                    "risk": "Destroys ROI - fees exceed benefit at 1 DTE",
+                    "recommended": False
+                }
+            }
+            return analysis
+        
+        # CASE B: ITM / High Assignment Risk
+        if is_itm or current_delta >= 0.60:
+            # Calculate assignment ROI
+            assignment_profit = (strike - entry_price + entry_premium) * 100 * contracts
+            assignment_roi = (assignment_profit / capital_deployed * 100) if capital_deployed > 0 else 0
+            assignment_roi_per_day = (assignment_roi / days_held) if days_held > 0 else 0
+            
+            # Calculate CSP potential (if we accept assignment and sell CSP)
+            csp_premium_estimate = entry_premium * 0.8  # Estimate 80% of CC premium for CSP
+            csp_roi_per_week = (csp_premium_estimate / strike * 100) * (7 / 30)  # Weekly ROI
+            
+            analysis["assignment_analysis"] = {
+                "assignment_profit": round(assignment_profit, 2),
+                "assignment_roi_pct": round(assignment_roi, 2),
+                "assignment_roi_per_day": round(assignment_roi_per_day, 4),
+                "csp_roi_per_week_estimate": round(csp_roi_per_week, 3),
+                "roll_roi_per_day": roll_economics["roll_roi_per_day"]
+            }
+            
+            # Decision: Accept assignment vs Roll
+            # Accept if: total return meets target OR CSP ROI > rolled CC ROI
+            target_roi_per_week = income_settings.get("target_roi_per_week", 1.5)
+            achieved_roi_per_week = assignment_roi_per_day * 7
+            
+            accept_assignment = (
+                achieved_roi_per_week >= target_roi_per_week or
+                csp_roi_per_week > roll_economics["roll_roi_per_day"] * 7
+            )
+            
+            if accept_assignment:
+                analysis["rules_triggered"].append({
+                    "rule": "accept_assignment",
+                    "severity": "info",
+                    "message": f"Assignment accepted – ROI {assignment_roi:.1f}% ({assignment_roi_per_day:.3f}%/day) meets target. Income cycle continues via CSP.",
+                    "action": "accept_assignment"
+                })
+                analysis["recommendation"] = "accept_assignment"
+                analysis["recommendation_reason"] = f"Accept assignment at ${strike:.2f}. Total ROI: {assignment_roi:.1f}%. Continue income cycle with Cash-Secured Put."
+            else:
+                # Check if roll is economically justified
+                if roll_economics["roll_justified"]:
+                    analysis["rules_triggered"].append({
+                        "rule": "roll_itm",
+                        "severity": "high",
+                        "message": f"ITM at 1 DTE. Roll economically justified: net roll ${roll_economics['net_roll_value']:.2f} > expire ${roll_economics['expire_value']:.2f}",
+                        "action": "roll_up_out"
+                    })
+                    analysis["recommendation"] = "roll_up_out"
+                    analysis["recommendation_reason"] = f"Roll up and out to avoid assignment. Net roll value: ${roll_economics['net_roll_value']:.2f}"
+                else:
+                    analysis["rules_triggered"].append({
+                        "rule": "accept_assignment_default",
+                        "severity": "info",
+                        "message": f"Roll not economically justified at 1 DTE. Accept assignment as valid exit.",
+                        "action": "accept_assignment"
+                    })
+                    analysis["recommendation"] = "accept_assignment"
+                    analysis["recommendation_reason"] = f"Roll not justified (net ${roll_economics['net_roll_value']:.2f} < fees). Accept assignment at ${strike:.2f}."
+            
+            analysis["comparison"] = {
+                "accept_assignment": {
+                    "value": round(assignment_profit, 2),
+                    "description": f"Accept assignment at ${strike:.2f}, then sell CSP",
+                    "risk": "Stock called away, but income cycle continues",
+                    "recommended": accept_assignment
+                },
+                "roll_up_out": {
+                    "value": round(roll_economics["net_roll_value"], 2),
+                    "description": f"Roll to avoid assignment (fees: ${roll_economics['roll_fees']:.2f})",
+                    "risk": "High fees at 1 DTE may destroy ROI",
+                    "recommended": roll_economics["roll_justified"] and not accept_assignment
+                },
+                "expire_assigned": {
+                    "value": round(assignment_profit, 2),
+                    "description": "Let expire ITM (same as accept assignment)",
+                    "risk": "Assignment is certain",
+                    "recommended": False
+                }
+            }
+            return analysis
+        
+        # CASE C: OTM but with residual value > 10%
+        # Compare expire vs roll
+        if roll_economics["roll_justified"]:
+            analysis["rules_triggered"].append({
+                "rule": "roll_economics_positive",
+                "severity": "medium",
+                "message": f"Roll may be justified: net roll ${roll_economics['net_roll_value']:.2f} vs expire ${roll_economics['expire_value']:.2f}",
+                "action": "evaluate_roll"
+            })
+            # But at 1 DTE, usually better to expire
+            if roll_economics["roll_vs_expire_diff"] > fees["roll_total"]:
+                analysis["recommendation"] = "roll_down_out"
+                analysis["recommendation_reason"] = f"Roll down and out for income rescue. Net improvement: ${roll_economics['roll_vs_expire_diff']:.2f}"
+            else:
+                analysis["recommendation"] = "expire_worthless"
+                analysis["recommendation_reason"] = f"Let expire – roll improvement ${roll_economics['roll_vs_expire_diff']:.2f} doesn't justify fees ${fees['roll_total']:.2f}"
+        else:
+            analysis["rules_triggered"].append({
+                "rule": "expire_preferred",
+                "severity": "info",
+                "message": f"At 1 DTE with {remaining_value_pct:.1f}% remaining value. Let expire to avoid unnecessary fees.",
+                "action": "expire_worthless"
+            })
+            analysis["recommendation"] = "expire_worthless"
+            analysis["recommendation_reason"] = f"Let expire – rolling not economically justified at 1 DTE."
+        
+        analysis["comparison"] = {
+            "expire_worthless": {
+                "value": round(remaining_premium_value, 2),
+                "description": "Let option expire (capture remaining premium, zero fees)",
+                "risk": "Small gamma risk if price moves significantly",
+                "recommended": analysis["recommendation"] == "expire_worthless"
+            },
+            "roll": {
+                "value": round(roll_economics["net_roll_value"], 2),
+                "description": f"Roll to new cycle (fees: ${roll_economics['roll_fees']:.2f})",
+                "risk": "High fees relative to benefit",
+                "recommended": analysis["recommendation"] in ["roll_up_out", "roll_down_out"]
+            }
+        }
+        return analysis
+    
+    # ==================== STANDARD RULES (DTE > 1) ====================
     
     # Rule 1: Premium Efficiency Exit (Primary)
     if premium_captured_pct >= premium_auto_exit:
@@ -388,55 +657,69 @@ def evaluate_income_rules(trade: dict, current_price: float, settings: dict, red
             "action": "recommend_close"
         })
     
-    # Rule 3: Time-to-Expiry Efficiency
+    # Rule 3: Time-to-Expiry Efficiency (but NOT force close)
     if dte_remaining <= dte_force:
-        analysis["rules_triggered"].append({
-            "rule": "dte_force_decision",
-            "severity": "high",
-            "message": f"Force decision required: only {dte_remaining} DTE remaining (≤{dte_force})",
-            "action": "force_close_or_roll"
-        })
+        # At low DTE, evaluate roll vs hold, not force close
+        if roll_economics["roll_justified"]:
+            analysis["rules_triggered"].append({
+                "rule": "dte_roll_opportunity",
+                "severity": "medium",
+                "message": f"Low DTE ({dte_remaining}d) - Roll may be beneficial: net ${roll_economics['net_roll_value']:.2f}",
+                "action": "evaluate_roll"
+            })
+        else:
+            analysis["rules_triggered"].append({
+                "rule": "dte_hold_to_expiry",
+                "severity": "low",
+                "message": f"Low DTE ({dte_remaining}d) - Hold to expiry preferred (roll not justified)",
+                "action": "hold"
+            })
     elif dte_remaining <= dte_warning:
         analysis["rules_triggered"].append({
             "rule": "dte_warning",
             "severity": "medium",
-            "message": f"Low DTE warning: {dte_remaining} DTE remaining (≤{dte_warning})",
+            "message": f"Low DTE warning: {dte_remaining} DTE remaining (≤{dte_warning}). Evaluate roll opportunity.",
             "action": "evaluate_roll_or_close"
         })
     
     # Rule 4: Roll-Up Rule (Upside Management)
     remaining_premium_pct = 100 - premium_captured_pct
     if current_delta > 0.45 and remaining_premium_pct < 30:
-        analysis["rules_triggered"].append({
-            "rule": "roll_up",
-            "severity": "medium",
-            "message": f"Roll-up opportunity: delta {current_delta:.2f} (>0.45) with only {remaining_premium_pct:.1f}% premium remaining",
-            "action": "recommend_roll_up"
-        })
+        if roll_economics["roll_justified"]:
+            analysis["rules_triggered"].append({
+                "rule": "roll_up",
+                "severity": "medium",
+                "message": f"Roll-up opportunity: delta {current_delta:.2f} (>0.45) with {remaining_premium_pct:.1f}% premium remaining. Roll economics positive.",
+                "action": "recommend_roll_up"
+            })
+        else:
+            analysis["rules_triggered"].append({
+                "rule": "roll_up_not_justified",
+                "severity": "low",
+                "message": f"Delta high ({current_delta:.2f}) but roll not economically justified. Consider holding.",
+                "action": "hold"
+            })
     
     # Rule 5: Roll-Down Rule (Income Recovery)
-    current_value_pct = (current_option_value / entry_premium * 100) if entry_premium > 0 else 0
-    if current_value_pct < 20 and dte_remaining > 14:
+    if remaining_value_pct < 20 and dte_remaining > 14:
         analysis["rules_triggered"].append({
             "rule": "roll_down",
             "severity": "low",
-            "message": f"Roll-down opportunity: option value at {current_value_pct:.1f}% of entry with {dte_remaining} DTE remaining",
+            "message": f"Roll-down opportunity: option at {remaining_value_pct:.1f}% value with {dte_remaining} DTE. Can capture more premium.",
             "action": "recommend_roll_down"
         })
     
-    # Rule 6: Assignment Acceptance (for covered calls ITM at expiry)
-    strike = trade.get("short_call_strike", 0)
-    if strategy_type == "covered_call" and current_price > strike and dte_remaining <= 3:
-        total_return = unrealized_pnl
-        entry_price = trade.get("entry_underlying_price", current_price)
-        if capital_deployed > 0:
-            roi_if_assigned = ((strike - entry_price + entry_premium) * 100 * contracts) / capital_deployed * 100
-            analysis["rules_triggered"].append({
-                "rule": "assignment_acceptance",
-                "severity": "info",
-                "message": f"Assignment likely: stock at ${current_price:.2f} vs strike ${strike:.2f}. ROI if assigned: {roi_if_assigned:.1f}%",
-                "action": "accept_assignment"
-            })
+    # Rule 6: Assignment Risk (ITM with time remaining)
+    if is_itm and dte_remaining <= 7 and dte_remaining > 1:
+        assignment_profit = (strike - entry_price + entry_premium) * 100 * contracts
+        assignment_roi = (assignment_profit / capital_deployed * 100) if capital_deployed > 0 else 0
+        
+        analysis["rules_triggered"].append({
+            "rule": "assignment_risk",
+            "severity": "medium",
+            "message": f"ITM with {dte_remaining} DTE. Assignment ROI if called: {assignment_roi:.1f}%",
+            "action": "evaluate_roll_or_accept"
+        })
     
     # PMCC-Specific Rules
     if strategy_type == "pmcc":
@@ -469,35 +752,30 @@ def evaluate_income_rules(trade: dict, current_price: float, settings: dict, red
                 "action": "restructure_or_close"
             })
     
-    # Rule 8: Transaction Cost Gate
-    remaining_premium_value = (entry_premium - current_option_value) * 100 * contracts
+    # ==================== GENERATE RECOMMENDATION (DTE > 1) ====================
+    
     min_improvement_required = fees["round_trip"] * min_improvement_mult
     
-    # ==================== GENERATE RECOMMENDATION ====================
-    
     # Calculate comparison scenarios
-    hold_to_expiry_value = entry_premium * 100 * contracts  # Max premium if expires worthless
+    hold_to_expiry_value = entry_premium * 100 * contracts
     close_now_value = remaining_premium_value - fees["one_way"]
-    
-    # Estimate redeployment value (remaining DTE at redeployment ROI)
-    remaining_days = max(dte_remaining, 1)
-    redeploy_value = (capital_deployed * redeploy_roi_per_day / 100) * remaining_days - fees["round_trip"]
     
     analysis["comparison"] = {
         "hold_to_expiry": {
             "value": round(hold_to_expiry_value, 2),
             "description": "Maximum premium if option expires worthless",
-            "risk": "Assignment risk if ITM, gamma risk"
+            "risk": "Assignment risk if ITM, gamma/theta risk"
         },
         "close_now": {
             "value": round(close_now_value, 2),
-            "description": f"Close position now (premium captured: ${remaining_premium_value:.2f} - fees: ${fees['one_way']:.2f})",
+            "description": f"Close position now (premium: ${remaining_premium_value:.2f} - fees: ${fees['one_way']:.2f})",
             "risk": "Foregoes remaining time value"
         },
-        "close_and_redeploy": {
-            "value": round(close_now_value + redeploy_value, 2),
-            "description": f"Close and redeploy capital at expected {redeploy_roi_per_day:.3f}%/day",
-            "risk": "Execution risk, market conditions may differ"
+        "roll": {
+            "value": round(roll_economics["net_roll_value"], 2),
+            "description": f"Roll to new cycle (net after ${roll_economics['roll_fees']:.2f} fees)",
+            "risk": "Execution risk, market conditions may change",
+            "justified": roll_economics["roll_justified"]
         }
     }
     
@@ -506,19 +784,17 @@ def evaluate_income_rules(trade: dict, current_price: float, settings: dict, red
     medium_severity_rules = [r for r in analysis["rules_triggered"] if r.get("severity") == "medium"]
     
     if high_severity_rules:
-        # High severity rule triggered
         rule = high_severity_rules[0]
-        if "roll" in rule.get("action", "").lower():
-            analysis["recommendation"] = "roll"
-            analysis["recommendation_reason"] = rule["message"]
-        elif "close" in rule.get("action", "").lower() or "force" in rule.get("action", "").lower():
-            # Check fee gate
+        if "roll" in rule.get("action", "").lower() and roll_economics["roll_justified"]:
+            analysis["recommendation"] = "roll_up_out" if "up" in rule.get("action", "").lower() else "roll"
+            analysis["recommendation_reason"] = f"{rule['message']} Net roll value: ${roll_economics['net_roll_value']:.2f}"
+        elif "close" in rule.get("action", "").lower():
             if close_now_value > min_improvement_required:
                 analysis["recommendation"] = "close"
                 analysis["recommendation_reason"] = f"{rule['message']} Net after fees: ${close_now_value:.2f}"
             else:
                 analysis["recommendation"] = "hold"
-                analysis["recommendation_reason"] = f"Rule suggests close but does not meet fee gate (${close_now_value:.2f} < ${min_improvement_required:.2f} required)"
+                analysis["recommendation_reason"] = f"Close suggested but fee gate not met (${close_now_value:.2f} < ${min_improvement_required:.2f})"
         elif "restructure" in rule.get("action", "").lower():
             analysis["recommendation"] = "restructure"
             analysis["recommendation_reason"] = rule["message"]
@@ -526,22 +802,19 @@ def evaluate_income_rules(trade: dict, current_price: float, settings: dict, red
             analysis["recommendation"] = "evaluate"
             analysis["recommendation_reason"] = rule["message"]
     elif medium_severity_rules:
-        # Medium severity - recommend but don't force
         rule = medium_severity_rules[0]
-        if analysis["comparison"]["close_and_redeploy"]["value"] > analysis["comparison"]["hold_to_expiry"]["value"]:
-            if close_now_value > min_improvement_required:
-                analysis["recommendation"] = "consider_close"
-                analysis["recommendation_reason"] = f"{rule['message']} Redeployment potentially more efficient."
-            else:
-                analysis["recommendation"] = "hold"
-                analysis["recommendation_reason"] = f"Potential improvement but below fee threshold"
+        if "roll" in rule.get("action", "").lower() and roll_economics["roll_justified"]:
+            analysis["recommendation"] = "consider_roll"
+            analysis["recommendation_reason"] = f"{rule['message']} Roll is economically justified."
+        elif close_now_value > min_improvement_required and premium_captured_pct >= premium_exit_threshold:
+            analysis["recommendation"] = "consider_close"
+            analysis["recommendation_reason"] = f"{rule['message']} Early exit may improve capital efficiency."
         else:
             analysis["recommendation"] = "hold"
-            analysis["recommendation_reason"] = "Hold to expiry appears optimal"
+            analysis["recommendation_reason"] = "Trade performing within parameters. Hold to capture remaining premium."
     else:
-        # No significant rules triggered
         analysis["recommendation"] = "hold"
-        analysis["recommendation_reason"] = "No action required - trade performing within parameters"
+        analysis["recommendation_reason"] = "No action required – trade performing within parameters."
     
     return analysis
 
