@@ -895,7 +895,8 @@ async def screen_pmcc(
                                     "roi_per_cycle": round(roi_per_cycle, 2),
                                     "annualized_roi": round(annualized_roi, 1),
                                     "score": round(score, 1),
-                                    "data_source": "polygon"
+                                    "data_source": "yahoo",
+                                    "data_date": t1_date
                                 })
                     
             except Exception as e:
@@ -910,52 +911,41 @@ async def screen_pmcc(
         symbols = [opp["symbol"] for opp in opportunities]
         analyst_ratings = await fetch_analyst_ratings_batch(symbols)
         
-        # Add analyst ratings and data quality flag to opportunities
+        # Add analyst ratings
         for opp in opportunities:
             opp["analyst_rating"] = analyst_ratings.get(opp["symbol"])
-            opp["data_quality"] = "fresh"  # Live data is always fresh
         
         result = {
             "opportunities": opportunities, 
             "total": len(opportunities), 
-            "is_live": True, 
             "from_cache": False,
-            "market_closed": market_closed,
-            "data_source": "polygon",
-            "fetched_at": datetime.now(timezone.utc).isoformat(),
-            "data_freshness_score": 100.0,  # Live data = 100% fresh
-            "data_note": "Live market data"
+            "t1_data": t1_info,
+            "data_source": "yahoo",
+            "fetched_at": datetime.now(timezone.utc).isoformat()
         }
         await funcs['set_cached_data'](cache_key, result)
         return result
         
     except Exception as e:
         logging.error(f"PMCC screener error: {e}")
-        return {"opportunities": [], "total": 0, "error": str(e), "is_mock": True}
+        return {"opportunities": [], "total": 0, "error": str(e), "is_mock": True, "t1_data": t1_info}
 
 
 @screener_router.get("/dashboard-pmcc")
 async def get_dashboard_pmcc(user: dict = Depends(get_current_user)):
-    """Get top PMCC opportunities for dashboard - always shows data (from cache/last trading day when market closed)"""
+    """Get top PMCC opportunities for dashboard - uses T-1 data"""
     funcs = _get_server_functions()
+    t1_info = _get_t1_data_info()
+    t1_date = t1_info["data_date"]
     
-    cache_key = "dashboard_pmcc_v2"
+    cache_key = f"dashboard_pmcc_t1_{t1_date}"
     
-    # Check cache first
-    cached_data = await funcs['get_cached_data'](cache_key)
+    # Check cache (valid for entire T-1 day)
+    cached_data = await funcs['get_cached_data'](cache_key, max_age_seconds=86400)
     if cached_data:
         cached_data["from_cache"] = True
-        cached_data["market_closed"] = funcs['is_market_closed']()
+        cached_data["t1_data"] = t1_info
         return cached_data
-    
-    # If market is closed and no cache, try last trading day data
-    if funcs['is_market_closed']():
-        ltd_data = await funcs['get_last_trading_day_data'](cache_key)
-        if ltd_data:
-            ltd_data["from_cache"] = True
-            ltd_data["market_closed"] = True
-            ltd_data["is_last_trading_day"] = True
-            return ltd_data
     
     # Call the main PMCC screener with explicit default values
     result = await screen_pmcc(
