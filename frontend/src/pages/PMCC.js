@@ -362,8 +362,35 @@ const PMCC = () => {
     return sortDirection === 'asc' ? aVal - bVal : bVal - aVal;
   });
 
+  // Get T-1 data info from apiInfo
+  const t1Data = apiInfo?.t1_data;
+
   return (
     <div className="space-y-6" data-testid="pmcc-page">
+      {/* T-1 Data Status Banner */}
+      <div className="glass-card p-3 flex items-center justify-between bg-zinc-800/50 border-emerald-500/30">
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
+            <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+            <span className="text-emerald-400 font-medium text-sm">T-1 Market Data</span>
+          </div>
+          <span className="text-zinc-400 text-sm">
+            {t1Data ? (
+              <>Data from: <span className="text-white font-medium">{t1Data.data_date}</span> (Market Close)</>
+            ) : (
+              <>Using previous trading day close data</>
+            )}
+          </span>
+        </div>
+        <div className="flex items-center gap-2">
+          {t1Data?.next_refresh && (
+            <span className="text-xs text-zinc-500">
+              Next refresh: {t1Data.next_refresh}
+            </span>
+          )}
+        </div>
+      </div>
+
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
@@ -375,40 +402,9 @@ const PMCC = () => {
             {apiInfo?.is_precomputed 
               ? `Showing ${apiInfo.label} pre-computed PMCC results`
               : apiInfo?.is_precomputed_fallback
-                ? `Showing ${apiInfo.precomputed_profile} pre-computed results (market closed)`
+                ? `Showing ${apiInfo.precomputed_profile} pre-computed results`
                 : "LEAPS-based covered call strategy with lower capital requirement"}
           </p>
-          {/* Data Freshness Indicator */}
-          {apiInfo && (
-            <div className="mt-2 flex items-center gap-2 text-xs">
-              <span className={`inline-flex items-center px-2 py-0.5 rounded-full ${
-                apiInfo.data_freshness_score === 100 
-                  ? 'bg-emerald-500/20 text-emerald-400' 
-                  : apiInfo.is_precomputed_fallback 
-                    ? 'bg-yellow-500/20 text-yellow-400'
-                    : apiInfo.from_cache 
-                      ? 'bg-blue-500/20 text-blue-400'
-                      : 'bg-zinc-500/20 text-zinc-400'
-              }`}>
-                {apiInfo.data_freshness_score === 100 ? '● Live Data' : 
-                 apiInfo.is_precomputed_fallback ? '● Pre-computed Data' :
-                 apiInfo.from_cache ? '● Cached Data' : '● Data'}
-              </span>
-              {apiInfo.data_note && (
-                <span className="text-zinc-500">{apiInfo.data_note}</span>
-              )}
-              {apiInfo.fetched_at && (
-                <span className="text-zinc-600">
-                  • {new Date(apiInfo.fetched_at).toLocaleTimeString()}
-                </span>
-              )}
-              {apiInfo.computed_at && !apiInfo.fetched_at && (
-                <span className="text-zinc-600">
-                  • Computed {new Date(apiInfo.computed_at).toLocaleDateString()}
-                </span>
-              )}
-            </div>
-          )}
         </div>
         <div className="flex flex-wrap gap-3">
           <Button
@@ -417,7 +413,7 @@ const PMCC = () => {
             disabled={refreshing || loading}
             className="btn-outline"
             data-testid="refresh-pmcc-btn"
-            title="Fetch fresh data from market (bypasses cache)"
+            title="Refresh data with latest T-1 close prices"
           >
             <RefreshCw className={`w-4 h-4 mr-2 ${refreshing ? 'animate-spin' : ''}`} />
             {refreshing ? 'Refreshing...' : 'Refresh Data'}
