@@ -199,7 +199,7 @@ async def get_watchlist(user: dict = Depends(get_current_user)):
 
 @watchlist_router.post("/")
 async def add_to_watchlist(item: WatchlistItemCreate, user: dict = Depends(get_current_user)):
-    """Add a symbol to user's watchlist with current price"""
+    """Add a symbol to user's watchlist with current price and analyst data"""
     get_massive_api_key, _ = _get_server_functions()
     
     symbol = item.symbol.upper()
@@ -209,10 +209,14 @@ async def add_to_watchlist(item: WatchlistItemCreate, user: dict = Depends(get_c
     if existing:
         raise HTTPException(status_code=400, detail="Symbol already in watchlist")
     
-    # Get current price (Yahoo primary)
+    # Get current price and analyst data (Yahoo primary)
     api_key = await get_massive_api_key()
     stock_data = await fetch_stock_quote(symbol, api_key)
+    
     price_when_added = stock_data.get("price", 0) if stock_data else 0
+    analyst_rating = stock_data.get("analyst_rating") if stock_data else None
+    days_to_earnings = stock_data.get("days_to_earnings") if stock_data else None
+    earnings_date = stock_data.get("earnings_date") if stock_data else None
     
     doc = {
         "id": str(uuid.uuid4()),
@@ -220,6 +224,9 @@ async def add_to_watchlist(item: WatchlistItemCreate, user: dict = Depends(get_c
         "symbol": symbol,
         "target_price": item.target_price,
         "price_when_added": price_when_added,
+        "analyst_rating_at_add": analyst_rating,
+        "days_to_earnings_at_add": days_to_earnings,
+        "earnings_date_at_add": earnings_date,
         "notes": item.notes,
         "added_at": datetime.now(timezone.utc).isoformat()
     }
@@ -229,6 +236,7 @@ async def add_to_watchlist(item: WatchlistItemCreate, user: dict = Depends(get_c
         "id": doc["id"],
         "symbol": symbol,
         "price_when_added": price_when_added,
+        "analyst_rating": analyst_rating,
         "message": "Added to watchlist"
     }
 
