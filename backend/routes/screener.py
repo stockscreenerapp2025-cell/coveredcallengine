@@ -403,7 +403,8 @@ async def screen_covered_calls(
                         "analyst_rating": analyst_rating,
                         "days_to_earnings": stock_data.get("days_to_earnings"),
                         "earnings_date": stock_data.get("earnings_date"),
-                        "data_source": opt.get("source", "yahoo")
+                        "data_source": opt.get("source", "yahoo"),
+                        "data_quality": "fresh"  # Live data is always fresh
                     })
             except Exception as e:
                 logging.error(f"Error scanning {symbol}: {e}")
@@ -424,7 +425,11 @@ async def screen_covered_calls(
             "total": len(opportunities), 
             "is_live": True, 
             "from_cache": False,
-            "data_source": "polygon"
+            "market_closed": market_closed,
+            "data_source": "polygon",
+            "fetched_at": datetime.now(timezone.utc).isoformat(),
+            "data_freshness_score": 100.0,  # Live data = 100% fresh
+            "data_note": "Live market data"
         }
         await funcs['set_cached_data'](cache_key, result)
         return result
