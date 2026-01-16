@@ -309,3 +309,78 @@ async def update_watchlist_notes(item_id: str, notes: str = "", user: dict = Dep
     if result.matched_count == 0:
         raise HTTPException(status_code=404, detail="Item not found")
     return {"message": "Notes updated"}
+
+
+@watchlist_router.post("/refresh-data")
+async def refresh_watchlist_data(user: dict = Depends(get_current_user)):
+    """Refresh analyst and earnings data for all watchlist items with missing data"""
+    import yfinance as yf
+    from datetime import datetime as dt
+    
+    items = await db.watchlist.find({"user_id": user["id"]}, {"_id": 0}).to_list(100)
+    
+    if not items:
+        return {"message": "No items to refresh", "updated": 0}
+    
+    updated_count = 0
+    
+    for item in items:
+        symbol = item.get("symbol")
+        needs_update = False
+        update_doc = {}
+        
+        # Check if analyst or earnings data is missing
+        if not item.get("analyst_rating_at_add") or item.get("days_to_earnings_at_add") is None:
+            needs_update = True
+        
+        if needs_update:
+            try:
+                ticker = yf.Ticker(symbol)
+                info = ticker.info
+                
+                # Get analyst rating if missing
+                if not item.get("analyst_rating_at_add"):
+                    recommendation = info.get("recommendationKey", "")
+                    rating_map = {
+                        "strong_buy": "Strong Buy",
+                        "buy": "Buy", 
+                        "hold": "Hold",
+                        "underperform": "Sell",
+                        "sell": "Sell"
+                    }
+                    analyst_rating = rating_map.get(recommendation, recommendation.replace("_", " ").title() if recommendation else None)
+                    if analyst_rating:
+                        update_doc["analyst_rating_at_add"] = analyst_rating
+                
+                # Get earnings date if missing
+                if item.get("days_to_earnings_at_add") is None:
+                    try:
+                        calendar = ticker.calendar
+                        if calendar is not None and 'Earnings Date' in calendar:
+                            earnings_dates = calendar['Earnings Date']
+                            if len(earnings_dates) > 0:
+                                next_earnings = earnings_dates[0]
+                                if hasattr(next_earnings, 'date'):
+                                    earnings_date = next_earnings.date().isoformat()
+                                else:
+                                    earnings_date = str(next_earnings)[:10]
+                                if earnings_date:
+                                    earnings_dt = dt.strptime(earnings_date, "%Y-%m-%d")
+                                    days_to_earnings = (earnings_dt - dt.now()).days
+                                    update_doc["earnings_date_at_add"] = earnings_date
+                                    update_doc["days_to_earnings_at_add"] = days_to_earnings
+                    except Exception:
+                        pass
+                
+                if update_doc:
+                    await db.watchlist.update_one(
+                        {"id": item["id"]},
+                        {"$set": update_doc}
+                    )
+                    updated_count += 1
+                    
+            except Exception as e:
+                logging.warning(f"Failed to refresh data for {symbol}: {e}")
+    
+    return {"message": f"Refreshed data for {updated_count} items", "updated": updated_count}
+
