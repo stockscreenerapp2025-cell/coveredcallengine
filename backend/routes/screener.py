@@ -1045,10 +1045,10 @@ async def refresh_precomputed_scans(user: dict = Depends(get_current_user)):
 async def get_data_quality_status(user: dict = Depends(get_current_user)):
     """
     Get data quality status for all screener data sources.
-    Returns freshness indicators and any known issues.
+    Uses T-1 data principle - shows green/amber/red status for each scan.
     """
-    funcs = _get_server_functions()
-    market_closed = funcs['is_market_closed']()
+    t1_info = _get_t1_data_info()
+    t1_date = t1_info["data_date"]
     
     # Check precomputed scan freshness
     precomputed_status = []
@@ -1059,36 +1059,169 @@ async def get_data_quality_status(user: dict = Depends(get_current_user)):
                 {"_id": 0, "opportunities": 0}
             )
             if scan:
+                computed_date = scan.get("computed_date", "")
                 computed_at = scan.get("computed_at", "")
-                try:
-                    if computed_at:
-                        dt = datetime.fromisoformat(computed_at.replace('Z', '+00:00'))
-                        age_hours = (datetime.now(timezone.utc) - dt).total_seconds() / 3600
-                        freshness = "fresh" if age_hours < 24 else "stale" if age_hours < 72 else "very_stale"
-                    else:
-                        age_hours = None
-                        freshness = "unknown"
-                except:
-                    age_hours = None
-                    freshness = "unknown"
+                
+                # Get freshness status using trading calendar
+                if computed_date:
+                    freshness = get_data_freshness_status(computed_date)
+                else:
+                    freshness = {"status": "red", "label": "Unknown", "description": "No computed date"}
                 
                 precomputed_status.append({
                     "strategy": strategy,
                     "profile": profile,
                     "count": scan.get("count", 0),
+                    "computed_date": computed_date,
                     "computed_at": computed_at,
-                    "age_hours": round(age_hours, 1) if age_hours else None,
-                    "freshness": freshness
+                    "status": freshness["status"],
+                    "status_label": freshness["label"],
+                    "status_description": freshness["description"]
+                })
+            else:
+                precomputed_status.append({
+                    "strategy": strategy,
+                    "profile": profile,
+                    "count": 0,
+                    "computed_date": None,
+                    "computed_at": None,
+                    "status": "red",
+                    "status_label": "Missing",
+                    "status_description": "No precomputed data available"
                 })
     
     return {
-        "market_status": "closed" if market_closed else "open",
+        "t1_data": t1_info,
         "precomputed_scans": precomputed_status,
         "data_quality_note": (
-            "When market is open, screeners fetch live data. "
-            "When market is closed, cached data from last trading day is used. "
-            "Precomputed scans are updated daily at 4:45 PM ET."
+            f"CCE uses T-1 (previous trading day) market close data. "
+            f"Current T-1 date: {t1_date}. "
+            f"Data is refreshed daily after 4:00 PM ET market close."
         ),
+        "checked_at": datetime.now(timezone.utc).isoformat()
+    }
+
+
+@screener_router.get("/data-quality-dashboard")
+async def get_data_quality_dashboard(user: dict = Depends(get_current_user)):
+    """
+    Admin Data Quality Dashboard - Shows green/amber/red status for all scans.
+    
+    Returns comprehensive status with actionable information.
+    """
+    t1_info = _get_t1_data_info()
+    t1_date = t1_info["data_date"]
+    
+    # Get market data status
+    market_status = get_market_data_status()
+    
+    # Scan statuses with traffic light indicators
+    scan_statuses = []
+    
+    # 1. Covered Call Scans
+    for profile in ["conservative", "balanced", "aggressive"]:
+        scan = await db.precomputed_scans.find_one(
+            {"strategy": "covered_call", "risk_profile": profile},
+            {"_id": 0, "opportunities": 0}
+        )
+        
+        if scan:
+            computed_date = scan.get("computed_date", "")
+            freshness = get_data_freshness_status(computed_date) if computed_date else {"status": "red", "days_old": None}
+            
+            scan_statuses.append({
+                "scan_type": "Covered Call",
+                "profile": profile.title(),
+                "status": freshness["status"],
+                "status_emoji": "🟢" if freshness["status"] == "green" else "🟡" if freshness["status"] == "amber" else "🔴",
+                "count": scan.get("count", 0),
+                "computed_date": computed_date,
+                "computed_at": scan.get("computed_at", ""),
+                "days_old": freshness.get("days_old"),
+                "needs_refresh": freshness["status"] != "green"
+            })
+        else:
+            scan_statuses.append({
+                "scan_type": "Covered Call",
+                "profile": profile.title(),
+                "status": "red",
+                "status_emoji": "🔴",
+                "count": 0,
+                "computed_date": None,
+                "computed_at": None,
+                "days_old": None,
+                "needs_refresh": True
+            })
+    
+    # 2. PMCC Scans
+    for profile in ["conservative", "balanced", "aggressive"]:
+        scan = await db.precomputed_scans.find_one(
+            {"strategy": "pmcc", "risk_profile": profile},
+            {"_id": 0, "opportunities": 0}
+        )
+        
+        if scan:
+            computed_date = scan.get("computed_date", "")
+            freshness = get_data_freshness_status(computed_date) if computed_date else {"status": "red", "days_old": None}
+            
+            scan_statuses.append({
+                "scan_type": "PMCC",
+                "profile": profile.title(),
+                "status": freshness["status"],
+                "status_emoji": "🟢" if freshness["status"] == "green" else "🟡" if freshness["status"] == "amber" else "🔴",
+                "count": scan.get("count", 0),
+                "computed_date": computed_date,
+                "computed_at": scan.get("computed_at", ""),
+                "days_old": freshness.get("days_old"),
+                "needs_refresh": freshness["status"] != "green"
+            })
+        else:
+            scan_statuses.append({
+                "scan_type": "PMCC",
+                "profile": profile.title(),
+                "status": "red",
+                "status_emoji": "🔴",
+                "count": 0,
+                "computed_date": None,
+                "computed_at": None,
+                "days_old": None,
+                "needs_refresh": True
+            })
+    
+    # Count by status
+    green_count = sum(1 for s in scan_statuses if s["status"] == "green")
+    amber_count = sum(1 for s in scan_statuses if s["status"] == "amber")
+    red_count = sum(1 for s in scan_statuses if s["status"] == "red")
+    
+    # Overall status
+    if red_count > 0:
+        overall_status = "red"
+        overall_message = f"{red_count} scan(s) need refresh"
+    elif amber_count > 0:
+        overall_status = "amber"
+        overall_message = f"{amber_count} scan(s) slightly stale"
+    else:
+        overall_status = "green"
+        overall_message = "All scans up to date"
+    
+    return {
+        "t1_data": t1_info,
+        "market_status": market_status,
+        "overall_status": overall_status,
+        "overall_status_emoji": "🟢" if overall_status == "green" else "🟡" if overall_status == "amber" else "🔴",
+        "overall_message": overall_message,
+        "summary": {
+            "green": green_count,
+            "amber": amber_count,
+            "red": red_count,
+            "total": len(scan_statuses)
+        },
+        "scans": scan_statuses,
+        "actions": {
+            "refresh_endpoint": "/api/screener/refresh-precomputed",
+            "refresh_available": True,
+            "note": "Refresh will update all scans with T-1 market close data"
+        },
         "checked_at": datetime.now(timezone.utc).isoformat()
     }
 
