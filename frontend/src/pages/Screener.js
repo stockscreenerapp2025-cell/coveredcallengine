@@ -98,6 +98,8 @@ const Screener = () => {
         short_call_premium: simulateOpp.premium,
         short_call_delta: simulateOpp.delta,
         short_call_iv: simulateOpp.iv,
+        short_call_iv_rank: simulateOpp.iv_rank,
+        short_call_open_interest: simulateOpp.open_interest,
         contracts: simulateContracts,
         scan_parameters: {
           score: simulateOpp.score,
