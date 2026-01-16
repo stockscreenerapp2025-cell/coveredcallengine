@@ -374,8 +374,41 @@ const PMCC = () => {
           <p className="text-zinc-400 mt-1">
             {apiInfo?.is_precomputed 
               ? `Showing ${apiInfo.label} pre-computed PMCC results`
-              : "LEAPS-based covered call strategy with lower capital requirement"}
+              : apiInfo?.is_precomputed_fallback
+                ? `Showing ${apiInfo.precomputed_profile} pre-computed results (market closed)`
+                : "LEAPS-based covered call strategy with lower capital requirement"}
           </p>
+          {/* Data Freshness Indicator */}
+          {apiInfo && (
+            <div className="mt-2 flex items-center gap-2 text-xs">
+              <span className={`inline-flex items-center px-2 py-0.5 rounded-full ${
+                apiInfo.data_freshness_score === 100 
+                  ? 'bg-emerald-500/20 text-emerald-400' 
+                  : apiInfo.is_precomputed_fallback 
+                    ? 'bg-yellow-500/20 text-yellow-400'
+                    : apiInfo.from_cache 
+                      ? 'bg-blue-500/20 text-blue-400'
+                      : 'bg-zinc-500/20 text-zinc-400'
+              }`}>
+                {apiInfo.data_freshness_score === 100 ? '● Live Data' : 
+                 apiInfo.is_precomputed_fallback ? '● Pre-computed Data' :
+                 apiInfo.from_cache ? '● Cached Data' : '● Data'}
+              </span>
+              {apiInfo.data_note && (
+                <span className="text-zinc-500">{apiInfo.data_note}</span>
+              )}
+              {apiInfo.fetched_at && (
+                <span className="text-zinc-600">
+                  • {new Date(apiInfo.fetched_at).toLocaleTimeString()}
+                </span>
+              )}
+              {apiInfo.computed_at && !apiInfo.fetched_at && (
+                <span className="text-zinc-600">
+                  • Computed {new Date(apiInfo.computed_at).toLocaleDateString()}
+                </span>
+              )}
+            </div>
+          )}
         </div>
         <div className="flex flex-wrap gap-3">
           <Button
