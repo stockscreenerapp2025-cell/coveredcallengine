@@ -183,32 +183,16 @@ const PMCC = () => {
   });
 
   useEffect(() => {
-    // On initial load, fetch available scans and auto-load the balanced pre-computed scan
-    // This ensures users always see data (from previous market close)
+    // On initial load, fetch available scans and run custom scan by default
     const initializeData = async () => {
       try {
         const res = await scansApi.getAvailable();
         setAvailableScans(res.data.scans);
         
-        // Auto-load balanced pre-computed scan for best initial UX
-        // If balanced has data, use it; otherwise try others
-        const pmccScans = res.data.scans?.pmcc || [];
-        const balancedScan = pmccScans.find(s => s.risk_profile === 'balanced');
-        const conservativeScan = pmccScans.find(s => s.risk_profile === 'conservative');
-        const aggressiveScan = pmccScans.find(s => s.risk_profile === 'aggressive');
-        
-        if (balancedScan?.available && balancedScan?.count > 0) {
-          loadPrecomputedScan('balanced');
-        } else if (conservativeScan?.available && conservativeScan?.count > 0) {
-          loadPrecomputedScan('conservative');
-        } else if (aggressiveScan?.available && aggressiveScan?.count > 0) {
-          loadPrecomputedScan('aggressive');
-        } else {
-          // Fallback to custom scan only if no pre-computed data exists
-          fetchOpportunities();
-        }
+        // Default to custom scan - user can select pre-computed scans if desired
+        fetchOpportunities();
       } catch (error) {
-        console.log('Could not fetch available scans, falling back to custom:', error);
+        console.log('Could not fetch available scans, running custom scan:', error);
         fetchOpportunities();
       }
     };
