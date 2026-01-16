@@ -2,21 +2,29 @@
 Screener Routes - Covered Call and PMCC screening endpoints
 Designed for scalability with proper caching, async patterns, and efficient data processing
 
-DATA SOURCING STRATEGY:
-- OPTIONS DATA: Yahoo Finance primary, Polygon backup
-- STOCK DATA: Yahoo Finance primary, Polygon backup
-- All data sourcing is handled by services/data_provider.py
+TWO-SOURCE DATA MODEL (AUTHORITATIVE SPEC):
+1. EQUITY PRICE (Hard Rule):
+   - Always use T-1 market close
+   - Non-negotiable
 
-T-1 DATA PRINCIPLE (STRICT):
-- CCE must always use T-1 market close data (last completed trading session)
-- No intraday or partial data is ever used
-- Weekend/Holiday handling: Auto-rollback to most recent trading day
-- Data freshness indicators show T-1 date consistently
+2. OPTIONS CHAIN DATA (Flexible but Controlled):
+   - Use latest fully available option chain snapshot
+   - Only use expirations that ACTUALLY exist in Yahoo Finance
+   - Reject chains with missing IV or OI
+   - Only include Friday expirations (standard weeklies)
 
-DATA USAGE RULES:
-1. Default & Only Data Source: T-1 market close data
-2. No Intraday: Do not pull intraday quotes or mix data
-3. Holiday/Weekend: Automatically roll back to most recent completed trading day
+3. WEEKLY/MONTHLY MIX:
+   - Show 50/50 mix of best weekly and monthly options
+   - Fallback: whatever is available
+
+4. MANDATORY METADATA:
+   - Equity Price Date: e.g., "Jan 15, 2026 (T-1 close)"
+   - Options Chain Snapshot: e.g., "As of: Jan 14, 2026 22:10 ET"
+
+5. STALENESS RULES:
+   - 🟢 Fresh: snapshot ≤ 24h old
+   - 🟠 Stale: 24-48h old
+   - 🔴 Invalid: >48h old → exclude from scans
 """
 from fastapi import APIRouter, Depends, Query, HTTPException
 from pydantic import BaseModel
@@ -33,20 +41,27 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from database import db
 from utils.auth import get_current_user
-# Import centralized data provider (T-1 data principle)
+# Import centralized data provider (Two-Source Model)
 from services.data_provider import (
     fetch_options_chain,
     fetch_stock_quote,
     get_data_date,
     get_data_source_status,
-    calculate_dte
+    calculate_dte,
+    get_available_expirations
 )
 # Import trading calendar for T-1 dates
 from services.trading_calendar import (
     get_t_minus_1,
     get_market_data_status,
     get_data_freshness_status,
-    is_valid_expiration_date
+    is_valid_expiration_date,
+    is_friday_expiration,
+    is_monthly_expiration,
+    categorize_expirations,
+    get_option_chain_staleness,
+    validate_option_chain_data,
+    get_data_metadata
 )
 # Import data quality validation
 from services.data_quality import (
