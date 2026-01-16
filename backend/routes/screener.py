@@ -1027,6 +1027,92 @@ async def clear_screener_cache(user: dict = Depends(get_current_user)):
         raise HTTPException(status_code=500, detail=f"Failed to clear cache: {str(e)}")
 
 
+@screener_router.post("/refresh-precomputed")
+async def refresh_precomputed_scans(user: dict = Depends(get_current_user)):
+    """
+    Manually trigger a refresh of all precomputed scans.
+    This updates both Covered Call and PMCC scans with fresh market data.
+    
+    Note: This is rate-limited and should only be called when data seems stale.
+    """
+    try:
+        from services.precomputed_scans import PrecomputedScanService
+        
+        # Check if user is admin
+        if user.get("role") != "admin":
+            raise HTTPException(status_code=403, detail="Admin access required")
+        
+        service = PrecomputedScanService()
+        
+        logging.info(f"Manual precomputed scan refresh triggered by {user.get('email')}")
+        
+        # Run the scan computation
+        results = await service.compute_all_scans()
+        
+        return {
+            "message": "Precomputed scans refreshed successfully",
+            "results": results,
+            "refreshed_at": datetime.now(timezone.utc).isoformat()
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logging.error(f"Error refreshing precomputed scans: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to refresh scans: {str(e)}")
+
+
+@screener_router.get("/data-quality")
+async def get_data_quality_status(user: dict = Depends(get_current_user)):
+    """
+    Get data quality status for all screener data sources.
+    Returns freshness indicators and any known issues.
+    """
+    funcs = _get_server_functions()
+    market_closed = funcs['is_market_closed']()
+    
+    # Check precomputed scan freshness
+    precomputed_status = []
+    for strategy in ["covered_call", "pmcc"]:
+        for profile in ["conservative", "balanced", "aggressive"]:
+            scan = await db.precomputed_scans.find_one(
+                {"strategy": strategy, "risk_profile": profile},
+                {"_id": 0, "opportunities": 0}
+            )
+            if scan:
+                computed_at = scan.get("computed_at", "")
+                try:
+                    if computed_at:
+                        dt = datetime.fromisoformat(computed_at.replace('Z', '+00:00'))
+                        age_hours = (datetime.now(timezone.utc) - dt).total_seconds() / 3600
+                        freshness = "fresh" if age_hours < 24 else "stale" if age_hours < 72 else "very_stale"
+                    else:
+                        age_hours = None
+                        freshness = "unknown"
+                except:
+                    age_hours = None
+                    freshness = "unknown"
+                
+                precomputed_status.append({
+                    "strategy": strategy,
+                    "profile": profile,
+                    "count": scan.get("count", 0),
+                    "computed_at": computed_at,
+                    "age_hours": round(age_hours, 1) if age_hours else None,
+                    "freshness": freshness
+                })
+    
+    return {
+        "market_status": "closed" if market_closed else "open",
+        "precomputed_scans": precomputed_status,
+        "data_quality_note": (
+            "When market is open, screeners fetch live data. "
+            "When market is closed, cached data from last trading day is used. "
+            "Precomputed scans are updated daily at 4:45 PM ET."
+        ),
+        "checked_at": datetime.now(timezone.utc).isoformat()
+    }
+
+
 @screener_router.post("/filters")
 async def save_filter(filter_data: ScreenerFilterCreate, user: dict = Depends(get_current_user)):
     """Save a screener filter preset"""
