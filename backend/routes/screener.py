@@ -633,6 +633,7 @@ async def screen_pmcc(
     
     MARKET CLOSED BEHAVIOR:
     - Returns cached data from last trading day when market is closed
+    - Falls back to pre-computed "balanced" scan if no custom cache exists
     - Ensures users always see opportunities (never blank)
     """
     funcs = _get_server_functions()
@@ -648,19 +649,55 @@ async def screen_pmcc(
     # Check cache first
     if not bypass_cache:
         cached_data = await funcs['get_cached_data'](cache_key)
-        if cached_data:
+        if cached_data and cached_data.get("opportunities"):
             cached_data["from_cache"] = True
             cached_data["market_closed"] = funcs['is_market_closed']()
             return cached_data
     
-    # If market is closed and no cache, try last trading day data
+    # If market is closed, try fallback sources
     if funcs['is_market_closed']():
+        # Try last trading day data first
         ltd_data = await funcs['get_last_trading_day_data'](cache_key)
-        if ltd_data:
+        if ltd_data and ltd_data.get("opportunities"):
             ltd_data["from_cache"] = True
             ltd_data["market_closed"] = True
             ltd_data["is_last_trading_day"] = True
             return ltd_data
+        
+        # Fallback to pre-computed "balanced" PMCC scan (most comprehensive)
+        precomputed_scan = await db.precomputed_scans.find_one(
+            {"scan_type": "pmcc", "risk_profile": "balanced"},
+            {"_id": 0}
+        )
+        if precomputed_scan and precomputed_scan.get("opportunities"):
+            return {
+                "opportunities": precomputed_scan["opportunities"],
+                "total": len(precomputed_scan["opportunities"]),
+                "from_cache": True,
+                "market_closed": True,
+                "is_precomputed_fallback": True,
+                "precomputed_profile": "balanced",
+                "computed_at": precomputed_scan.get("computed_at"),
+                "data_source": "precomputed_balanced"
+            }
+        
+        # Try aggressive or conservative as last resort
+        for profile in ["aggressive", "conservative"]:
+            fallback_scan = await db.precomputed_scans.find_one(
+                {"scan_type": "pmcc", "risk_profile": profile},
+                {"_id": 0}
+            )
+            if fallback_scan and fallback_scan.get("opportunities"):
+                return {
+                    "opportunities": fallback_scan["opportunities"],
+                    "total": len(fallback_scan["opportunities"]),
+                    "from_cache": True,
+                    "market_closed": True,
+                    "is_precomputed_fallback": True,
+                    "precomputed_profile": profile,
+                    "computed_at": fallback_scan.get("computed_at"),
+                    "data_source": f"precomputed_{profile}"
+                }
     
     api_key = await funcs['get_massive_api_key']()
     
