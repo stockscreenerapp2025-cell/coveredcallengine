@@ -117,6 +117,8 @@ class SimulatorTradeEntry(BaseModel):
     short_call_premium: float
     short_call_delta: Optional[float] = None
     short_call_iv: Optional[float] = None
+    short_call_iv_rank: Optional[float] = None
+    short_call_open_interest: Optional[int] = None
     
     # For PMCC - LEAPS details
     leaps_strike: Optional[float] = None
