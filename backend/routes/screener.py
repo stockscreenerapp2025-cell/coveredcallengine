@@ -844,10 +844,10 @@ async def screen_pmcc(
     api_key = await funcs['get_massive_api_key']()
     
     if not api_key:
-        return {"opportunities": [], "total": 0, "message": "API key required for PMCC screening", "is_mock": True, "t1_data": t1_info}
+        return {"opportunities": [], "total": 0, "message": "API key required for PMCC screening", "is_mock": True, "metadata": t1_info}
     
     try:
-        # Expanded symbol list for more opportunities
+        # Expanded symbol list for PMCC opportunities
         symbols_to_scan = [
             # Tech
             "INTC", "AMD", "MU", "QCOM", "CSCO", "HPQ", "DELL", "IBM",
@@ -868,10 +868,11 @@ async def screen_pmcc(
         ]
         
         opportunities = []
+        options_snapshot_time = None
         
         for symbol in symbols_to_scan:
             try:
-                # Get stock price using centralized data provider (T-1)
+                # Get stock price using centralized data provider (T-1 close)
                 stock_data = await fetch_stock_quote(symbol, api_key)
                 
                 if not stock_data or stock_data.get("price", 0) == 0:
@@ -882,18 +883,36 @@ async def screen_pmcc(
                 if current_price < min_price or current_price > max_price:
                     continue
                 
-                # Get LEAPS options (long leg) - T-1 data
-                leaps_options = await fetch_options_chain(
-                    symbol, api_key, "call", max_leaps_dte, min_dte=min_leaps_dte, current_price=current_price
+                # Get LEAPS options (long leg) - allow all Friday expirations for LEAPS
+                leaps_options, leaps_meta = await fetch_options_chain(
+                    symbol=symbol,
+                    api_key=api_key,
+                    option_type="call",
+                    max_dte=max_leaps_dte,
+                    min_dte=min_leaps_dte,
+                    current_price=current_price,
+                    friday_only=True,
+                    require_complete_data=True
                 )
                 
-                # Get short-term options (short leg) - T-1 data
-                short_options = await fetch_options_chain(
-                    symbol, api_key, "call", max_short_dte, min_dte=min_short_dte, current_price=current_price
+                # Get short-term options (short leg) - Friday only
+                short_options, short_meta = await fetch_options_chain(
+                    symbol=symbol,
+                    api_key=api_key,
+                    option_type="call",
+                    max_dte=max_short_dte,
+                    min_dte=min_short_dte,
+                    current_price=current_price,
+                    friday_only=True,
+                    require_complete_data=True
                 )
+                
+                # Track snapshot time
+                if leaps_meta.get("snapshot_time") and not options_snapshot_time:
+                    options_snapshot_time = leaps_meta["snapshot_time"]
                 
                 if not leaps_options or not short_options:
-                    logging.debug(f"No LEAPS or short options from Polygon for {symbol}")
+                    logging.debug(f"No LEAPS or short options for {symbol}: leaps={leaps_meta.get('error', 'none')}, short={short_meta.get('error', 'none')}")
                     continue
                 
                 # Filter LEAPS for deep ITM (high delta)
@@ -901,16 +920,15 @@ async def screen_pmcc(
                 for opt in leaps_options:
                     strike = opt.get("strike", 0)
                     open_interest = opt.get("open_interest", 0) or 0
-                    premium = opt.get("close", 0) or opt.get("vwap", 0)
+                    premium = opt.get("close", 0)
+                    iv = opt.get("implied_volatility", 0)
                     
-                    # DATA QUALITY FILTER: Skip low OI
-                    if open_interest < 10:
+                    # Skip if no IV (already filtered by data_provider but double-check)
+                    if iv <= 0:
                         continue
                     
-                    # DATA QUALITY FILTER: Premium sanity check for LEAPS
-                    # LEAPS premium should be reasonable (not > stock price + 50% for deep ITM)
-                    max_leaps_premium = current_price * 1.5
-                    if premium > max_leaps_premium:
+                    # Skip low liquidity
+                    if open_interest < 10:
                         continue
                     
                     if strike < current_price * 0.85:  # Deep ITM
