@@ -846,7 +846,7 @@ const Screener = () => {
                       <div className="flex items-center gap-2 mt-2">
                         <Input
                           type="number"
-                          value={stockFilters.minPrice || ""} placeholder="Min"
+                          value={stockFilters.minPrice || ""}
                           onChange={(e) => setStockFilters(f => ({ ...f, minPrice: parseFloat(e.target.value) || 0 }))}
                           className="input-dark w-24 text-center"
                           placeholder="Min"
@@ -855,7 +855,7 @@ const Screener = () => {
                         <span className="text-zinc-500">to</span>
                         <Input
                           type="number"
-                          value={stockFilters.maxPrice || ""} placeholder="Max"
+                          value={stockFilters.maxPrice || ""}
                           onChange={(e) => setStockFilters(f => ({ ...f, maxPrice: parseFloat(e.target.value) || 1000 }))}
                           className="input-dark w-24 text-center"
                           placeholder="Max"
