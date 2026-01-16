@@ -759,7 +759,7 @@ async def get_dashboard_opportunities(user: dict = Depends(get_current_user)):
                         "data_source": opt.get("source", "yahoo")
                     }
                     
-                    if expiry_type == "Weekly":
+                    if expiry_type == "weekly":
                         weekly_opportunities.append(opp_data)
                     else:
                         monthly_opportunities.append(opp_data)
