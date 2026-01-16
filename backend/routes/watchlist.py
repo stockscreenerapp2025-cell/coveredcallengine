@@ -219,6 +219,46 @@ async def add_to_watchlist(item: WatchlistItemCreate, user: dict = Depends(get_c
     days_to_earnings = stock_data.get("days_to_earnings") if stock_data else None
     earnings_date = stock_data.get("earnings_date") if stock_data else None
     
+    # If analyst data is missing, try a direct yfinance call
+    if not analyst_rating or days_to_earnings is None:
+        try:
+            import yfinance as yf
+            from datetime import datetime as dt
+            ticker = yf.Ticker(symbol)
+            info = ticker.info
+            
+            # Get analyst rating if missing
+            if not analyst_rating:
+                recommendation = info.get("recommendationKey", "")
+                rating_map = {
+                    "strong_buy": "Strong Buy",
+                    "buy": "Buy", 
+                    "hold": "Hold",
+                    "underperform": "Sell",
+                    "sell": "Sell"
+                }
+                analyst_rating = rating_map.get(recommendation, recommendation.replace("_", " ").title() if recommendation else None)
+            
+            # Get earnings date if missing
+            if days_to_earnings is None:
+                try:
+                    calendar = ticker.calendar
+                    if calendar is not None and 'Earnings Date' in calendar:
+                        earnings_dates = calendar['Earnings Date']
+                        if len(earnings_dates) > 0:
+                            next_earnings = earnings_dates[0]
+                            if hasattr(next_earnings, 'date'):
+                                earnings_date = next_earnings.date().isoformat()
+                            else:
+                                earnings_date = str(next_earnings)[:10]
+                            if earnings_date:
+                                earnings_dt = dt.strptime(earnings_date, "%Y-%m-%d")
+                                days_to_earnings = (earnings_dt - dt.now()).days
+                except Exception:
+                    pass
+        except Exception as e:
+            logging.warning(f"Secondary data fetch failed for {symbol}: {e}")
+    
     doc = {
         "id": str(uuid.uuid4()),
         "user_id": user["id"],
@@ -238,6 +278,7 @@ async def add_to_watchlist(item: WatchlistItemCreate, user: dict = Depends(get_c
         "symbol": symbol,
         "price_when_added": price_when_added,
         "analyst_rating": analyst_rating,
+        "days_to_earnings": days_to_earnings,
         "message": "Added to watchlist"
     }
 
