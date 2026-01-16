@@ -655,18 +655,17 @@ async def get_dashboard_opportunities(user: dict = Depends(get_current_user)):
             "total": len(opportunities), 
             "weekly_count": len(top_weekly),
             "monthly_count": len(top_monthly),
-            "is_live": True,
-            "data_source": "yahoo_primary",
+            "from_cache": False,
+            "data_source": "yahoo",
             "fetched_at": datetime.now(timezone.utc).isoformat(),
-            "data_freshness_score": 100.0,
-            "data_note": "Live market data"
+            "t1_data": t1_info
         }
         await funcs['set_cached_data'](cache_key, result)
         return result
         
     except Exception as e:
         logging.error(f"Dashboard opportunities error: {e}")
-        return {"opportunities": [], "total": 0, "error": str(e), "is_mock": True}
+        return {"opportunities": [], "total": 0, "error": str(e), "is_mock": True, "t1_data": t1_info}
 
 
 @screener_router.get("/pmcc")
@@ -690,44 +689,53 @@ async def screen_pmcc(
     Screen for Poor Man's Covered Call (PMCC) opportunities.
     Generates multiple combinations per symbol for better coverage.
     
-    DATA SOURCES:
-    - Options: Polygon/Massive ONLY
-    - Stock prices: Polygon primary, Yahoo fallback
-    
-    DATA QUALITY PRINCIPLES:
-    - When market is OPEN: Always fetch live data
-    - When market is CLOSED: Use cached/precomputed data with freshness indicators
-    - All expiry dates are validated against current option chains
-    - Include data freshness score in response
+    T-1 DATA PRINCIPLE:
+    - Always uses previous trading day market close data
+    - No intraday or partial data
+    - All expiry dates validated (no weekend/holiday expirations)
     """
     funcs = _get_server_functions()
-    market_closed = funcs['is_market_closed']()
+    t1_info = _get_t1_data_info()
+    t1_date = t1_info["data_date"]
     
     cache_params = {
+        "t1_date": t1_date,
         "min_price": min_price, "max_price": max_price,
         "min_leaps_dte": min_leaps_dte, "max_leaps_dte": max_leaps_dte,
         "min_short_dte": min_short_dte, "max_short_dte": max_short_dte,
         "min_roi": min_roi, "min_annualized_roi": min_annualized_roi
     }
-    cache_key = funcs['generate_cache_key']("pmcc_screener_v2", cache_params)
+    cache_key = funcs['generate_cache_key']("pmcc_screener_t1_v1", cache_params)
     
-    logging.info(f"PMCC scan - market_closed: {market_closed}, bypass_cache: {bypass_cache}")
+    logging.info(f"PMCC scan (T-1: {t1_date}), bypass_cache: {bypass_cache}")
     
-    # DATA QUALITY PRINCIPLE: Only use cache when market is CLOSED
-    if market_closed and not bypass_cache:
-        # Try cache first
-        cached_data = await funcs['get_cached_data'](cache_key)
+    # T-1 DATA: Cache is valid for entire day
+    if not bypass_cache:
+        cached_data = await funcs['get_cached_data'](cache_key, max_age_seconds=86400)
         if cached_data and cached_data.get("opportunities"):
             cached_data["from_cache"] = True
-            cached_data["market_closed"] = True
-            cached_data["data_note"] = "Cached data from last market session"
+            cached_data["t1_data"] = t1_info
             return cached_data
         
-        # Try last trading day data
-        ltd_data = await funcs['get_last_trading_day_data'](cache_key)
-        if ltd_data and ltd_data.get("opportunities"):
-            ltd_data["from_cache"] = True
-            ltd_data["market_closed"] = True
+        # Check precomputed scans
+        for profile in ["balanced", "aggressive", "conservative"]:
+            precomputed = await db.precomputed_scans.find_one(
+                {"strategy": "pmcc", "risk_profile": profile},
+                {"_id": 0}
+            )
+            if precomputed and precomputed.get("opportunities"):
+                computed_date = precomputed.get("computed_date", "unknown")
+                freshness = get_data_freshness_status(computed_date) if computed_date != "unknown" else {"status": "amber"}
+                return {
+                    "opportunities": precomputed["opportunities"],
+                    "total": len(precomputed["opportunities"]),
+                    "from_cache": True,
+                    "is_precomputed": True,
+                    "precomputed_profile": profile,
+                    "computed_at": precomputed.get("computed_at"),
+                    "t1_data": t1_info,
+                    "data_freshness": freshness
+                }
             ltd_data["is_last_trading_day"] = True
             ltd_data["data_note"] = "Data from last trading day"
             return ltd_data
