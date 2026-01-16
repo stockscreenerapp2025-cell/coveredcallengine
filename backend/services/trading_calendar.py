@@ -236,12 +236,56 @@ def is_valid_expiration_date(expiry_date: str) -> Tuple[bool, Optional[str]]:
     return True, None
 
 
-def filter_valid_expirations(expirations: List[str]) -> List[str]:
+def is_friday_expiration(expiry_date: str) -> bool:
+    """
+    Check if an expiration date is a Friday (standard weekly expiration).
+    
+    Args:
+        expiry_date: Expiration date 'YYYY-MM-DD'
+        
+    Returns:
+        True if the date is a Friday
+    """
+    try:
+        exp_date = datetime.strptime(expiry_date, '%Y-%m-%d').date()
+        return exp_date.weekday() == 4  # Friday = 4
+    except ValueError:
+        return False
+
+
+def is_monthly_expiration(expiry_date: str) -> bool:
+    """
+    Check if an expiration is a standard monthly (3rd Friday of the month).
+    
+    Args:
+        expiry_date: Expiration date 'YYYY-MM-DD'
+        
+    Returns:
+        True if the date is a monthly expiration (3rd Friday)
+    """
+    try:
+        exp_date = datetime.strptime(expiry_date, '%Y-%m-%d').date()
+        
+        # Must be a Friday
+        if exp_date.weekday() != 4:
+            return False
+        
+        # Check if it's the 3rd Friday (day 15-21)
+        if 15 <= exp_date.day <= 21:
+            return True
+        
+        return False
+    except ValueError:
+        return False
+
+
+def filter_valid_expirations(expirations: List[str], friday_only: bool = True) -> List[str]:
     """
     Filter a list of expiration dates to only include valid trading days.
     
     Args:
         expirations: List of expiration date strings
+        friday_only: If True, only include Friday expirations (default True)
         
     Returns:
         Filtered list of valid expiration dates
@@ -250,8 +294,33 @@ def filter_valid_expirations(expirations: List[str]) -> List[str]:
     for exp in expirations:
         is_valid, _ = is_valid_expiration_date(exp)
         if is_valid:
+            # If friday_only, check if it's a Friday
+            if friday_only and not is_friday_expiration(exp):
+                continue
             valid.append(exp)
     return valid
+
+
+def categorize_expirations(expirations: List[str]) -> Dict[str, List[str]]:
+    """
+    Categorize expirations into weekly and monthly buckets.
+    
+    Args:
+        expirations: List of valid expiration date strings
+        
+    Returns:
+        Dict with 'weekly' and 'monthly' lists
+    """
+    weekly = []
+    monthly = []
+    
+    for exp in expirations:
+        if is_monthly_expiration(exp):
+            monthly.append(exp)
+        elif is_friday_expiration(exp):
+            weekly.append(exp)
+    
+    return {"weekly": weekly, "monthly": monthly}
 
 
 def get_market_data_status() -> Dict:
