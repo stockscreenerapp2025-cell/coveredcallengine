@@ -646,16 +646,21 @@ async def screen_pmcc(
     }
     cache_key = funcs['generate_cache_key']("pmcc_screener", cache_params)
     
+    # Debug market status
+    market_closed = funcs['is_market_closed']()
+    logging.info(f"PMCC scan - market_closed: {market_closed}, bypass_cache: {bypass_cache}")
+    
     # Check cache first
     if not bypass_cache:
         cached_data = await funcs['get_cached_data'](cache_key)
+        logging.info(f"PMCC cache check - has data: {cached_data is not None}, opportunities: {len(cached_data.get('opportunities', [])) if cached_data else 0}")
         if cached_data and cached_data.get("opportunities"):
             cached_data["from_cache"] = True
-            cached_data["market_closed"] = funcs['is_market_closed']()
+            cached_data["market_closed"] = market_closed
             return cached_data
     
     # If market is closed, try fallback sources
-    if funcs['is_market_closed']():
+    if market_closed:
         # Try last trading day data first
         ltd_data = await funcs['get_last_trading_day_data'](cache_key)
         if ltd_data and ltd_data.get("opportunities"):
