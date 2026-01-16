@@ -107,6 +107,48 @@ Build a web-based application named "Covered Call Engine" to identify, analyze, 
 ### ⚠️ Known Issues
 - Inbound email replies not reaching support dashboard (BLOCKED - requires IMAP debugging)
 
+### ✅ Completed (Jan 16, 2026) - T-1 Market Data Standardization
+- [x] **T-1 Data Principle Implementation** - CCE now uses T-1 (previous trading day) market close data for ALL scans
+  - Core Principle: Income strategies don't require live data - T-1 close data is authoritative
+  - No intraday or partial data is ever used
+  - Automatic holiday & weekend handling - rolls back to most recent completed trading day
+  - **New Trading Calendar Service** (`/app/backend/services/trading_calendar.py`)
+    - Uses `pandas_market_calendars` for NYSE trading day validation
+    - Fallback hardcoded US holiday list (2024-2026)
+    - Functions: `get_t_minus_1()`, `is_trading_day()`, `is_valid_expiration_date()`, `filter_valid_expirations()`
+  - **Updated Data Provider** (`/app/backend/services/data_provider.py`)
+    - All data fetches now use T-1 date
+    - Stock quotes return previous_close as primary price
+    - Options chains filtered to exclude weekend/holiday expirations
+  - **Updated Screener Endpoints** - All return T-1 data info in response
+    - `t1_data` field with: `data_date`, `data_type`, `data_age_hours`, `next_refresh`
+    - Cache valid for entire T-1 day (24 hours)
+  - **Fixed Option Expiration Issue** - 14Feb26 Saturday issue fixed
+    - All expiration dates validated against trading calendar
+    - Only valid trading day expirations shown
+- [x] **T-1 Data Banner on All Pages**
+  - Dashboard: "T-1 Market Data - Data from: [date] (Market Close)"
+  - Screener: "T-1 Market Data - Data from: [date] (Market Close)" + next refresh time
+  - PMCC: "T-1 Market Data - Data from: [date] (Market Close)"
+  - Watchlist: "T-1 Market Data - Using previous trading day close data"
+  - Simulator: "T-1 Market Data - Simulations use previous trading day close data"
+- [x] **Admin Data Quality Dashboard** (New Component)
+  - New tab in Admin panel: "Data Quality"
+  - Shows T-1 data status with date, age, next refresh
+  - Scan status with traffic light indicators:
+    - 🟢 Green: Fresh (T-1 data available)
+    - 🟡 Amber: Slightly stale (1-2 days old)
+    - 🔴 Red: Stale (>2 days) or missing - needs refresh
+  - Individual scan cards showing: type, profile, count, computed date, age
+  - "Refresh All" button to trigger manual scan refresh
+  - Summary counts: green/amber/red totals
+- [x] **Updated Market Status Endpoint** (`/api/market-status`)
+  - Returns T-1 data information: date, description, age, next refresh
+  - Data note explains T-1 principle to users
+- [x] **New Endpoints:**
+  - `GET /api/screener/data-quality-dashboard` - Comprehensive scan status with indicators
+  - Updated `GET /api/screener/data-quality` - Simplified status check
+
 ### ✅ Completed (Jan 16, 2026) - Data Quality System (Permanent Solution)
 - [x] **Data Quality Validation Service** - New `/app/backend/services/data_quality.py`
   - Validates option expiry dates against current market chains
