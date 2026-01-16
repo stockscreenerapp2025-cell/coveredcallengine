@@ -1,58 +1,68 @@
 <analysis>**original_problem_statement:**
 The user wants to build a web-based application named Covered Call Engine. The primary features include AI-assisted Covered Call (CC) and Poor Man's Covered Call (PMCC) screeners, a multi-phased AI Support Ticket System, a role-based Invitation System, Portfolio Tracking, and Stripe Subscriptions.
 
-**PRODUCT REQUIREMENTS:**
-*   **Core App:** Dashboard, CC & PMCC Screeners, Portfolio Tracking, AI Chatbot, Legal/Contact pages, Stripe Subscriptions, Admin Panel, Trade Simulator.
-*   **Data & Features:**
-    *   **Pre-Computed Scans:** Nightly jobs for CC and PMCC opportunities across three risk profiles.
-    *   **Data Consistency:** Ensure all data (IV, OI, Analyst Ratings, etc.) is consistent across all pages.
-    *   **Data Quality:** Implement robust data quality principles. Screeners should prioritize live data when markets are open and fall back to the most recent pre-computed scan data when markets are closed. The UI must clearly indicate the source and age of the data being displayed.
-*   **Support Ticket System:** Phase 2 (Automation) is blocked on an IMAP issue.
-*   **Trade Simulator Redesign (Income-Optimised Logic):**
-    *   Replace traditional stop-loss/take-profit with income-optimised rules.
-    *   The simulator must answer: Is it better to hold, roll, close, or redeploy capital right now — net of costs?
+During this session, the user provided a critical new requirement, pivoting the application's data strategy.
+
+**PRODUCT REQUIREMENTS (New Specification from User):**
+*   **Data Model (Two-Source):** The application must now adhere to a strict two-source data model to ensure consistency and reliability, abandoning the use of live intraday data for screeners.
+    1.  **Equity Price (Hard Rule):** Always use the previous trading day's (T-1) market close price. This is non-negotiable.
+    2.  **Options Chain Data (Flexible but Controlled):** Use the latest available *complete* option chain snapshot (with IV & Greeks). This snapshot's timestamp will likely be from the evening of T-1 or the morning of T, and will not always match the equity price date.
+*   **Mandatory Metadata:** Every scan result returned by the API must explicitly include the timestamps for both the equity price and the option chain snapshot. This information must be clearly displayed on the frontend.
+*   **Data Quality:** Implement data freshness thresholds (Green < 24h, Amber 24-48h, Red > 48h) visible in an Admin Data Quality Dashboard.
+*   **Screener Logic:**
+    *   Covered Call screeners should provide a 50/50 mix of the best weekly and monthly options.
+    *   Weekly options should be restricted to Friday expirations.
+    *   All expiration dates must be validated against the actual available expirations from the data provider.
 
 **User's preferred language**: English
 
 **what currently exists?**
-The application is a full-stack React and FastAPI app featuring CC and PMCC screeners, a sophisticated trade simulator, and a watchlist. A major data quality and reliability overall has just been completed. The screeners (both CC and PMCC) now prioritize fetching live data when the market is open. When the market is closed, they automatically fall back to the latest available pre-computed scan data to prevent showing blank pages. The frontend has been updated with clear visual indicators that inform the user about the source of the data (live vs. pre-computed) and its age. An admin endpoint was also created to manually refresh the pre-computed scans.
+The application is a full-stack React/FastAPI app. A major re-architecture was performed in this session to replace the previous live-data/fallback system with the user's specified Two-Source data model. This involved a complete rewrite of the backend data services () to act as a single source of truth for fetching, validating, and normalizing market data according to the new rules. All frontend pages (Dashboard, Screeners, Watchlist, Simulator) were updated to display the new mandatory data source metadata. An Admin Data Quality dashboard was also created. Despite these changes, the user has reported that the same data inconsistency issues are still present.
 
 **Last working item**:
-- **Last item agent was working:** Implementing a comprehensive data quality solution for the CC and PMCC screeners in response to user feedback about stale and misleading data.
-    - **This involved:**
-        1.  Creating a data freshness validation system ().
-        2.  Modifying the CC () and PMCC () screener endpoints to always attempt to fetch live data first when the market is open.
-        3.  Implementing a fallback mechanism to use pre-computed scan data if the market is closed or a live scan fails.
-        4.  Adding data freshness indicators to the Screener and PMCC pages on the frontend to show the data source and computed date.
-        5.  Adding an admin-only endpoint () to manually trigger a refresh of all pre-computed scans.
+- **Last item agent was working:** The agent was performing a major debugging and refactoring cycle to fix recurring data consistency issues reported by the user with screenshots. The issues included missing weekly options, invalid expiration dates being shown for PMCC, and missing IV/OI/Greek data on the Watchlist and Simulator pages. The agent identified the root causes as a combination of incorrect data fetching logic, stale pre-computed scans polluting the results, and various routes not handling the new data structures correctly. A comprehensive fix was implemented across , , and .
 - **Status:** USER VERIFICATION PENDING
-- **Agent Testing Done:** Y
-- **Which testing method agent to use?** Manual testing by user. The user should verify the new data freshness indicators on the Screener and PMCC pages and confirm the behavior aligns with expectations (showing live data vs. pre-computed data based on market status).
+- **Agent Testing Done:** Y (Agent performed  and screenshot tests which showed positive results, but the user has reported the same bugs after previous fixes. Full regression testing is required.)
+- **Which testing method agent to use?** . Due to the recurring nature of these critical data bugs across multiple pages, a comprehensive regression test is mandatory to ensure the fix is stable and complete before claiming it is resolved.
 - **User Testing Done:** N
 
 **All Pending/In progress Issue list**:
--   **Issue 1:** Inbound email replies are not reaching the support dashboard. (P1)
+-   **Issue 1:** (P0) Recurring data inconsistency and invalid data across the entire application.
+-   **Issue 2:** (P1) Inbound email replies are not reaching the support dashboard.
 
 **Issues Detail:**
--   **Issue 1: Inbound email replies are not reaching the support dashboard.**
-    -   **Attempted fixes:** None in this session. This is a carry-over from a previous session.
+-   **Issue 1: Recurring data inconsistency and invalid data across the entire application.**
+    -   **Attempted fixes:** The agent has made three major attempts to fix this. The latest attempt involved a complete rewrite of  to be the single source of truth for option chain data, fixing all downstream routes (, ) to correctly handle new data structures and metadata, and ensuring a proper 50/50 weekly/monthly split.
     -   **Next debug checklist:**
-        1.  Ask the user to send a test reply to an existing support ticket email.
-        2.  Trigger a manual sync from the Admin panel if available.
-        3.  Check backend logs () for IMAP connection or parsing errors.
-        4.  Verify IMAP credentials and server settings in the environment configuration.
-    -   **Why fix this issue and what will be achieved with the fix?** Completes Phase 2 of the automated support ticket system, which is a core feature.
+        1.  Do not ask the user for verification yet. The immediate next step is to call  to run a full regression test.
+        2.  The test plan must verify data consistency across ALL affected pages: Dashboard, CC Screener, PMCC Screener, Watchlist, and Simulator.
+        3.  Specifically, the tests must confirm:
+            - Correct 50/50 weekly/monthly split on Dashboard & CC Screener.
+            - All displayed option expiration dates are valid, existing Fridays.
+            - All columns (IV, OI, Greeks, Price) are fully populated on ALL pages.
+        4.  If tests fail, investigate the  MongoDB collection to check for stale data. The agent suspects a background scheduler might be running old code and polluting the database. Use /app/backend/requirements.txt:APScheduler==3.11.2 to find all scheduler definitions and verify their logic.
+    -   **Why fix this issue and what will be achieved with the fix?** This is a critical failure of the app's core functionality. The app is unusable until the data is reliable.
+    -   **Status:** IN PROGRESS
+    -   **Is recurring issue?** Y
+    -   **Should Test frontend/backend/both after fix?** both
+    -   **Blocked on other issue:** None. This is the primary blocker.
+-   **Issue 2: Inbound email replies are not reaching the support dashboard.**
+    -   **Attempted fixes:** None in this session.
+    -   **Next debug checklist:**
+        1.  Check backend logs () for IMAP connection or parsing errors after asking the user to send a test reply.
+        2.  Verify IMAP credentials and server settings in the environment configuration.
+    -   **Why fix this issue and what will be achieved with the fix?** Completes Phase 2 of the automated support ticket system.
     -   **Status:** BLOCKED
     -   **Is recurring issue?** Y
     -   **Should Test frontend/backend/both after fix?** both
-    -   **Blocked on other issue:** Potentially blocked on external IMAP service configuration or connectivity.
+    -   **Blocked on other issue:** The P0 data inconsistency issue.
 
 **In progress Task List**:
--   **Task 1: User Verification of Data Quality Implementation**
-    -   **Where to resume:** The user needs to review the latest changes on the Screener and PMCC pages and confirm the data quality enhancements are satisfactory.
-    -   **What will be achieved with this?** Confirmation that the core user-facing issue of stale/blank data is resolved.
-    -   **Status:** USER VERIFICATION PENDING
-    -   **Should Test frontend/backend/both after fix?** frontend
+-   **Task 1: Permanently resolve recurring data inconsistency issues.**
+    -   **Where to resume:** The agent has just implemented a major fix. The next step is to initiate a comprehensive test using .
+    -   **What will be achieved with this?** A stable and reliable data pipeline for the entire application, which is the user's primary requirement and will resolve their frustration.
+    -   **Status:** IN PROGRESS
+    -   **Should Test frontend/backend/both after fix?** both
 
 **Upcoming and Future Tasks**
 *   **Upcoming Tasks:**
@@ -65,47 +75,42 @@ The application is a full-stack React and FastAPI app featuring CC and PMCC scre
     *   Portfolio Tracker - Implement a generic CSV import with field mapping.
 
 **Completed work in this session**
-- **Data Quality & Reliability Overhaul:**
-    - Implemented a system to prioritize live data for CC and PMCC screeners when the market is open.
-    - Implemented a fallback to use the latest pre-computed scan data when the market is closed, preventing blank screens.
-    - Added data freshness indicators (, ) to the UI to show data source and age.
-    - Created a data quality validation service ().
-    - Added an admin endpoint to manually refresh pre-computed scans ().
-- **PMCC Premium Calculation Fix:**
-    - Corrected the frontend normalization logic in  to ensure per-contract premium values are displayed correctly.
-- **Bug Fixes (4 issues):**
-    - **Screener/PMCC Auto-load:** Pages now correctly auto-load scan results on navigation.
-    - **Simulator PMCC Tracker:** Fixed a backend/frontend data structure mismatch, so the PMCC tracker now correctly displays all positions.
-    - **Watchlist Data Persistence:** Enhanced the watchlist endpoints to more reliably fetch and fall back to stored analyst/earnings data.
+- **Major Re-architecture to a Two-Source Data Model:**
+    - Completely rewrote  to act as the single source of truth for fetching and validating option chain data, including logic for Friday-only weekly expirations and LEAPS-specific filtering.
+    - Created a new  service to manage market dates, holidays, and data staleness rules.
+    - Heavily modified  and  to use the new data provider, handle new data structures, and return detailed metadata.
+    - Updated all relevant frontend pages (, , , , ) to display two-source data banners and metadata.
+    - Created a new Data Quality Dashboard component and API endpoint.
+- **Bug Fixes:**
+    - Corrected the CC screener logic to ensure a 50/50 mix of weekly and monthly options.
+    - Fixed the PMCC screener, which was returning 0 results, by adjusting the LEAPS moneyness filters.
+    - Resolved a frontend crash on  caused by an incorrect state variable ( vs ).
 
 **Earlier issues found/mentioned but not fixed**
--   **Issue 1: Inbound email replies are not reaching the support dashboard.**
-    -   **Debug checklist:** See Issues Detail section.
-    -   **Why to solve this issue and what will be achieved with this?** This is a core feature for the automated support system.
-    -   **Should Test frontend/backend/both after fix:** both
-    -   **Is recurring issue?** Y
+-   **Issue 1: Inbound email replies are not reaching the support dashboard.** (Recurring, P1, BLOCKED)
 
 **Known issue recurrence from previous fork**
 -   **Issue recurrence in previous fork:** Inbound email issue remains .
--   **Recurrence count:** 3
+-   **Recurrence count:** 4
 -   **Status:** BLOCKED
 
 **Code Architecture**
 
 
 **Key Technical Concepts**
--   **Data Freshness and Fallback Logic:** A critical pattern was implemented where screeners attempt to fetch live data from APIs (e.g., Polygon) if the market is open. If the market is closed or the API fails, the system gracefully falls back to the most recent pre-computed scan data stored in MongoDB.
--   **Data Source Indicators:** The frontend now displays the source of the data (e.g., Live Market Data, Pre-computed Data from [Date]) to provide transparency to the user.
--   **Admin-Triggered Jobs:** An admin-only API endpoint was created to manually trigger background jobs (pre-computed scan generation).
--   **Frontend Data Normalization:** Data from different sources (live API vs. stored pre-computed) can have different structures. The frontend now contains normalization logic to handle these discrepancies and render a consistent view.
+-   **Two-Source Data Model:** The core concept where Equity Price is strictly T-1 close, and Option Chain data is from the latest available complete snapshot. Timestamps for both are exposed in the API and UI.
+-   **Data Provider as Single Source of Truth:** The architecture was refactored so that  is the only service responsible for fetching, validating, and normalizing all external market data.
+-   **Dynamic Option Expiration Validation:** The new  fetches the list of actual, available expiration dates from the source () *before* attempting to get chain data, which prevents calls for non-existent dates (like Saturdays).
+-   **Data Staleness Rules:** Logic was implemented in  to classify data as Green (<24h), Amber (24-48h), or Red (>48h) for the admin dashboard.
 
 **key DB schema**
--   **precomputed_scans:** This collection is central to the new fallback logic. It stores the results of nightly/manual scans for both CC and PMCC strategies across different risk profiles. The  and  fields are key for the new data quality checks.
-
-**changes in tech stack**
--   None.
+-   **precomputed_scans:** Still used as a fallback, but there is a strong suspicion that this collection is being populated with bad data by an old, un-updated scheduler process, causing some of the recurring issues.
 
 **All files of reference**
+*   
+*   
+*   
+*   
 *   
 *   
 *   
@@ -116,57 +121,82 @@ The application is a full-stack React and FastAPI app featuring CC and PMCC scre
 
 **Areas that need refactoring**:
 *    (>2000 lines).
-*   , , and  are large, monolithic components that would benefit from being broken down into smaller, reusable components.
+*   , , and  are still large monolithic components.
 
 **key api endpoints**
-*    (Updated with fallback logic)
-*    (Updated with fallback logic)
-*    (New - Admin Only)
-*    (New)
-*    (New)
-*    (Updated)
+*   
+*   
+*   
+*   
+*   
+*   
 
 **Critical Info for New Agent**
-*   **PRIORITY 1: AWAIT USER FEEDBACK.** The main goal of this session was to fix data quality issues. Do not proceed with new features until the user has confirmed they are satisfied with the new data freshness indicators and fallback logic on the Screener and PMCC pages.
-*   **DATA FALLBACK LOGIC IS KEY:** Understand the flow in . If the market is open, it tries a live scan. If the market is closed or the live scan fails, it now uses pre-computed data. This prevents the blank screens the user was seeing.
-*   **ADMIN ROLE:** The user  needs the role admin in the  collection to access the new  endpoint. This was set manually during the session.
+*   **HIGHEST PRIORITY:** The user is highly frustrated with recurring data inconsistency bugs. Your primary and only goal is to **permanently fix these issues and prove the fix with a comprehensive regression test** before engaging the user again.
+*   **DO NOT TRUST THE LATEST FIX:** The same bugs have resurfaced multiple times after the agent claimed they were fixed. You must be extremely diligent in testing. The user stated this is their last attempt.
+*   **INVESTIGATE THE SCHEDULER:** A key hypothesis is that a background scheduler () is running old code and polluting the  database with invalid data. This is a likely cause of the recurrence and must be investigated and fixed.
+*   **AUTHORITATIVE SPEC:** The user's Two-Source data model is the law. Ensure all code adheres to it.
 
 **documents and test reports created in this job**
 *   
-*   
+*    (This report showed passed tests, but the user found bugs immediately after, so its results are questionable).
 *    (Updated)
 
 **Last 10 User Messages and any pending HUMAN messages**
-1.  **User:** Explains the PMCC scanner should not be blank and should fall back to previous market close data. Asks for a summary of the current logic. (COMPLETED)
-2.  **User:** Points out that premium values in the PMCC scanner seem inflated and incorrect. (COMPLETED)
-3.  **User:** Asks for clarification on how premium values are calculated, as they should come from the option chain. (COMPLETED)
-4.  **User:** Correctly identifies that the option chain data for COP (14FEB26) shown in the precomputed scan is stale/non-existent in the live market. (COMPLETED)
-5.  **User:** Agrees to a 3-point permanent solution: trigger fresh scans, prioritize live data, and add a freshness indicator for both CC and PMCC screeners. (IN PROGRESS - Now completed and pending verification)
-6.  **User:** Please continue build. (COMPLETED)
+1.  **User:** Provides screenshots and detailed descriptions of 5 recurring data issues: Top CC shows only monthlies, CC Screener shows only monthlies, PMCC shows invalid Saturday expirations, Simulator and Watchlist are missing Greek data. States this is their last attempt to get this fixed. (PENDING)
+2.  **User:** Acknowledges the agent's plan and clarifies staleness rules for the admin panel (Green <24h, Amber 24-48h, Red >48h). (COMPLETED)
+3.  **User:** Acknowledges the agent's plan and prefers Friday weeklies for options. (COMPLETED)
+4.  **User:** Provides very detailed specifications for the new Two-Source data model (T-1 Equity + Latest Option Snapshot), mandatory metadata, and calculation rules. This message is the new source of truth for data handling. (COMPLETED)
+5.  **User:** Acknowledges the agent's initial plan for T-1 data and provides clarification on holiday handling (use a market calendar library). (COMPLETED)
+6.  **User:** Agrees with the agent's initial plan to standardize on T-1 data. (COMPLETED)
 
 **Project Health Check:**
 *   **Broken:**
-    *   The inbound email reply ingestion for the support system remains non-functional and blocked.
-*   **Mocked:** None.
-*   **Technical Debt:** , , , and  are large, monolithic components that need refactoring.
+    *   The core data display functionality of the application is critically unreliable. This is a P0, show-stopping bug.
+    *   The inbound email reply ingestion for the support system remains non-functional.
 
 **3rd Party Integrations**
-*   **Yahoo Finance ():** Primary provider for stock quotes, option chains (IV, OI), and analyst ratings.
+*   **Yahoo Finance ():** Primary provider for market data.
 *   **Polygon.io:** Backup provider for market data.
 *   **MarketAux.com:** News API.
 *   **Stripe:** Payments.
 *   **Resend:** Outbound email.
 *   **Hostinger IMAP:** Inbound email (Currently blocked/broken).
-*   **APScheduler:** Backend background jobs.
+*   **APScheduler:** Backend background jobs (Suspected source of recurring data issues).
+*   **pandas_market_calendars:** (Newly added) Used for determining valid trading days.
 
 **Testing status**
--   **Testing agent used after significant changes:** YES (Two iterations were run to verify initial bug fixes).
+-   **Testing agent used after significant changes:** YES, but bugs were still found by the user post-testing, indicating the test plans may have been insufficient.
 -   **Troubleshoot agent used after agent stuck in loop:** NO
--   **Test files created:** None.
--   **Known regressions:** None.
+-   **Test files created:** The testing agent created temporary test files, but there are no permanent ============================= test session starts ==============================
+platform linux -- Python 3.11.14, pytest-9.0.2, pluggy-1.6.0
+rootdir: /app
+plugins: anyio-4.12.0
+collected 113 items / 3 errors
+
+==================================== ERRORS ====================================
+_________________ ERROR collecting tests/test_phase2_routes.py _________________
+tests/test_phase2_routes.py:15: in <module>
+    raise ValueError("REACT_APP_BACKEND_URL environment variable not set")
+E   ValueError: REACT_APP_BACKEND_URL environment variable not set
+___________ ERROR collecting tests/test_phase4_refactored_routes.py ____________
+tests/test_phase4_refactored_routes.py:15: in <module>
+    raise ValueError("REACT_APP_BACKEND_URL environment variable not set")
+E   ValueError: REACT_APP_BACKEND_URL environment variable not set
+_______________ ERROR collecting tests/test_refactored_routes.py _______________
+tests/test_refactored_routes.py:15: in <module>
+    raise ValueError("REACT_APP_BACKEND_URL environment variable not set")
+E   ValueError: REACT_APP_BACKEND_URL environment variable not set
+=========================== short test summary info ============================
+ERROR tests/test_phase2_routes.py - ValueError: REACT_APP_BACKEND_URL environ...
+ERROR tests/test_phase4_refactored_routes.py - ValueError: REACT_APP_BACKEND_...
+ERROR tests/test_refactored_routes.py - ValueError: REACT_APP_BACKEND_URL env...
+!!!!!!!!!!!!!!!!!!! Interrupted: 3 errors during collection !!!!!!!!!!!!!!!!!!!!
+============================== 3 errors in 0.63s =============================== files in the repo.
+-   **Known regressions:** The entire data consistency feature is in a state of regression. Fixes for missing weekly options and invalid dates have been undone or proven ineffective in subsequent user tests.
 
 **Credentials to test flow:**
-Admin user  with password  is available for testing. The user's role has been set to admin in the database.
+Admin user  with password  is available for testing.
 
 **What agent forgot to execute**
-The agent performed well and systematically addressed a complex chain of user-reported issues, culminating in a robust data quality solution. No significant tasks were forgotten.</analysis>
+The agent failed to permanently fix the core data issues despite multiple attempts. A crucial oversight was not investigating the background scheduler () as a potential source of bad data that could be overwriting the fixes made to the live API routes. The testing performed was also not comprehensive enough to catch the bugs before the user did.</analysis>
