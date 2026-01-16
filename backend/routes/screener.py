@@ -2,16 +2,21 @@
 Screener Routes - Covered Call and PMCC screening endpoints
 Designed for scalability with proper caching, async patterns, and efficient data processing
 
-DATA SOURCING STRATEGY (DO NOT CHANGE):
-- OPTIONS DATA: Polygon/Massive ONLY (paid subscription)
-- STOCK DATA: Polygon/Massive primary, Yahoo fallback (until upgrade)
+DATA SOURCING STRATEGY:
+- OPTIONS DATA: Yahoo Finance primary, Polygon backup
+- STOCK DATA: Yahoo Finance primary, Polygon backup
 - All data sourcing is handled by services/data_provider.py
 
-DATA QUALITY PRINCIPLES:
-- Always fetch LIVE data when market is open
-- Only use cached/precomputed data when market is closed
-- Validate expiry dates exist in current option chains
-- Include data freshness indicators in all responses
+T-1 DATA PRINCIPLE (STRICT):
+- CCE must always use T-1 market close data (last completed trading session)
+- No intraday or partial data is ever used
+- Weekend/Holiday handling: Auto-rollback to most recent trading day
+- Data freshness indicators show T-1 date consistently
+
+DATA USAGE RULES:
+1. Default & Only Data Source: T-1 market close data
+2. No Intraday: Do not pull intraday quotes or mix data
+3. Holiday/Weekend: Automatically roll back to most recent completed trading day
 """
 from fastapi import APIRouter, Depends, Query, HTTPException
 from pydantic import BaseModel
@@ -28,11 +33,20 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from database import db
 from utils.auth import get_current_user
-# Import centralized data provider
+# Import centralized data provider (T-1 data principle)
 from services.data_provider import (
     fetch_options_chain,
     fetch_stock_quote,
-    is_market_closed as data_provider_market_closed
+    get_data_date,
+    get_data_source_status,
+    calculate_dte
+)
+# Import trading calendar for T-1 dates
+from services.trading_calendar import (
+    get_t_minus_1,
+    get_market_data_status,
+    get_data_freshness_status,
+    is_valid_expiration_date
 )
 # Import data quality validation
 from services.data_quality import (
