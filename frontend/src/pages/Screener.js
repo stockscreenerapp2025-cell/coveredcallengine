@@ -467,8 +467,8 @@ const Screener = () => {
     </th>
   );
 
-  // Get metadata from apiInfo
-  const metadata = apiInfo?.metadata || apiInfo?.t1_data;
+  // Get metadata from dataInfo
+  const metadata = dataInfo?.metadata || dataInfo?.t1_data;
   const equityDate = metadata?.equity_price_date || metadata?.data_date;
   const optionsSnapshot = metadata?.options_snapshot_time;
 
@@ -496,14 +496,14 @@ const Screener = () => {
             )}
           </div>
           <div className="flex items-center gap-2">
-            {apiInfo?.weekly_count !== undefined && (
+            {dataInfo?.weekly_count !== undefined && (
               <Badge className="bg-blue-500/20 text-blue-400 border-blue-500/30 text-xs">
-                {apiInfo.weekly_count} Weekly
+                {dataInfo.weekly_count} Weekly
               </Badge>
             )}
-            {apiInfo?.monthly_count !== undefined && (
+            {dataInfo?.monthly_count !== undefined && (
               <Badge className="bg-violet-500/20 text-violet-400 border-violet-500/30 text-xs">
-                {apiInfo.monthly_count} Monthly
+                {dataInfo.monthly_count} Monthly
               </Badge>
             )}
             <Badge className="bg-emerald-500/20 text-emerald-400 border-emerald-500/30 text-xs">
