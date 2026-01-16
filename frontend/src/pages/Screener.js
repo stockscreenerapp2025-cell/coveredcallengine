@@ -990,7 +990,7 @@ const Screener = () => {
                       <Input
                         type="number"
                         step="0.01"
-                        value={greeksFilters.maxTheta || ""} placeholder="Max"
+                        value={greeksFilters.maxTheta || ""}
                         onChange={(e) => setGreeksFilters(f => ({ ...f, maxTheta: parseFloat(e.target.value) || 0 }))}
                         className="input-dark mt-2"
                         placeholder="-0.05"
