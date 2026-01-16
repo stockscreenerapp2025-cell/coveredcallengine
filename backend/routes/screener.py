@@ -630,6 +630,10 @@ async def screen_pmcc(
     DATA SOURCES:
     - Options: Polygon/Massive ONLY
     - Stock prices: Polygon primary, Yahoo fallback
+    
+    MARKET CLOSED BEHAVIOR:
+    - Returns cached data from last trading day when market is closed
+    - Ensures users always see opportunities (never blank)
     """
     funcs = _get_server_functions()
     
@@ -641,11 +645,22 @@ async def screen_pmcc(
     }
     cache_key = funcs['generate_cache_key']("pmcc_screener", cache_params)
     
+    # Check cache first
     if not bypass_cache:
         cached_data = await funcs['get_cached_data'](cache_key)
         if cached_data:
             cached_data["from_cache"] = True
+            cached_data["market_closed"] = funcs['is_market_closed']()
             return cached_data
+    
+    # If market is closed and no cache, try last trading day data
+    if funcs['is_market_closed']():
+        ltd_data = await funcs['get_last_trading_day_data'](cache_key)
+        if ltd_data:
+            ltd_data["from_cache"] = True
+            ltd_data["market_closed"] = True
+            ltd_data["is_last_trading_day"] = True
+            return ltd_data
     
     api_key = await funcs['get_massive_api_key']()
     
