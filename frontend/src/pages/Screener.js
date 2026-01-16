@@ -302,7 +302,12 @@ const Screener = () => {
         data_note: response.data.data_note,
         fetched_at: response.data.fetched_at,
         computed_at: response.data.computed_at,
-        data_source: response.data.data_source
+        data_source: response.data.data_source,
+        // New Two-Source model metadata
+        metadata: response.data.metadata,
+        t1_data: response.data.t1_data,
+        weekly_count: response.data.weekly_count,
+        monthly_count: response.data.monthly_count
       });
       
       // Client-side filtering for moneyness
