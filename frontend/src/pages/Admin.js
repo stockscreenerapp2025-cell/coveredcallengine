@@ -640,10 +640,14 @@ const Admin = () => {
 
       {/* Main Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid w-full grid-cols-7 bg-zinc-800/50 p-1">
+        <TabsList className="grid w-full grid-cols-8 bg-zinc-800/50 p-1">
           <TabsTrigger value="dashboard" className="flex items-center gap-2">
             <BarChart3 className="w-4 h-4" />
             Dashboard
+          </TabsTrigger>
+          <TabsTrigger value="data-quality" className="flex items-center gap-2">
+            <Gauge className="w-4 h-4" />
+            Data Quality
           </TabsTrigger>
           <TabsTrigger value="users" className="flex items-center gap-2" onClick={() => { fetchUsers(1); fetchInvitations(); }}>
             <Users className="w-4 h-4" />
@@ -665,15 +669,16 @@ const Admin = () => {
             <Zap className="w-4 h-4" />
             Integrations
           </TabsTrigger>
-          <TabsTrigger value="imap" className="flex items-center gap-2" onClick={() => fetchImapStatus()}>
-            <Mail className="w-4 h-4" />
-            Email Sync
-          </TabsTrigger>
           <TabsTrigger value="api-keys" className="flex items-center gap-2">
             <Key className="w-4 h-4" />
             API Keys
           </TabsTrigger>
         </TabsList>
+
+        {/* Data Quality Tab */}
+        <TabsContent value="data-quality" className="mt-6">
+          <DataQualityDashboard />
+        </TabsContent>
 
         {/* Dashboard Tab */}
         <TabsContent value="dashboard" className="space-y-6 mt-6">
