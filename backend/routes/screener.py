@@ -793,16 +793,20 @@ async def get_dashboard_opportunities(user: dict = Depends(get_current_user)):
             "weekly_count": len(top_weekly),
             "monthly_count": len(top_monthly),
             "from_cache": False,
-            "data_source": "yahoo",
-            "fetched_at": datetime.now(timezone.utc).isoformat(),
-            "t1_data": t1_info
+            "metadata": {
+                "equity_price_date": equity_date,
+                "equity_price_source": "T-1 Market Close",
+                "options_snapshot_time": options_snapshot_time,
+                "data_source": "yahoo",
+                "fetched_at": datetime.now(timezone.utc).isoformat()
+            }
         }
         await funcs['set_cached_data'](cache_key, result)
         return result
         
     except Exception as e:
         logging.error(f"Dashboard opportunities error: {e}")
-        return {"opportunities": [], "total": 0, "error": str(e), "is_mock": True, "t1_data": t1_info}
+        return {"opportunities": [], "total": 0, "error": str(e), "is_mock": True, "metadata": t1_info}
 
 
 @screener_router.get("/pmcc")
