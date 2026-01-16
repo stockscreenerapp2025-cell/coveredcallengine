@@ -525,21 +525,34 @@ async def screen_covered_calls(
                 if sym not in best_by_symbol or opp["score"] > best_by_symbol[sym]["score"]:
                     best_by_symbol[sym] = opp
             opportunities = sorted(best_by_symbol.values(), key=lambda x: x["score"], reverse=True)[:20]
+        # Update metadata with options snapshot time
+        t1_info["options_snapshot_time"] = options_snapshot_time
+        
+        # Count weekly vs monthly in results
+        weekly_count = sum(1 for o in opportunities if o.get("expiry_type") == "weekly")
+        monthly_count = sum(1 for o in opportunities if o.get("expiry_type") == "monthly")
         
         result = {
             "opportunities": opportunities, 
-            "total": len(opportunities), 
+            "total": len(opportunities),
+            "weekly_count": weekly_count,
+            "monthly_count": monthly_count,
             "from_cache": False,
-            "t1_data": t1_info,
-            "data_source": "yahoo",
-            "fetched_at": datetime.now(timezone.utc).isoformat()
+            "metadata": {
+                "equity_price_date": equity_date,
+                "equity_price_source": "T-1 Market Close",
+                "options_snapshot_time": options_snapshot_time,
+                "data_source": "yahoo",
+                "fetched_at": datetime.now(timezone.utc).isoformat(),
+                "staleness_thresholds": t1_info.get("staleness_thresholds", {})
+            }
         }
         await funcs['set_cached_data'](cache_key, result)
         return result
         
     except Exception as e:
         logging.error(f"Screener error: {e}")
-        return {"opportunities": [], "total": 0, "error": str(e), "t1_data": t1_info}
+        return {"opportunities": [], "total": 0, "error": str(e), "metadata": t1_info}
 
 
 
