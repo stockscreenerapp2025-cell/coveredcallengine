@@ -4,27 +4,39 @@ Centralized Data Provider Service
 PRIMARY DATA SOURCE: Yahoo Finance (yfinance)
 BACKUP DATA SOURCE: Polygon/Massive (free tier)
 
-T-1 DATA PRINCIPLE (STRICT):
-- All data fetches return T-1 (previous trading day) market close data
-- No intraday or partial data is ever used
-- This ensures consistency across all scans and calculations
+TWO-SOURCE DATA MODEL (AUTHORITATIVE SPEC):
+1. EQUITY PRICE (Hard Rule):
+   - Always use T-1 market close
+   - Non-negotiable
 
-Yahoo Finance provides:
-- Stock quotes (previous close - T-1)
-- Options chains with IV, OI, Greeks built-in
+2. OPTIONS CHAIN DATA (Flexible but Controlled):
+   - Use latest fully available option chain snapshot
+   - Snapshot must be complete (no missing strikes for expiry)
+   - Snapshot must be consistent (IV + Greeks present)
+   - Snapshot timestamp must be ≤ T market open
+   - Never use partial intraday chains
 
-Polygon provides:
-- Backup for stock quotes when Yahoo fails
-- Options aggregates (no IV/OI in basic plan)
+3. STALENESS RULES:
+   - 🟢 Fresh: snapshot ≤ 24h old
+   - 🟠 Stale: 24-48h old
+   - 🔴 Invalid: >48h old → exclude from scans
 
-This is the SINGLE SOURCE OF TRUTH for data sourcing logic.
-All screeners and pages should use these functions for consistency.
+4. MANDATORY METADATA:
+   - Equity Price Date: e.g., "Jan 15, 2026 (T-1 close)"
+   - Options Chain Snapshot: e.g., "As of: Jan 14, 2026 22:10 ET"
+   - These may not always match, and that is acceptable
+
+5. ROI & GREEKS CALCULATION:
+   - Use equity price = T-1 close
+   - Use options premium = snapshot value
+   - Use Greeks = snapshot Greeks (vendor-supplied, point-in-time)
+   - Do NOT recompute Greeks using T-1 price
 """
 
 import os
 import logging
 from datetime import datetime, timedelta
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Tuple
 from concurrent.futures import ThreadPoolExecutor
 import asyncio
 import httpx
@@ -37,7 +49,13 @@ from services.trading_calendar import (
     is_valid_expiration_date,
     filter_valid_expirations,
     calculate_dte_from_t1,
-    get_data_freshness_status
+    get_data_freshness_status,
+    is_friday_expiration,
+    is_monthly_expiration,
+    categorize_expirations,
+    get_option_chain_staleness,
+    validate_option_chain_data,
+    get_data_metadata
 )
 
 # =============================================================================
@@ -59,35 +77,104 @@ logger = logging.getLogger(__name__)
 
 def get_data_date() -> str:
     """
-    Get the date for which all data should be fetched (T-1).
-    
-    This is the single source of truth for data date across all components.
+    Get the date for which EQUITY data should be fetched (T-1).
+    This is the single source of truth for equity price date.
     """
     t1_date, _ = get_t_minus_1()
     return t1_date
 
 
 def is_market_closed() -> bool:
-    """
-    Check if US stock market is currently closed.
-    
-    Note: For T-1 data principle, market is always considered "closed" 
-    since we only use previous trading day data.
-    """
-    # Always return True - we always use T-1 data
+    """Always return True - we always use T-1 equity data."""
     return True
 
 
 def get_last_trading_day() -> str:
-    """
-    Get the last trading day date string (YYYY-MM-DD).
-    This is an alias for get_data_date() for backward compatibility.
-    """
+    """Alias for get_data_date() for backward compatibility."""
     return get_data_date()
 
 
 # =============================================================================
-# YAHOO FINANCE - PRIMARY DATA SOURCE (T-1 DATA)
+# AVAILABLE OPTIONS CHAIN EXPIRATIONS (CRITICAL)
+# =============================================================================
+
+def _get_available_expirations_yahoo_sync(symbol: str) -> Tuple[List[str], datetime]:
+    """
+    Get ACTUAL available option expirations from Yahoo Finance.
+    
+    This is CRITICAL - we can only use expirations that actually exist.
+    
+    Returns:
+        Tuple of (list of available expiration dates, snapshot timestamp)
+    """
+    try:
+        import yfinance as yf
+        ticker = yf.Ticker(symbol)
+        
+        # Get available expirations directly from Yahoo
+        expirations = ticker.options
+        
+        if not expirations:
+            logger.warning(f"No options available for {symbol}")
+            return [], datetime.now(EASTERN_TZ)
+        
+        # Filter to only Friday expirations and valid trading days
+        valid_expirations = filter_valid_expirations(list(expirations), friday_only=True)
+        
+        # Snapshot timestamp is now (when we fetched)
+        snapshot_time = datetime.now(EASTERN_TZ)
+        
+        logger.info(f"Available expirations for {symbol}: {len(valid_expirations)} (Friday-only)")
+        return valid_expirations, snapshot_time
+        
+    except Exception as e:
+        logger.error(f"Failed to get expirations for {symbol}: {e}")
+        return [], datetime.now(EASTERN_TZ)
+
+
+async def get_available_expirations(symbol: str) -> Dict[str, Any]:
+    """
+    Get available option expirations with categorization.
+    
+    Returns:
+        Dict with weekly, monthly expirations and metadata
+    """
+    loop = asyncio.get_event_loop()
+    expirations, snapshot_time = await loop.run_in_executor(
+        _yahoo_executor, _get_available_expirations_yahoo_sync, symbol
+    )
+    
+    # Categorize into weekly vs monthly
+    categorized = categorize_expirations(expirations)
+    
+    # Calculate DTE for each
+    t1_date_str = get_data_date()
+    t1_date = datetime.strptime(t1_date_str, '%Y-%m-%d')
+    
+    weekly_with_dte = []
+    for exp in categorized["weekly"]:
+        exp_date = datetime.strptime(exp, '%Y-%m-%d')
+        dte = (exp_date - t1_date).days
+        weekly_with_dte.append({"expiry": exp, "dte": dte, "type": "weekly"})
+    
+    monthly_with_dte = []
+    for exp in categorized["monthly"]:
+        exp_date = datetime.strptime(exp, '%Y-%m-%d')
+        dte = (exp_date - t1_date).days
+        monthly_with_dte.append({"expiry": exp, "dte": dte, "type": "monthly"})
+    
+    return {
+        "symbol": symbol,
+        "weekly": weekly_with_dte,
+        "monthly": monthly_with_dte,
+        "all_expirations": expirations,
+        "snapshot_time": snapshot_time.strftime('%Y-%m-%d %H:%M:%S ET'),
+        "t1_date": t1_date_str
+    }
+
+
+# =============================================================================
+# YAHOO FINANCE - PRIMARY DATA SOURCE
 # =============================================================================
 
 def _fetch_stock_quote_yahoo_sync(symbol: str) -> Dict[str, Any]:
@@ -101,7 +188,6 @@ def _fetch_stock_quote_yahoo_sync(symbol: str) -> Dict[str, Any]:
         info = ticker.info
         
         # T-1 Data: Use previous close as the primary price
-        # This ensures consistency with the T-1 data principle
         previous_close = info.get("previousClose", 0)
         regular_price = info.get("regularMarketPrice") or info.get("currentPrice", 0)
         
@@ -141,7 +227,6 @@ def _fetch_stock_quote_yahoo_sync(symbol: str) -> Dict[str, Any]:
                     else:
                         earnings_date = str(next_earnings)[:10]
                     
-                    # Calculate days to earnings from T-1
                     if earnings_date:
                         t1_date_str = get_data_date()
                         t1_date = datetime.strptime(t1_date_str, "%Y-%m-%d")
@@ -162,7 +247,7 @@ def _fetch_stock_quote_yahoo_sync(symbol: str) -> Dict[str, Any]:
             "earnings_date": earnings_date,
             "days_to_earnings": days_to_earnings,
             "source": "yahoo",
-            "data_date": t1_date,
+            "equity_price_date": t1_date,
             "data_type": "t_minus_1_close"
         }
     except Exception as e:
@@ -175,14 +260,40 @@ def _fetch_options_chain_yahoo_sync(
     max_dte: int = 45, 
     min_dte: int = 1,
     option_type: str = "call",
-    current_price: float = None
-) -> List[Dict]:
+    current_price: float = None,
+    friday_only: bool = True,
+    require_complete_data: bool = True
+) -> Tuple[List[Dict], Dict[str, Any]]:
     """
-    Fetch options chain from Yahoo Finance (blocking call).
-    Returns T-1 options data with IV, OI, and Greeks built-in.
+    Fetch options chain from Yahoo Finance with STRICT validation.
     
-    Filters out invalid expiration dates (weekends, holidays).
+    CRITICAL RULES:
+    1. Only use expirations that ACTUALLY exist in Yahoo
+    2. Only include Friday expirations (standard weeklies)
+    3. Reject options with missing IV, OI, or premium
+    4. Track snapshot timestamp for metadata
+    
+    Args:
+        symbol: Stock symbol
+        max_dte: Maximum days to expiration
+        min_dte: Minimum days to expiration
+        option_type: "call" or "put"
+        current_price: Current stock price (T-1 close)
+        friday_only: Only include Friday expirations
+        require_complete_data: Reject options missing IV/OI
+    
+    Returns:
+        Tuple of (list of options, metadata dict)
     """
+    snapshot_time = datetime.now(EASTERN_TZ)
+    metadata = {
+        "snapshot_time": snapshot_time.strftime('%Y-%m-%d %H:%M:%S ET'),
+        "source": "yahoo",
+        "options_fetched": 0,
+        "options_rejected": 0,
+        "rejection_reasons": {}
+    }
+    
     try:
         import yfinance as yf
         ticker = yf.Ticker(symbol)
@@ -193,46 +304,62 @@ def _fetch_options_chain_yahoo_sync(
             current_price = info.get("previousClose") or info.get("regularMarketPrice") or info.get("currentPrice", 0)
         
         if not current_price:
-            return []
+            metadata["error"] = "No price data available"
+            return [], metadata
         
-        # Get available expirations
+        # Get ACTUAL available expirations from Yahoo
         try:
-            expirations = ticker.options
+            available_expirations = ticker.options
         except Exception:
-            return []
+            metadata["error"] = "Failed to get expirations"
+            return [], metadata
         
-        if not expirations:
-            return []
+        if not available_expirations:
+            metadata["error"] = "No options available"
+            return [], metadata
         
-        # Filter out invalid expirations (weekends, holidays)
-        valid_expirations = filter_valid_expirations(list(expirations))
+        # Filter to valid trading days and optionally Friday-only
+        valid_expirations = filter_valid_expirations(list(available_expirations), friday_only=friday_only)
         
         if not valid_expirations:
-            logger.warning(f"No valid expirations found for {symbol} after filtering")
-            return []
+            metadata["error"] = "No valid expirations after filtering"
+            return [], metadata
         
         # Get T-1 date for DTE calculation
         t1_date_str = get_data_date()
         t1_date = datetime.strptime(t1_date_str, '%Y-%m-%d')
         
-        # Filter expirations within DTE range (calculated from T-1)
+        # Filter expirations within DTE range
         valid_expiries = []
         for exp_str in valid_expirations:
             try:
                 exp_date = datetime.strptime(exp_str, "%Y-%m-%d")
                 dte = (exp_date - t1_date).days
                 if min_dte <= dte <= max_dte:
-                    valid_expiries.append((exp_str, dte))
+                    is_monthly = is_monthly_expiration(exp_str)
+                    valid_expiries.append({
+                        "expiry": exp_str,
+                        "dte": dte,
+                        "type": "monthly" if is_monthly else "weekly"
+                    })
             except Exception:
                 continue
         
         if not valid_expiries:
-            return []
+            metadata["error"] = f"No expirations in DTE range {min_dte}-{max_dte}"
+            return [], metadata
+        
+        metadata["available_expirations"] = [e["expiry"] for e in valid_expiries]
         
         options = []
+        rejection_reasons = {"missing_iv": 0, "missing_oi": 0, "missing_premium": 0, "out_of_range": 0}
         
-        # Fetch options for each valid expiry (limit to 3 for performance)
-        for expiry, dte in valid_expiries[:3]:
+        # Fetch options for each valid expiry
+        for exp_info in valid_expiries:
+            expiry = exp_info["expiry"]
+            dte = exp_info["dte"]
+            exp_type = exp_info["type"]
+            
             try:
                 opt_chain = ticker.option_chain(expiry)
                 chain_data = opt_chain.calls if option_type == "call" else opt_chain.puts
@@ -244,12 +371,12 @@ def _fetch_options_chain_yahoo_sync(
                     
                     # Filter strikes based on moneyness
                     if option_type == "call":
-                        # For calls, focus on ATM to OTM
                         if strike < current_price * 0.95 or strike > current_price * 1.15:
+                            rejection_reasons["out_of_range"] += 1
                             continue
                     else:
-                        # For puts, focus on ATM to OTM
                         if strike > current_price * 1.05 or strike < current_price * 0.85:
+                            rejection_reasons["out_of_range"] += 1
                             continue
                     
                     # Get premium - use last price or mid of bid/ask
@@ -259,16 +386,28 @@ def _fetch_options_chain_yahoo_sync(
                     premium = last_price if last_price > 0 else ((bid + ask) / 2 if bid > 0 and ask > 0 else 0)
                     
                     if premium <= 0:
-                        continue
+                        rejection_reasons["missing_premium"] += 1
+                        if require_complete_data:
+                            continue
                     
-                    # Get IV and OI
+                    # Get IV and OI - CRITICAL for data quality
                     iv = row.get('impliedVolatility', 0)
                     oi = row.get('openInterest', 0)
                     volume = row.get('volume', 0)
                     
-                    # Skip if IV is unrealistic (< 1% or > 500%)
-                    if iv and (iv < 0.01 or iv > 5.0):
-                        iv = 0
+                    # Skip if IV is missing or unrealistic
+                    if require_complete_data:
+                        if not iv or iv <= 0:
+                            rejection_reasons["missing_iv"] += 1
+                            continue
+                        if iv < 0.01 or iv > 5.0:  # < 1% or > 500%
+                            rejection_reasons["missing_iv"] += 1
+                            continue
+                    
+                    # Skip if OI is 0 (no liquidity)
+                    if require_complete_data and (not oi or oi <= 0):
+                        rejection_reasons["missing_oi"] += 1
+                        continue
                     
                     options.append({
                         "contract_ticker": row.get('contractSymbol', ''),
@@ -276,28 +415,35 @@ def _fetch_options_chain_yahoo_sync(
                         "strike": float(strike),
                         "expiry": expiry,
                         "dte": dte,
+                        "expiry_type": exp_type,  # "weekly" or "monthly"
                         "type": option_type,
                         "close": round(float(premium), 2),
                         "bid": float(bid) if bid else 0,
                         "ask": float(ask) if ask else 0,
                         "volume": int(volume) if volume else 0,
                         "open_interest": int(oi) if oi else 0,
-                        "implied_volatility": float(iv) if iv else 0,
+                        "implied_volatility": round(float(iv), 4) if iv else 0,
+                        # Metadata
                         "source": "yahoo",
-                        "data_date": t1_date_str,
-                        "data_type": "t_minus_1_close"
+                        "options_snapshot_time": metadata["snapshot_time"],
+                        "equity_price_date": t1_date_str
                     })
                     
             except Exception as e:
                 logger.debug(f"Error fetching {symbol} options for {expiry}: {e}")
                 continue
         
-        logger.info(f"Yahoo: fetched {len(options)} {option_type} options for {symbol} (T-1: {t1_date_str})")
-        return options
+        metadata["options_fetched"] = len(options)
+        metadata["options_rejected"] = sum(rejection_reasons.values())
+        metadata["rejection_reasons"] = rejection_reasons
+        
+        logger.info(f"Yahoo: fetched {len(options)} valid {option_type} options for {symbol}")
+        return options, metadata
         
     except Exception as e:
         logger.warning(f"Yahoo options chain failed for {symbol}: {e}")
-        return []
+        metadata["error"] = str(e)
+        return [], metadata
 
 
 async def fetch_stock_quote(symbol: str, api_key: str = None) -> Dict[str, Any]:
@@ -319,7 +465,6 @@ async def fetch_stock_quote(symbol: str, api_key: str = None) -> Dict[str, Any]:
             t1_date = get_data_date()
             
             async with httpx.AsyncClient(timeout=HTTP_TIMEOUT) as client:
-                # Use previous day aggregates for T-1 data
                 response = await client.get(
                     f"{POLYGON_BASE_URL}/v2/aggs/ticker/{symbol}/prev",
                     params={"apiKey": api_key}
@@ -335,7 +480,7 @@ async def fetch_stock_quote(symbol: str, api_key: str = None) -> Dict[str, Any]:
                             "change": r.get("c", 0) - r.get("o", r.get("c", 0)),
                             "change_pct": 0,
                             "source": "polygon",
-                            "data_date": t1_date,
+                            "equity_price_date": t1_date,
                             "data_type": "t_minus_1_close"
                         }
         except Exception as e:
@@ -350,33 +495,38 @@ async def fetch_options_chain(
     option_type: str = "call",
     max_dte: int = 45,
     min_dte: int = 1,
-    current_price: float = None
-) -> List[Dict]:
+    current_price: float = None,
+    friday_only: bool = True,
+    require_complete_data: bool = True
+) -> Tuple[List[Dict], Dict[str, Any]]:
     """
-    Fetch T-1 options chain - Yahoo primary, Polygon backup.
-    Yahoo includes IV, OI, and Greeks by default.
+    Fetch options chain with STRICT validation.
     
-    All expiration dates are validated to exclude weekends and holidays.
+    Returns:
+        Tuple of (options list, metadata dict including snapshot time)
     """
     loop = asyncio.get_event_loop()
     
-    # Try Yahoo first
-    options = await loop.run_in_executor(
+    # Fetch from Yahoo with strict validation
+    options, metadata = await loop.run_in_executor(
         _yahoo_executor,
-        _fetch_options_chain_yahoo_sync,
-        symbol, max_dte, min_dte, option_type, current_price
+        lambda: _fetch_options_chain_yahoo_sync(
+            symbol, max_dte, min_dte, option_type, current_price, friday_only, require_complete_data
+        )
     )
     
     if options and len(options) > 0:
-        return options
+        return options, metadata
     
-    # Fallback to Polygon (basic plan - no IV/OI)
-    if api_key:
-        options = await _fetch_options_chain_polygon(symbol, api_key, option_type, max_dte, min_dte, current_price)
-        if options:
-            return options
+    # Polygon fallback (limited - no IV/OI in basic plan)
+    if api_key and not require_complete_data:
+        polygon_options = await _fetch_options_chain_polygon(
+            symbol, api_key, option_type, max_dte, min_dte, current_price
+        )
+        if polygon_options:
+            return polygon_options, {"source": "polygon", "snapshot_time": datetime.now(EASTERN_TZ).strftime('%Y-%m-%d %H:%M:%S ET')}
     
-    return []
+    return [], metadata
 
 
 async def _fetch_options_chain_polygon(
@@ -393,7 +543,6 @@ async def _fetch_options_chain_polygon(
         t1_date = datetime.strptime(t1_date_str, '%Y-%m-%d')
         
         async with httpx.AsyncClient(timeout=HTTP_TIMEOUT) as client:
-            # Get contracts - calculate from T-1
             min_expiry = (t1_date + timedelta(days=min_dte)).strftime('%Y-%m-%d')
             max_expiry = (t1_date + timedelta(days=max_dte)).strftime('%Y-%m-%d')
             
@@ -418,16 +567,18 @@ async def _fetch_options_chain_polygon(
             if not contracts:
                 return []
             
-            # Filter out invalid expiration dates
+            # Filter to Friday expirations only
             valid_contracts = []
             for contract in contracts:
                 expiry = contract.get("expiration_date", "")
-                is_valid, _ = is_valid_expiration_date(expiry)
-                if is_valid:
-                    valid_contracts.append(contract)
+                if is_friday_expiration(expiry):
+                    is_valid, _ = is_valid_expiration_date(expiry)
+                    if is_valid:
+                        valid_contracts.append(contract)
             
-            # Get prices for contracts
             options = []
+            snapshot_time = datetime.now(EASTERN_TZ).strftime('%Y-%m-%d %H:%M:%S ET')
+            
             for contract in valid_contracts[:30]:
                 ticker = contract.get("ticker", "")
                 strike = contract.get("strike_price", 0)
@@ -452,14 +603,16 @@ async def _fetch_options_chain_polygon(
                                 "strike": strike,
                                 "expiry": expiry,
                                 "dte": dte,
+                                "expiry_type": "monthly" if is_monthly_expiration(expiry) else "weekly",
                                 "type": option_type,
                                 "close": r.get("c", 0),
                                 "volume": r.get("v", 0),
-                                "open_interest": 0,  # Not available in basic plan
-                                "implied_volatility": 0,  # Not available in basic plan
+                                "open_interest": 0,
+                                "implied_volatility": 0,
                                 "source": "polygon",
-                                "data_date": t1_date_str,
-                                "data_type": "t_minus_1_close"
+                                "options_snapshot_time": snapshot_time,
+                                "equity_price_date": t1_date_str,
+                                "note": "Polygon basic plan - IV/OI not available"
                             })
                 except Exception:
                     continue
@@ -488,34 +641,38 @@ async def fetch_stock_quotes_batch(symbols: List[str], api_key: str = None) -> D
 
 
 # =============================================================================
-# UTILITY FUNCTIONS
+# DATA QUALITY FUNCTIONS
 # =============================================================================
 
 def get_data_source_status() -> Dict[str, Any]:
-    """Get current data source configuration and T-1 status."""
-    status = get_market_data_status()
+    """Get current data source configuration and status."""
+    metadata = get_data_metadata()
     
     return {
         "primary_source": "yahoo",
         "backup_source": "polygon",
-        "data_principle": "T-1 (Previous Trading Day Close)",
-        "t_minus_1_date": status["t_minus_1_date"],
-        "data_age_hours": status["data_age_hours"],
-        "next_data_refresh": status["next_data_refresh"],
-        "current_time_et": status["current_time_et"]
+        "data_principle": "Two-Source Model (T-1 Equity + Latest Options Snapshot)",
+        "equity_price_date": metadata["equity_price_date"],
+        "equity_price_source": metadata["equity_price_source"],
+        "next_refresh": metadata["next_refresh"],
+        "current_time_et": metadata["current_time_et"],
+        "staleness_thresholds": metadata["staleness_thresholds"],
+        "validation_rules": {
+            "friday_only_expirations": True,
+            "require_iv": True,
+            "require_oi": True,
+            "reject_stale_data": True
+        }
     }
 
 
 def calculate_dte(expiry_date: str) -> int:
-    """
-    Calculate days to expiration from T-1 date.
-    Use this for consistent DTE calculations.
-    """
+    """Calculate days to expiration from T-1 date."""
     return calculate_dte_from_t1(expiry_date)
 
 
 # =============================================================================
-# HISTORICAL DATA (for charts, etc.)
+# HISTORICAL DATA
 # =============================================================================
 
 async def fetch_historical_data(
