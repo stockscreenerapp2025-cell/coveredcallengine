@@ -47,10 +47,12 @@ import {
   XCircle,
   Calendar,
   MessageSquare,
-  Trash2
+  Trash2,
+  Gauge
 } from 'lucide-react';
 import { toast } from 'sonner';
 import AdminSupport from '../components/AdminSupport';
+import DataQualityDashboard from '../components/DataQualityDashboard';
 
 const Admin = () => {
   const [activeTab, setActiveTab] = useState('dashboard');
