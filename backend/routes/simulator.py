@@ -1110,6 +1110,8 @@ async def add_simulator_trade(trade: SimulatorTradeEntry, user: dict = Depends(g
         "short_call_premium": trade.short_call_premium,
         "short_call_delta": trade.short_call_delta,
         "short_call_iv": trade.short_call_iv,
+        "short_call_iv_rank": trade.short_call_iv_rank,
+        "short_call_open_interest": trade.short_call_open_interest,
         
         # PMCC LEAPS details (if applicable)
         "leaps_strike": trade.leaps_strike,
