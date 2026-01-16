@@ -457,31 +457,27 @@ async def get_dashboard_opportunities(user: dict = Depends(get_current_user)):
     """
     Get top 10 covered call opportunities for dashboard - 5 Weekly + 5 Monthly.
     
-    DATA SOURCES:
-    - Options: Polygon/Massive ONLY
-    - Stock prices: Polygon primary, Yahoo fallback
+    T-1 DATA PRINCIPLE:
+    - Always uses previous trading day market close data
+    - No intraday or partial data
     """
     funcs = _get_server_functions()
+    t1_info = _get_t1_data_info()
+    t1_date = t1_info["data_date"]
     
-    cache_key = "dashboard_opportunities_v4"
+    cache_key = f"dashboard_opportunities_t1_{t1_date}"
     
-    cached_data = await funcs['get_cached_data'](cache_key)
+    # Check cache (valid for entire T-1 day)
+    cached_data = await funcs['get_cached_data'](cache_key, max_age_seconds=86400)
     if cached_data:
         cached_data["from_cache"] = True
-        cached_data["market_closed"] = funcs['is_market_closed']()
+        cached_data["t1_data"] = t1_info
         return cached_data
-    
-    if funcs['is_market_closed']():
-        ltd_data = await funcs['get_last_trading_day_data'](cache_key)
-        if ltd_data:
-            ltd_data["from_cache"] = True
-            ltd_data["market_closed"] = True
-            return ltd_data
     
     api_key = await funcs['get_massive_api_key']()
     
     if not api_key:
-        return {"opportunities": [], "total": 0, "message": "API key not configured", "is_mock": True}
+        return {"opportunities": [], "total": 0, "message": "API key not configured", "is_mock": True, "t1_data": t1_info}
     
     try:
         symbols_to_scan = [
