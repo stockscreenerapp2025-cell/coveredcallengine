@@ -648,7 +648,10 @@ async def get_dashboard_opportunities(user: dict = Depends(get_current_user)):
             "weekly_count": len(top_weekly),
             "monthly_count": len(top_monthly),
             "is_live": True,
-            "data_source": "yahoo_primary"
+            "data_source": "yahoo_primary",
+            "fetched_at": datetime.now(timezone.utc).isoformat(),
+            "data_freshness_score": 100.0,
+            "data_note": "Live market data"
         }
         await funcs['set_cached_data'](cache_key, result)
         return result
@@ -683,12 +686,14 @@ async def screen_pmcc(
     - Options: Polygon/Massive ONLY
     - Stock prices: Polygon primary, Yahoo fallback
     
-    MARKET CLOSED BEHAVIOR:
-    - Returns cached data from last trading day when market is closed
-    - Falls back to pre-computed "balanced" scan if no custom cache exists
-    - Ensures users always see opportunities (never blank)
+    DATA QUALITY PRINCIPLES:
+    - When market is OPEN: Always fetch live data
+    - When market is CLOSED: Use cached/precomputed data with freshness indicators
+    - All expiry dates are validated against current option chains
+    - Include data freshness score in response
     """
     funcs = _get_server_functions()
+    market_closed = funcs['is_market_closed']()
     
     cache_params = {
         "min_price": min_price, "max_price": max_price,
@@ -696,22 +701,56 @@ async def screen_pmcc(
         "min_short_dte": min_short_dte, "max_short_dte": max_short_dte,
         "min_roi": min_roi, "min_annualized_roi": min_annualized_roi
     }
-    cache_key = funcs['generate_cache_key']("pmcc_screener", cache_params)
+    cache_key = funcs['generate_cache_key']("pmcc_screener_v2", cache_params)
     
-    # Debug market status
-    market_closed = funcs['is_market_closed']()
     logging.info(f"PMCC scan - market_closed: {market_closed}, bypass_cache: {bypass_cache}")
     
-    # Check cache first
-    if not bypass_cache:
+    # DATA QUALITY PRINCIPLE: Only use cache when market is CLOSED
+    if market_closed and not bypass_cache:
+        # Try cache first
         cached_data = await funcs['get_cached_data'](cache_key)
-        logging.info(f"PMCC cache check - has data: {cached_data is not None}, opportunities: {len(cached_data.get('opportunities', [])) if cached_data else 0}")
         if cached_data and cached_data.get("opportunities"):
             cached_data["from_cache"] = True
-            cached_data["market_closed"] = market_closed
+            cached_data["market_closed"] = True
+            cached_data["data_note"] = "Cached data from last market session"
+            return cached_data
+        
+        # Try last trading day data
+        ltd_data = await funcs['get_last_trading_day_data'](cache_key)
+        if ltd_data and ltd_data.get("opportunities"):
+            ltd_data["from_cache"] = True
+            ltd_data["market_closed"] = True
+            ltd_data["is_last_trading_day"] = True
+            ltd_data["data_note"] = "Data from last trading day"
+            return ltd_data
+        
+        # Fallback to precomputed scans
+        for profile in ["balanced", "aggressive", "conservative"]:
+            precomputed = await db.precomputed_scans.find_one(
+                {"strategy": "pmcc", "risk_profile": profile},
+                {"_id": 0}
+            )
+            if precomputed and precomputed.get("opportunities"):
+                return {
+                    "opportunities": precomputed["opportunities"],
+                    "total": len(precomputed["opportunities"]),
+                    "from_cache": True,
+                    "market_closed": True,
+                    "is_precomputed_fallback": True,
+                    "precomputed_profile": profile,
+                    "computed_at": precomputed.get("computed_at"),
+                    "data_note": f"Pre-computed {profile} scan from {precomputed.get('computed_date', 'unknown')}"
+                }
+    elif not bypass_cache:
+        # Market open - use short cache (5 min) for rate limiting only
+        cached_data = await funcs['get_cached_data'](cache_key, max_age_seconds=300)
+        if cached_data and cached_data.get("opportunities"):
+            cached_data["from_cache"] = True
+            cached_data["market_closed"] = False
+            cached_data["data_note"] = "Live data (cached < 5 min)"
             return cached_data
     
-    # If market is closed, try fallback sources
+    # If market is closed and no fallback data, still try to return something
     if market_closed:
         # Try last trading day data first
         ltd_data = await funcs['get_last_trading_day_data'](cache_key)
