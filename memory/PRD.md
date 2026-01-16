@@ -107,6 +107,47 @@ Build a web-based application named "Covered Call Engine" to identify, analyze, 
 ### ⚠️ Known Issues
 - Inbound email replies not reaching support dashboard (BLOCKED - requires IMAP debugging)
 
+### ✅ Completed (Jan 16, 2026) - Two-Source Data Model Implementation
+- [x] **Two-Source Data Model (Authoritative Spec)**
+  - **Equity Price (Hard Rule):** Always T-1 market close - non-negotiable
+  - **Options Chain (Flexible but Controlled):** Latest fully available snapshot
+    - Snapshot must be complete (no missing strikes)
+    - Snapshot must be consistent (IV + Greeks present)
+    - Only use expirations that ACTUALLY exist in Yahoo Finance
+    - Only Friday expirations (standard weeklies)
+  - **Never use partial intraday chains** - reject if missing IV or OI
+  
+- [x] **Option Chain Validation (Critical Fix)**
+  - Fixed PMCC showing non-existent expirations (19DEC27, 15FEB26)
+  - Now validates ALL expirations against actual Yahoo Finance data
+  - `is_friday_expiration()` and `is_monthly_expiration()` functions
+  - `filter_valid_expirations(friday_only=True)` for proper filtering
+  - LEAPS mode with wider strike range (40%-110% of price) for deep ITM
+  
+- [x] **50/50 Weekly/Monthly Mix for CC Screener**
+  - `_mix_weekly_monthly_opportunities()` function
+  - Returns balanced mix of best weekly and monthly options
+  - Fallback: whatever is available if one category is short
+  - W (blue) and M (purple) badges in UI
+  
+- [x] **Staleness Rules (Admin Data Quality)**
+  - 🟢 Fresh: snapshot ≤ 24h old
+  - 🟠 Stale: 24-48h old  
+  - 🔴 Invalid: >48h old → excluded from scans
+  - `OPTION_FRESHNESS_THRESHOLDS` config in trading_calendar.py
+  - `get_option_chain_staleness()` function
+  
+- [x] **Mandatory Metadata Display**
+  - API responses include: `equity_price_date`, `options_snapshot_time`
+  - Screener shows "Two-Source Data" banner with both dates
+  - Example: "Equity: 2026-01-16 (T-1 Close)" + "Options Snapshot: 2026-01-16 16:01:44 ET"
+  
+- [x] **IV and OI Data Fix**
+  - CC Screener now shows IV, IV Rank, OI in all results (was blank)
+  - PMCC Screener now includes `leaps_iv`, `leaps_oi`, `short_iv`, `short_oi`
+  - `validate_option_chain_data()` rejects options missing IV/OI
+  - `require_complete_data=True` parameter in fetch_options_chain()
+
 ### ✅ Completed (Jan 16, 2026) - T-1 Market Data Standardization
 - [x] **T-1 Data Principle Implementation** - CCE now uses T-1 (previous trading day) market close data for ALL scans
   - Core Principle: Income strategies don't require live data - T-1 close data is authoritative
