@@ -354,6 +354,8 @@ async def screen_covered_calls(
                         "open_interest": open_interest,
                         "score": score,
                         "analyst_rating": analyst_rating,
+                        "days_to_earnings": stock_data.get("days_to_earnings"),
+                        "earnings_date": stock_data.get("earnings_date"),
                         "data_source": opt.get("source", "yahoo")
                     })
             except Exception as e:
