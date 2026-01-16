@@ -107,6 +107,28 @@ Build a web-based application named "Covered Call Engine" to identify, analyze, 
 ### ⚠️ Known Issues
 - Inbound email replies not reaching support dashboard (BLOCKED - requires IMAP debugging)
 
+### ✅ Completed (Jan 16, 2026) - Data Quality System (Permanent Solution)
+- [x] **Data Quality Validation Service** - New `/app/backend/services/data_quality.py`
+  - Validates option expiry dates against current market chains
+  - Detects stale or invalid premium data
+  - Provides freshness scores for all data
+  - Tracks quality issues per opportunity
+- [x] **Live Data Priority** - Screeners now prioritize live data when market is open
+  - When market OPEN: Always fetch live data (5-min cache for rate limiting only)
+  - When market CLOSED: Use cached/precomputed data with clear indicators
+- [x] **Data Freshness Indicators** - Both Screener and PMCC pages now show:
+  - "● Live Data" (green) - Fresh market data
+  - "● Cached Data" (blue) - Recent cached data
+  - "● Pre-computed Data" (yellow) - From nightly scans with date
+  - Data note explaining source (e.g., "Pre-computed scan from 2026-01-16")
+- [x] **Premium Value Fix** - PMCC frontend normalization improved
+  - Fixed threshold logic for per-share to per-contract conversion
+  - Now correctly displays $1,040 instead of $10.40 for contracts
+- [x] **New Admin Endpoints:**
+  - `GET /api/screener/data-quality` - View data freshness status for all scans
+  - `POST /api/screener/refresh-precomputed` - Manually trigger scan refresh (admin only)
+- [x] **Precomputed Scan Refresh** - Successfully refreshed CC scans (6/18/18 opportunities)
+
 ### ✅ Completed (Jan 16, 2026) - 4 Bug Fixes (Second Batch)
 - [x] **Issue 1: Screener Auto-Load** - Screener page now auto-loads custom scan results
   - Re-added `fetchOpportunities()` call to useEffect (user preference reversed)
