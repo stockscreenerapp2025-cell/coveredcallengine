@@ -358,7 +358,7 @@ async def screen_covered_calls(
         
         for symbol in symbols_to_scan:
             try:
-                # Get stock price using centralized data provider (Yahoo primary)
+                # Get stock price using centralized data provider (T-1 close)
                 stock_data = await fetch_stock_quote(symbol, api_key)
                 
                 if not stock_data or stock_data.get("price", 0) == 0:
@@ -371,20 +371,35 @@ async def screen_covered_calls(
                 if not is_etf and (underlying_price < min_price or underlying_price > max_price):
                     continue
                 
-                # Get options chain (Yahoo primary with IV/OI, Polygon backup)
-                options_results = await fetch_options_chain(
-                    symbol, api_key, "call", max_dte, min_dte=1, current_price=underlying_price
+                # Get options chain with STRICT validation
+                # - Only Friday expirations
+                # - Requires complete data (IV, OI)
+                options_results, opt_metadata = await fetch_options_chain(
+                    symbol=symbol,
+                    api_key=api_key,
+                    option_type="call",
+                    max_dte=max_dte,
+                    min_dte=1,
+                    current_price=underlying_price,
+                    friday_only=True,
+                    require_complete_data=True
                 )
                 
+                # Track options snapshot time
+                if opt_metadata.get("snapshot_time") and not options_snapshot_time:
+                    options_snapshot_time = opt_metadata["snapshot_time"]
+                
                 if not options_results:
-                    logging.debug(f"No options data for {symbol}")
+                    logging.debug(f"No valid options for {symbol}: {opt_metadata.get('error', 'unknown')}")
                     continue
                 
                 for opt in options_results:
                     strike = opt.get("strike", 0)
                     expiry = opt.get("expiry", "")
                     dte = opt.get("dte", 0)
+                    expiry_type = opt.get("expiry_type", "weekly")
                     
+                    # Strike range filter
                     strike_pct = (strike / underlying_price) * 100 if underlying_price > 0 else 0
                     if is_etf:
                         if strike_pct < 95 or strike_pct > 108:
@@ -395,9 +410,9 @@ async def screen_covered_calls(
                     
                     if dte > max_dte or dte < 1:
                         continue
-                    if weekly_only and dte > 7:
+                    if weekly_only and expiry_type != "weekly":
                         continue
-                    if monthly_only and dte <= 7:
+                    if monthly_only and expiry_type != "monthly":
                         continue
                     
                     # Estimate delta based on moneyness
@@ -411,24 +426,22 @@ async def screen_covered_calls(
                     if not is_etf and (estimated_delta < min_delta or estimated_delta > max_delta):
                         continue
                     
-                    premium = opt.get("close", 0) or opt.get("vwap", 0)
+                    premium = opt.get("close", 0)
                     
                     if premium <= 0:
                         continue
                     
-                    # DATA QUALITY FILTER: Check for unrealistic premiums
-                    # For OTM calls, premium should not exceed intrinsic value + reasonable time value
-                    # Rule 1: Max reasonable premium for OTM call: ~10% of underlying price for 30-45 DTE
-                    max_reasonable_premium = underlying_price * 0.10
-                    if strike > underlying_price and premium > max_reasonable_premium:
-                        logging.debug(f"Skipping {symbol} ${strike}C: premium ${premium} exceeds reasonable max ${max_reasonable_premium:.2f}")
+                    # Get IV and OI from validated option data
+                    iv = opt.get("implied_volatility", 0)
+                    open_interest = opt.get("open_interest", 0)
+                    volume = opt.get("volume", 0)
+                    
+                    # Skip if IV is missing (already filtered by data_provider but double-check)
+                    if iv <= 0:
                         continue
                     
-                    # DATA QUALITY FILTER: Open interest check (when available from Yahoo)
-                    open_interest = opt.get("open_interest", 0) or 0
-                    # If we have OI data from Yahoo, filter out illiquid options
-                    if open_interest > 0 and open_interest < 10:
-                        logging.debug(f"Skipping {symbol} ${strike}C: open interest {open_interest} < 10")
+                    # Skip if OI is too low
+                    if open_interest < min_open_interest:
                         continue
                     
                     roi_pct = (premium / underlying_price) * 100
@@ -436,12 +449,9 @@ async def screen_covered_calls(
                     if roi_pct < min_roi:
                         continue
                     
-                    volume = opt.get("volume", 0) or 0
-                    
                     if volume < min_volume:
                         continue
                     
-                    iv = opt.get("implied_volatility", 0.25)
                     iv_rank = min(100, iv * 100)
                     
                     if iv_rank < min_iv_rank:
@@ -453,13 +463,13 @@ async def screen_covered_calls(
                     else:
                         protection = ((strike - underlying_price + premium) / underlying_price * 100)
                     
-                    # Calculate score with liquidity bonus/penalty
+                    # Calculate score with liquidity bonus
                     roi_score = min(roi_pct * 15, 40)
                     iv_score = min(iv_rank / 100 * 20, 20)
                     delta_score = max(0, 20 - abs(estimated_delta - 0.3) * 50)
                     protection_score = min(abs(protection), 10) * 2
                     
-                    # Liquidity bonus: reward high open interest
+                    # Liquidity bonus
                     liquidity_score = 0
                     if open_interest >= 1000:
                         liquidity_score = 10
@@ -469,7 +479,6 @@ async def screen_covered_calls(
                         liquidity_score = 5
                     elif open_interest >= 50:
                         liquidity_score = 2
-                    # Low OI already filtered out above
                     
                     score = round(roi_score + iv_score + delta_score + protection_score + liquidity_score, 1)
                     
@@ -478,6 +487,7 @@ async def screen_covered_calls(
                         "stock_price": round(underlying_price, 2),
                         "strike": strike,
                         "expiry": expiry,
+                        "expiry_type": expiry_type,  # "weekly" or "monthly"
                         "dte": dte,
                         "premium": round(premium, 2),
                         "roi_pct": round(roi_pct, 2),
@@ -492,22 +502,29 @@ async def screen_covered_calls(
                         "analyst_rating": analyst_rating,
                         "days_to_earnings": stock_data.get("days_to_earnings"),
                         "earnings_date": stock_data.get("earnings_date"),
-                        "data_source": opt.get("source", "yahoo"),
-                        "data_date": t1_date
+                        # Metadata
+                        "equity_price_date": equity_date,
+                        "options_snapshot_time": opt.get("options_snapshot_time"),
+                        "data_source": opt.get("source", "yahoo")
                     })
             except Exception as e:
                 logging.error(f"Error scanning {symbol}: {e}")
                 continue
         
-        # Sort and dedupe
+        # Sort all by score
         opportunities.sort(key=lambda x: x["score"], reverse=True)
-        best_by_symbol = {}
-        for opp in opportunities:
-            sym = opp["symbol"]
-            if sym not in best_by_symbol or opp["score"] > best_by_symbol[sym]["score"]:
-                best_by_symbol[sym] = opp
         
-        opportunities = sorted(best_by_symbol.values(), key=lambda x: x["score"], reverse=True)
+        # Apply weekly/monthly mix if not filtering specifically
+        if not weekly_only and not monthly_only:
+            opportunities = _mix_weekly_monthly_opportunities(opportunities, target_count=40)
+        else:
+            # Just take top 20 if filtering
+            best_by_symbol = {}
+            for opp in opportunities:
+                sym = opp["symbol"]
+                if sym not in best_by_symbol or opp["score"] > best_by_symbol[sym]["score"]:
+                    best_by_symbol[sym] = opp
+            opportunities = sorted(best_by_symbol.values(), key=lambda x: x["score"], reverse=True)[:20]
         
         result = {
             "opportunities": opportunities, 
