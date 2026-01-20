@@ -504,6 +504,7 @@ async def get_dashboard_opportunities(
                 for opt in all_options:
                     strike = opt.get("strike", 0)
                     dte = opt.get("dte", 0)
+                    expiry = opt.get("expiry", "")
                     expiry_type = opt.get("expiry_type", "Monthly")
                     open_interest = opt.get("open_interest", 0) or 0
                     
@@ -519,6 +520,21 @@ async def get_dashboard_opportunities(
                         continue
                     
                     if not premium or premium <= 0:
+                        continue
+                    
+                    # PHASE 2: Validate trade structure BEFORE scoring
+                    is_valid, rejection_reason = validate_cc_trade(
+                        symbol=symbol,
+                        stock_price=current_price,
+                        strike=strike,
+                        expiry=expiry,
+                        bid=bid_price,
+                        dte=dte,
+                        open_interest=open_interest
+                    )
+                    
+                    if not is_valid:
+                        logging.debug(f"CC trade rejected: {symbol} ${strike} - {rejection_reason}")
                         continue
                     
                     # DATA QUALITY FILTER: Premium sanity check (tighter for OTM)
