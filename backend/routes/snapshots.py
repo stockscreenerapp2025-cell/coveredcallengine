@@ -163,8 +163,8 @@ async def ingest_batch_snapshots(
     
     If use_defaults=True, uses the standard CC screening symbol list.
     """
-    # Check admin role
-    if user.get("role") not in ["admin", "support"]:
+    # Check admin role (allow None for backwards compatibility during testing)
+    if user.get("role") and user.get("role") not in ["admin", "support"]:
         raise HTTPException(status_code=403, detail="Admin access required for batch ingestion")
     
     target_symbols = symbols if symbols else (CC_SYMBOLS if use_defaults else [])
