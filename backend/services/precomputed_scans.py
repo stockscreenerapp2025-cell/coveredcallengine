@@ -1346,11 +1346,18 @@ class PrecomputedScanService:
                             if est_delta < delta_min or est_delta > delta_max:
                                 continue
                             
-                            # Get premium
+                            # Get premium - PHASE 1 FIX: Use ASK for BUY legs (PMCC LEAP)
                             last_price = row.get('lastPrice', 0)
                             bid = row.get('bid', 0)
                             ask = row.get('ask', 0)
-                            premium = last_price if last_price > 0 else ((bid + ask) / 2 if bid > 0 and ask > 0 else 0)
+                            
+                            # ASK ONLY for LEAPS (BUY leg)
+                            if ask and ask > 0:
+                                premium = ask
+                            elif last_price and last_price > 0:
+                                premium = last_price  # Fallback only
+                            else:
+                                continue
                             
                             if premium <= 0:
                                 continue
