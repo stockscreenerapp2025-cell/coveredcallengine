@@ -58,10 +58,7 @@ def get_snapshot_service() -> SnapshotService:
 
 
 # Auth dependency (reuse from existing)
-def get_current_user():
-    """Placeholder - replace with actual auth."""
-    from routes.auth import get_current_user as auth_get_current_user
-    return Depends(auth_get_current_user)
+from routes.auth import get_current_user
 
 
 # ==================== INGESTION ENDPOINTS ====================
