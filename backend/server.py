@@ -66,6 +66,7 @@ from routes.simulator import simulator_router
 from routes.support import support_router
 from routes.invitations import invitation_router
 from routes.precomputed_scans import scans_router
+from routes.snapshots import snapshot_router  # PHASE 1: Snapshot management
 
 # Create routers (still in server.py - to be refactored)
 api_router = APIRouter(prefix="/api")
