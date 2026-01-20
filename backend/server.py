@@ -1220,6 +1220,7 @@ api_router.include_router(simulator_router, prefix="/simulator")
 api_router.include_router(support_router)
 api_router.include_router(invitation_router)
 api_router.include_router(scans_router)  # Pre-computed scans
+app.include_router(snapshot_router)  # PHASE 1: Snapshot management (no prefix - already has /api/snapshots)
 
 app.include_router(api_router)
 
