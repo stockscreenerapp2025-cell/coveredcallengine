@@ -491,9 +491,19 @@ async def get_dashboard_opportunities(
                 for opt in all_options:
                     strike = opt.get("strike", 0)
                     dte = opt.get("dte", 0)
-                    premium = opt.get("close", 0) or opt.get("vwap", 0)
                     expiry_type = opt.get("expiry_type", "Monthly")
                     open_interest = opt.get("open_interest", 0) or 0
+                    
+                    # PHASE 1 FIX: Use BID price for SELL legs (Covered Call)
+                    bid_price = opt.get("bid", 0) or 0
+                    close_price = opt.get("close", 0) or opt.get("vwap", 0) or 0
+                    
+                    if bid_price > 0:
+                        premium = bid_price
+                    elif close_price > 0:
+                        premium = close_price
+                    else:
+                        continue
                     
                     if not premium or premium <= 0:
                         continue
