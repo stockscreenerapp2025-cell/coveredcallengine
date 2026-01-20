@@ -6,6 +6,12 @@ DATA SOURCING STRATEGY (DO NOT CHANGE):
 - OPTIONS DATA: Polygon/Massive ONLY (paid subscription)
 - STOCK DATA: Polygon/Massive primary, Yahoo fallback (until upgrade)
 - All data sourcing is handled by services/data_provider.py
+
+PHASE 2: Chain Validation
+- All chains are validated BEFORE strategy logic
+- Invalid chains are REJECTED (not scored, not displayed)
+- BID-only pricing for SELL legs
+- ASK-only pricing for BUY legs (PMCC LEAP)
 """
 from fastapi import APIRouter, Depends, Query, HTTPException
 from pydantic import BaseModel
@@ -27,6 +33,13 @@ from services.data_provider import (
     fetch_options_chain,
     fetch_stock_quote,
     is_market_closed as data_provider_market_closed
+)
+# PHASE 2: Import chain validator
+from services.chain_validator import (
+    get_validator,
+    validate_chain_for_cc,
+    validate_cc_trade,
+    validate_pmcc_trade
 )
 
 screener_router = APIRouter(tags=["Screener"])
