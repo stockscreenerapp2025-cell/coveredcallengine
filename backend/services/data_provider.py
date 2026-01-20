@@ -209,11 +209,29 @@ def _fetch_options_chain_yahoo_sync(
                         if strike > current_price * 1.05 or strike < current_price * 0.85:
                             continue
                     
-                    # Get premium - use last price or mid of bid/ask
+                    # Get premium - PHASE 1 FIX: Store BID and ASK separately
+                    # The consuming code decides which to use (BID for sell, ASK for buy)
                     last_price = row.get('lastPrice', 0)
-                    bid = row.get('bid', 0)
-                    ask = row.get('ask', 0)
-                    premium = last_price if last_price > 0 else ((bid + ask) / 2 if bid > 0 and ask > 0 else 0)
+                    bid = row.get('bid', 0) if row.get('bid') and not (hasattr(row.get('bid'), '__len__') and len(row.get('bid')) == 0) else 0
+                    ask = row.get('ask', 0) if row.get('ask') and not (hasattr(row.get('ask'), '__len__') and len(row.get('ask')) == 0) else 0
+                    
+                    # Handle NaN values
+                    import math
+                    if bid and isinstance(bid, float) and math.isnan(bid):
+                        bid = 0
+                    if ask and isinstance(ask, float) and math.isnan(ask):
+                        ask = 0
+                    if last_price and isinstance(last_price, float) and math.isnan(last_price):
+                        last_price = 0
+                    
+                    # Primary premium is BID (for covered call sell legs)
+                    # If BID missing, fall back to last price
+                    if bid and bid > 0:
+                        premium = bid
+                    elif last_price and last_price > 0:
+                        premium = last_price
+                    else:
+                        continue
                     
                     if premium <= 0:
                         continue
