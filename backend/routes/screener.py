@@ -993,6 +993,50 @@ async def clear_screener_cache(user: dict = Depends(get_current_user)):
         raise HTTPException(status_code=500, detail=f"Failed to clear cache: {str(e)}")
 
 
+@screener_router.get("/validation-status")
+async def get_validation_status(user: dict = Depends(get_current_user)):
+    """
+    PHASE 2: Get chain validation status and rejection log.
+    
+    Shows:
+    - Total rejections
+    - Rejections grouped by reason
+    - Helps diagnose why symbols are excluded
+    """
+    validator = get_validator()
+    
+    return {
+        "summary": validator.get_rejection_summary(),
+        "recent_rejections": validator.get_rejection_log()[-50:],  # Last 50
+        "validation_rules": {
+            "cc_rules": [
+                "Strike must exist exactly",
+                "Expiry must exist exactly",
+                "BID must be > 0 (SELL leg)",
+                "DTE must be 1-60 days",
+                "Strike must be ≥ 95% of stock price (not deep ITM)"
+            ],
+            "pmcc_rules": [
+                "LEAP: DTE ≥ 365 days",
+                "LEAP: Delta ≥ 0.70",
+                "LEAP: OI ≥ 500",
+                "LEAP: ASK must exist (BUY leg)",
+                "Short: DTE 14-45 days",
+                "Short: BID must exist (SELL leg)",
+                "Short strike > LEAP breakeven"
+            ]
+        }
+    }
+
+
+@screener_router.post("/validation-clear")
+async def clear_validation_log(user: dict = Depends(get_current_user)):
+    """Clear the validation rejection log."""
+    validator = get_validator()
+    validator.clear_rejection_log()
+    return {"message": "Validation log cleared"}
+
+
 @screener_router.post("/filters")
 async def save_filter(filter_data: ScreenerFilterCreate, user: dict = Depends(get_current_user)):
     """Save a screener filter preset"""
