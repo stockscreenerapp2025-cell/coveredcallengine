@@ -275,7 +275,20 @@ async def screen_covered_calls(
                     if not is_etf and (estimated_delta < min_delta or estimated_delta > max_delta):
                         continue
                     
-                    premium = opt.get("close", 0) or opt.get("vwap", 0)
+                    # PHASE 1 FIX: Use BID price for SELL legs (Covered Call)
+                    # Fallback chain: bid -> close -> vwap (bid preferred)
+                    bid_price = opt.get("bid", 0) or 0
+                    close_price = opt.get("close", 0) or opt.get("vwap", 0) or 0
+                    
+                    # Use BID if available and reasonable, otherwise fallback to close
+                    if bid_price > 0:
+                        premium = bid_price
+                        premium_source = "bid"
+                    elif close_price > 0:
+                        premium = close_price
+                        premium_source = "close"
+                    else:
+                        continue
                     
                     if premium <= 0:
                         continue
