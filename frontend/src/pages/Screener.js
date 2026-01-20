@@ -1346,7 +1346,7 @@ const Screener = () => {
                         <td>${opp.stock_price?.toFixed(2)}</td>
                         <td>
                           <span className="font-mono text-sm">
-                            {activeScan ? `$${opp.strike?.toFixed(0)}` : formatOptionContract(opp.expiry, opp.strike, opp.option_type || 'call')}
+                            {formatOptionContract(opp.expiry, opp.strike, opp.option_type || 'call')}
                           </span>
                         </td>
                         <td>{opp.dte}d</td>
