@@ -730,7 +730,17 @@ async def screen_pmcc(
                 for opt in leaps_options:
                     strike = opt.get("strike", 0)
                     open_interest = opt.get("open_interest", 0) or 0
-                    premium = opt.get("close", 0) or opt.get("vwap", 0)
+                    
+                    # PHASE 1 FIX: Use ASK price for BUY legs (PMCC LEAP)
+                    ask_price = opt.get("ask", 0) or 0
+                    close_price = opt.get("close", 0) or opt.get("vwap", 0) or 0
+                    
+                    if ask_price > 0:
+                        premium = ask_price
+                    elif close_price > 0:
+                        premium = close_price
+                    else:
+                        continue
                     
                     # DATA QUALITY FILTER: Skip low OI
                     if open_interest < 10:
