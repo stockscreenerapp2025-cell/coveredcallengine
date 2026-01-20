@@ -574,6 +574,8 @@ async def get_dashboard_opportunities(
                         "expiry_type": expiry_type,
                         "dte": dte,
                         "premium": round(premium, 2),
+                        "bid": opt.get("bid", 0),  # PHASE 1: Show bid for transparency
+                        "ask": opt.get("ask", 0),  # PHASE 1: Show ask for transparency
                         "roi_pct": round(roi_pct, 2),
                         "annualized_roi": round(annualized_roi, 1),
                         "delta": round(estimated_delta, 2),
