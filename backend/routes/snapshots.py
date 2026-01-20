@@ -66,7 +66,7 @@ from routes.auth import get_current_user
 @snapshot_router.post("/ingest/stock/{symbol}")
 async def ingest_stock_snapshot(
     symbol: str,
-    user: dict = Depends(get_current_user())
+    user: dict = Depends(get_current_user)
 ):
     """
     Ingest a single stock snapshot.
@@ -87,7 +87,7 @@ async def ingest_stock_snapshot(
 async def ingest_option_chain_snapshot(
     symbol: str,
     stock_price: float = Query(..., description="Current stock price"),
-    user: dict = Depends(get_current_user())
+    user: dict = Depends(get_current_user)
 ):
     """
     Ingest option chain snapshot for a symbol.
@@ -109,7 +109,7 @@ async def ingest_option_chain_snapshot(
 @snapshot_router.post("/ingest/full/{symbol}")
 async def ingest_full_snapshot(
     symbol: str,
-    user: dict = Depends(get_current_user())
+    user: dict = Depends(get_current_user)
 ):
     """
     Ingest both stock and option chain snapshot for a symbol.
@@ -156,7 +156,7 @@ async def ingest_batch_snapshots(
     symbols: List[str] = None,
     use_defaults: bool = Query(False, description="Use default CC symbol list"),
     background_tasks: BackgroundTasks = None,
-    user: dict = Depends(get_current_user())
+    user: dict = Depends(get_current_user)
 ):
     """
     Batch ingest snapshots for multiple symbols.
@@ -192,7 +192,7 @@ async def ingest_batch_snapshots(
 @snapshot_router.post("/ingest/all")
 async def ingest_all_default_symbols(
     background_tasks: BackgroundTasks,
-    user: dict = Depends(get_current_user())
+    user: dict = Depends(get_current_user)
 ):
     """
     Trigger full ingestion of all default CC symbols.
@@ -220,7 +220,7 @@ async def ingest_all_default_symbols(
 @snapshot_router.get("/stock/{symbol}")
 async def get_stock_snapshot(
     symbol: str,
-    user: dict = Depends(get_current_user())
+    user: dict = Depends(get_current_user)
 ):
     """
     Get stored stock snapshot.
@@ -239,7 +239,7 @@ async def get_stock_snapshot(
 @snapshot_router.get("/chain/{symbol}")
 async def get_option_chain_snapshot(
     symbol: str,
-    user: dict = Depends(get_current_user())
+    user: dict = Depends(get_current_user)
 ):
     """
     Get stored option chain snapshot.
@@ -276,7 +276,7 @@ async def get_valid_calls(
     max_dte: int = Query(45, le=365),
     min_strike_pct: float = Query(1.0, ge=0.8),
     max_strike_pct: float = Query(1.15, le=1.5),
-    user: dict = Depends(get_current_user())
+    user: dict = Depends(get_current_user)
 ):
     """
     Get valid call options for CC scanning.
@@ -311,7 +311,7 @@ async def get_valid_leaps(
     min_delta: float = Query(0.70, ge=0.50),
     max_spread_pct: float = Query(10.0, le=50.0),
     min_oi: int = Query(500, ge=0),
-    user: dict = Depends(get_current_user())
+    user: dict = Depends(get_current_user)
 ):
     """
     Get valid LEAP options for PMCC scanning.
@@ -343,7 +343,7 @@ async def get_valid_leaps(
 
 @snapshot_router.get("/status")
 async def get_snapshot_status(
-    user: dict = Depends(get_current_user())
+    user: dict = Depends(get_current_user)
 ):
     """
     Get overall snapshot health status.
@@ -357,7 +357,7 @@ async def get_snapshot_status(
 
 @snapshot_router.get("/symbols")
 async def get_available_symbols(
-    user: dict = Depends(get_current_user())
+    user: dict = Depends(get_current_user)
 ):
     """
     Get list of symbols with valid snapshots ready for scanning.
@@ -382,7 +382,7 @@ async def get_available_symbols(
 @snapshot_router.delete("/cleanup")
 async def cleanup_old_snapshots(
     days: int = Query(30, ge=1, le=365),
-    user: dict = Depends(get_current_user())
+    user: dict = Depends(get_current_user)
 ):
     """
     Remove snapshots older than specified days.
@@ -403,7 +403,7 @@ async def cleanup_old_snapshots(
 
 @snapshot_router.get("/calendar/trading-day")
 async def get_trading_day_info(
-    user: dict = Depends(get_current_user())
+    user: dict = Depends(get_current_user)
 ):
     """
     Get NYSE trading day information.
