@@ -387,7 +387,10 @@ async def screen_covered_calls(
 
 
 @screener_router.get("/dashboard-opportunities")
-async def get_dashboard_opportunities(user: dict = Depends(get_current_user)):
+async def get_dashboard_opportunities(
+    bypass_cache: bool = Query(False),
+    user: dict = Depends(get_current_user)
+):
     """
     Get top 10 covered call opportunities for dashboard - 5 Weekly + 5 Monthly.
     
@@ -399,18 +402,19 @@ async def get_dashboard_opportunities(user: dict = Depends(get_current_user)):
     
     cache_key = "dashboard_opportunities_v4"
     
-    cached_data = await funcs['get_cached_data'](cache_key)
-    if cached_data:
-        cached_data["from_cache"] = True
-        cached_data["market_closed"] = funcs['is_market_closed']()
-        return cached_data
-    
-    if funcs['is_market_closed']():
-        ltd_data = await funcs['get_last_trading_day_data'](cache_key)
-        if ltd_data:
-            ltd_data["from_cache"] = True
-            ltd_data["market_closed"] = True
-            return ltd_data
+    if not bypass_cache:
+        cached_data = await funcs['get_cached_data'](cache_key)
+        if cached_data:
+            cached_data["from_cache"] = True
+            cached_data["market_closed"] = funcs['is_market_closed']()
+            return cached_data
+        
+        if funcs['is_market_closed']():
+            ltd_data = await funcs['get_last_trading_day_data'](cache_key)
+            if ltd_data:
+                ltd_data["from_cache"] = True
+                ltd_data["market_closed"] = True
+                return ltd_data
     
     api_key = await funcs['get_massive_api_key']()
     
