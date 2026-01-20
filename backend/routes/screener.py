@@ -306,6 +306,24 @@ async def screen_covered_calls(
                     if premium <= 0:
                         continue
                     
+                    # PHASE 2: Validate trade structure BEFORE scoring
+                    expiry = opt.get("expiry", "")
+                    open_interest = opt.get("open_interest", 0) or 0
+                    
+                    is_valid, rejection_reason = validate_cc_trade(
+                        symbol=symbol,
+                        stock_price=underlying_price,
+                        strike=strike,
+                        expiry=expiry,
+                        bid=bid_price,
+                        dte=dte,
+                        open_interest=open_interest
+                    )
+                    
+                    if not is_valid:
+                        logging.debug(f"CC trade rejected: {symbol} ${strike} - {rejection_reason}")
+                        continue
+                    
                     # DATA QUALITY FILTER: Check for unrealistic premiums
                     # For OTM calls, premium should not exceed intrinsic value + reasonable time value
                     # Rule 1: Max reasonable premium for OTM call: ~10% of underlying price for 30-45 DTE
@@ -315,7 +333,6 @@ async def screen_covered_calls(
                         continue
                     
                     # DATA QUALITY FILTER: Open interest check (when available from Yahoo)
-                    open_interest = opt.get("open_interest", 0) or 0
                     # If we have OI data from Yahoo, filter out illiquid options
                     if open_interest > 0 and open_interest < 10:
                         logging.debug(f"Skipping {symbol} ${strike}C: open interest {open_interest} < 10")
