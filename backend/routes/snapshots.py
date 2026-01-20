@@ -153,7 +153,7 @@ async def ingest_full_snapshot(
 
 @snapshot_router.post("/ingest/batch")
 async def ingest_batch_snapshots(
-    symbols: List[str] = None,
+    symbols: List[str] = Body(None, embed=True),
     use_defaults: bool = Query(False, description="Use default CC symbol list"),
     background_tasks: BackgroundTasks = None,
     user: dict = Depends(get_current_user)
