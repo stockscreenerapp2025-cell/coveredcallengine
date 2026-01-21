@@ -768,11 +768,10 @@ async def get_dashboard_opportunities(
             "total": len(final_opportunities),
             "weekly_count": weekly_count,
             "monthly_count": monthly_count,
-            "symbols_scanned": len(symbols_to_scan[:50]),
-            "passed_system_filters": passed_filter_count,
+            "symbols_scanned": len(symbols_to_scan[:60]),
+            "passed_filters": passed_filter_count,
             "is_live": True,
-            "phase": 4,
-            "filters_applied": SYSTEM_FILTERS,
+            "filters_applied": DASHBOARD_FILTERS,
             "data_source": "yahoo_primary"
         }
         await funcs['set_cached_data'](cache_key, result)
