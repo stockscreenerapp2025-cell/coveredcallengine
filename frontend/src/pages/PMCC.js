@@ -874,9 +874,10 @@ const PMCC = () => {
                         <SortHeader field="symbol" label="Symbol" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
                         <SortHeader field="stock_price" label="Price" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
                         <th>LEAPS (Buy)</th>
+                        <th>Premium (Ask)</th>
                         <SortHeader field="leaps_cost" label="Cost" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
                         <th>Short (Sell)</th>
-                        <SortHeader field="short_premium" label="Premium" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
+                        <SortHeader field="short_premium" label="Premium (Bid)" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
                         <SortHeader field="net_debit" label="Net Debit" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
                         <th>Width</th>
                         <th>ROI/Cycle</th>
@@ -890,6 +891,9 @@ const PMCC = () => {
                       {sortedOpportunities.map((opp, index) => {
                         // Normalize data from both custom API and pre-computed API
                         const norm = normalizeOpp(opp);
+                        
+                        // Calculate premium per share for display
+                        const leapsPremiumPerShare = norm.leaps_cost ? (norm.leaps_cost / 100).toFixed(2) : norm.leaps_premium?.toFixed(2) || '-';
                         
                         return (
                           <tr 
@@ -907,15 +911,16 @@ const PMCC = () => {
                             <td className="font-mono">${opp.stock_price?.toFixed(2)}</td>
                             <td>
                               <div className="flex flex-col">
-                                <span className="text-emerald-400 font-mono text-sm">{formatOptionContract(norm.leaps_dte, norm.leaps_strike)}</span>
-                                <span className="text-xs text-zinc-500">δ{norm.leaps_delta?.toFixed(2)}</span>
+                                <span className="text-emerald-400 font-mono text-sm">{formatOptionContract(norm.leaps_expiry || norm.leaps_dte, norm.leaps_strike)}</span>
+                                <span className="text-xs text-zinc-500">δ{norm.leaps_delta?.toFixed(2)} | {norm.leaps_dte}d</span>
                               </div>
                             </td>
+                            <td className="text-cyan-400 font-mono">${leapsPremiumPerShare}</td>
                             <td className="text-red-400 font-mono">${norm.leaps_cost?.toLocaleString()}</td>
                             <td>
                               <div className="flex flex-col">
-                                <span className="text-cyan-400 font-mono text-sm">{formatOptionContract(opp.short_dte, opp.short_strike)}</span>
-                                <span className="text-xs text-zinc-500">δ{opp.short_delta?.toFixed(2)}</span>
+                                <span className="text-cyan-400 font-mono text-sm">{formatOptionContract(opp.short_expiry || opp.short_dte, opp.short_strike)}</span>
+                                <span className="text-xs text-zinc-500">δ{opp.short_delta?.toFixed(2)} | {opp.short_dte}d</span>
                               </div>
                             </td>
                             <td className="text-emerald-400 font-mono">${norm.short_premium_total?.toFixed(0)}</td>
