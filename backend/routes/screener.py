@@ -968,9 +968,16 @@ async def screen_pmcc(
                     
                     # Deep ITM check: strike at least 10% below current price
                     if strike < current_price * 0.90:  # Relaxed from 0.85 to 0.90
-                        estimated_delta = min(0.90, 0.70 + (current_price - strike) / current_price * 0.5)
-                        if min_leaps_delta <= estimated_delta <= max_leaps_delta:
-                            opt["delta"] = estimated_delta
+                        # Use actual delta from options data if available, otherwise estimate
+                        actual_delta = opt.get("delta", 0) or 0
+                        if actual_delta > 0:
+                            opt_delta = actual_delta
+                        else:
+                            # Estimate delta based on moneyness
+                            opt_delta = min(0.90, 0.70 + (current_price - strike) / current_price * 0.5)
+                        
+                        if min_leaps_delta <= opt_delta <= max_leaps_delta:
+                            opt["delta"] = round(opt_delta, 2)
                             opt["cost"] = premium * 100
                             opt["open_interest"] = open_interest
                             if opt["cost"] > 0:
