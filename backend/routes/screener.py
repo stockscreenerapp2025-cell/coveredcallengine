@@ -1121,11 +1121,30 @@ async def screen_pmcc(
                             if roi_per_cycle < min_roi or annualized_roi < min_annualized_roi:
                                 continue
                             
-                            # PHASE 6: Calculate BASE score (before bias adjustment)
-                            roi_score = roi_per_cycle * 10
-                            delta_score = (leaps["delta"] - 0.7) * 50  # Bonus for higher LEAPS delta
-                            efficiency_score = (1 - net_debit / (current_price * 100)) * 20  # Lower cost = better
-                            base_score = round(roi_score + delta_score + efficiency_score + annualized_roi / 5, 1)
+                            # ========== PHASE 7: PILLAR-BASED PMCC SCORING ==========
+                            strike_width = short.get("strike", 0) - leaps.get("strike", 0)
+                            
+                            trade_data = {
+                                "symbol": symbol,
+                                "stock_price": current_price,
+                                "leaps_delta": leaps["delta"],
+                                "leaps_dte": leaps.get("dte", 365),
+                                "leaps_cost": leaps["cost"],
+                                "leaps_strike": leaps.get("strike"),
+                                "short_premium": short["premium"],
+                                "short_delta": short["delta"],
+                                "short_dte": short.get("dte", 30),
+                                "roi_per_cycle": roi_per_cycle,
+                                "net_debit": net_debit,
+                                "strike_width": strike_width,
+                                "leaps_oi": leaps.get("open_interest", 0),
+                                "short_oi": short.get("open_interest", 0),
+                                "is_valid": True
+                            }
+                            
+                            quality_result = calculate_pmcc_quality_score(trade_data)
+                            base_score = quality_result.total_score
+                            score_breakdown = score_to_dict(quality_result)
                             
                             opportunities.append({
                                     "symbol": symbol,
@@ -1143,8 +1162,9 @@ async def screen_pmcc(
                                     "net_debit": round(net_debit, 2),
                                     "roi_per_cycle": round(roi_per_cycle, 2),
                                     "annualized_roi": round(annualized_roi, 1),
-                                    "base_score": base_score,  # PHASE 6: Store base score
+                                    "base_score": base_score,  # PHASE 7: Pillar-based
                                     "score": base_score,  # Will be adjusted below
+                                    "score_breakdown": score_breakdown,  # PHASE 7
                                     "data_source": "polygon"
                                 })
                     
