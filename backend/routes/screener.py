@@ -491,7 +491,8 @@ async def screen_covered_calls(
             "total": len(opportunities), 
             "is_live": True, 
             "from_cache": False,
-            "phase": 6,  # PHASE 6: Updated phase number
+            "phase": 7,  # PHASE 7: Pillar-based scoring
+            "scoring": "pillar_based",  # PHASE 7: Scoring method
             "market_bias": market_sentiment.get("bias", "neutral"),
             "bias_weight": bias_weight,
             "data_source": "polygon"
