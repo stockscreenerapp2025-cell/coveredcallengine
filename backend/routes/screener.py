@@ -51,7 +51,7 @@ HTTP_TIMEOUT = httpx.Timeout(30.0, connect=10.0)
 _analyst_executor = ThreadPoolExecutor(max_workers=10)
 
 # ETF symbols for special handling
-ETF_SYMBOLS = {"SPY", "QQQ", "IWM", "DIA", "XLF", "XLE", "XLK", "XLV", "XLI", "XLB", "XLU", "XLP", "XLY"}
+ETF_SYMBOLS = {"SPY", "QQQ", "IWM", "DIA", "XLF", "XLE", "XLK", "XLV", "XLI", "XLB", "XLU", "XLP", "XLY", "GLD", "SLV", "ARKK", "ARKG", "ARKW", "TLT", "EEM", "VXX", "UVXY", "SQQQ", "TQQQ"}
 
 
 def _fetch_analyst_rating_sync(symbol: str) -> dict:
