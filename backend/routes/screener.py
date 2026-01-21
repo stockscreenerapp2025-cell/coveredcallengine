@@ -834,7 +834,8 @@ async def get_dashboard_opportunities(
             "symbols_scanned": len(symbols_to_scan[:60]),
             "passed_filters": passed_filter_count,
             "is_live": True,
-            "phase": 6,  # PHASE 6
+            "phase": 7,  # PHASE 7: Pillar-based scoring
+            "scoring": "pillar_based",
             "market_bias": market_sentiment.get("bias", "neutral"),
             "bias_weight": bias_weight,
             "filters_applied": DASHBOARD_FILTERS,
