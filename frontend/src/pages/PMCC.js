@@ -282,9 +282,10 @@ const PMCC = () => {
   };
 
   const resetFilters = () => {
+    // Reset to Phase 5 defaults: $30-$90 price range
     setFilters({
-      minPrice: '',
-      maxPrice: '',
+      minPrice: 30,
+      maxPrice: 90,
       minLeapsDelta: '',
       maxLeapsDelta: '',
       minLeapsDte: '',
