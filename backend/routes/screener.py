@@ -405,7 +405,8 @@ async def screen_covered_calls(
                     else:
                         protection = ((strike - underlying_price + premium) / underlying_price * 100)
                     
-                    # Calculate score with liquidity bonus/penalty
+                    # ========== PHASE 6: CALCULATE BASE SCORE (before bias) ==========
+                    # Calculate base score components
                     roi_score = min(roi_pct * 15, 40)
                     iv_score = min(iv_rank / 100 * 20, 20)
                     delta_score = max(0, 20 - abs(estimated_delta - 0.3) * 50)
@@ -421,10 +422,11 @@ async def screen_covered_calls(
                         liquidity_score = 5
                     elif open_interest >= 50:
                         liquidity_score = 2
-                    # Low OI already filtered out above
                     
-                    score = round(roi_score + iv_score + delta_score + protection_score + liquidity_score, 1)
+                    # Base score (before market bias adjustment)
+                    base_score = round(roi_score + iv_score + delta_score + protection_score + liquidity_score, 1)
                     
+                    # Add to eligible trades (score will be adjusted after loop)
                     opportunities.append({
                         "symbol": symbol,
                         "stock_price": round(underlying_price, 2),
@@ -440,7 +442,8 @@ async def screen_covered_calls(
                         "downside_protection": round(protection, 2),
                         "volume": volume,
                         "open_interest": open_interest,
-                        "score": score,
+                        "base_score": base_score,  # PHASE 6: Store base score
+                        "score": base_score,  # Will be adjusted below
                         "analyst_rating": analyst_rating,
                         "data_source": opt.get("source", "yahoo")
                     })
@@ -448,7 +451,20 @@ async def screen_covered_calls(
                 logging.error(f"Error scanning {symbol}: {e}")
                 continue
         
-        # Sort and dedupe
+        # ========== PHASE 6: APPLY MARKET BIAS AFTER FILTERING ==========
+        # Fetch market sentiment
+        market_sentiment = await fetch_market_sentiment()
+        bias_weight = market_sentiment.get("weight_cc", 1.0)
+        
+        # Apply bias to each eligible trade's score
+        for opp in opportunities:
+            opp["score"] = apply_bias_to_score(
+                opp["base_score"], 
+                bias_weight, 
+                opp["delta"]
+            )
+        
+        # Sort by final (bias-adjusted) score and dedupe
         opportunities.sort(key=lambda x: x["score"], reverse=True)
         best_by_symbol = {}
         for opp in opportunities:
@@ -463,7 +479,9 @@ async def screen_covered_calls(
             "total": len(opportunities), 
             "is_live": True, 
             "from_cache": False,
-            "phase": 4 if enforce_phase4 else None,
+            "phase": 6,  # PHASE 6: Updated phase number
+            "market_bias": market_sentiment.get("bias", "neutral"),
+            "bias_weight": bias_weight,
             "data_source": "polygon"
         }
         await funcs['set_cached_data'](cache_key, result)
