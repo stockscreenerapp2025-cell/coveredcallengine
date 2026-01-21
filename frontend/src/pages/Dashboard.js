@@ -738,7 +738,7 @@ const Dashboard = () => {
               Top 10 Covered Call Opportunities
             </CardTitle>
             <p className="text-xs text-zinc-500 mt-1">
-              Top 5 Weekly + Top 5 Monthly • $25-$100 stocks • ATM/OTM strikes • Weekly ≥0.8% ROI, Monthly ≥2.5% ROI
+              Top 5 Weekly + Top 5 Monthly • $15-$500 stocks • OTM strikes • Weekly ≥0.8% ROI, Monthly ≥2.5% ROI
             </p>
           </div>
           <div className="flex items-center gap-2">
