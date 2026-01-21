@@ -870,6 +870,8 @@ const PMCC = () => {
                             <td className="text-emerald-400 font-mono">${norm.short_premium_total?.toFixed(0)}</td>
                             <td className="text-white font-mono">${norm.net_debit?.toLocaleString()}</td>
                             <td className="font-mono">${norm.strike_width?.toFixed(0)}</td>
+                            <td className="text-cyan-400 font-mono">{norm.leaps_delta?.toFixed(2)}</td>
+                            <td className="font-mono">{norm.leaps_dte}d</td>
                             <td className="text-yellow-400 font-semibold">{norm.roi_per_cycle?.toFixed(1)}%</td>
                             <td className="text-emerald-400 font-semibold">{norm.annualized_roi?.toFixed(0)}%</td>
                             <td>
