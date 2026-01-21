@@ -821,6 +821,205 @@ const Admin = () => {
                   </CardContent>
                 </Card>
               </div>
+              
+              {/* ========== PHASE 8: DATA QUALITY & SCREENER STATUS ========== */}
+              <Card className="glass-card mt-6">
+                <CardHeader>
+                  <div className="flex items-center justify-between">
+                    <CardTitle className="text-lg flex items-center gap-2">
+                      <Database className="w-5 h-5 text-emerald-400" />
+                      Data Quality & Screener Status
+                    </CardTitle>
+                    <Button size="sm" variant="outline" onClick={fetchScreenerStatus} disabled={screenerStatusLoading}>
+                      <RefreshCw className={`w-4 h-4 mr-2 ${screenerStatusLoading ? 'animate-spin' : ''}`} />
+                      Refresh
+                    </Button>
+                  </div>
+                  <CardDescription>Phase 7 Quality Scoring & Market Bias Status</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  {screenerStatusLoading ? (
+                    <div className="space-y-4">
+                      <Skeleton className="h-20 w-full" />
+                      <Skeleton className="h-40 w-full" />
+                    </div>
+                  ) : screenerStatus ? (
+                    <div className="space-y-6">
+                      {/* Current Phase & Market Bias */}
+                      <div className="grid md:grid-cols-2 gap-4">
+                        <div className="p-4 bg-gradient-to-br from-violet-500/10 to-violet-500/5 rounded-lg border border-violet-500/20">
+                          <div className="flex items-center gap-3 mb-3">
+                            <div className="p-2 bg-violet-500/20 rounded-lg">
+                              <Zap className="w-5 h-5 text-violet-400" />
+                            </div>
+                            <div>
+                              <p className="text-sm text-zinc-400">Current Engine Phase</p>
+                              <p className="text-2xl font-bold text-violet-400">Phase {screenerStatus.current_phase}</p>
+                            </div>
+                          </div>
+                          <div className="space-y-1">
+                            {screenerStatus.phase_history?.slice(-3).map((phase, idx) => (
+                              <div key={idx} className="flex items-center justify-between text-xs">
+                                <span className="text-zinc-400">Phase {phase.phase}: {phase.name}</span>
+                                <Badge className={phase.status === 'complete' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-yellow-500/20 text-yellow-400'}>
+                                  {phase.status}
+                                </Badge>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                        
+                        <div className={`p-4 rounded-lg border ${
+                          screenerStatus.market_bias?.current_bias === 'bullish' ? 'bg-emerald-500/10 border-emerald-500/20' :
+                          screenerStatus.market_bias?.current_bias === 'bearish' ? 'bg-red-500/10 border-red-500/20' :
+                          'bg-zinc-800/50 border-zinc-700'
+                        }`}>
+                          <div className="flex items-center gap-3 mb-3">
+                            <div className={`p-2 rounded-lg ${
+                              screenerStatus.market_bias?.current_bias === 'bullish' ? 'bg-emerald-500/20' :
+                              screenerStatus.market_bias?.current_bias === 'bearish' ? 'bg-red-500/20' :
+                              'bg-zinc-700'
+                            }`}>
+                              {screenerStatus.market_bias?.current_bias === 'bullish' ? 
+                                <TrendingUp className="w-5 h-5 text-emerald-400" /> :
+                                screenerStatus.market_bias?.current_bias === 'bearish' ?
+                                <TrendingDown className="w-5 h-5 text-red-400" /> :
+                                <Activity className="w-5 h-5 text-zinc-400" />
+                              }
+                            </div>
+                            <div>
+                              <p className="text-sm text-zinc-400">Market Bias (Phase 6)</p>
+                              <p className={`text-2xl font-bold capitalize ${
+                                screenerStatus.market_bias?.current_bias === 'bullish' ? 'text-emerald-400' :
+                                screenerStatus.market_bias?.current_bias === 'bearish' ? 'text-red-400' :
+                                'text-zinc-300'
+                              }`}>
+                                {screenerStatus.market_bias?.current_bias || 'Unknown'}
+                              </p>
+                            </div>
+                          </div>
+                          <div className="grid grid-cols-2 gap-2 text-xs">
+                            <div className="p-2 bg-zinc-800/50 rounded">
+                              <span className="text-zinc-500">VIX:</span>
+                              <span className="ml-1 text-zinc-300">{screenerStatus.market_bias?.vix_level?.toFixed(1) || 'N/A'}</span>
+                            </div>
+                            <div className="p-2 bg-zinc-800/50 rounded">
+                              <span className="text-zinc-500">SPY:</span>
+                              <span className={`ml-1 ${screenerStatus.market_bias?.spy_momentum >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                                {screenerStatus.market_bias?.spy_momentum?.toFixed(2) || 'N/A'}%
+                              </span>
+                            </div>
+                            <div className="p-2 bg-zinc-800/50 rounded">
+                              <span className="text-zinc-500">CC Weight:</span>
+                              <span className="ml-1 text-cyan-400">{screenerStatus.market_bias?.cc_weight?.toFixed(3) || '1.0'}</span>
+                            </div>
+                            <div className="p-2 bg-zinc-800/50 rounded">
+                              <span className="text-zinc-500">PMCC Weight:</span>
+                              <span className="ml-1 text-violet-400">{screenerStatus.market_bias?.pmcc_weight?.toFixed(3) || '1.0'}</span>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                      
+                      {/* Phase 7 Quality Scoring Pillars */}
+                      <div className="grid md:grid-cols-2 gap-4">
+                        <div className="p-4 bg-zinc-800/30 rounded-lg border border-zinc-700">
+                          <h4 className="font-semibold text-cyan-400 mb-3 flex items-center gap-2">
+                            <BarChart3 className="w-4 h-4" />
+                            CC Quality Pillars (Phase 7)
+                          </h4>
+                          <div className="space-y-2">
+                            {screenerStatus.quality_scoring?.cc_pillars?.map((pillar, idx) => (
+                              <div key={idx} className="text-xs p-2 bg-zinc-800/50 rounded">
+                                <div className="flex justify-between items-center">
+                                  <span className="text-zinc-300 font-medium">{pillar.name}</span>
+                                  <Badge className="bg-cyan-500/20 text-cyan-400 text-xs">{pillar.weight}</Badge>
+                                </div>
+                                <p className="text-zinc-500 mt-1">{pillar.factors}</p>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                        
+                        <div className="p-4 bg-zinc-800/30 rounded-lg border border-zinc-700">
+                          <h4 className="font-semibold text-violet-400 mb-3 flex items-center gap-2">
+                            <BarChart3 className="w-4 h-4" />
+                            PMCC Quality Pillars (Phase 7)
+                          </h4>
+                          <div className="space-y-2">
+                            {screenerStatus.quality_scoring?.pmcc_pillars?.map((pillar, idx) => (
+                              <div key={idx} className="text-xs p-2 bg-zinc-800/50 rounded">
+                                <div className="flex justify-between items-center">
+                                  <span className="text-zinc-300 font-medium">{pillar.name}</span>
+                                  <Badge className="bg-violet-500/20 text-violet-400 text-xs">{pillar.weight}</Badge>
+                                </div>
+                                <p className="text-zinc-500 mt-1">{pillar.factors}</p>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                      
+                      {/* System Filters & Engine Rules */}
+                      <div className="grid md:grid-cols-3 gap-4">
+                        <div className="p-4 bg-zinc-800/30 rounded-lg border border-zinc-700">
+                          <h4 className="font-semibold text-amber-400 mb-3 text-sm">CC Custom Filters</h4>
+                          <div className="space-y-1 text-xs">
+                            <div className="flex justify-between"><span className="text-zinc-500">Price:</span><span className="text-zinc-300">{screenerStatus.data_quality?.system_filters?.cc_custom?.price_range}</span></div>
+                            <div className="flex justify-between"><span className="text-zinc-500">Volume:</span><span className="text-zinc-300">{screenerStatus.data_quality?.system_filters?.cc_custom?.volume}</span></div>
+                            <div className="flex justify-between"><span className="text-zinc-500">Mkt Cap:</span><span className="text-zinc-300">{screenerStatus.data_quality?.system_filters?.cc_custom?.market_cap}</span></div>
+                            <div className="flex justify-between"><span className="text-zinc-500">Earnings:</span><span className="text-zinc-300">{screenerStatus.data_quality?.system_filters?.cc_custom?.earnings}</span></div>
+                          </div>
+                        </div>
+                        
+                        <div className="p-4 bg-zinc-800/30 rounded-lg border border-zinc-700">
+                          <h4 className="font-semibold text-amber-400 mb-3 text-sm">PMCC Custom Filters</h4>
+                          <div className="space-y-1 text-xs">
+                            <div className="flex justify-between"><span className="text-zinc-500">Price:</span><span className="text-zinc-300">{screenerStatus.data_quality?.system_filters?.pmcc_custom?.price_range}</span></div>
+                            <div className="flex justify-between"><span className="text-zinc-500">LEAPS DTE:</span><span className="text-zinc-300">{screenerStatus.data_quality?.system_filters?.pmcc_custom?.leaps_dte}</span></div>
+                            <div className="flex justify-between"><span className="text-zinc-500">Short DTE:</span><span className="text-zinc-300">{screenerStatus.data_quality?.system_filters?.pmcc_custom?.short_dte}</span></div>
+                          </div>
+                        </div>
+                        
+                        <div className="p-4 bg-zinc-800/30 rounded-lg border border-zinc-700">
+                          <h4 className="font-semibold text-emerald-400 mb-3 text-sm">Engine Rules</h4>
+                          <div className="space-y-1 text-xs">
+                            <div className="p-1.5 bg-zinc-800/50 rounded text-zinc-300">
+                              <CheckCircle className="w-3 h-3 inline mr-1 text-emerald-400" />
+                              {screenerStatus.engine_rules?.single_candidate}
+                            </div>
+                            <div className="p-1.5 bg-zinc-800/50 rounded text-zinc-300">
+                              <CheckCircle className="w-3 h-3 inline mr-1 text-emerald-400" />
+                              {screenerStatus.engine_rules?.binary_gating}
+                            </div>
+                            <div className="p-1.5 bg-zinc-800/50 rounded text-zinc-400">
+                              <span className="text-zinc-500">ETF Exempt:</span> {screenerStatus.engine_rules?.etf_exemptions?.slice(0, 4).join(', ')}...
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                      
+                      {/* Pre-computed Scans Status */}
+                      {screenerStatus.precomputed_scans && Object.keys(screenerStatus.precomputed_scans).length > 0 && (
+                        <div className="p-4 bg-zinc-800/30 rounded-lg border border-zinc-700">
+                          <h4 className="font-semibold text-zinc-300 mb-3 text-sm">Pre-computed Scan Status</h4>
+                          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-2">
+                            {Object.entries(screenerStatus.precomputed_scans).map(([key, scan]) => (
+                              <div key={key} className="p-2 bg-zinc-800/50 rounded text-center">
+                                <p className="text-xs text-zinc-500 uppercase">{key.replace('_', ' ')}</p>
+                                <p className={`text-lg font-bold ${scan.count > 0 ? 'text-emerald-400' : 'text-red-400'}`}>{scan.count}</p>
+                                <p className="text-xs text-zinc-600">results</p>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <p className="text-zinc-500 text-center py-4">Unable to load screener status</p>
+                  )}
+                </CardContent>
+              </Card>
             </>
           ) : (
             <Card className="glass-card p-8 text-center">
