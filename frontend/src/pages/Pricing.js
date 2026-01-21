@@ -1,9 +1,11 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import api from '../lib/api';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Badge } from '../components/ui/badge';
+import { Checkbox } from '../components/ui/checkbox';
 import {
   Crown,
   Check,
@@ -16,29 +18,53 @@ import {
   Sparkles,
   ArrowRight,
   CreditCard,
-  Loader2
+  Loader2,
+  FileText
 } from 'lucide-react';
 import { toast } from 'sonner';
 
 const Pricing = () => {
   const { user } = useAuth();
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [subscriptionLinks, setSubscriptionLinks] = useState(null);
-  const [paypalConfig, setPaypalConfig] = useState(null);
+  const [paypalLinks, setPaypalLinks] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [processingPaypal, setProcessingPaypal] = useState(null);
+  const [termsAccepted, setTermsAccepted] = useState(false);
 
   useEffect(() => {
     fetchPaymentConfigs();
   }, []);
 
+  // Handle payment return (success/cancel)
+  useEffect(() => {
+    const paymentStatus = searchParams.get('payment');
+    const provider = searchParams.get('provider');
+    const plan = searchParams.get('plan');
+    
+    if (paymentStatus === 'success') {
+      // Redirect to set-password page if coming from a payment
+      if (provider && plan) {
+        navigate(`/set-password?provider=${provider}&plan=${plan}`);
+      } else {
+        toast.success('Payment successful! Please check your email for next steps.');
+      }
+      // Clean up URL
+      window.history.replaceState({}, document.title, window.location.pathname);
+    } else if (paymentStatus === 'cancelled') {
+      toast.info('Payment cancelled');
+      window.history.replaceState({}, document.title, window.location.pathname);
+    }
+  }, [searchParams, navigate]);
+
   const fetchPaymentConfigs = async () => {
     try {
       const [stripeRes, paypalRes] = await Promise.all([
         api.get('/subscription/links'),
-        api.get('/paypal/config')
+        api.get('/paypal/links')
       ]);
       setSubscriptionLinks(stripeRes.data);
-      setPaypalConfig(paypalRes.data);
+      setPaypalLinks(paypalRes.data);
     } catch (error) {
       console.error('Failed to fetch payment config:', error);
     } finally {
@@ -46,63 +72,39 @@ const Pricing = () => {
     }
   };
 
-  const handleStripeSubscribe = (link) => {
+  const handleSubscribe = (link, provider, planId) => {
     if (!link) return;
-    // Add user email to the payment link if user is logged in
-    let paymentUrl = link;
-    if (user?.email) {
-      const separator = link.includes('?') ? '&' : '?';
-      paymentUrl = `${link}${separator}prefilled_email=${encodeURIComponent(user.email)}`;
-    }
-    window.open(paymentUrl, '_blank');
-  };
-
-  const handlePaypalSubscribe = async (planType) => {
-    if (!user) {
-      toast.error('Please log in to subscribe with PayPal');
+    if (!termsAccepted) {
+      toast.error('Please accept the Terms of Service and Privacy Policy to continue');
       return;
     }
-
-    setProcessingPaypal(planType);
     
-    try {
-      const backendUrl = process.env.REACT_APP_BACKEND_URL;
-      const returnUrl = `${window.location.origin}/pricing?paypal=success`;
-      const cancelUrl = `${window.location.origin}/pricing?paypal=cancelled`;
-      
-      const response = await api.post('/paypal/create-checkout', {
-        plan_type: planType,
-        return_url: returnUrl,
-        cancel_url: cancelUrl
-      });
-      
-      if (response.data.success && response.data.redirect_url) {
-        window.location.href = response.data.redirect_url;
-      } else {
-        toast.error(response.data.error || 'Failed to create PayPal checkout');
+    // Add user email and return URL to the payment link
+    let paymentUrl = link;
+    const returnUrl = `${window.location.origin}/pricing?payment=success&provider=${provider}&plan=${planId}`;
+    const cancelUrl = `${window.location.origin}/pricing?payment=cancelled`;
+    
+    // For Stripe links
+    if (provider === 'stripe') {
+      const separator = link.includes('?') ? '&' : '?';
+      paymentUrl = `${link}${separator}success_url=${encodeURIComponent(returnUrl)}&cancel_url=${encodeURIComponent(cancelUrl)}`;
+      if (user?.email) {
+        paymentUrl += `&prefilled_email=${encodeURIComponent(user.email)}`;
       }
-    } catch (error) {
-      console.error('PayPal checkout error:', error);
-      toast.error(error.response?.data?.detail || 'Failed to initiate PayPal checkout');
-    } finally {
-      setProcessingPaypal(null);
     }
-  };
-
-  // Handle PayPal return
-  useEffect(() => {
-    const urlParams = new URLSearchParams(window.location.search);
-    const paypalStatus = urlParams.get('paypal');
     
-    if (paypalStatus === 'success') {
-      toast.success('Payment successful! Your subscription is now active.');
-      // Clean up URL
-      window.history.replaceState({}, document.title, window.location.pathname);
-    } else if (paypalStatus === 'cancelled') {
-      toast.info('Payment cancelled');
-      window.history.replaceState({}, document.title, window.location.pathname);
+    // For PayPal links - they handle return URLs differently
+    if (provider === 'paypal') {
+      // PayPal subscription links usually have their own return handling
+      // But we can try to append if the link supports it
+      if (user?.email) {
+        const separator = link.includes('?') ? '&' : '?';
+        paymentUrl = `${link}${separator}email=${encodeURIComponent(user.email)}`;
+      }
     }
-  }, []);
+    
+    window.open(paymentUrl, '_blank');
+  };
 
   const plans = [
     {
@@ -111,7 +113,8 @@ const Pricing = () => {
       price: '$0',
       period: '7 days',
       description: 'Try premium features risk-free',
-      linkKey: 'trial_link',
+      stripeLinkKey: 'trial_link',
+      paypalLinkKey: 'trial_link',
       popular: false,
       highlight: 'Start Free',
       features: [
@@ -132,7 +135,8 @@ const Pricing = () => {
       price: '$49',
       period: '/month',
       description: 'Perfect for active traders',
-      linkKey: 'monthly_link',
+      stripeLinkKey: 'monthly_link',
+      paypalLinkKey: 'monthly_link',
       popular: true,
       highlight: 'Most Popular',
       features: [
@@ -153,7 +157,8 @@ const Pricing = () => {
       price: '$499',
       period: '/year',
       description: 'Best value for serious traders',
-      linkKey: 'yearly_link',
+      stripeLinkKey: 'yearly_link',
+      paypalLinkKey: 'yearly_link',
       popular: false,
       highlight: 'Save 15%+',
       savings: 'Save 15%+',
@@ -200,6 +205,8 @@ const Pricing = () => {
     return colors[color] || colors.emerald;
   };
 
+  const paypalEnabled = paypalLinks?.enabled;
+
   return (
     <div className="space-y-8" data-testid="pricing-page">
       {/* Header */}
@@ -217,13 +224,47 @@ const Pricing = () => {
         </p>
       </div>
 
+      {/* Terms & Privacy Checkbox */}
+      <div className="max-w-2xl mx-auto">
+        <Card className={`glass-card border ${termsAccepted ? 'border-emerald-500/50' : 'border-yellow-500/50'}`}>
+          <CardContent className="p-4">
+            <div className="flex items-start gap-3">
+              <Checkbox
+                id="terms-checkbox"
+                checked={termsAccepted}
+                onCheckedChange={setTermsAccepted}
+                className="mt-1 border-zinc-600 data-[state=checked]:bg-emerald-600 data-[state=checked]:border-emerald-600"
+                data-testid="terms-checkbox"
+              />
+              <label htmlFor="terms-checkbox" className="text-sm text-zinc-300 cursor-pointer leading-relaxed">
+                <FileText className="w-4 h-4 inline mr-1 text-zinc-400" />
+                I have read and agree to the{' '}
+                <Link to="/terms" className="text-emerald-400 hover:text-emerald-300 underline" target="_blank">
+                  Terms of Service
+                </Link>{' '}
+                and{' '}
+                <Link to="/privacy" className="text-emerald-400 hover:text-emerald-300 underline" target="_blank">
+                  Privacy Policy
+                </Link>
+                . I understand that my subscription will automatically renew until cancelled.
+              </label>
+            </div>
+            {!termsAccepted && (
+              <p className="text-xs text-yellow-400 mt-2 ml-7">
+                ⚠️ Please accept the terms to enable payment buttons
+              </p>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
       {/* Pricing Cards */}
       <div className="grid md:grid-cols-3 gap-6 max-w-6xl mx-auto">
         {plans.map((plan) => {
           const colors = getColorClasses(plan.color);
           const Icon = plan.icon;
-          const stripeLink = subscriptionLinks?.[plan.linkKey];
-          const paypalEnabled = paypalConfig?.enabled;
+          const stripeLink = subscriptionLinks?.[plan.stripeLinkKey];
+          const paypalLink = paypalLinks?.[plan.paypalLinkKey];
           
           return (
             <Card 
@@ -288,31 +329,27 @@ const Pricing = () => {
                 <div className="space-y-2 mt-auto">
                   {/* Stripe Button */}
                   <Button
-                    onClick={() => handleStripeSubscribe(stripeLink)}
-                    disabled={loading || !stripeLink}
-                    className={`w-full ${colors.button} text-white font-medium py-5`}
+                    onClick={() => handleSubscribe(stripeLink, 'stripe', plan.id)}
+                    disabled={loading || !stripeLink || !termsAccepted}
+                    className={`w-full ${termsAccepted ? colors.button : 'bg-zinc-700 cursor-not-allowed'} text-white font-medium py-5`}
                     data-testid={`subscribe-stripe-${plan.id}`}
                   >
                     <CreditCard className="w-4 h-4 mr-2" />
                     {plan.buttonText}
                   </Button>
                   
-                  {/* PayPal Button - only show if PayPal is enabled */}
-                  {paypalEnabled && (
+                  {/* PayPal Button - only show if PayPal is enabled and has a link */}
+                  {paypalEnabled && paypalLink && (
                     <Button
-                      onClick={() => handlePaypalSubscribe(plan.id)}
-                      disabled={loading || processingPaypal === plan.id || !user}
+                      onClick={() => handleSubscribe(paypalLink, 'paypal', plan.id)}
+                      disabled={loading || !termsAccepted}
                       variant="outline"
-                      className="w-full border-blue-500/50 text-blue-400 hover:bg-blue-500/10 py-5"
+                      className={`w-full py-5 ${termsAccepted ? 'border-blue-500/50 text-blue-400 hover:bg-blue-500/10' : 'border-zinc-700 text-zinc-500 cursor-not-allowed'}`}
                       data-testid={`subscribe-paypal-${plan.id}`}
                     >
-                      {processingPaypal === plan.id ? (
-                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                      ) : (
-                        <svg className="w-4 h-4 mr-2" viewBox="0 0 24 24" fill="currentColor">
-                          <path d="M7.076 21.337H2.47a.641.641 0 0 1-.633-.74L4.944.901C5.026.382 5.474 0 5.998 0h7.46c2.57 0 4.578.543 5.69 1.81 1.01 1.15 1.304 2.42 1.012 4.287-.023.143-.047.288-.077.437-.983 5.05-4.349 6.797-8.647 6.797H9.21c-.426 0-.794.31-.858.73L7.076 21.337z"/>
-                        </svg>
-                      )}
+                      <svg className="w-4 h-4 mr-2" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M7.076 21.337H2.47a.641.641 0 0 1-.633-.74L4.944.901C5.026.382 5.474 0 5.998 0h7.46c2.57 0 4.578.543 5.69 1.81 1.01 1.15 1.304 2.42 1.012 4.287-.023.143-.047.288-.077.437-.983 5.05-4.349 6.797-8.647 6.797H9.21c-.426 0-.794.31-.858.73L7.076 21.337z"/>
+                      </svg>
                       Pay with PayPal
                     </Button>
                   )}
@@ -351,7 +388,7 @@ const Pricing = () => {
             <Shield className="w-4 h-4 text-emerald-400" />
             Secure Payment via Stripe
           </span>
-          {paypalConfig?.enabled && (
+          {paypalEnabled && (
             <span className="flex items-center gap-1">
               <Shield className="w-4 h-4 text-blue-400" />
               PayPal Accepted
