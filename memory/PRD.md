@@ -102,30 +102,37 @@ Build a web-based application named "Covered Call Engine" to identify, analyze, 
   - Scanner comparison to identify best parameter combinations
 
 ### ✅ Completed (Jan 21, 2026) - PHASE 4: Covered Call Engine Rebuild
-- [x] **System Scan Filters (Dashboard)**
-  - Price range: $30-$90 (strict)
+- [x] **System Scan Filters (Custom Scan ONLY)**
+  - Price range: $30-$90 (strict for Custom Scan)
   - Average Volume: ≥1M
   - Market Cap: ≥$5B
   - Earnings: No earnings within 7 days
   - DTE: Weekly 7-14, Monthly 21-45
   - OTM: 2-10% above stock price
-- [x] **Single-Candidate Rule**
-  - One best trade per symbol (highest score wins)
-  - Dashboard returns max 10 opportunities
+- [x] **Dashboard & Pre-computed Scan Filters (BROADER)**
+  - Price range: $15-$500 (broader for discovery)
+  - Same volume/market cap/earnings filters
+- [x] **Top 5 Weekly + Top 5 Monthly Rule**
+  - Dashboard shows 5 Weekly (7-14 DTE) + 5 Monthly (21-45 DTE)
+  - Weekly has priority over Monthly
+  - Single-Candidate Rule per timeframe
+- [x] **W/M Badge for ALL Results**
+  - Weekly (≤14 DTE) shows cyan "W" badge
+  - Monthly (>14 DTE) shows purple "M" badge
+  - Applied to both Custom Scan and Pre-computed results
+- [x] **Screener Defaults to Custom Scan**
+  - Page loads Custom Scan results by default
+  - Quick Scans (Pre-computed) available via buttons
 - [x] **BID-Only Pricing** (Maintained from Phase 3)
   - All SELL legs use BID price only
-  - Zero BID = rejected trade
-- [x] **API Updates**
-  - Dashboard: `phase: 4`, `filters_applied`, `passed_system_filters`
-  - Main Screener: `enforce_phase4=true` parameter (default)
-  - New cache keys for Phase 4 data
 - [x] **Testing**
   - 17/17 backend tests passed
-  - All filters verified working
-  - Sample data: INTC $48.56, ON $60.06, MCHP $73.17
+  - Dashboard: 5 Weekly + 5 Monthly verified
+  - Custom Scan: Phase 4 $30-$90 filter verified
 - [x] **Files Updated**
   - `/app/backend/routes/screener.py` - Dashboard + Screener endpoints
-  - `/app/memory/PHASE4_CC_ENGINE_COMPLETE.md` - Completion document
+  - `/app/frontend/src/pages/Screener.js` - Default to Custom Scan, W/M badges
+  - `/app/frontend/src/pages/Dashboard.js` - Updated subtitle
 
 ### 🔄 In Progress
 - None currently
