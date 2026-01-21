@@ -12,6 +12,11 @@ PHASE 2: Chain Validation
 - Invalid chains are REJECTED (not scored, not displayed)
 - BID-only pricing for SELL legs
 - ASK-only pricing for BUY legs (PMCC LEAP)
+
+PHASE 6: Market Bias Order Fix
+- Filtering and scoring are SEPARATED
+- Market bias is applied AFTER eligibility filtering
+- Flow: validate → collect eligible → apply bias → calculate final score → sort
 """
 from fastapi import APIRouter, Depends, Query, HTTPException
 from pydantic import BaseModel
@@ -40,6 +45,12 @@ from services.chain_validator import (
     validate_chain_for_cc,
     validate_cc_trade,
     validate_pmcc_trade
+)
+# PHASE 6: Import market bias module
+from services.market_bias import (
+    fetch_market_sentiment,
+    get_market_bias_weight,
+    apply_bias_to_score
 )
 
 screener_router = APIRouter(tags=["Screener"])
