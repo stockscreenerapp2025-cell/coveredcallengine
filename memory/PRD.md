@@ -193,11 +193,38 @@ Build a web-based application named "Covered Call Engine" to identify, analyze, 
   - `/app/backend/services/market_bias.py` - NEW
   - `/app/backend/routes/screener.py` - All endpoints updated
 
+### ✅ Completed (Jan 21, 2026) - PHASE 7: Quality Score Rewrite
+- [x] **Binary Gating**
+  - Invalid trades are NOT scored (rejected before scoring)
+- [x] **Covered Call 5 Pillars (0-100)**
+  - Volatility & Pricing Edge (30%): IV Rank, Premium Yield, IV Efficiency
+  - Greeks Efficiency (25%): Delta Sweet Spot, Theta Decay, Risk/Reward
+  - Technical Stability (20%): SMA Alignment, RSI, Price Stability
+  - Fundamental Safety (15%): Market Cap, Earnings, Analyst Rating
+  - Liquidity & Execution (10%): Open Interest, Volume, Bid-Ask Spread
+- [x] **PMCC 5 Pillars (0-100)**
+  - LEAP Quality (30%): Delta, DTE, Cost Efficiency
+  - Short Call Income Efficiency (25%): ROI, Short Delta, Income vs Decay
+  - Volatility Structure (20%): Overall IV, IV Skew, IV Rank
+  - Technical Alignment (15%): Trend, SMA, RSI
+  - Liquidity & Risk Controls (10%): LEAPS OI, Short OI, Risk Structure
+- [x] **Score Breakdown in API**
+  - Each opportunity includes `score_breakdown` with pillar details
+  - Shows: name, max_score, actual_score, percentage, explanation
+- [x] **UI Tooltip for Score**
+  - Hover over any score badge to see pillar breakdown
+  - Visual progress bars for each pillar
+  - Available on Screener and PMCC pages
+- [x] **Files Created/Updated**
+  - `/app/backend/services/quality_score.py` - NEW: Pillar scoring engine
+  - `/app/backend/routes/screener.py` - All endpoints use pillar scoring
+  - `/app/frontend/src/pages/Screener.js` - Score tooltip with breakdown
+  - `/app/frontend/src/pages/PMCC.js` - Score tooltip with breakdown
+
 ### 🔄 In Progress
 - None currently
 
 ### 📋 Upcoming Tasks
-- **PHASE 7: Quality Score Rewrite** - Improve scoring algorithm
 - **PHASE 8: Storage, Logging & Admin** - Better data persistence
 
 ### ✅ Completed (Jan 14, 2026) - Auto-Load Pre-Computed Scans & Data Preservation
