@@ -166,8 +166,39 @@ Build a web-based application named "Covered Call Engine" to identify, analyze, 
   - `/app/backend/services/data_provider.py` - Fixed LEAPS options fetching
   - `/app/frontend/src/pages/PMCC.js` - Default to Custom Scan
 
+### ✅ Completed (Jan 21, 2026) - PHASE 6: Market Bias Order Fix
+- [x] **Separated Filtering from Scoring**
+  - Eligibility filtering happens first (chain valid, structure valid)
+  - Market bias applied ONLY to eligible trades
+  - Flow: validate → collect → apply bias → calculate final score → sort
+- [x] **Market Sentiment Module**
+  - New service: `/app/backend/services/market_bias.py`
+  - VIX-based sentiment (70% weight)
+  - SPY momentum indicator (30% weight)
+  - 15-minute cache TTL
+- [x] **Bias Weights**
+  - Bullish market: CC weight 1.10-1.20, PMCC weight 1.15-1.25
+  - Neutral market: weight 1.0
+  - Bearish market: CC weight 0.80-0.90, PMCC weight 0.75-0.85
+- [x] **Delta-Based Adjustment**
+  - Bullish: Bonus for higher delta (more aggressive)
+  - Bearish: Bonus for lower delta (more protective)
+- [x] **New Endpoints**
+  - `GET /api/screener/market-sentiment` - Current bias info
+  - `POST /api/screener/market-sentiment/clear-cache` - Clear cache
+- [x] **Response Updates**
+  - All screener responses include `market_bias`, `bias_weight`
+  - Opportunities include `base_score` and `score` (bias-adjusted)
+- [x] **Files Updated**
+  - `/app/backend/services/market_bias.py` - NEW
+  - `/app/backend/routes/screener.py` - All endpoints updated
+
 ### 🔄 In Progress
 - None currently
+
+### 📋 Upcoming Tasks
+- **PHASE 7: Quality Score Rewrite** - Improve scoring algorithm
+- **PHASE 8: Storage, Logging & Admin** - Better data persistence
 
 ### ✅ Completed (Jan 14, 2026) - Auto-Load Pre-Computed Scans & Data Preservation
 - [x] **PMCC Page Fix**
