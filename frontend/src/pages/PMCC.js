@@ -763,20 +763,6 @@ const PMCC = () => {
 
         {/* Results Section */}
         <div className={`space-y-4 ${filtersOpen ? 'lg:col-span-3' : 'lg:col-span-4'}`}>
-          {/* LEAPS Data Info */}
-          <div className="glass-card p-4 border-l-4 border-emerald-500">
-            <div className="flex items-start gap-3">
-              <CheckCircle className="w-5 h-5 text-emerald-400 flex-shrink-0 mt-0.5" />
-              <div>
-                <div className="text-sm font-medium text-emerald-400">True LEAPS Options Data</div>
-                <div className="text-xs text-zinc-400 mt-1">
-                  Fetching <strong className="text-white">real LEAPS options (12-24 months out)</strong> from the Massive.com API.
-                  Click any row to view chart and detailed analysis.
-                </div>
-              </div>
-            </div>
-          </div>
-
           {/* Live Data Badge */}
           {apiInfo?.is_live && (
             <div className="flex items-center gap-2">
