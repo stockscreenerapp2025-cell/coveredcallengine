@@ -970,10 +970,9 @@ async def screen_pmcc(
                     if strike < current_price * 0.90:  # Relaxed from 0.85 to 0.90
                         # Estimate delta based on moneyness (no actual delta from Yahoo)
                         # For deep ITM calls, delta approaches 1.0 as strike goes deeper
-                        moneyness = (current_price - strike) / current_price  # % ITM
-                        # Better estimation: ITM calls have delta = 0.5 + 0.5 * (1 - e^(-moneyness*3))
-                        # Simplified: delta ≈ 0.70 + 0.25 * moneyness (capped at 0.95)
-                        opt_delta = min(0.95, 0.70 + moneyness * 0.25 / 0.10)  # Scale by 10% ITM
+                        moneyness = (current_price - strike) / current_price  # % ITM (0.1 = 10% ITM)
+                        # Delta estimation: starts at 0.70 for 10% ITM, approaches 0.95 for 50%+ ITM
+                        opt_delta = min(0.95, 0.70 + moneyness * 0.5)  # 10% ITM → 0.75, 50% ITM → 0.95
                         opt_delta = round(opt_delta, 2)
                         
                         if min_leaps_delta <= opt_delta <= max_leaps_delta:
