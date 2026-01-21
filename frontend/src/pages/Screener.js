@@ -1318,13 +1318,14 @@ const Screener = () => {
                         <td className="font-semibold text-white">
                           <div className="flex items-center gap-2">
                             {opp.symbol}
-                            {activeScan && opp.timeframe && (
+                            {/* Show W/M badge for ALL results based on DTE */}
+                            {opp.dte && (
                               <Badge className={`text-xs ${
-                                opp.timeframe === 'weekly' 
-                                  ? 'bg-blue-500/20 text-blue-400 border-blue-500/30' 
+                                opp.dte <= 14 
+                                  ? 'bg-cyan-500/20 text-cyan-400 border-cyan-500/30' 
                                   : 'bg-purple-500/20 text-purple-400 border-purple-500/30'
                               }`}>
-                                {opp.timeframe === 'weekly' ? 'W' : 'M'}
+                                {opp.dte <= 14 ? 'W' : 'M'}
                               </Badge>
                             )}
                           </div>
