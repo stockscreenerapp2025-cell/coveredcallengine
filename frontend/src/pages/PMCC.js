@@ -394,7 +394,7 @@ const PMCC = () => {
             {filtersOpen ? 'Hide' : 'Show'} Filters
           </Button>
           <Button
-            onClick={() => { setActiveScan(null); fetchOpportunities(false); }}
+            onClick={() => { setActiveScan(null); fetchOpportunities(true); }}
             className="bg-violet-600 hover:bg-violet-700 text-white"
             data-testid="custom-pmcc-scan-btn"
           >
