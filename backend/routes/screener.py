@@ -1165,7 +1165,9 @@ async def screen_pmcc(
             "opportunities": opportunities, 
             "total": len(opportunities), 
             "is_live": True, 
-            "phase": 5 if enforce_phase5 else None,
+            "phase": 6,  # PHASE 6: Updated phase number
+            "market_bias": market_sentiment.get("bias", "neutral"),
+            "bias_weight": bias_weight,
             "passed_filters": passed_filter_count,
             "data_source": "polygon"
         }
