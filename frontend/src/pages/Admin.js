@@ -161,8 +161,14 @@ const Admin = () => {
     mode: 'sandbox',
     configured: false
   });
+  const [paypalLinks, setPaypalLinks] = useState({
+    active_mode: 'sandbox',
+    sandbox_links: { trial: '', monthly: '', yearly: '' },
+    live_links: { trial: '', monthly: '', yearly: '' }
+  });
   const [paypalLoading, setPaypalLoading] = useState(false);
   const [paypalSaving, setPaypalSaving] = useState(false);
+  const [paypalLinksSaving, setPaypalLinksSaving] = useState(false);
   const [paypalTesting, setPaypalTesting] = useState(false);
   const [showPaypalPassword, setShowPaypalPassword] = useState(false);
   const [showPaypalSignature, setShowPaypalSignature] = useState(false);
