@@ -67,6 +67,7 @@ from routes.support import support_router
 from routes.invitations import invitation_router
 from routes.precomputed_scans import scans_router
 from routes.snapshots import snapshot_router  # PHASE 1: Snapshot management
+from routes.paypal import paypal_router  # PayPal payment integration
 
 # Create routers (still in server.py - to be refactored)
 api_router = APIRouter(prefix="/api")
