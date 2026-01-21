@@ -151,6 +151,21 @@ const Admin = () => {
   const [imapSaving, setImapSaving] = useState(false);
   const [imapSyncing, setImapSyncing] = useState(false);
   const [showImapPassword, setShowImapPassword] = useState(false);
+  
+  // PayPal Settings
+  const [paypalSettings, setPaypalSettings] = useState({
+    enabled: false,
+    api_username: '',
+    api_password: '',
+    api_signature: '',
+    mode: 'sandbox',
+    configured: false
+  });
+  const [paypalLoading, setPaypalLoading] = useState(false);
+  const [paypalSaving, setPaypalSaving] = useState(false);
+  const [paypalTesting, setPaypalTesting] = useState(false);
+  const [showPaypalPassword, setShowPaypalPassword] = useState(false);
+  const [showPaypalSignature, setShowPaypalSignature] = useState(false);
 
   useEffect(() => {
     fetchSettings();
