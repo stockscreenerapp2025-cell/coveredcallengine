@@ -52,6 +52,37 @@ async def get_paypal_config():
     }
 
 
+@paypal_router.get("/links")
+async def get_paypal_links():
+    """Get PayPal payment links (public endpoint for pricing page)"""
+    settings = await db.admin_settings.find_one({"type": "paypal_links"}, {"_id": 0})
+    
+    if not settings:
+        return {
+            "enabled": False,
+            "trial_link": "",
+            "monthly_link": "",
+            "yearly_link": "",
+            "mode": "sandbox"
+        }
+    
+    # Check if PayPal is enabled
+    paypal_settings = await db.admin_settings.find_one({"type": "paypal_settings"}, {"_id": 0})
+    enabled = paypal_settings.get("enabled", False) if paypal_settings else False
+    
+    mode = settings.get("active_mode", "sandbox")
+    links_key = f"{mode}_links"
+    links = settings.get(links_key, {})
+    
+    return {
+        "enabled": enabled,
+        "trial_link": links.get("trial", ""),
+        "monthly_link": links.get("monthly", ""),
+        "yearly_link": links.get("yearly", ""),
+        "mode": mode
+    }
+
+
 @paypal_router.post("/create-checkout")
 async def create_checkout(
     request: CheckoutRequest,
