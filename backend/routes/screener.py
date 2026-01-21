@@ -1411,3 +1411,99 @@ async def clear_market_sentiment_cache(user: dict = Depends(get_current_user)):
     clear_bias_cache()
     return {"message": "Market bias cache cleared", "phase": 6}
 
+
+# ========== PHASE 8: ADMIN STATUS ENDPOINT ==========
+
+@screener_router.get("/admin/status")
+async def get_screener_admin_status(user: dict = Depends(get_current_user)):
+    """
+    PHASE 8: Comprehensive screener status for Admin panel.
+    Includes: current phase, market bias, scoring pillars, data quality metrics.
+    """
+    from services.market_bias import fetch_market_sentiment
+    
+    # Fetch market sentiment
+    sentiment = await fetch_market_sentiment()
+    
+    # Get validation stats
+    validator = get_validator()
+    rejection_summary = validator.get_rejection_summary()
+    
+    # Get pre-computed scan stats from DB
+    scan_stats = {}
+    try:
+        for strategy in ["cc", "pmcc"]:
+            for profile in ["conservative", "balanced", "aggressive"]:
+                doc = await db.precomputed_scans.find_one({"type": strategy, "profile": profile})
+                if doc:
+                    scan_stats[f"{strategy}_{profile}"] = {
+                        "count": len(doc.get("opportunities", [])),
+                        "last_updated": doc.get("last_updated"),
+                        "symbols_scanned": doc.get("symbols_scanned", 0)
+                    }
+    except Exception as e:
+        logging.error(f"Error fetching scan stats: {e}")
+    
+    return {
+        "current_phase": 7,
+        "phase_history": [
+            {"phase": 4, "name": "CC Engine Rebuild", "status": "complete"},
+            {"phase": 5, "name": "PMCC Engine Rebuild", "status": "complete"},
+            {"phase": 6, "name": "Market Bias Order Fix", "status": "complete"},
+            {"phase": 7, "name": "Quality Score Rewrite", "status": "complete"},
+            {"phase": 8, "name": "Storage, Logging & Admin", "status": "in_progress"}
+        ],
+        "market_bias": {
+            "current_bias": sentiment.get("bias", "neutral"),
+            "sentiment_score": sentiment.get("sentiment_score", 0.5),
+            "vix_level": sentiment.get("vix_level"),
+            "spy_momentum": sentiment.get("spy_momentum_pct"),
+            "cc_weight": sentiment.get("weight_cc", 1.0),
+            "pmcc_weight": sentiment.get("weight_pmcc", 1.0),
+            "description": "Phase 6: Market bias applied AFTER filtering to adjust final scores"
+        },
+        "quality_scoring": {
+            "description": "Phase 7: 5-pillar explainable scoring (0-100)",
+            "cc_pillars": [
+                {"name": "Volatility & Pricing Edge", "weight": "30%", "factors": "IV Rank, Premium Yield, IV Efficiency"},
+                {"name": "Greeks Efficiency", "weight": "25%", "factors": "Delta (0.20-0.35 ideal), Theta Decay, Risk/Reward"},
+                {"name": "Technical Stability", "weight": "20%", "factors": "SMA Alignment, RSI Position, Price Stability"},
+                {"name": "Fundamental Safety", "weight": "15%", "factors": "Market Cap, Earnings Safety, Analyst Rating"},
+                {"name": "Liquidity & Execution", "weight": "10%", "factors": "Open Interest, Volume, Bid-Ask Spread"}
+            ],
+            "pmcc_pillars": [
+                {"name": "LEAP Quality", "weight": "30%", "factors": "Delta (0.70-0.85), DTE (180-400d), Cost Efficiency"},
+                {"name": "Short Call Income", "weight": "25%", "factors": "ROI per Cycle, Short Delta, Income vs Decay"},
+                {"name": "Volatility Structure", "weight": "20%", "factors": "Overall IV, IV Skew, IV Rank"},
+                {"name": "Technical Alignment", "weight": "15%", "factors": "Trend Direction, SMA Position, RSI"},
+                {"name": "Liquidity & Risk", "weight": "10%", "factors": "LEAPS OI, Short OI, Risk Structure"}
+            ]
+        },
+        "data_quality": {
+            "validation_rejections": rejection_summary,
+            "pricing_rules": {
+                "sell_legs": "BID price only (no mid/last)",
+                "buy_legs": "ASK price only (PMCC LEAPS)"
+            },
+            "system_filters": {
+                "cc_custom": {
+                    "price_range": "$30-$90",
+                    "volume": "≥1M avg",
+                    "market_cap": "≥$5B",
+                    "earnings": "No earnings within 7d"
+                },
+                "pmcc_custom": {
+                    "price_range": "$30-$90 (ETFs exempt)",
+                    "leaps_dte": "180-730 days",
+                    "short_dte": "14-60 days"
+                }
+            }
+        },
+        "precomputed_scans": scan_stats,
+        "engine_rules": {
+            "single_candidate": "One best trade per symbol per timeframe",
+            "binary_gating": "Invalid trades are NOT scored",
+            "etf_exemptions": ["GLD", "SLV", "ARKK", "ARKG", "ARKW", "TLT", "EEM", "VXX", "UVXY", "SQQQ", "TQQQ"]
+        }
+    }
+
