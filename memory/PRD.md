@@ -262,6 +262,36 @@ Build a web-based application named "Covered Call Engine" to identify, analyze, 
   - `/app/backend/routes/screener.py` - Added admin status endpoint
   - `/app/frontend/src/pages/Admin.js` - Added Data Quality section
 
+### ✅ Completed (Jan 21, 2026) - PayPal Integration
+- [x] **PayPal NVP API Integration**
+  - Full PayPal Express Checkout implementation
+  - Supports one-time payments and recurring subscriptions
+  - IPN (Instant Payment Notification) webhook handling
+- [x] **Backend Files Created**
+  - `/app/backend/services/paypal_service.py` - PayPal NVP API service
+  - `/app/backend/routes/paypal.py` - PayPal endpoints
+  - `/app/backend/server.py` - Router integration
+- [x] **Admin Panel - PayPal Configuration**
+  - Added PayPal section to Billing tab
+  - API Username, Password, Signature fields
+  - Sandbox/Live mode toggle
+  - Enable/Disable PayPal toggle
+  - Connection test button
+- [x] **Pricing Page - Dual Payment Options**
+  - Stripe buttons for all plans (primary)
+  - PayPal buttons for all plans (secondary)
+  - "PayPal Accepted" trust badge
+  - PayPal success/cancel redirect handling
+- [x] **Key Endpoints**
+  - `GET /api/paypal/config` - Public config (enabled status, mode)
+  - `POST /api/paypal/create-checkout` - Create Express Checkout
+  - `GET /api/paypal/checkout-return` - Handle PayPal return
+  - `POST /api/paypal/ipn` - IPN webhook handler
+  - `GET /api/paypal/admin/settings` - Get settings (admin)
+  - `POST /api/paypal/admin/settings` - Update settings (admin)
+  - `POST /api/paypal/admin/test-connection` - Test connection (admin)
+  - `POST /api/paypal/admin/switch-mode` - Switch sandbox/live (admin)
+
 ### 🔄 In Progress
 - None currently
 
