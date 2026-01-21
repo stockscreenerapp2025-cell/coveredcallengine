@@ -101,8 +101,8 @@ async def fetch_market_sentiment() -> Dict:
             vix_hist = vix.history(period="5d")
             
             if not vix_hist.empty:
-                current_vix = vix_hist["Close"].iloc[-1]
-                vix_5d_avg = vix_hist["Close"].mean()
+                current_vix = float(vix_hist["Close"].iloc[-1])  # Convert to native Python float
+                vix_5d_avg = float(vix_hist["Close"].mean())  # Convert to native Python float
                 
                 # VIX-based sentiment:
                 # VIX < 15: Very bullish (0.8-1.0)
