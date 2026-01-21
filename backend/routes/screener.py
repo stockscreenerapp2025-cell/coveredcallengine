@@ -250,10 +250,36 @@ async def screen_covered_calls(
                 
                 underlying_price = stock_data["price"]
                 analyst_rating = stock_data.get("analyst_rating")
+                avg_volume = stock_data.get("avg_volume", 0) or 0
+                market_cap = stock_data.get("market_cap", 0) or 0
+                earnings_date = stock_data.get("earnings_date")
                 
                 is_etf = symbol.upper() in ETF_SYMBOLS
                 if not is_etf and (underlying_price < min_price or underlying_price > max_price):
                     continue
+                
+                # PHASE 4: System Scan Filters (when enabled)
+                if enforce_phase4 and not is_etf:
+                    # Filter: Average volume ≥ 1M
+                    if avg_volume > 0 and avg_volume < 1_000_000:
+                        logging.debug(f"PHASE4: {symbol} rejected - avg volume {avg_volume:,} < 1M")
+                        continue
+                    
+                    # Filter: Market cap ≥ $5B
+                    if market_cap > 0 and market_cap < 5_000_000_000:
+                        logging.debug(f"PHASE4: {symbol} rejected - market cap ${market_cap/1e9:.1f}B < $5B")
+                        continue
+                    
+                    # Filter: No earnings within 7 days
+                    if earnings_date:
+                        try:
+                            earnings_dt = datetime.strptime(earnings_date[:10], "%Y-%m-%d")
+                            days_to_earnings = (earnings_dt - datetime.now()).days
+                            if 0 <= days_to_earnings <= 7:
+                                logging.debug(f"PHASE4: {symbol} rejected - earnings in {days_to_earnings} days")
+                                continue
+                        except:
+                            pass
                 
                 # Get options chain (Yahoo primary with IV/OI, Polygon backup)
                 options_results = await fetch_options_chain(
