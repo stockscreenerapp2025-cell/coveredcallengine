@@ -858,7 +858,7 @@ const PMCC = () => {
                             <td>
                               <div className="flex flex-col">
                                 <span className="text-emerald-400 font-mono text-sm">{formatOptionContract(norm.leaps_expiry || norm.leaps_dte, norm.leaps_strike)}</span>
-                                <span className="text-xs text-zinc-500">δ{norm.leaps_delta?.toFixed(2) || '-'} | {norm.leaps_dte}d</span>
+                                <span className="text-sm text-zinc-300 font-medium">δ{norm.leaps_delta?.toFixed(2) || '-'} <span className="text-zinc-500">|</span> {norm.leaps_dte}d</span>
                               </div>
                             </td>
                             <td className="text-cyan-400 font-mono">${leapsPremiumPerShare}</td>
@@ -866,7 +866,7 @@ const PMCC = () => {
                             <td>
                               <div className="flex flex-col">
                                 <span className="text-cyan-400 font-mono text-sm">{formatOptionContract(opp.short_expiry || opp.short_dte, opp.short_strike)}</span>
-                                <span className="text-xs text-zinc-500">δ{(opp.short_delta || norm.short_delta)?.toFixed(2) || '-'} | {opp.short_dte}d</span>
+                                <span className="text-sm text-zinc-300 font-medium">δ{(opp.short_delta || norm.short_delta)?.toFixed(2) || '-'} <span className="text-zinc-500">|</span> {opp.short_dte}d</span>
                               </div>
                             </td>
                             <td className="text-emerald-400 font-mono">${norm.short_premium_total?.toFixed(0)}</td>
