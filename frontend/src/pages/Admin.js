@@ -48,7 +48,6 @@ import {
   Calendar,
   MessageSquare,
   Trash2,
-  Shield,
   AlertTriangle,
   TrendingDown
 } from 'lucide-react';
