@@ -345,6 +345,7 @@ async def screen_covered_calls(
                     close_price = opt.get("close", 0) or opt.get("vwap", 0) or 0
                     
                     # Use BID if available and reasonable, otherwise fallback to close
+                    # When market is closed, bid is often 0 but lastPrice/close is available
                     if bid_price > 0:
                         premium = bid_price
                         premium_source = "bid"
@@ -358,6 +359,8 @@ async def screen_covered_calls(
                         continue
                     
                     # PHASE 2: Validate trade structure BEFORE scoring
+                    # NOTE: Pass premium (not bid_price) because when market is closed,
+                    # bid=0 but lastPrice/close is available and valid
                     expiry = opt.get("expiry", "")
                     open_interest = opt.get("open_interest", 0) or 0
                     
@@ -366,7 +369,7 @@ async def screen_covered_calls(
                         stock_price=underlying_price,
                         strike=strike,
                         expiry=expiry,
-                        bid=bid_price,
+                        bid=premium,  # Use premium (bid or close fallback) for validation
                         dte=dte,
                         open_interest=open_interest
                     )
