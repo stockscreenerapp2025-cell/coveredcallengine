@@ -1356,13 +1356,42 @@ const Screener = () => {
                           </td>
                         )}
                         <td>
-                          <Badge className={`${
-                            opp.score >= 50 ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' :
-                            opp.score >= 35 ? 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30' : 
-                            'bg-cyan-500/20 text-cyan-400 border-cyan-500/30'
-                          }`}>
-                            {opp.score?.toFixed(0)}
-                          </Badge>
+                          <TooltipProvider>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Badge className={`cursor-pointer ${
+                                  opp.score >= 50 ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' :
+                                  opp.score >= 35 ? 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30' : 
+                                  'bg-cyan-500/20 text-cyan-400 border-cyan-500/30'
+                                }`}>
+                                  {opp.score?.toFixed(0)}
+                                </Badge>
+                              </TooltipTrigger>
+                              <TooltipContent className="bg-zinc-800 border-zinc-700 p-3 max-w-xs">
+                                {opp.score_breakdown?.pillars ? (
+                                  <div className="space-y-2">
+                                    <p className="font-semibold text-zinc-200 mb-2">Score Breakdown</p>
+                                    {Object.values(opp.score_breakdown.pillars).map((pillar, idx) => (
+                                      <div key={idx} className="text-xs">
+                                        <div className="flex justify-between text-zinc-300">
+                                          <span>{pillar.name}</span>
+                                          <span className="text-emerald-400">{pillar.actual_score}/{pillar.max_score}</span>
+                                        </div>
+                                        <div className="w-full bg-zinc-700 h-1 rounded-full mt-1">
+                                          <div 
+                                            className="bg-emerald-500 h-1 rounded-full" 
+                                            style={{width: `${pillar.percentage}%`}}
+                                          />
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                ) : (
+                                  <p className="text-zinc-400 text-xs">Score: {opp.score?.toFixed(1)}</p>
+                                )}
+                              </TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
                         </td>
                         <td>
                           {opp.analyst_rating ? (
