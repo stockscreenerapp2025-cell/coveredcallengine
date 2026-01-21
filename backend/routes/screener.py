@@ -519,12 +519,14 @@ async def get_dashboard_opportunities(
     }
     
     try:
-        # Extended symbol list for Phase 4
+        # Extended symbol list for Dashboard (broader price range $15-$500)
         symbols_to_scan = [
-            # Tech ($30-$90 range focus)
+            # Tech - various price ranges
             "INTC", "CSCO", "MU", "QCOM", "TXN", "ADI", "MCHP", "ON", "HPQ", "AMD",
+            "AAPL", "MSFT", "NVDA", "META",  # Large tech
             # Financials
             "BAC", "WFC", "C", "USB", "PNC", "TFC", "KEY", "RF", "CFG", "FITB",
+            "JPM", "GS",  # Large financials
             # Consumer
             "KO", "PEP", "NKE", "SBUX", "DIS", "GM", "F",
             # Telecom
@@ -532,7 +534,7 @@ async def get_dashboard_opportunities(
             # Healthcare
             "PFE", "MRK", "ABBV", "BMY", "GILD", "JNJ",
             # Energy
-            "OXY", "DVN", "APA", "HAL", "SLB", "MRO",
+            "OXY", "DVN", "APA", "HAL", "SLB", "MRO", "XOM", "CVX",
             # Industrials
             "CAT", "DE", "GE", "HON",
             # Growth/Fintech
@@ -541,16 +543,17 @@ async def get_dashboard_opportunities(
             "AAL", "DAL", "UAL", "CCL", "NCLH",
             # High Vol
             "PLTR", "SOFI", "HOOD",
-            # Large Tech (for volume filter test)
+            # Large Tech
             "DELL", "IBM", "ORCL"
         ]
         
-        # Track all valid opportunities and rejections
-        all_opportunities = []
+        # Track Weekly and Monthly opportunities separately
+        weekly_opportunities = []
+        monthly_opportunities = []
         rejected_symbols = []
         passed_filter_count = 0
         
-        for symbol in symbols_to_scan[:50]:  # Scan up to 50 symbols
+        for symbol in symbols_to_scan[:60]:  # Scan up to 60 symbols
             try:
                 # Get stock data with fundamentals
                 stock_data = await fetch_stock_quote(symbol, api_key)
@@ -565,20 +568,20 @@ async def get_dashboard_opportunities(
                 market_cap = stock_data.get("market_cap", 0) or 0
                 earnings_date = stock_data.get("earnings_date")
                 
-                # ========== PHASE 4: SYSTEM SCAN FILTERS ==========
+                # ========== DASHBOARD FILTERS (BROADER THAN CUSTOM SCAN) ==========
                 
-                # Filter 1: Price range $30-$90
-                if current_price < SYSTEM_FILTERS["min_price"] or current_price > SYSTEM_FILTERS["max_price"]:
-                    rejected_symbols.append({"symbol": symbol, "reason": f"Price ${current_price:.2f} outside $30-$90"})
+                # Filter 1: Price range $15-$500
+                if current_price < DASHBOARD_FILTERS["min_price"] or current_price > DASHBOARD_FILTERS["max_price"]:
+                    rejected_symbols.append({"symbol": symbol, "reason": f"Price ${current_price:.2f} outside $15-$500"})
                     continue
                 
                 # Filter 2: Average volume ≥ 1M
-                if avg_volume > 0 and avg_volume < SYSTEM_FILTERS["min_avg_volume"]:
+                if avg_volume > 0 and avg_volume < DASHBOARD_FILTERS["min_avg_volume"]:
                     rejected_symbols.append({"symbol": symbol, "reason": f"Avg volume {avg_volume:,} < 1M"})
                     continue
                 
                 # Filter 3: Market cap ≥ $5B
-                if market_cap > 0 and market_cap < SYSTEM_FILTERS["min_market_cap"]:
+                if market_cap > 0 and market_cap < DASHBOARD_FILTERS["min_market_cap"]:
                     rejected_symbols.append({"symbol": symbol, "reason": f"Market cap ${market_cap/1e9:.1f}B < $5B"})
                     continue
                 
@@ -587,7 +590,7 @@ async def get_dashboard_opportunities(
                     try:
                         earnings_dt = datetime.strptime(earnings_date[:10], "%Y-%m-%d")
                         days_to_earnings = (earnings_dt - datetime.now()).days
-                        if 0 <= days_to_earnings <= SYSTEM_FILTERS["earnings_exclusion_days"]:
+                        if 0 <= days_to_earnings <= DASHBOARD_FILTERS["earnings_exclusion_days"]:
                             rejected_symbols.append({"symbol": symbol, "reason": f"Earnings in {days_to_earnings} days"})
                             continue
                     except:
@@ -598,24 +601,24 @@ async def get_dashboard_opportunities(
                 # ========== FETCH OPTIONS ==========
                 
                 # Get Weekly options (7-14 DTE)
-                weekly_options = await fetch_options_chain(
+                weekly_opts = await fetch_options_chain(
                     symbol, api_key, "call", 
-                    SYSTEM_FILTERS["weekly_dte_max"], 
-                    min_dte=SYSTEM_FILTERS["weekly_dte_min"], 
+                    DASHBOARD_FILTERS["weekly_dte_max"], 
+                    min_dte=DASHBOARD_FILTERS["weekly_dte_min"], 
                     current_price=current_price
                 )
                 
                 # Get Monthly options (21-45 DTE)
-                monthly_options = await fetch_options_chain(
+                monthly_opts = await fetch_options_chain(
                     symbol, api_key, "call", 
-                    SYSTEM_FILTERS["monthly_dte_max"], 
-                    min_dte=SYSTEM_FILTERS["monthly_dte_min"], 
+                    DASHBOARD_FILTERS["monthly_dte_max"], 
+                    min_dte=DASHBOARD_FILTERS["monthly_dte_min"], 
                     current_price=current_price
                 )
                 
                 # ========== PROCESS OPTIONS ==========
                 
-                for options_list, timeframe in [(weekly_options, "Weekly"), (monthly_options, "Monthly")]:
+                for options_list, timeframe in [(weekly_opts, "Weekly"), (monthly_opts, "Monthly")]:
                     if not options_list:
                         continue
                     
