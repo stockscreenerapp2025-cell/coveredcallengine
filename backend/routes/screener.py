@@ -1328,3 +1328,41 @@ async def delete_filter(filter_id: str, user: dict = Depends(get_current_user)):
     if result.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Filter not found")
     return {"message": "Filter deleted"}
+
+
+# ========== PHASE 6: MARKET BIAS ENDPOINTS ==========
+
+@screener_router.get("/market-sentiment")
+async def get_market_sentiment(user: dict = Depends(get_current_user)):
+    """
+    PHASE 6: Get current market sentiment and bias weights.
+    
+    Returns:
+    - sentiment_score: 0.0 (bearish) to 1.0 (bullish)
+    - bias: "bullish", "neutral", or "bearish"
+    - weight_cc: Multiplier for Covered Call scores
+    - weight_pmcc: Multiplier for PMCC scores
+    - vix_level: Current VIX level (if available)
+    - spy_momentum_pct: SPY 10-day momentum (if available)
+    """
+    from services.market_bias import fetch_market_sentiment
+    
+    sentiment = await fetch_market_sentiment()
+    return {
+        "phase": 6,
+        "sentiment": sentiment,
+        "description": "Market bias applied AFTER filtering. Higher bias_weight = bullish adjustment."
+    }
+
+
+@screener_router.post("/market-sentiment/clear-cache")
+async def clear_market_sentiment_cache(user: dict = Depends(get_current_user)):
+    """
+    PHASE 6: Clear market sentiment cache.
+    Useful for testing or forcing a refresh of market data.
+    """
+    from services.market_bias import clear_bias_cache
+    
+    clear_bias_cache()
+    return {"message": "Market bias cache cleared", "phase": 6}
+
