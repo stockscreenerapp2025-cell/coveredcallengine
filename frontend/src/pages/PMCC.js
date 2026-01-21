@@ -881,9 +881,38 @@ const PMCC = () => {
                             <td className="text-yellow-400 font-semibold">{norm.roi_per_cycle?.toFixed(1)}%</td>
                             <td className="text-emerald-400 font-semibold">{norm.annualized_roi?.toFixed(0)}%</td>
                             <td>
-                              <Badge className={`${opp.score >= 70 ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' : opp.score >= 50 ? 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30' : 'bg-violet-500/20 text-violet-400 border-violet-500/30'}`}>
-                                {opp.score?.toFixed(0)}
-                              </Badge>
+                              <TooltipProvider>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <Badge className={`cursor-pointer ${opp.score >= 70 ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' : opp.score >= 50 ? 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30' : 'bg-violet-500/20 text-violet-400 border-violet-500/30'}`}>
+                                      {opp.score?.toFixed(0)}
+                                    </Badge>
+                                  </TooltipTrigger>
+                                  <TooltipContent className="bg-zinc-800 border-zinc-700 p-3 max-w-xs">
+                                    {opp.score_breakdown?.pillars ? (
+                                      <div className="space-y-2">
+                                        <p className="font-semibold text-zinc-200 mb-2">PMCC Score Breakdown</p>
+                                        {Object.values(opp.score_breakdown.pillars).map((pillar, idx) => (
+                                          <div key={idx} className="text-xs">
+                                            <div className="flex justify-between text-zinc-300">
+                                              <span>{pillar.name}</span>
+                                              <span className="text-emerald-400">{pillar.actual_score}/{pillar.max_score}</span>
+                                            </div>
+                                            <div className="w-full bg-zinc-700 h-1 rounded-full mt-1">
+                                              <div 
+                                                className="bg-emerald-500 h-1 rounded-full" 
+                                                style={{width: `${pillar.percentage}%`}}
+                                              />
+                                            </div>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    ) : (
+                                      <p className="text-zinc-400 text-xs">Score: {opp.score?.toFixed(1)}</p>
+                                    )}
+                                  </TooltipContent>
+                                </Tooltip>
+                              </TooltipProvider>
                             </td>
                             <td>
                               {opp.analyst_rating ? (
