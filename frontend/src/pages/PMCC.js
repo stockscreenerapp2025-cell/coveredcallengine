@@ -602,7 +602,7 @@ const PMCC = () => {
                   </Button>
                   <Button
                     size="sm"
-                    onClick={() => fetchOpportunities(false)}
+                    onClick={() => fetchOpportunities(true)}
                     className="bg-violet-600 hover:bg-violet-700 text-white h-8 px-3"
                     data-testid="scan-pmcc-btn"
                   >
