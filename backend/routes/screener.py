@@ -147,10 +147,17 @@ async def screen_covered_calls(
     include_etfs: bool = Query(True),
     include_index: bool = Query(False),
     bypass_cache: bool = Query(False),
+    enforce_phase4: bool = Query(True),  # PHASE 4: Enable system filters
     user: dict = Depends(get_current_user)
 ):
     """
     Screen for covered call opportunities with advanced filters.
+    
+    PHASE 4 RULES (when enforce_phase4=True):
+    - System Scan Filters: $30-$90 price, ≥1M avg volume, ≥$5B market cap
+    - No earnings within 7 days
+    - Single-Candidate Rule: ONE best trade per symbol
+    - BID pricing only for SELL legs
     
     DATA SOURCES:
     - Options: Polygon/Massive ONLY
