@@ -411,26 +411,31 @@ async def screen_covered_calls(
                     else:
                         protection = ((strike - underlying_price + premium) / underlying_price * 100)
                     
-                    # ========== PHASE 6: CALCULATE BASE SCORE (before bias) ==========
-                    # Calculate base score components
-                    roi_score = min(roi_pct * 15, 40)
-                    iv_score = min(iv_rank / 100 * 20, 20)
-                    delta_score = max(0, 20 - abs(estimated_delta - 0.3) * 50)
-                    protection_score = min(abs(protection), 10) * 2
+                    # ========== PHASE 7: PILLAR-BASED QUALITY SCORING ==========
+                    # Prepare trade data for scoring
+                    trade_data = {
+                        "symbol": symbol,
+                        "stock_price": underlying_price,
+                        "strike": strike,
+                        "premium": premium,
+                        "dte": dte,
+                        "delta": estimated_delta,
+                        "theta": 0,
+                        "iv": iv,
+                        "iv_rank": iv_rank,
+                        "roi_pct": roi_pct,
+                        "open_interest": open_interest,
+                        "volume": volume,
+                        "market_cap": market_cap,
+                        "analyst_rating": analyst_rating,
+                        "has_earnings_soon": False,  # Already filtered above
+                        "is_valid": True
+                    }
                     
-                    # Liquidity bonus: reward high open interest
-                    liquidity_score = 0
-                    if open_interest >= 1000:
-                        liquidity_score = 10
-                    elif open_interest >= 500:
-                        liquidity_score = 7
-                    elif open_interest >= 100:
-                        liquidity_score = 5
-                    elif open_interest >= 50:
-                        liquidity_score = 2
-                    
-                    # Base score (before market bias adjustment)
-                    base_score = round(roi_score + iv_score + delta_score + protection_score + liquidity_score, 1)
+                    # Calculate pillar-based quality score
+                    quality_result = calculate_cc_quality_score(trade_data)
+                    base_score = quality_result.total_score
+                    score_breakdown = score_to_dict(quality_result)
                     
                     # Add to eligible trades (score will be adjusted after loop)
                     opportunities.append({
@@ -448,8 +453,9 @@ async def screen_covered_calls(
                         "downside_protection": round(protection, 2),
                         "volume": volume,
                         "open_interest": open_interest,
-                        "base_score": base_score,  # PHASE 6: Store base score
+                        "base_score": base_score,  # PHASE 7: Pillar-based score
                         "score": base_score,  # Will be adjusted below
+                        "score_breakdown": score_breakdown,  # PHASE 7: Pillar breakdown
                         "analyst_rating": analyst_rating,
                         "data_source": opt.get("source", "yahoo")
                     })
