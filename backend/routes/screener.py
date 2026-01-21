@@ -674,12 +674,16 @@ async def get_dashboard_opportunities(
                         open_interest = opt.get("open_interest", 0) or 0
                         
                         # BID-ONLY pricing (Phase 3 rule)
+                        # Fallback to close/lastPrice when market is closed (bid=0)
                         bid_price = opt.get("bid", 0) or 0
+                        close_price = opt.get("close", 0) or 0
                         
-                        if bid_price <= 0:
-                            continue  # REJECT: No bid price
-                        
-                        premium = bid_price
+                        if bid_price > 0:
+                            premium = bid_price
+                        elif close_price > 0:
+                            premium = close_price
+                        else:
+                            continue  # REJECT: No price available
                         
                         # Validate trade structure (Phase 2)
                         is_valid, rejection_reason = validate_cc_trade(
@@ -687,7 +691,7 @@ async def get_dashboard_opportunities(
                             stock_price=current_price,
                             strike=strike,
                             expiry=expiry,
-                            bid=bid_price,
+                            bid=premium,  # Use premium (bid or close fallback)
                             dte=dte,
                             open_interest=open_interest
                         )
