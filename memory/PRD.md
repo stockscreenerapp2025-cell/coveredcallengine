@@ -70,6 +70,12 @@ Build a web-based application named "Covered Call Engine" to identify, analyze, 
 ### 6. Authentication & Subscription
 - JWT-based authentication
 - Stripe integration for subscription management
+- **PayPal integration** (Jan 21, 2026)
+  - NVP API integration for alternative payment processing
+  - Express Checkout for one-time payments
+  - Recurring Profiles for subscriptions
+  - IPN webhook handling for payment status updates
+  - Admin panel configuration (sandbox/live modes)
 - 7-day free trial support
 
 ### 7. Admin Panel
