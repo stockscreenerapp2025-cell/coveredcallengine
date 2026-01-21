@@ -435,15 +435,18 @@ async def get_dashboard_opportunities(
     user: dict = Depends(get_current_user)
 ):
     """
-    Get top 10 covered call opportunities for dashboard - 5 Weekly + 5 Monthly.
+    Get top 10 covered call opportunities for dashboard.
     
-    DATA SOURCES:
-    - Options: Polygon/Massive ONLY
-    - Stock prices: Polygon primary, Yahoo fallback
+    PHASE 4 RULES:
+    - System Scan Filters: $30-$90 price, ≥1M avg volume, ≥$5B market cap
+    - No earnings within 7 days
+    - Single-Candidate Rule: ONE best trade per symbol (best of weekly vs monthly)
+    - Weekly: 7-14 DTE, Monthly: 21-45 DTE
+    - BID pricing only for SELL legs
     """
     funcs = _get_server_functions()
     
-    cache_key = "dashboard_opportunities_v4"
+    cache_key = "dashboard_opportunities_v5"  # New cache key for Phase 4
     
     if not bypass_cache:
         cached_data = await funcs['get_cached_data'](cache_key)
@@ -464,6 +467,21 @@ async def get_dashboard_opportunities(
     if not api_key:
         return {"opportunities": [], "total": 0, "message": "API key not configured", "is_mock": True}
     
+    # PHASE 4: System Scan Filters
+    SYSTEM_FILTERS = {
+        "min_price": 30,
+        "max_price": 90,
+        "min_avg_volume": 1_000_000,  # 1M
+        "min_market_cap": 5_000_000_000,  # $5B
+        "earnings_exclusion_days": 7,
+        "weekly_dte_min": 7,
+        "weekly_dte_max": 14,
+        "monthly_dte_min": 21,
+        "monthly_dte_max": 45,
+        "min_otm_pct": 5,  # 5% OTM minimum
+        "max_otm_pct": 10,  # 10% OTM maximum
+    }
+    
     try:
         symbols_to_scan = [
             "INTC", "CSCO", "MU", "QCOM", "TXN", "ADI", "MCHP", "ON", "HPQ",
@@ -479,46 +497,76 @@ async def get_dashboard_opportunities(
             "AMD", "DELL", "IBM", "ORCL"
         ]
         
-        weekly_opportunities = []
-        monthly_opportunities = []
+        # Dict to store best opportunity per symbol (Single-Candidate Rule)
+        best_by_symbol = {}
+        rejected_symbols = []
         
-        for symbol in symbols_to_scan[:35]:  # Limit for performance
+        for symbol in symbols_to_scan[:40]:  # Limit for performance
             try:
-                # Get stock price using centralized data provider (Yahoo primary)
+                # Get stock data with fundamentals
                 stock_data = await fetch_stock_quote(symbol, api_key)
                 
                 if not stock_data or stock_data.get("price", 0) == 0:
+                    rejected_symbols.append({"symbol": symbol, "reason": "No price data"})
                     continue
                 
                 current_price = stock_data["price"]
                 analyst_rating = stock_data.get("analyst_rating")
+                avg_volume = stock_data.get("avg_volume", 0) or 0
+                market_cap = stock_data.get("market_cap", 0) or 0
+                earnings_date = stock_data.get("earnings_date")
                 
-                if current_price < 25 or current_price > 100:
+                # PHASE 4: Apply System Scan Filters
+                # Filter 1: Price range $30-$90
+                if current_price < SYSTEM_FILTERS["min_price"] or current_price > SYSTEM_FILTERS["max_price"]:
+                    rejected_symbols.append({"symbol": symbol, "reason": f"Price ${current_price:.2f} outside $30-$90 range"})
                     continue
                 
-                # Get options - Yahoo primary with IV/OI
+                # Filter 2: Average volume ≥ 1M
+                if avg_volume < SYSTEM_FILTERS["min_avg_volume"]:
+                    rejected_symbols.append({"symbol": symbol, "reason": f"Avg volume {avg_volume:,} < 1M"})
+                    continue
+                
+                # Filter 3: Market cap ≥ $5B
+                if market_cap < SYSTEM_FILTERS["min_market_cap"]:
+                    rejected_symbols.append({"symbol": symbol, "reason": f"Market cap ${market_cap/1e9:.1f}B < $5B"})
+                    continue
+                
+                # Filter 4: No earnings within 7 days
+                if earnings_date:
+                    try:
+                        from datetime import datetime
+                        earnings_dt = datetime.strptime(earnings_date[:10], "%Y-%m-%d")
+                        days_to_earnings = (earnings_dt - datetime.now()).days
+                        if 0 <= days_to_earnings <= SYSTEM_FILTERS["earnings_exclusion_days"]:
+                            rejected_symbols.append({"symbol": symbol, "reason": f"Earnings in {days_to_earnings} days"})
+                            continue
+                    except:
+                        pass
+                
+                # Get options - Weekly (7-14 DTE) and Monthly (21-45 DTE)
                 weekly_options = await fetch_options_chain(
-                    symbol, api_key, "call", 7, min_dte=1, current_price=current_price
+                    symbol, api_key, "call", 
+                    SYSTEM_FILTERS["weekly_dte_max"], 
+                    min_dte=SYSTEM_FILTERS["weekly_dte_min"], 
+                    current_price=current_price
                 )
                 
                 monthly_options = await fetch_options_chain(
-                    symbol, api_key, "call", 45, min_dte=8, current_price=current_price
+                    symbol, api_key, "call", 
+                    SYSTEM_FILTERS["monthly_dte_max"], 
+                    min_dte=SYSTEM_FILTERS["monthly_dte_min"], 
+                    current_price=current_price
                 )
                 
-                all_options = []
-                if weekly_options:
-                    for opt in weekly_options:
-                        opt["expiry_type"] = "Weekly"
-                    all_options.extend(weekly_options)
-                if monthly_options:
-                    for opt in monthly_options:
-                        opt["expiry_type"] = "Monthly"
-                    all_options.extend(monthly_options)
+                # Process all options for this symbol
+                symbol_opportunities = []
                 
-                if not all_options:
-                    continue
-                
-                for opt in all_options:
+                for options, expiry_type in [(weekly_options, "Weekly"), (monthly_options, "Monthly")]:
+                    if not options:
+                        continue
+                    
+                    for opt in options:
                     strike = opt.get("strike", 0)
                     dte = opt.get("dte", 0)
                     expiry = opt.get("expiry", "")
