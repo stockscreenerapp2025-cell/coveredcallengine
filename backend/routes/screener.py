@@ -1067,11 +1067,19 @@ async def screen_pmcc(
                     
             except Exception as e:
                 logging.error(f"PMCC scan error for {symbol}: {e}")
+                rejected_symbols.append({"symbol": symbol, "reason": str(e)})
                 continue
         
-        # Sort by score and limit to top 100
-        opportunities.sort(key=lambda x: x["score"], reverse=True)
-        opportunities = opportunities[:100]
+        # ========== SINGLE-CANDIDATE RULE ==========
+        # One best trade per symbol (highest score wins)
+        best_by_symbol = {}
+        for opp in opportunities:
+            sym = opp["symbol"]
+            if sym not in best_by_symbol or opp["score"] > best_by_symbol[sym]["score"]:
+                best_by_symbol[sym] = opp
+        
+        # Convert back to list and sort by score
+        opportunities = sorted(best_by_symbol.values(), key=lambda x: x["score"], reverse=True)[:100]
         
         # Fetch analyst ratings for all symbols
         symbols = [opp["symbol"] for opp in opportunities]
@@ -1081,7 +1089,14 @@ async def screen_pmcc(
         for opp in opportunities:
             opp["analyst_rating"] = analyst_ratings.get(opp["symbol"])
         
-        result = {"opportunities": opportunities, "total": len(opportunities), "is_live": True, "data_source": "polygon"}
+        result = {
+            "opportunities": opportunities, 
+            "total": len(opportunities), 
+            "is_live": True, 
+            "phase": 5 if enforce_phase5 else None,
+            "passed_filters": passed_filter_count,
+            "data_source": "polygon"
+        }
         await funcs['set_cached_data'](cache_key, result)
         return result
         
@@ -1091,21 +1106,32 @@ async def screen_pmcc(
 
 
 @screener_router.get("/dashboard-pmcc")
-async def get_dashboard_pmcc(user: dict = Depends(get_current_user)):
-    """Get top PMCC opportunities for dashboard"""
+async def get_dashboard_pmcc(
+    bypass_cache: bool = Query(False),
+    user: dict = Depends(get_current_user)
+):
+    """
+    Get top PMCC opportunities for dashboard.
+    
+    DASHBOARD RULES:
+    - Price filter: $15-$500 (broader range for dashboard)
+    - Volume ≥1M, Market Cap ≥$5B, No earnings within 7 days
+    - Single-Candidate Rule: ONE best trade per symbol
+    """
     funcs = _get_server_functions()
     
-    cache_key = "dashboard_pmcc_v2"
+    cache_key = "dashboard_pmcc_v3_phase5"
     
-    cached_data = await funcs['get_cached_data'](cache_key)
-    if cached_data:
-        cached_data["from_cache"] = True
-        return cached_data
+    if not bypass_cache:
+        cached_data = await funcs['get_cached_data'](cache_key)
+        if cached_data:
+            cached_data["from_cache"] = True
+            return cached_data
     
-    # Call the main PMCC screener with explicit default values
+    # Call the main PMCC screener with DASHBOARD filters ($15-$500)
     result = await screen_pmcc(
-        min_price=20,
-        max_price=150,
+        min_price=15,      # Dashboard: broader price range
+        max_price=500,     # Dashboard: broader price range
         min_leaps_dte=180,
         max_leaps_dte=730,
         min_short_dte=14,
@@ -1116,13 +1142,15 @@ async def get_dashboard_pmcc(user: dict = Depends(get_current_user)):
         max_short_delta=0.35,
         min_roi=2.0,
         min_annualized_roi=20.0,
-        bypass_cache=True,  # We're already caching at this level
+        bypass_cache=True,
+        enforce_phase5=False,  # Dashboard uses broader filters
         user=user
     )
     
     if result.get("opportunities"):
         # Limit to top 10 for dashboard
         result["opportunities"] = result["opportunities"][:10]
+        result["total"] = len(result["opportunities"])
         await funcs['set_cached_data'](cache_key, result)
     
     return result
