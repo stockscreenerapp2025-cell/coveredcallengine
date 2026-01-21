@@ -1097,11 +1097,11 @@ async def screen_pmcc(
                             if roi_per_cycle < min_roi or annualized_roi < min_annualized_roi:
                                 continue
                             
-                            # Score based on ROI, delta quality, and capital efficiency
+                            # PHASE 6: Calculate BASE score (before bias adjustment)
                             roi_score = roi_per_cycle * 10
                             delta_score = (leaps["delta"] - 0.7) * 50  # Bonus for higher LEAPS delta
                             efficiency_score = (1 - net_debit / (current_price * 100)) * 20  # Lower cost = better
-                            score = round(roi_score + delta_score + efficiency_score + annualized_roi / 5, 1)
+                            base_score = round(roi_score + delta_score + efficiency_score + annualized_roi / 5, 1)
                             
                             opportunities.append({
                                     "symbol": symbol,
@@ -1119,7 +1119,8 @@ async def screen_pmcc(
                                     "net_debit": round(net_debit, 2),
                                     "roi_per_cycle": round(roi_per_cycle, 2),
                                     "annualized_roi": round(annualized_roi, 1),
-                                    "score": round(score, 1),
+                                    "base_score": base_score,  # PHASE 6: Store base score
+                                    "score": base_score,  # Will be adjusted below
                                     "data_source": "polygon"
                                 })
                     
@@ -1127,6 +1128,19 @@ async def screen_pmcc(
                 logging.error(f"PMCC scan error for {symbol}: {e}")
                 rejected_symbols.append({"symbol": symbol, "reason": str(e)})
                 continue
+        
+        # ========== PHASE 6: APPLY MARKET BIAS AFTER FILTERING ==========
+        market_sentiment = await fetch_market_sentiment()
+        bias_weight = market_sentiment.get("weight_pmcc", 1.0)
+        
+        # Apply bias to each eligible trade's score
+        for opp in opportunities:
+            # Use short_delta for bias adjustment (more relevant for income potential)
+            opp["score"] = apply_bias_to_score(
+                opp["base_score"], 
+                bias_weight, 
+                opp.get("short_delta", 0.25)
+            )
         
         # ========== SINGLE-CANDIDATE RULE ==========
         # One best trade per symbol (highest score wins)
