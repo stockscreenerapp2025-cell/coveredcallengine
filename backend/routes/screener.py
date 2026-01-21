@@ -656,7 +656,7 @@ async def get_dashboard_opportunities(
                         
                         strike_pct = ((strike - current_price) / current_price) * 100
                         
-                        if strike_pct < SYSTEM_FILTERS["min_otm_pct"] or strike_pct > SYSTEM_FILTERS["max_otm_pct"]:
+                        if strike_pct < DASHBOARD_FILTERS["min_otm_pct"] or strike_pct > DASHBOARD_FILTERS["max_otm_pct"]:
                             continue
                         
                         # Premium sanity check
@@ -700,7 +700,7 @@ async def get_dashboard_opportunities(
                         
                         score = round(base_score + liquidity_bonus, 1)
                         
-                        all_opportunities.append({
+                        opp_data = {
                             "symbol": symbol,
                             "stock_price": round(current_price, 2),
                             "strike": strike,
@@ -723,27 +723,45 @@ async def get_dashboard_opportunities(
                             "market_cap": market_cap,
                             "avg_volume": avg_volume,
                             "data_source": opt.get("source", "yahoo")
-                        })
+                        }
+                        
+                        # Add to appropriate list
+                        if timeframe == "Weekly":
+                            weekly_opportunities.append(opp_data)
+                        else:
+                            monthly_opportunities.append(opp_data)
                 
             except Exception as e:
                 logging.error(f"Dashboard scan error for {symbol}: {e}")
                 rejected_symbols.append({"symbol": symbol, "reason": str(e)})
                 continue
         
-        # ========== SINGLE-CANDIDATE RULE ==========
-        # One best trade per symbol (highest score wins)
-        best_by_symbol = {}
-        for opp in all_opportunities:
+        # ========== TOP 5 WEEKLY + TOP 5 MONTHLY (Weekly Preference) ==========
+        
+        # Dedupe Weekly: One best per symbol
+        weekly_best_by_symbol = {}
+        for opp in weekly_opportunities:
             sym = opp["symbol"]
-            if sym not in best_by_symbol or opp["score"] > best_by_symbol[sym]["score"]:
-                best_by_symbol[sym] = opp
+            if sym not in weekly_best_by_symbol or opp["score"] > weekly_best_by_symbol[sym]["score"]:
+                weekly_best_by_symbol[sym] = opp
+        top_weekly = sorted(weekly_best_by_symbol.values(), key=lambda x: x["score"], reverse=True)[:5]
         
-        # Sort by score and take top 10
-        final_opportunities = sorted(best_by_symbol.values(), key=lambda x: x["score"], reverse=True)[:10]
+        # Dedupe Monthly: One best per symbol (excluding symbols already in Weekly)
+        weekly_symbols = {opp["symbol"] for opp in top_weekly}
+        monthly_best_by_symbol = {}
+        for opp in monthly_opportunities:
+            sym = opp["symbol"]
+            if sym in weekly_symbols:
+                continue  # Skip if symbol already in Weekly list
+            if sym not in monthly_best_by_symbol or opp["score"] > monthly_best_by_symbol[sym]["score"]:
+                monthly_best_by_symbol[sym] = opp
+        top_monthly = sorted(monthly_best_by_symbol.values(), key=lambda x: x["score"], reverse=True)[:5]
         
-        # Count weekly vs monthly in final results
-        weekly_count = sum(1 for o in final_opportunities if o["expiry_type"] == "Weekly")
-        monthly_count = sum(1 for o in final_opportunities if o["expiry_type"] == "Monthly")
+        # Combine: Weekly first (priority), then Monthly
+        final_opportunities = top_weekly + top_monthly
+        
+        weekly_count = len(top_weekly)
+        monthly_count = len(top_monthly)
         
         result = {
             "opportunities": final_opportunities, 
