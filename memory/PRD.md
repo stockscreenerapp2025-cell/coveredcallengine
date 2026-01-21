@@ -221,11 +221,31 @@ Build a web-based application named "Covered Call Engine" to identify, analyze, 
   - `/app/frontend/src/pages/Screener.js` - Score tooltip with breakdown
   - `/app/frontend/src/pages/PMCC.js` - Score tooltip with breakdown
 
+### ✅ Completed (Jan 21, 2026) - PHASE 8: Storage, Logging & Admin
+- [x] **Admin Status Endpoint**
+  - New endpoint: `GET /api/screener/admin/status`
+  - Returns: phase info, market bias, quality pillars, system filters, engine rules
+- [x] **Admin Panel Data Quality Section**
+  - Current Engine Phase with history (Phase 6, 7, 8 status badges)
+  - Market Bias display (VIX, SPY momentum, CC/PMCC weights)
+  - CC Quality Pillars (5 pillars with weights and factors)
+  - PMCC Quality Pillars (5 pillars with weights and factors)
+  - System Filters (CC Custom, PMCC Custom)
+  - Engine Rules (Single-candidate, Binary gating, ETF exemptions)
+  - Pre-computed Scan Status
+  - Refresh button for real-time updates
+- [x] **Files Updated**
+  - `/app/backend/routes/screener.py` - Added admin status endpoint
+  - `/app/frontend/src/pages/Admin.js` - Added Data Quality section
+
 ### 🔄 In Progress
 - None currently
 
 ### 📋 Upcoming Tasks
-- **PHASE 8: Storage, Logging & Admin** - Better data persistence
+- Refactor `Admin.js` (2000+ lines)
+- Refactor `Screener.js` and `PMCC.js`
+- Support System - AI Learning
+- Admin Panel - Content & Announcement Manager
 
 ### ✅ Completed (Jan 14, 2026) - Auto-Load Pre-Computed Scans & Data Preservation
 - [x] **PMCC Page Fix**
