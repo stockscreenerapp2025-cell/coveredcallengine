@@ -345,7 +345,6 @@ async def screen_covered_calls(
                     close_price = opt.get("close", 0) or opt.get("vwap", 0) or 0
                     
                     # Use BID if available and reasonable, otherwise fallback to close
-                    # When market is closed, bid is often 0 but lastPrice/close is available
                     if bid_price > 0:
                         premium = bid_price
                         premium_source = "bid"
@@ -359,8 +358,6 @@ async def screen_covered_calls(
                         continue
                     
                     # PHASE 2: Validate trade structure BEFORE scoring
-                    # NOTE: Pass premium (not bid_price) because when market is closed,
-                    # bid=0 but lastPrice/close is available and valid
                     expiry = opt.get("expiry", "")
                     open_interest = opt.get("open_interest", 0) or 0
                     
@@ -369,7 +366,7 @@ async def screen_covered_calls(
                         stock_price=underlying_price,
                         strike=strike,
                         expiry=expiry,
-                        bid=premium,  # Use premium (bid or close fallback) for validation
+                        bid=bid_price,
                         dte=dte,
                         open_interest=open_interest
                     )
@@ -674,16 +671,12 @@ async def get_dashboard_opportunities(
                         open_interest = opt.get("open_interest", 0) or 0
                         
                         # BID-ONLY pricing (Phase 3 rule)
-                        # Fallback to close/lastPrice when market is closed (bid=0)
                         bid_price = opt.get("bid", 0) or 0
-                        close_price = opt.get("close", 0) or 0
                         
-                        if bid_price > 0:
-                            premium = bid_price
-                        elif close_price > 0:
-                            premium = close_price
-                        else:
-                            continue  # REJECT: No price available
+                        if bid_price <= 0:
+                            continue  # REJECT: No bid price
+                        
+                        premium = bid_price
                         
                         # Validate trade structure (Phase 2)
                         is_valid, rejection_reason = validate_cc_trade(
@@ -691,7 +684,7 @@ async def get_dashboard_opportunities(
                             stock_price=current_price,
                             strike=strike,
                             expiry=expiry,
-                            bid=premium,  # Use premium (bid or close fallback)
+                            bid=bid_price,
                             dte=dte,
                             open_interest=open_interest
                         )
@@ -1031,8 +1024,7 @@ async def screen_pmcc(
                         continue
                     
                     # DATA QUALITY FILTER: Skip very low OI (relaxed for LEAPS)
-                    # When market is closed, Yahoo returns OI=0, so only filter when OI > 0
-                    if open_interest > 0 and open_interest < 5:
+                    if open_interest < 5:  # Relaxed from 10 to 5 for LEAPS
                         continue
                     
                     # DATA QUALITY FILTER: Premium sanity check for LEAPS
@@ -1075,8 +1067,7 @@ async def screen_pmcc(
                         continue
                     
                     # DATA QUALITY FILTER: Skip very low OI
-                    # When market is closed, Yahoo returns OI=0, so only filter when OI > 0
-                    if open_interest > 0 and open_interest < 5:
+                    if open_interest < 5:  # Relaxed from 10 to 5
                         continue
                     
                     # DATA QUALITY FILTER: Premium sanity for OTM short calls
