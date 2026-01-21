@@ -188,8 +188,11 @@ def _fetch_options_chain_yahoo_sync(
         
         options = []
         
-        # Fetch options for each valid expiry (limit to 3 for performance)
-        for expiry, dte in valid_expiries[:3]:
+        # For LEAPS (DTE > 90), include more expiries; for shorter-term, limit to 3
+        max_expiries = 5 if min_dte > 90 else 3
+        
+        # Fetch options for each valid expiry
+        for expiry, dte in valid_expiries[:max_expiries]:
             try:
                 opt_chain = ticker.option_chain(expiry)
                 chain_data = opt_chain.calls if option_type == "call" else opt_chain.puts
@@ -200,16 +203,22 @@ def _fetch_options_chain_yahoo_sync(
                         continue
                     
                     # Filter strikes based on moneyness
+                    # PMCC/LEAPS need deep ITM calls, so widen the filter for longer DTE
                     if option_type == "call":
-                        # For calls, focus on ATM to OTM
-                        if strike < current_price * 0.95 or strike > current_price * 1.15:
-                            continue
+                        if min_dte > 90:  # LEAPS - include deep ITM
+                            # For LEAPS, include 50% ITM to 15% OTM
+                            if strike < current_price * 0.50 or strike > current_price * 1.15:
+                                continue
+                        else:
+                            # For shorter-term, focus on 5% ITM to 15% OTM
+                            if strike < current_price * 0.95 or strike > current_price * 1.15:
+                                continue
                     else:
                         # For puts, focus on ATM to OTM
                         if strike > current_price * 1.05 or strike < current_price * 0.85:
                             continue
                     
-                    # Get premium - PHASE 1 FIX: Store BID and ASK separately
+                    # Get premium - Store BID and ASK separately
                     # The consuming code decides which to use (BID for sell, ASK for buy)
                     last_price = row.get('lastPrice', 0)
                     bid = row.get('bid', 0) if row.get('bid') and not (hasattr(row.get('bid'), '__len__') and len(row.get('bid')) == 0) else 0
