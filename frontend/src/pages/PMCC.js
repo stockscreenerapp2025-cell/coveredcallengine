@@ -404,36 +404,6 @@ const PMCC = () => {
         </div>
       </div>
 
-      {/* Strategy Explanation - Compact Version */}
-      <Card className="glass-card border-violet-500/30">
-        <CardContent className="py-4">
-          <div className="grid md:grid-cols-2 gap-4">
-            <div className="p-3 rounded-lg bg-emerald-500/5 border border-emerald-500/20">
-              <div className="flex items-center gap-2 mb-2">
-                <TrendingUp className="w-4 h-4 text-emerald-400" />
-                <span className="font-medium text-emerald-400 text-sm">Long Leg (LEAPS)</span>
-              </div>
-              <ul className="space-y-1 text-xs text-zinc-400">
-                <li>• <span className="text-white">12–24 months</span> expiration, deep ITM (δ0.80–0.90)</li>
-                <li>• Acts as stock substitute at lower cost</li>
-                <li>• <span className="text-emerald-400">Roll at 6 months remaining</span></li>
-              </ul>
-            </div>
-            <div className="p-3 rounded-lg bg-cyan-500/5 border border-cyan-500/20">
-              <div className="flex items-center gap-2 mb-2">
-                <TrendingDown className="w-4 h-4 text-cyan-400" />
-                <span className="font-medium text-cyan-400 text-sm">Short Leg (Sell Calls)</span>
-              </div>
-              <ul className="space-y-1 text-xs text-zinc-400">
-                <li>• <span className="text-white">7–45 days</span> expiration, OTM (δ0.15–0.40)</li>
-                <li>• Repeat to collect premium income</li>
-                <li>• <span className="text-cyan-400">Roll at 50% profit or 21 DTE</span></li>
-              </ul>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
       {/* Pre-Computed PMCC Scan Buttons */}
       <Card className="glass-card" data-testid="pmcc-precomputed-scans">
         <CardHeader className="pb-3">
