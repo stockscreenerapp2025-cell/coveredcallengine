@@ -171,9 +171,10 @@ async def screen_covered_calls(
         "min_iv_rank": min_iv_rank, "min_price": min_price, "max_price": max_price,
         "include_stocks": include_stocks, "include_etfs": include_etfs, "include_index": include_index,
         "min_volume": min_volume, "min_open_interest": min_open_interest,
-        "weekly_only": weekly_only, "monthly_only": monthly_only
+        "weekly_only": weekly_only, "monthly_only": monthly_only,
+        "enforce_phase4": enforce_phase4  # PHASE 4
     }
-    cache_key = funcs['generate_cache_key']("screener_covered_calls_v2", cache_params)
+    cache_key = funcs['generate_cache_key']("screener_covered_calls_v3_phase4", cache_params)
     
     # Check cache first (unless bypassed)
     if not bypass_cache:
