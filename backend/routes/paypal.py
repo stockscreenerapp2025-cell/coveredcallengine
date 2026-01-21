@@ -425,7 +425,91 @@ async def switch_paypal_mode(
         upsert=True
     )
     
+    # Also update paypal_links active_mode
+    await db.admin_settings.update_one(
+        {"type": "paypal_links"},
+        {"$set": {"active_mode": mode, "updated_at": datetime.now(timezone.utc).isoformat()}},
+        upsert=True
+    )
+    
     # Reinitialize service
     await paypal_service.initialize()
     
     return {"message": f"Switched to {mode} mode", "mode": mode}
+
+
+@paypal_router.get("/admin/links")
+async def get_paypal_links_admin(admin: dict = Depends(get_admin_user)):
+    """Get PayPal payment links settings (admin only)"""
+    settings = await db.admin_settings.find_one({"type": "paypal_links"}, {"_id": 0})
+    
+    if not settings:
+        return {
+            "active_mode": "sandbox",
+            "sandbox_links": {
+                "trial": "",
+                "monthly": "",
+                "yearly": ""
+            },
+            "live_links": {
+                "trial": "",
+                "monthly": "",
+                "yearly": ""
+            }
+        }
+    
+    return {
+        "active_mode": settings.get("active_mode", "sandbox"),
+        "sandbox_links": settings.get("sandbox_links", {}),
+        "live_links": settings.get("live_links", {})
+    }
+
+
+@paypal_router.post("/admin/links")
+async def update_paypal_links(
+    active_mode: str = Query(..., description="'sandbox' or 'live'"),
+    sandbox_trial: Optional[str] = Query(None),
+    sandbox_monthly: Optional[str] = Query(None),
+    sandbox_yearly: Optional[str] = Query(None),
+    live_trial: Optional[str] = Query(None),
+    live_monthly: Optional[str] = Query(None),
+    live_yearly: Optional[str] = Query(None),
+    admin: dict = Depends(get_admin_user)
+):
+    """Update PayPal payment links (admin only)"""
+    # Get existing settings
+    existing = await db.admin_settings.find_one({"type": "paypal_links"})
+    
+    sandbox_links = existing.get("sandbox_links", {}) if existing else {}
+    live_links = existing.get("live_links", {}) if existing else {}
+    
+    # Update only provided values
+    if sandbox_trial is not None:
+        sandbox_links["trial"] = sandbox_trial
+    if sandbox_monthly is not None:
+        sandbox_links["monthly"] = sandbox_monthly
+    if sandbox_yearly is not None:
+        sandbox_links["yearly"] = sandbox_yearly
+    if live_trial is not None:
+        live_links["trial"] = live_trial
+    if live_monthly is not None:
+        live_links["monthly"] = live_monthly
+    if live_yearly is not None:
+        live_links["yearly"] = live_yearly
+    
+    update_doc = {
+        "type": "paypal_links",
+        "active_mode": active_mode,
+        "sandbox_links": sandbox_links,
+        "live_links": live_links,
+        "updated_at": datetime.now(timezone.utc).isoformat()
+    }
+    
+    await db.admin_settings.update_one(
+        {"type": "paypal_links"},
+        {"$set": update_doc},
+        upsert=True
+    )
+    
+    return {"message": "PayPal links updated successfully", "active_mode": active_mode}
+
