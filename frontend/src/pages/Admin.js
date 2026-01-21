@@ -157,6 +157,7 @@ const Admin = () => {
     fetchDashboardStats();
     fetchSubscriptionSettings();
     fetchIntegrationSettings();
+    fetchScreenerStatus();
   }, []);
 
   const fetchSettings = async () => {
@@ -180,6 +181,18 @@ const Admin = () => {
       console.error('Dashboard stats error:', error);
     } finally {
       setStatsLoading(false);
+    }
+  };
+  
+  const fetchScreenerStatus = async () => {
+    setScreenerStatusLoading(true);
+    try {
+      const response = await api.get('/screener/admin/status');
+      setScreenerStatus(response.data);
+    } catch (error) {
+      console.error('Screener status error:', error);
+    } finally {
+      setScreenerStatusLoading(false);
     }
   };
   
