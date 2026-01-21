@@ -1209,7 +1209,8 @@ async def screen_pmcc(
             "opportunities": opportunities, 
             "total": len(opportunities), 
             "is_live": True, 
-            "phase": 6,  # PHASE 6: Updated phase number
+            "phase": 7,  # PHASE 7: Pillar-based scoring
+            "scoring": "pillar_based",
             "market_bias": market_sentiment.get("bias", "neutral"),
             "bias_weight": bias_weight,
             "passed_filters": passed_filter_count,
