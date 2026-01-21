@@ -145,13 +145,13 @@ async def fetch_market_sentiment() -> Dict:
             spy_hist = spy.history(period="20d")
             
             if len(spy_hist) >= 10:
-                current_price = spy_hist["Close"].iloc[-1]
-                price_10d_ago = spy_hist["Close"].iloc[-10]
-                sma_20 = spy_hist["Close"].mean()
+                current_price = float(spy_hist["Close"].iloc[-1])  # Convert to native Python float
+                price_10d_ago = float(spy_hist["Close"].iloc[-10])  # Convert to native Python float
+                sma_20 = float(spy_hist["Close"].mean())  # Convert to native Python float
                 
                 # Calculate momentum
                 momentum_pct = ((current_price - price_10d_ago) / price_10d_ago) * 100
-                above_sma = current_price > sma_20
+                above_sma = bool(current_price > sma_20)  # Convert to native Python bool
                 
                 # Momentum-based adjustment
                 if momentum_pct > 3 and above_sma:
