@@ -134,6 +134,38 @@ Build a web-based application named "Covered Call Engine" to identify, analyze, 
   - `/app/frontend/src/pages/Screener.js` - Default to Custom Scan, W/M badges
   - `/app/frontend/src/pages/Dashboard.js` - Updated subtitle
 
+### ✅ Completed (Jan 21, 2026) - PHASE 5: PMCC Engine Rebuild
+- [x] **System Scan Filters (Custom Scan)**
+  - Price range: $30-$90 for stocks (ETFs exempt)
+  - Average Volume: ≥1M
+  - Market Cap: ≥$5B (ETFs exempt)
+  - Earnings: No earnings within 7 days
+  - LEAPS DTE: 180-730 days
+  - Short Call DTE: 14-60 days
+- [x] **Dashboard/Pre-computed Filters (BROADER)**
+  - Price range: $15-$500
+  - Same volume/market cap/earnings filters
+- [x] **Single-Candidate Rule**
+  - One best trade per symbol (highest score wins)
+- [x] **ASK/BID Pricing Enforced**
+  - LEAPS (Buy leg): ASK price
+  - Short Call (Sell leg): BID price
+- [x] **PMCC Page Defaults to Custom Scan**
+  - Page loads Custom Scan results by default
+  - Quick Scans (Pre-computed) available via buttons
+- [x] **Bug Fix: Deep ITM LEAPS**
+  - Yahoo Finance fetch now includes deep ITM options (50-115% of stock price)
+  - LEAPS need ITM options for PMCC strategy
+- [x] **ETF Exemptions**
+  - Added: GLD, SLV, ARKK, ARKG, ARKW, TLT, EEM, VXX, UVXY, SQQQ, TQQQ
+- [x] **Testing**
+  - Custom Scan: 10 opportunities (INTC, PYPL, GM, DAL, etc.)
+  - All prices in $30-$90 range (ETFs exempt)
+- [x] **Files Updated**
+  - `/app/backend/routes/screener.py` - PMCC endpoint with Phase 5 filters
+  - `/app/backend/services/data_provider.py` - Fixed LEAPS options fetching
+  - `/app/frontend/src/pages/PMCC.js` - Default to Custom Scan
+
 ### 🔄 In Progress
 - None currently
 
