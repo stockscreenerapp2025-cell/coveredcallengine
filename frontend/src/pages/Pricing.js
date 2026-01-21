@@ -14,30 +14,39 @@ import {
   Clock,
   Star,
   Sparkles,
-  ArrowRight
+  ArrowRight,
+  CreditCard,
+  Loader2
 } from 'lucide-react';
+import { toast } from 'sonner';
 
 const Pricing = () => {
   const { user } = useAuth();
   const [subscriptionLinks, setSubscriptionLinks] = useState(null);
+  const [paypalConfig, setPaypalConfig] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [processingPaypal, setProcessingPaypal] = useState(null);
 
   useEffect(() => {
-    fetchSubscriptionLinks();
+    fetchPaymentConfigs();
   }, []);
 
-  const fetchSubscriptionLinks = async () => {
+  const fetchPaymentConfigs = async () => {
     try {
-      const response = await api.get('/subscription/links');
-      setSubscriptionLinks(response.data);
+      const [stripeRes, paypalRes] = await Promise.all([
+        api.get('/subscription/links'),
+        api.get('/paypal/config')
+      ]);
+      setSubscriptionLinks(stripeRes.data);
+      setPaypalConfig(paypalRes.data);
     } catch (error) {
-      console.error('Failed to fetch subscription links:', error);
+      console.error('Failed to fetch payment config:', error);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleSubscribe = (link) => {
+  const handleStripeSubscribe = (link) => {
     if (!link) return;
     // Add user email to the payment link if user is logged in
     let paymentUrl = link;
@@ -47,6 +56,53 @@ const Pricing = () => {
     }
     window.open(paymentUrl, '_blank');
   };
+
+  const handlePaypalSubscribe = async (planType) => {
+    if (!user) {
+      toast.error('Please log in to subscribe with PayPal');
+      return;
+    }
+
+    setProcessingPaypal(planType);
+    
+    try {
+      const backendUrl = process.env.REACT_APP_BACKEND_URL;
+      const returnUrl = `${window.location.origin}/pricing?paypal=success`;
+      const cancelUrl = `${window.location.origin}/pricing?paypal=cancelled`;
+      
+      const response = await api.post('/paypal/create-checkout', {
+        plan_type: planType,
+        return_url: returnUrl,
+        cancel_url: cancelUrl
+      });
+      
+      if (response.data.success && response.data.redirect_url) {
+        window.location.href = response.data.redirect_url;
+      } else {
+        toast.error(response.data.error || 'Failed to create PayPal checkout');
+      }
+    } catch (error) {
+      console.error('PayPal checkout error:', error);
+      toast.error(error.response?.data?.detail || 'Failed to initiate PayPal checkout');
+    } finally {
+      setProcessingPaypal(null);
+    }
+  };
+
+  // Handle PayPal return
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const paypalStatus = urlParams.get('paypal');
+    
+    if (paypalStatus === 'success') {
+      toast.success('Payment successful! Your subscription is now active.');
+      // Clean up URL
+      window.history.replaceState({}, document.title, window.location.pathname);
+    } else if (paypalStatus === 'cancelled') {
+      toast.info('Payment cancelled');
+      window.history.replaceState({}, document.title, window.location.pathname);
+    }
+  }, []);
 
   const plans = [
     {
@@ -166,7 +222,8 @@ const Pricing = () => {
         {plans.map((plan) => {
           const colors = getColorClasses(plan.color);
           const Icon = plan.icon;
-          const link = subscriptionLinks?.[plan.linkKey];
+          const stripeLink = subscriptionLinks?.[plan.linkKey];
+          const paypalEnabled = paypalConfig?.enabled;
           
           return (
             <Card 
@@ -227,16 +284,39 @@ const Pricing = () => {
                   <p className="text-xs text-zinc-500 text-center italic">{plan.note}</p>
                 )}
                 
-                {/* CTA Button */}
-                <Button
-                  onClick={() => handleSubscribe(link)}
-                  disabled={loading || !link}
-                  className={`w-full ${colors.button} text-white font-medium py-6 mt-auto`}
-                  data-testid={`subscribe-btn-${plan.id}`}
-                >
-                  {plan.buttonText}
-                  <ArrowRight className="w-4 h-4 ml-2" />
-                </Button>
+                {/* Payment Buttons */}
+                <div className="space-y-2 mt-auto">
+                  {/* Stripe Button */}
+                  <Button
+                    onClick={() => handleStripeSubscribe(stripeLink)}
+                    disabled={loading || !stripeLink}
+                    className={`w-full ${colors.button} text-white font-medium py-5`}
+                    data-testid={`subscribe-stripe-${plan.id}`}
+                  >
+                    <CreditCard className="w-4 h-4 mr-2" />
+                    {plan.buttonText}
+                  </Button>
+                  
+                  {/* PayPal Button - only show if PayPal is enabled */}
+                  {paypalEnabled && (
+                    <Button
+                      onClick={() => handlePaypalSubscribe(plan.id)}
+                      disabled={loading || processingPaypal === plan.id || !user}
+                      variant="outline"
+                      className="w-full border-blue-500/50 text-blue-400 hover:bg-blue-500/10 py-5"
+                      data-testid={`subscribe-paypal-${plan.id}`}
+                    >
+                      {processingPaypal === plan.id ? (
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      ) : (
+                        <svg className="w-4 h-4 mr-2" viewBox="0 0 24 24" fill="currentColor">
+                          <path d="M7.076 21.337H2.47a.641.641 0 0 1-.633-.74L4.944.901C5.026.382 5.474 0 5.998 0h7.46c2.57 0 4.578.543 5.69 1.81 1.01 1.15 1.304 2.42 1.012 4.287-.023.143-.047.288-.077.437-.983 5.05-4.349 6.797-8.647 6.797H9.21c-.426 0-.794.31-.858.73L7.076 21.337z"/>
+                        </svg>
+                      )}
+                      Pay with PayPal
+                    </Button>
+                  )}
+                </div>
               </CardContent>
             </Card>
           );
@@ -271,6 +351,12 @@ const Pricing = () => {
             <Shield className="w-4 h-4 text-emerald-400" />
             Secure Payment via Stripe
           </span>
+          {paypalConfig?.enabled && (
+            <span className="flex items-center gap-1">
+              <Shield className="w-4 h-4 text-blue-400" />
+              PayPal Accepted
+            </span>
+          )}
           <span className="flex items-center gap-1">
             <Check className="w-4 h-4 text-emerald-400" />
             Cancel Anytime
