@@ -79,6 +79,10 @@ const Admin = () => {
   const [userFilters, setUserFilters] = useState({ status: '', plan: '', search: '' });
   const [selectedUser, setSelectedUser] = useState(null);
   
+  // Screener Status (Phase 8)
+  const [screenerStatus, setScreenerStatus] = useState(null);
+  const [screenerStatusLoading, setScreenerStatusLoading] = useState(false);
+  
   // Invitations
   const [invitations, setInvitations] = useState([]);
   const [invitationsLoading, setInvitationsLoading] = useState(false);
