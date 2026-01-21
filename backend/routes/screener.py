@@ -472,16 +472,17 @@ async def get_dashboard_opportunities(
     """
     Get top 10 covered call opportunities for dashboard.
     
-    PHASE 4 RULES:
-    - System Scan Filters: $30-$90 price, ≥1M avg volume, ≥$5B market cap
-    - No earnings within 7 days
-    - Single-Candidate Rule: ONE best trade per symbol (best score wins)
-    - Weekly: 7-14 DTE, Monthly: 21-45 DTE
+    DASHBOARD RULES:
+    - Price filter: $15-$500 (broader range for dashboard)
+    - Volume ≥1M, Market Cap ≥$5B, No earnings within 7 days
+    - Top 5 Weekly (7-14 DTE) + Top 5 Monthly (21-45 DTE)
+    - Weekly gets preference over Monthly
+    - Single-Candidate Rule: ONE best trade per symbol per timeframe
     - BID pricing only for SELL legs
     """
     funcs = _get_server_functions()
     
-    cache_key = "dashboard_opportunities_v6_phase4"  # New cache key for Phase 4
+    cache_key = "dashboard_opportunities_v7_weekly_monthly"  # Updated cache key
     
     if not bypass_cache:
         cached_data = await funcs['get_cached_data'](cache_key)
@@ -502,10 +503,10 @@ async def get_dashboard_opportunities(
     if not api_key:
         return {"opportunities": [], "total": 0, "message": "API key not configured", "is_mock": True}
     
-    # PHASE 4: System Scan Filters (LOCKED - DO NOT CHANGE)
-    SYSTEM_FILTERS = {
-        "min_price": 30,
-        "max_price": 90,
+    # DASHBOARD FILTERS (broader than Custom Scan Phase 4 filters)
+    DASHBOARD_FILTERS = {
+        "min_price": 15,      # $15 min (broader than Custom Scan $30)
+        "max_price": 500,     # $500 max (broader than Custom Scan $90)
         "min_avg_volume": 1_000_000,  # 1M
         "min_market_cap": 5_000_000_000,  # $5B
         "earnings_exclusion_days": 7,
