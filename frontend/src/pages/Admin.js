@@ -303,6 +303,69 @@ const Admin = () => {
     }
   };
   
+  // PayPal Functions
+  const fetchPaypalSettings = async () => {
+    setPaypalLoading(true);
+    try {
+      const response = await api.get('/paypal/admin/settings');
+      setPaypalSettings(response.data);
+    } catch (error) {
+      console.error('PayPal settings error:', error);
+    } finally {
+      setPaypalLoading(false);
+    }
+  };
+  
+  const savePaypalSettings = async () => {
+    setPaypalSaving(true);
+    try {
+      const params = new URLSearchParams();
+      if (paypalSettings.api_username) params.append('api_username', paypalSettings.api_username);
+      if (paypalSettings.api_password && paypalSettings.api_password !== '••••••••') {
+        params.append('api_password', paypalSettings.api_password);
+      }
+      if (paypalSettings.api_signature && paypalSettings.api_signature !== '••••••••') {
+        params.append('api_signature', paypalSettings.api_signature);
+      }
+      params.append('mode', paypalSettings.mode);
+      params.append('enabled', paypalSettings.enabled);
+      
+      await api.post(`/paypal/admin/settings?${params.toString()}`);
+      toast.success('PayPal settings saved successfully');
+      fetchPaypalSettings();
+    } catch (error) {
+      toast.error(error.response?.data?.detail || 'Failed to save PayPal settings');
+    } finally {
+      setPaypalSaving(false);
+    }
+  };
+  
+  const testPaypalConnection = async () => {
+    setPaypalTesting(true);
+    try {
+      const response = await api.post('/paypal/admin/test-connection');
+      if (response.data.success) {
+        toast.success(response.data.message);
+      } else {
+        toast.error(response.data.message);
+      }
+    } catch (error) {
+      toast.error(error.response?.data?.detail || 'Connection test failed');
+    } finally {
+      setPaypalTesting(false);
+    }
+  };
+  
+  const switchPaypalMode = async (mode) => {
+    try {
+      await api.post(`/paypal/admin/switch-mode?mode=${mode}`);
+      setPaypalSettings(prev => ({ ...prev, mode }));
+      toast.success(`Switched to ${mode} mode`);
+    } catch (error) {
+      toast.error('Failed to switch mode');
+    }
+  };
+  
   const fetchEmailTemplates = async () => {
     setEmailLoading(true);
     try {
