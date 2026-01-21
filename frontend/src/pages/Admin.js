@@ -791,7 +791,7 @@ const Admin = () => {
             <Mail className="w-4 h-4" />
             Email
           </TabsTrigger>
-          <TabsTrigger value="subscriptions" className="flex items-center gap-2 px-3" onClick={() => fetchPaypalSettings()}>
+          <TabsTrigger value="subscriptions" className="flex items-center gap-2 px-3" onClick={() => { fetchPaypalSettings(); fetchPaypalLinks(); }}>
             <CreditCard className="w-4 h-4" />
             Billing
           </TabsTrigger>
