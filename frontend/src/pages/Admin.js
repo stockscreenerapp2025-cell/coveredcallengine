@@ -2333,6 +2333,131 @@ const Admin = () => {
               </div>
             </CardContent>
           </Card>
+          
+          {/* PayPal Payment Links Card */}
+          <Card className="glass-card">
+            <CardHeader>
+              <CardTitle className="text-lg flex items-center gap-2">
+                <DollarSign className="w-5 h-5 text-blue-400" />
+                PayPal Payment Links
+              </CardTitle>
+              <CardDescription>Configure PayPal subscription payment links (create these in PayPal Business Dashboard)</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              {/* Info Box */}
+              <div className="p-3 rounded-lg bg-blue-500/10 border border-blue-500/30">
+                <p className="text-xs text-blue-400">
+                  <strong>Setup Instructions:</strong>
+                  <br />• Sandbox: Go to <a href="https://www.sandbox.paypal.com/billing/plans" target="_blank" rel="noopener noreferrer" className="underline">sandbox.paypal.com/billing/plans</a>
+                  <br />• Live: Go to <a href="https://www.paypal.com/billing/plans" target="_blank" rel="noopener noreferrer" className="underline">paypal.com/billing/plans</a>
+                  <br />• Create subscription plans for Trial, Monthly, and Annual
+                  <br />• Copy the payment link URLs here
+                </p>
+              </div>
+              
+              {/* PayPal Links */}
+              <Tabs defaultValue="sandbox" className="w-full">
+                <TabsList className="grid w-full grid-cols-2 bg-zinc-800/50">
+                  <TabsTrigger value="sandbox"><TestTube className="w-4 h-4 mr-2" />Sandbox Links</TabsTrigger>
+                  <TabsTrigger value="live"><Zap className="w-4 h-4 mr-2" />Live Links</TabsTrigger>
+                </TabsList>
+                
+                <TabsContent value="sandbox" className="space-y-4 mt-4">
+                  <div className="space-y-4">
+                    <div className="space-y-2">
+                      <Label className="text-zinc-400">7-Day FREE Trial Link</Label>
+                      <Input
+                        value={paypalLinks.sandbox_links?.trial || ''}
+                        onChange={(e) => setPaypalLinks(prev => ({
+                          ...prev,
+                          sandbox_links: { ...prev.sandbox_links, trial: e.target.value }
+                        }))}
+                        placeholder="https://www.sandbox.paypal.com/webapps/billing/plans/subscribe?..."
+                        className="input-dark font-mono text-sm"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label className="text-zinc-400">Monthly Subscription Link ($49)</Label>
+                      <Input
+                        value={paypalLinks.sandbox_links?.monthly || ''}
+                        onChange={(e) => setPaypalLinks(prev => ({
+                          ...prev,
+                          sandbox_links: { ...prev.sandbox_links, monthly: e.target.value }
+                        }))}
+                        placeholder="https://www.sandbox.paypal.com/webapps/billing/plans/subscribe?..."
+                        className="input-dark font-mono text-sm"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label className="text-zinc-400">Annual Subscription Link ($499)</Label>
+                      <Input
+                        value={paypalLinks.sandbox_links?.yearly || ''}
+                        onChange={(e) => setPaypalLinks(prev => ({
+                          ...prev,
+                          sandbox_links: { ...prev.sandbox_links, yearly: e.target.value }
+                        }))}
+                        placeholder="https://www.sandbox.paypal.com/webapps/billing/plans/subscribe?..."
+                        className="input-dark font-mono text-sm"
+                      />
+                    </div>
+                  </div>
+                </TabsContent>
+                
+                <TabsContent value="live" className="space-y-4 mt-4">
+                  <div className="p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/30 mb-4">
+                    <p className="text-xs text-emerald-400">
+                      ⚠️ Live links process real payments. Test thoroughly in sandbox before switching to live mode.
+                    </p>
+                  </div>
+                  <div className="space-y-4">
+                    <div className="space-y-2">
+                      <Label className="text-zinc-400">7-Day FREE Trial Link</Label>
+                      <Input
+                        value={paypalLinks.live_links?.trial || ''}
+                        onChange={(e) => setPaypalLinks(prev => ({
+                          ...prev,
+                          live_links: { ...prev.live_links, trial: e.target.value }
+                        }))}
+                        placeholder="https://www.paypal.com/webapps/billing/plans/subscribe?..."
+                        className="input-dark font-mono text-sm"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label className="text-zinc-400">Monthly Subscription Link ($49)</Label>
+                      <Input
+                        value={paypalLinks.live_links?.monthly || ''}
+                        onChange={(e) => setPaypalLinks(prev => ({
+                          ...prev,
+                          live_links: { ...prev.live_links, monthly: e.target.value }
+                        }))}
+                        placeholder="https://www.paypal.com/webapps/billing/plans/subscribe?..."
+                        className="input-dark font-mono text-sm"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label className="text-zinc-400">Annual Subscription Link ($499)</Label>
+                      <Input
+                        value={paypalLinks.live_links?.yearly || ''}
+                        onChange={(e) => setPaypalLinks(prev => ({
+                          ...prev,
+                          live_links: { ...prev.live_links, yearly: e.target.value }
+                        }))}
+                        placeholder="https://www.paypal.com/webapps/billing/plans/subscribe?..."
+                        className="input-dark font-mono text-sm"
+                      />
+                    </div>
+                  </div>
+                </TabsContent>
+              </Tabs>
+
+              <div className="flex justify-end pt-4 border-t border-zinc-800">
+                <Button onClick={savePaypalLinks} className="bg-blue-600 hover:bg-blue-700" disabled={paypalLinksSaving}>
+                  {paypalLinksSaving ? <RefreshCw className="w-4 h-4 mr-2 animate-spin" /> : <Save className="w-4 h-4 mr-2" />}
+                  Save PayPal Links
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
         </TabsContent>
 
         {/* Integrations Tab */}
