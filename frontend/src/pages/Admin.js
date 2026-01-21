@@ -655,36 +655,40 @@ const Admin = () => {
 
       {/* Main Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid w-full grid-cols-7 bg-zinc-800/50 p-1">
-          <TabsTrigger value="dashboard" className="flex items-center gap-2">
+        <TabsList className="flex w-full bg-zinc-800/50 p-1 overflow-x-auto">
+          <TabsTrigger value="dashboard" className="flex items-center gap-2 px-3">
             <BarChart3 className="w-4 h-4" />
             Dashboard
           </TabsTrigger>
-          <TabsTrigger value="users" className="flex items-center gap-2" onClick={() => { fetchUsers(1); fetchInvitations(); }}>
+          <TabsTrigger value="data-quality" className="flex items-center gap-2 px-3" onClick={() => fetchScreenerStatus()}>
+            <Database className="w-4 h-4" />
+            Data Quality
+          </TabsTrigger>
+          <TabsTrigger value="users" className="flex items-center gap-2 px-3" onClick={() => { fetchUsers(1); fetchInvitations(); }}>
             <Users className="w-4 h-4" />
             Users
           </TabsTrigger>
-          <TabsTrigger value="support" className="flex items-center gap-2">
+          <TabsTrigger value="support" className="flex items-center gap-2 px-3">
             <MessageSquare className="w-4 h-4" />
             Support
           </TabsTrigger>
-          <TabsTrigger value="email-automation" className="flex items-center gap-2" onClick={() => { fetchEmailTemplates(); fetchAutomationRules(); fetchEmailLogs(); fetchEmailStats(); }}>
+          <TabsTrigger value="email-automation" className="flex items-center gap-2 px-3" onClick={() => { fetchEmailTemplates(); fetchAutomationRules(); fetchEmailLogs(); fetchEmailStats(); }}>
             <Mail className="w-4 h-4" />
             Email
           </TabsTrigger>
-          <TabsTrigger value="subscriptions" className="flex items-center gap-2">
+          <TabsTrigger value="subscriptions" className="flex items-center gap-2 px-3">
             <CreditCard className="w-4 h-4" />
             Billing
           </TabsTrigger>
-          <TabsTrigger value="integrations" className="flex items-center gap-2">
+          <TabsTrigger value="integrations" className="flex items-center gap-2 px-3">
             <Zap className="w-4 h-4" />
             Integrations
           </TabsTrigger>
-          <TabsTrigger value="imap" className="flex items-center gap-2" onClick={() => fetchImapStatus()}>
+          <TabsTrigger value="imap" className="flex items-center gap-2 px-3" onClick={() => fetchImapStatus()}>
             <Mail className="w-4 h-4" />
             Email Sync
           </TabsTrigger>
-          <TabsTrigger value="api-keys" className="flex items-center gap-2">
+          <TabsTrigger value="api-keys" className="flex items-center gap-2 px-3">
             <Key className="w-4 h-4" />
             API Keys
           </TabsTrigger>
