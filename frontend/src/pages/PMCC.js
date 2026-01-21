@@ -90,12 +90,14 @@ const PMCC = () => {
     const leapsCost = opp.leaps_cost || (leapsPremium ? leapsPremium * 100 : 0);
     const leapsDelta = opp.leaps_delta || opp.long_delta;
     const leapsExpiry = opp.leaps_expiry || opp.long_expiry;
+    const shortDelta = opp.short_delta;
+    const shortDte = opp.short_dte;
     const shortPremium = opp.short_premium || 0;
     const shortPremiumTotal = shortPremium < 10 ? shortPremium * 100 : shortPremium; // Normalize to total
     const netDebit = opp.net_debit || (leapsCost - shortPremiumTotal);
     const strikeWidth = opp.strike_width || (opp.short_strike && leapsStrike ? opp.short_strike - leapsStrike : 0);
     const roiPerCycle = opp.roi_per_cycle || opp.roi_pct || (netDebit > 0 ? (shortPremiumTotal / netDebit) * 100 : 0);
-    const annualizedRoi = opp.annualized_roi || (opp.short_dte > 0 ? roiPerCycle * (365 / opp.short_dte) : 0);
+    const annualizedRoi = opp.annualized_roi || (shortDte > 0 ? roiPerCycle * (365 / shortDte) : 0);
     
     return {
       ...opp,
@@ -105,6 +107,8 @@ const PMCC = () => {
       leaps_cost: leapsCost,
       leaps_delta: leapsDelta,
       leaps_expiry: leapsExpiry,
+      short_delta: shortDelta,
+      short_dte: shortDte,
       short_premium_total: shortPremiumTotal,
       net_debit: netDebit,
       strike_width: strikeWidth,
