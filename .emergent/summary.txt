@@ -1,141 +1,124 @@
 <analysis>**original_problem_statement:**
 The user wants to build a web-based application named Covered Call Engine. The primary features include AI-assisted Covered Call (CC) and Poor Man's Covered Call (PMCC) screeners, a multi-phased AI Support Ticket System, a role-based Invitation System, Portfolio Tracking, and Stripe Subscriptions.
 
-**PRODUCT REQUIREMENTS:**
-*   **Core App:** Dashboard, CC & PMCC Screeners, Portfolio Tracking, AI Chatbot, Legal/Contact pages, Stripe Subscriptions, Admin Panel, Trade Simulator.
-*   **Data & Features:**
-    *   **Pre-Computed Scans:** Nightly jobs for CC and PMCC opportunities across three risk profiles (Conservative, Balanced, Aggressive).
-    *   **Data Consistency:** Ensure all data (IV, OI, Analyst Ratings, etc.) is consistent across all pages (Dashboard, Screener, PMCC, Watchlist). Data should be available based on the previous market close to handle weekends and holidays.
-    *   **Data Quality:** Filter out illiquid options or bad data (e.g., unusually high premiums for a given strike).
-    *   **Watchlist Enhancements:** A detailed table view to track stocks with potential opportunities, price added vs. current price, and other key option metrics.
-*   **Support Ticket System:**
-    *   **Phase 1 (Human-in-the-Loop):** AI-assisted ticket classification and response drafting. (Completed).
-    *   **Phase 2 (Automation):** Automated fetching of customer replies via IMAP. (Blocked).
-*   **Invitation & Role-Based Access:** An RBAC system for Admin, Support Staff, and Beta Testers roles. (Completed).
+The project has recently pivoted to a comprehensive, phased rebuild of the screener to transform it into a deterministic, institution-grade engine.
+
+**PRODUCT REQUIREMENTS (Phased Rebuild):**
+*   **GLOBAL RULE:** No live data during scans; SELL legs use BID price, PMCC BUY legs use ASK price; Invalid trades are rejected, not scored.
+*   **PHASE 0-3 (Completed):** Initial audit, architecture setup, validation, and pricing enforcement.
+*   **PHASE 4 (Completed):** Rebuild the Covered Call engine with strict system filters (price, volume, market cap, earnings) and a Single-Candidate Rule.
+*   **PHASE 5 (Completed):** Rebuild the PMCC engine with specific rules for custom vs. pre-computed scans.
+*   **PHASE 6-8 (Upcoming):** Re-order market bias logic, rewrite the AI score, and improve storage/logging.
 
 **User's preferred language**: English
 
 **what currently exists?**
-A full-stack application (FastAPI backend, React frontend) with a unified data architecture where Yahoo Finance () is the primary source for stock and options data (including IV, OI, and analyst ratings), and Polygon.io serves as a backup. This ensures data consistency and availability, even after market hours, by using the previous day's close.
-
-The application features:
-*   A fully functional RBAC and invitation system.
-*   Pre-computed and custom screeners for Covered Calls (CC) and Poor Man's Covered Call (PMCC).
-*   An enhanced Watchlist page with a detailed table view for tracking stocks, price movements, and potential opportunities.
-*   Data quality filters in the backend to prevent illiquid or erroneous options data from being displayed.
-*   A foundational support ticket system, though the automated email reply ingestion is blocked.
-*   UI columns for , , and  have been added to the Dashboard, Screener, Watchlist, and Simulator pages.
+A full-stack FastAPI/React application for screening options strategies. The core logic has undergone a significant, phased rebuild.
+*   **Phased Progress:** Phases 0 through 5 of the screener rebuild are now complete.
+*   **CC Engine (Phase 4):** The Covered Call screener is fully rebuilt. It differentiates between the dashboard (Top 5 Weekly + Top 5 Monthly), pre-computed scans, and a Custom Scan which has the strictest Phase 4 filters (0-0 price, high volume/market cap, no earnings).
+*   **PMCC Engine (Phase 5):** The PMCC screener is also rebuilt. It correctly defaults to a Custom Scan with a 0-0 price filter (ETFs exempt), while pre-computed scans use a broader range. A major bug preventing the fetching of deep ITM LEAPS has been fixed in . Delta values are now estimated and displayed correctly.
+*   **UI:** The Screener and PMCC pages now default to showing Custom Scan results. The PMCC UI has been refined based on multiple rounds of user feedback to show Delta and DTE values for both the long and short legs of the trade.
 
 **Last working item**:
-- **Last item agent was working:** The agent was addressing a multi-part user request to fix data inconsistencies and add new columns across four pages:
-    1.  **Dashboard, Watchlist, Simulator:** Fix issues where Implied Volatility (IV) showed a default 30%, Open Interest (OI) was missing, and add a new  column.
-    2.  **Screener:** Add the  column.
-    3.  **Simulator:** Fix data display in the trade details and add IV/OI/IV Rank.
-- **Status:** USER VERIFICATION PENDING
-- **Agent Testing Done:** Y (Partially, via screenshots of Screener and Dashboard. Watchlist and Simulator were not visually verified after the final fix).
-- **Which testing method agent to use?** Frontend testing agent. The test should verify all four pages (Dashboard, Screener, Watchlist, Simulator) for the correct and consistent display of IV, OI, and IV Rank. Special attention should be given to the Simulator's trade details modal.
-- **User Testing Done:** N
+-   **Last item agent was working:** The agent was resolving a recurring UI bug where Delta (δ) and DTE values were not appearing in the LEAPS and Short Call columns on the PMCC page. The user reported this multiple times. The agent confirmed the frontend code was correct and ultimately fixed the issue by restarting the frontend service (frontend: ERROR (not running)
+frontend: ERROR (abnormal termination)), which resolved a client-side caching problem.
+-   **Status:** USER VERIFICATION PENDING
+-   **Agent Testing Done:** Y (via screenshot after frontend restart)
+-   **Which testing method agent to use?** screenshot tool. The next agent must take a screenshot of the  page to confirm with the user that the Delta and DTE values are visible for both Custom and Pre-computed scans.
+-   **User Testing Done:** N
 
 **All Pending/In progress Issue list**:
--   **Issue 1:** Data inconsistency and missing IV Rank/OI across pages. (P0)
--   **Issue 2:** Analyst rating data blank for custom scans. (P0)
--   **Issue 3:** Inbound email replies are not reaching the support dashboard. (P1)
+-   **Issue 1: Verify PMCC UI Fix (P0)**: Confirm with the user that the Delta and DTE values are now correctly displayed on the  page for both Custom Scan and Pre-computed Scan results.
+-   **Issue 2: PMCC aggressive pre-computed scan has 0 results. (P1)**
+-   **Issue 3: Inbound email replies are not reaching the support dashboard. (P1)**
 
 **Issues Detail:**
--   **Issue 1: Data inconsistency and missing IV Rank/OI across pages.**
-    -   **Attempted fixes:** The agent made Yahoo Finance the primary data provider to ensure data is available after hours. It then updated the frontend for the Dashboard, Screener, Watchlist, and Simulator to add the  and  columns and updated the backend  to include .
+-   **Issue 1: Verify PMCC UI Fix**
+    -   **Attempted fixes:** The agent corrected the frontend code in  and normalized data structures. The final fix was restarting the frontend service to force-clear any browser cache issues.
     -   **Next debug checklist:**
-        1.  Verify all four pages (Dashboard, Screener, Watchlist, Simulator) display data correctly. The Dashboard was still showing default/cached data in the last check due to the market being closed. Confirm if this resolves during market hours or if the cache needs to be addressed.
-        2.  Specifically check the Simulator page and its trade details modal to ensure the added columns and data formatting are correct.
-        3.  Verify that the Watchlist page now correctly displays IV, OI, and IV Rank.
-    -   **Why fix this issue and what will be achieved with the fix?** To fulfill the user's request for data consistency and completeness across the entire application.
-    -   **Status:** IN PROGRESS
-    -   **Is recurring issue?** Y
-    -   **Should Test frontend/backend/both after fix?** both
-    -   **Blocked on other issue:** None
-
--   **Issue 2: Analyst rating data blank for custom scans.**
-    -   **Attempted fixes:** The previous agent's fix was incomplete. In this session, the agent architected the data provider to use Yahoo Finance as the primary source, which includes analyst ratings in the main stock quote. This should have resolved the issue system-wide.
-    -   **Next debug checklist:**
-        1.  Wait for the user to confirm the fix for the initial Analyst column is blank issue is resolved now that the data architecture is unified.
-        2.  Run a custom scan on the Screener or PMCC pages and confirm the Analyst column populates.
-    -   **Why fix this issue and what will be achieved with the fix?** This is a core data visibility feature. Fixing it ensures data consistency across all views.
+        1.  Take a screenshot of  showing the Custom Scan results.
+        2.  Take another screenshot after clicking a pre-computed scan button (e.g., Capital Efficient).
+        3.  Present both screenshots to the user for final confirmation that the inline Delta and DTE values are visible.
+    -   **Why fix this issue and what will be achieved with the fix?** This completes the final UI requirement for the Phase 5 PMCC rebuild.
     -   **Status:** USER VERIFICATION PENDING
-    -   **Is recurring issue?** Y
+    -   **Is recurring issue?** Y (User reported it multiple times in the last session).
     -   **Should Test frontend/backend/both after fix?** frontend
     -   **Blocked on other issue:** None
 
+-   **Issue 2: PMCC aggressive pre-computed scan has 0 results.**
+    -   **Attempted fixes:** Logic was previously added to prevent overwriting results with empty scans, but the aggressive profile data was already cleared.
+    -   **Next debug checklist:**
+        1.  Manually trigger the aggressive PMCC pre-computed scan via the API () to repopulate data.
+        2.  Check backend logs for  rate-limiting or other errors during the scan.
+    -   **Why fix this issue and what will be achieved with the fix?** To ensure all pre-computed scan profiles have data available for users.
+    -   **Status:** NOT STARTED
+    -   **Is recurring issue?** Y
+    -   **Should Test frontend/backend/both after fix?** backend
+    -   **Blocked on other issue:** None
+
 -   **Issue 3: Inbound email replies are not reaching the support dashboard.**
-    -   **Attempted fixes:** None in this session. This is a persistent blocker from a previous session.
+    -   **Attempted fixes:** None in this session. This is a persistent blocker.
     -   **Next debug checklist:**
         1.  Ask the user to send a test reply to an existing support ticket email.
-        2.  Trigger a manual sync from the Admin panel.
-        3.  Check backend logs () for IMAP connection or parsing errors.
-    -   **Why fix this issue and what will be achieved with the fix?** This completes Phase 2 of the automated support ticket system, a key feature.
+        2.  Trigger a manual sync from the Admin panel and observe backend logs for IMAP errors.
+    -   **Why fix this issue and what will be achieved with the fix?** Completes Phase 2 of the automated support ticket system.
     -   **Status:** BLOCKED
     -   **Is recurring issue?** Y
     -   **Should Test frontend/backend/both after fix?** both
     -   **Blocked on other issue:** None
 
 **In progress Task List**:
--   **Task 1: Unified Data Architecture Finalization**
-    -   **Where to resume:** The  page was not explicitly checked after the data provider was refactored. The agent needs to verify that this page also uses the new unified data provider and displays consistent data (IV, OI, IV Rank, Analyst).
-    -   **What will be achieved with this?** A fully consistent, manageable, and robust data layer for the entire application, as requested by the user.
-    -   **Status:** IN PROGRESS
-    -   **Should Test frontend/backend/both after fix?** frontend
-    -   **Blocked on something:** None
+None.
 
 **Upcoming and Future Tasks**
 *   **Upcoming Tasks:**
-    *   (P1) **Support System - AI Learning:** Implement a mechanism for the AI to learn from manual edits made by admins to support ticket responses.
-    *   (P2) **Refactor :** The component is over 2,000 lines and should be broken down into smaller, manageable components.
-    *   (P2) **Refactor  and :** These components are large and should be broken into smaller, reusable components (e.g., , ).
+    *   (P0) **PHASE 6 — MARKET BIAS ORDER FIX**
+    *   (P1) **PHASE 7 — QUALITY SCORE REWRITE**
+    *   (P1) **PHASE 8 — STORAGE, LOGGING & ADMIN**
+    *   (P2) **Refactor **: Break down the large component.
+    *   (P2) **Refactor  and **: Break down large components.
 *   **Future Tasks:**
-    *   (P2) Admin Panel - Support Ticket System Phase 3 (Advanced AI, Chat).
+    *   (P2) Support System - AI Learning.
     *   (P2) Admin Panel - Content & Announcement Manager.
     *   (P3) Admin Panel - Roles & Permissions and Audit Logs.
-    *   (P3) Portfolio Tracker - Implement a generic CSV import with field mapping.
+    *   (P3) Portfolio Tracker - Generic CSV import.
 
 **Completed work in this session**
--   **Unified Data Architecture (Yahoo Primary):**
-    -   Refactored  to make  the primary source for all stock and option data (prices, IV, OI, analyst ratings), ensuring data is available even after hours using the previous day's close. Polygon.io is now a backup.
-    -   Simplified all data-fetching routes (, ) to use the unified provider, eliminating separate data enrichment steps.
--   **Watchlist Feature Enhancement (End-to-End):**
-    -   Redesigned the UI from cards to a detailed table format.
-    -   Added tracking for , , , and .
-    -   Integrated Best Opportunity data, including columns for , , , , , , , , and .
-    -   Implemented  (individual) and  functionality.
--   **Data Quality Filtering:**
-    -   Implemented backend logic in , , and  to filter out illiquid options with unrealistic premiums, resolving a key user complaint.
--   **UI Consistency Enhancements:**
-    -   Added  and  columns to the tables on the Dashboard, Screener, Watchlist, and Simulator pages to ensure a consistent user experience.
+-   **PHASE 4 — Covered Call Engine Rebuild (DONE):**
+    -   Implemented and tested strict system filters (price, volume, market cap, earnings) and the Single-Candidate Rule.
+    -   Addressed user feedback: Defaulted Screener page to Custom Scan, fixed Dashboard to show Top 5 Weekly + Top 5 Monthly, and clarified filter logic between different scan types.
+-   **PHASE 5 — PMCC Engine Rebuild (DONE):**
+    -   Implemented backend logic with distinct price rules for Custom Scan (0-0, ETFs exempt) vs. other scans.
+    -   Fixed a critical bug in  that incorrectly filtered out deep-in-the-money LEAPS options required for PMCC.
+    -   Implemented and refined a delta estimation formula since the data provider does not supply it.
+    -   Added a Single-Candidate Rule to the PMCC screener.
+    -   Updated  to default to Custom Scan and fixed caching issues by adding  to scan buttons.
+-   **PMCC UI Cleanup (DONE):**
+    -   Removed specified UI cards and info boxes from the  page as requested.
+    -   Resolved a recurring display bug where Delta and DTE values were not showing. The fix was to restart the frontend service to clear the browser cache.
 
 **Earlier issues found/mentioned but not fixed**
 None.
 
 **Known issue recurrence from previous fork**
--   **Analyst rating data blank:** This was a P0 issue from the start. It was fixed, then reported again, and then addressed more robustly with the new data architecture. It is now pending final user verification.
 -   **Inbound email issue:** This is a carry-over issue that remains unresolved.
 
 **Code Architecture**
 
 
 **Key Technical Concepts**
-*   **Unified Data Provider:** The architecture was refactored to use  as the single source of truth for stock quotes and option chains. This ensures data consistency (IV, OI, analyst ratings) across all pages and simplifies maintenance.
-*   **Fallback Data Strategy:** Polygon.io is now used as a backup data source if the primary () fails.
-*   **After-Hours Data Availability:** The new architecture leverages Yahoo Finance's ability to provide previous day's close data, ensuring the application remains functional with relevant data on weekends and holidays.
-*   **Data Quality & Sanity Checks:** Backend logic was implemented to filter out illiquid options with unrealistic premiums, since reliable Open Interest data was not available from the free Polygon API tier.
-*   **Data Enrichment at Source:** By moving to Yahoo as the primary provider, data like IV, OI, and analyst ratings are fetched in a single step rather than requiring subsequent enrichment calls.
+-   **Phase 5 PMCC Rules:** No Weekly/Monthly distinction. Custom Scans use a strict 0-0 price filter (ETFs exempt). Dashboard/Pre-computed scans use a broader 5-00 range.
+-   **Deep ITM LEAPS:** The data provider was fixed to allow fetching options with strikes far below the current price (e.g., ), which is essential for the PMCC strategy.
+-   **Delta Estimation:** Since the  API doesn't provide delta, it's being estimated in  based on moneyness.
+-   **Frontend Caching:** The agent discovered that some UI issues were not due to code errors but client-side caching, which was resolved by restarting the frontend supervisor service.
 
 **key DB schema**
--   **watchlist_items:** The documents in this MongoDB collection were updated to include  and .
+No changes in this session.
 
 **changes in tech stack**
--   **:** Promoted from a supplemental tool to the **primary data provider** for both stock quotes and option chains.
--   **:** Demoted to a **backup** data source.
+No changes in this session.
 
 **All files of reference**
-*   
 *   
 *   
 *   
@@ -146,63 +129,55 @@ None.
 
 **Areas that need refactoring**:
 *    (over 2,000 lines).
-*    and  are large and contain mixed logic that should be split into smaller components.
+*    and  are still large components despite recent updates.
 
 **key api endpoints**
-*   : Rewritten to return a rich dataset for the new table view, including opportunities.
-*   : Updated to store  upon adding a new symbol.
-*   : A new endpoint was added to clear all items from the user's watchlist.
-*   , , : All updated to use the new unified data provider.
+*   : Logic updated to show Top 5 Weekly + Top 5 Monthly.
+*   : Logic updated to enforce Phase 4 filters (volume, market cap, etc.) while allowing user-defined price filters.
+*   : Logic rebuilt for Phase 5, including  parameter, ETF exemption, and Single-Candidate rule.
 
 **Critical Info for New Agent**
-*   **The architecture has changed:** The application now uses **Yahoo Finance as the primary data source** for everything to ensure consistency, with Polygon as a backup. This was a user-driven decision.
-*   **After-Hours Data Limitation:** Be aware that  has limited options data (IV, OI) when the market is closed. The application is designed to handle this by using previous close data, but IV/OI will appear as default or empty. This is expected behavior. If you need to test live data, do so during market hours.
-*   **Verify User's Last Request:** The top priority is to verify the fixes for the user's last request (adding IV Rank/OI across four pages). The agent implemented the code but did not fully verify the UI for all pages (Watchlist, Simulator).
-*   **Check the PMCC page:** This page was not explicitly tested after the major data architecture refactor. You must confirm it works correctly and displays data consistent with the rest of the application.
+*   Your first task is to **verify the PMCC UI fix** with the user. The last interaction showed the fix working, but the user must confirm it on their end. The issue was recurrent and solved by restarting the frontend, so be aware of potential caching issues.
+*   After user confirmation, the next step is to begin **Phase 6** of the rebuild plan.
+*   The logic for fetching options in  was critically changed to allow deep ITM calls. Do not revert this.
+*   Delta is **estimated**, not fetched directly. The estimation logic is in .
 
 **documents and test reports created in this job**
+*   
 *    (updated)
+*   
 *   
 
 **Last 10 User Messages and any pending HUMAN messages**
-1.  **User:** Requests enhancement for the Watchlist page with a detailed table format, price tracking, and opportunities.
-2.  **Agent:** Implements the enhanced Watchlist feature (table, price tracking, delete/clear all, opportunities).
-3.  **User:** Requests more columns for the Watchlist to match the screener (Type, DTE, Premium, ROI, Delta, IV, AI Score).
-4.  **Agent:** Adds the requested columns to the Watchlist.
-5.  **User:** Reports that previously added columns (Date Added, Price Added, Movement) have disappeared and asks for real IV data from Polygon snapshot APIs.
-6.  **Agent:** Restores the missing columns. Discovers the Polygon snapshot API is not authorized. Implements a default IV.
-7.  **User:** Reports an issue with bad data (an option with a 41 premium) and asks for it to be filtered out across all scans.
-8.  **Agent:** Implements data quality filters across all screeners, the watchlist, and precomputed scans to filter out illiquid options.
-9.  **User:** Reports the Watchlist now shows No opportunities and asks to use Yahoo Finance as a temporary source for IV and OI.
-10. **User:** Requests a permanent architecture change to make Yahoo Finance the primary data source for consistency and to ensure data is always available from the previous market close.
-11. **User:** Reports that IV/OI are still missing/default on the Dashboard and Watchlist, and requests an  column be added to the Dashboard, Screener, Watchlist, and Simulator.
-12. **(PENDING):** User is waiting for confirmation that all four pages (Dashboard, Screener, Watchlist, Simulator) now have the correct columns (including IV Rank) and display consistent data.
+1.  **User**: Asks to remove UI elements from the PMCC page and add Delta/DTE columns.
+2.  **Agent**: Implements the changes.
+3.  **User**: Specifies that Delta/DTE should be for *both* LEAPS and Short calls, and the separate columns should be removed. Asks agent to check if the Delta value is correct.
+4.  **Agent**: Fixes the UI and investigates the Delta calculation. Discovers Delta is not provided by the API and improves the estimation formula.
+5.  **Agent**: Verifies the fix with screenshots and API tests and confirms readiness to proceed.
+6.  **User**: States that Delta and DTE columns are still not visible for either Custom or Pre-computed scans.
+7.  **Agent**: Investigates the frontend code in  again, finds no error.
+8.  **Agent**: Restarts the frontend service as a final measure to clear any caching issues.
+9.  **Agent**: Takes new screenshots showing the Delta and DTE values are now correctly displayed for both scan types.
+10. **(PENDING)**: Agent has completed the UI fix and is awaiting user verification before moving on to Phase 6.
 
 **Project Health Check:**
 *   **Broken:**
-    *   The inbound email reply ingestion for the support system is non-functional.
+    *   Inbound email reply ingestion for the support system.
+    *   The pre-computed scan for aggressive PMCC is empty.
 *   **Mocked:** None.
-*   **Technical Debt:** , , and  are monolithic components that require refactoring.
+*   **Technical Debt:** , , and  remain monolithic and are candidates for refactoring.
 
 **3rd Party Integrations**
-*   **Yahoo Finance ():** Primary provider for stock quotes, option chains (IV, OI), and analyst ratings.
-*   **Polygon.io:** Backup provider for market data.
-*   **MarketAux.com:** News API.
-*   **Stripe:** Payments.
-*   **Resend:** Outbound email.
-*   **emergentintegrations:** Powers AI features (GPT-5.2 sentiment analysis).
-*   **Hostinger IMAP:** Inbound email (Currently blocked/broken).
-*   **APScheduler:** Backend background jobs.
+*   Yahoo Finance (), Polygon.io, pandas-market-calendars, Stripe, Resend, MarketAux.com, Hostinger IMAP, APScheduler.
 
 **Testing status**
--   **Testing agent used after significant changes:** YES (used once for the initial watchlist feature).
+-   **Testing agent used after significant changes:** YES, for Phase 4.
 -   **Troubleshoot agent used after agent stuck in loop:** NO
--   **Test files created:** None.
--   **Known regressions:** The Watchlist columns (, etc.) disappeared during one of the updates but were subsequently restored.
+-   **Test files created:** A test file was created by the testing agent at .
+-   **Known regressions:** None.
 
 **Credentials to test flow:**
 Admin user  with password  is available for testing.
 
 **What agent forgot to execute**
-*   After implementing the final set of UI changes to add  across four different pages, the agent only took screenshots to verify the Dashboard and Screener. It did not visually verify the final state of the **Watchlist** or **Simulator** pages.
-*   The agent noted that the **PMCC page** should be checked to ensure it uses the new unified data provider, but this verification was not performed.</analysis>
+The agent initially struggled to diagnose the final PMCC UI issue. It correctly identified that the code was right but took several steps before concluding the problem was client-side caching, which required a frontend service restart. This highlights the need to consider caching as a potential cause for UI discrepancies.</analysis>
