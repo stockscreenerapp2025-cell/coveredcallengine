@@ -936,7 +936,7 @@ async def screen_pmcc(
                 )
                 
                 if not leaps_options or not short_options:
-                    logging.debug(f"No LEAPS or short options from Polygon for {symbol}")
+                    logging.debug(f"No LEAPS or short options for {symbol}")
                     continue
                 
                 # Filter LEAPS for deep ITM (high delta)
@@ -945,7 +945,7 @@ async def screen_pmcc(
                     strike = opt.get("strike", 0)
                     open_interest = opt.get("open_interest", 0) or 0
                     
-                    # PHASE 1 FIX: Use ASK price for BUY legs (PMCC LEAP)
+                    # PHASE 3: Use ASK price for BUY legs (PMCC LEAP)
                     ask_price = opt.get("ask", 0) or 0
                     close_price = opt.get("close", 0) or opt.get("vwap", 0) or 0
                     
@@ -956,8 +956,8 @@ async def screen_pmcc(
                     else:
                         continue
                     
-                    # DATA QUALITY FILTER: Skip low OI
-                    if open_interest < 10:
+                    # DATA QUALITY FILTER: Skip very low OI (relaxed for LEAPS)
+                    if open_interest < 5:  # Relaxed from 10 to 5 for LEAPS
                         continue
                     
                     # DATA QUALITY FILTER: Premium sanity check for LEAPS
@@ -966,7 +966,8 @@ async def screen_pmcc(
                     if premium > max_leaps_premium:
                         continue
                     
-                    if strike < current_price * 0.85:  # Deep ITM
+                    # Deep ITM check: strike at least 10% below current price
+                    if strike < current_price * 0.90:  # Relaxed from 0.85 to 0.90
                         estimated_delta = min(0.90, 0.70 + (current_price - strike) / current_price * 0.5)
                         if min_leaps_delta <= estimated_delta <= max_leaps_delta:
                             opt["delta"] = estimated_delta
