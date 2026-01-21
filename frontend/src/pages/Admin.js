@@ -2150,6 +2150,152 @@ const Admin = () => {
               </div>
             </CardContent>
           </Card>
+          
+          {/* PayPal Configuration Card */}
+          <Card className="glass-card">
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle className="text-lg flex items-center gap-2">
+                    <DollarSign className="w-5 h-5 text-blue-400" />
+                    PayPal Configuration
+                  </CardTitle>
+                  <CardDescription>Configure PayPal NVP API for alternative payment processing</CardDescription>
+                </div>
+                <Button variant="outline" size="sm" onClick={fetchPaypalSettings}>
+                  <RefreshCw className={`w-4 h-4 ${paypalLoading ? 'animate-spin' : ''}`} />
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              {/* PayPal Status */}
+              <div className="flex items-center justify-between p-4 rounded-lg bg-zinc-800/50 border border-zinc-700">
+                <div className="flex items-center gap-3">
+                  <div className={`p-2 rounded-lg ${paypalSettings.configured ? 'bg-emerald-500/20' : 'bg-yellow-500/20'}`}>
+                    {paypalSettings.configured ? (
+                      <CheckCircle className="w-5 h-5 text-emerald-400" />
+                    ) : (
+                      <AlertCircle className="w-5 h-5 text-yellow-400" />
+                    )}
+                  </div>
+                  <div>
+                    <div className="font-medium text-white">
+                      PayPal Status: <span className={paypalSettings.configured ? 'text-emerald-400' : 'text-yellow-400'}>
+                        {paypalSettings.configured ? 'Configured' : 'Not Configured'}
+                      </span>
+                    </div>
+                    <p className="text-xs text-zinc-500">
+                      {paypalSettings.enabled ? `Enabled (${paypalSettings.mode} mode)` : 'Disabled'}
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-3">
+                  <Label className="text-zinc-400 text-sm">Enable PayPal</Label>
+                  <Switch
+                    checked={paypalSettings.enabled}
+                    onCheckedChange={(checked) => setPaypalSettings(prev => ({ ...prev, enabled: checked }))}
+                  />
+                </div>
+              </div>
+              
+              {/* Mode Toggle */}
+              <div className="flex items-center justify-between p-4 rounded-lg bg-zinc-800/50 border border-zinc-700">
+                <div className="flex items-center gap-3">
+                  <div className={`p-2 rounded-lg ${paypalSettings.mode === 'live' ? 'bg-emerald-500/20' : 'bg-yellow-500/20'}`}>
+                    {paypalSettings.mode === 'live' ? (
+                      <Zap className="w-5 h-5 text-emerald-400" />
+                    ) : (
+                      <TestTube className="w-5 h-5 text-yellow-400" />
+                    )}
+                  </div>
+                  <div>
+                    <div className="font-medium text-white">
+                      Mode: <span className={paypalSettings.mode === 'live' ? 'text-emerald-400' : 'text-yellow-400'}>
+                        {paypalSettings.mode?.toUpperCase()}
+                      </span>
+                    </div>
+                    <p className="text-xs text-zinc-500">
+                      {paypalSettings.mode === 'live' 
+                        ? 'Processing real payments' 
+                        : 'Using sandbox for testing'}
+                    </p>
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  <Button
+                    variant={paypalSettings.mode === 'sandbox' ? 'default' : 'outline'}
+                    size="sm"
+                    onClick={() => switchPaypalMode('sandbox')}
+                    className={paypalSettings.mode === 'sandbox' ? 'bg-yellow-600 hover:bg-yellow-700' : ''}
+                  >
+                    <TestTube className="w-4 h-4 mr-1" />
+                    Sandbox
+                  </Button>
+                  <Button
+                    variant={paypalSettings.mode === 'live' ? 'default' : 'outline'}
+                    size="sm"
+                    onClick={() => switchPaypalMode('live')}
+                    className={paypalSettings.mode === 'live' ? 'bg-emerald-600 hover:bg-emerald-700' : ''}
+                  >
+                    <Zap className="w-4 h-4 mr-1" />
+                    Live
+                  </Button>
+                </div>
+              </div>
+              
+              {/* PayPal API Credentials */}
+              <div className="space-y-4">
+                <h4 className="text-sm font-medium text-white">PayPal NVP API Credentials</h4>
+                <p className="text-xs text-zinc-500">
+                  Get these from your PayPal Business account under API Credentials (Classic/NVP API)
+                </p>
+                
+                <div className="space-y-2">
+                  <Label className="text-zinc-400">API Username</Label>
+                  <Input
+                    value={paypalSettings.api_username || ''}
+                    onChange={(e) => setPaypalSettings(prev => ({ ...prev, api_username: e.target.value }))}
+                    placeholder="yourname_api1.example.com"
+                    className="input-dark font-mono text-sm"
+                  />
+                </div>
+                
+                <PasswordInput
+                  label="API Password"
+                  value={paypalSettings.api_password || ''}
+                  onChange={(val) => setPaypalSettings(prev => ({ ...prev, api_password: val }))}
+                  show={showPaypalPassword}
+                  onToggle={() => setShowPaypalPassword(!showPaypalPassword)}
+                  placeholder="Enter API password"
+                />
+                
+                <PasswordInput
+                  label="API Signature"
+                  value={paypalSettings.api_signature || ''}
+                  onChange={(val) => setPaypalSettings(prev => ({ ...prev, api_signature: val }))}
+                  show={showPaypalSignature}
+                  onToggle={() => setShowPaypalSignature(!showPaypalSignature)}
+                  placeholder="Enter API signature"
+                />
+              </div>
+              
+              {/* Actions */}
+              <div className="flex justify-between pt-4 border-t border-zinc-800">
+                <Button
+                  variant="outline"
+                  onClick={testPaypalConnection}
+                  disabled={paypalTesting || !paypalSettings.configured}
+                >
+                  {paypalTesting ? <RefreshCw className="w-4 h-4 mr-2 animate-spin" /> : <Activity className="w-4 h-4 mr-2" />}
+                  Test Connection
+                </Button>
+                <Button onClick={savePaypalSettings} className="bg-blue-600 hover:bg-blue-700" disabled={paypalSaving}>
+                  {paypalSaving ? <RefreshCw className="w-4 h-4 mr-2 animate-spin" /> : <Save className="w-4 h-4 mr-2" />}
+                  Save PayPal Settings
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
         </TabsContent>
 
         {/* Integrations Tab */}
