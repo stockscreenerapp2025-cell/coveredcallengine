@@ -727,20 +727,29 @@ async def get_dashboard_opportunities(
                         else:
                             iv = 30
                         
-                        # PHASE 6: Calculate base score with liquidity bonus
-                        base_score = roi_pct * 10 + annualized_roi / 10 + (50 - iv) / 10
+                        # ========== PHASE 7: PILLAR-BASED QUALITY SCORING ==========
+                        trade_data = {
+                            "symbol": symbol,
+                            "stock_price": current_price,
+                            "strike": strike,
+                            "premium": premium,
+                            "dte": dte,
+                            "delta": estimated_delta,
+                            "theta": 0,
+                            "iv": iv / 100,  # Convert back to decimal
+                            "iv_rank": min(100, iv * 1.5),
+                            "roi_pct": roi_pct,
+                            "open_interest": open_interest,
+                            "volume": opt.get("volume", 0),
+                            "market_cap": market_cap,
+                            "analyst_rating": analyst_rating,
+                            "has_earnings_soon": False,
+                            "is_valid": True
+                        }
                         
-                        liquidity_bonus = 0
-                        if open_interest >= 1000:
-                            liquidity_bonus = 10
-                        elif open_interest >= 500:
-                            liquidity_bonus = 7
-                        elif open_interest >= 100:
-                            liquidity_bonus = 5
-                        elif open_interest >= 50:
-                            liquidity_bonus = 2
-                        
-                        base_score = round(base_score + liquidity_bonus, 1)
+                        quality_result = calculate_cc_quality_score(trade_data)
+                        base_score = quality_result.total_score
+                        score_breakdown = score_to_dict(quality_result)
                         
                         opp_data = {
                             "symbol": symbol,
@@ -760,8 +769,9 @@ async def get_dashboard_opportunities(
                             "iv": round(iv, 0),
                             "iv_rank": round(min(100, iv * 1.5), 0),
                             "open_interest": open_interest,
-                            "base_score": base_score,  # PHASE 6: Store base score
+                            "base_score": base_score,  # PHASE 7: Pillar-based
                             "score": base_score,  # Will be adjusted below
+                            "score_breakdown": score_breakdown,  # PHASE 7
                             "analyst_rating": analyst_rating,
                             "market_cap": market_cap,
                             "avg_volume": avg_volume,
