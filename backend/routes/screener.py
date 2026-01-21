@@ -440,13 +440,13 @@ async def get_dashboard_opportunities(
     PHASE 4 RULES:
     - System Scan Filters: $30-$90 price, ≥1M avg volume, ≥$5B market cap
     - No earnings within 7 days
-    - Single-Candidate Rule: ONE best trade per symbol (best of weekly vs monthly)
+    - Single-Candidate Rule: ONE best trade per symbol (best score wins)
     - Weekly: 7-14 DTE, Monthly: 21-45 DTE
     - BID pricing only for SELL legs
     """
     funcs = _get_server_functions()
     
-    cache_key = "dashboard_opportunities_v5"  # New cache key for Phase 4
+    cache_key = "dashboard_opportunities_v6_phase4"  # New cache key for Phase 4
     
     if not bypass_cache:
         cached_data = await funcs['get_cached_data'](cache_key)
@@ -467,7 +467,7 @@ async def get_dashboard_opportunities(
     if not api_key:
         return {"opportunities": [], "total": 0, "message": "API key not configured", "is_mock": True}
     
-    # PHASE 4: System Scan Filters
+    # PHASE 4: System Scan Filters (LOCKED - DO NOT CHANGE)
     SYSTEM_FILTERS = {
         "min_price": 30,
         "max_price": 90,
@@ -478,30 +478,43 @@ async def get_dashboard_opportunities(
         "weekly_dte_max": 14,
         "monthly_dte_min": 21,
         "monthly_dte_max": 45,
-        "min_otm_pct": 5,  # 5% OTM minimum
-        "max_otm_pct": 10,  # 10% OTM maximum
+        "min_otm_pct": 2,  # Minimum 2% OTM
+        "max_otm_pct": 10,  # Maximum 10% OTM
     }
     
     try:
+        # Extended symbol list for Phase 4
         symbols_to_scan = [
-            "INTC", "CSCO", "MU", "QCOM", "TXN", "ADI", "MCHP", "ON", "HPQ",
+            # Tech ($30-$90 range focus)
+            "INTC", "CSCO", "MU", "QCOM", "TXN", "ADI", "MCHP", "ON", "HPQ", "AMD",
+            # Financials
             "BAC", "WFC", "C", "USB", "PNC", "TFC", "KEY", "RF", "CFG", "FITB",
+            # Consumer
             "KO", "PEP", "NKE", "SBUX", "DIS", "GM", "F",
+            # Telecom
             "VZ", "T", "TMUS",
-            "PFE", "MRK", "ABBV", "BMY", "GILD",
+            # Healthcare
+            "PFE", "MRK", "ABBV", "BMY", "GILD", "JNJ",
+            # Energy
             "OXY", "DVN", "APA", "HAL", "SLB", "MRO",
+            # Industrials
             "CAT", "DE", "GE", "HON",
+            # Growth/Fintech
             "PYPL", "SQ", "ROKU", "SNAP", "UBER", "LYFT",
+            # Travel
             "AAL", "DAL", "UAL", "CCL", "NCLH",
+            # High Vol
             "PLTR", "SOFI", "HOOD",
-            "AMD", "DELL", "IBM", "ORCL"
+            # Large Tech (for volume filter test)
+            "DELL", "IBM", "ORCL"
         ]
         
-        # Dict to store best opportunity per symbol (Single-Candidate Rule)
-        best_by_symbol = {}
+        # Track all valid opportunities and rejections
+        all_opportunities = []
         rejected_symbols = []
+        passed_filter_count = 0
         
-        for symbol in symbols_to_scan[:40]:  # Limit for performance
+        for symbol in symbols_to_scan[:50]:  # Scan up to 50 symbols
             try:
                 # Get stock data with fundamentals
                 stock_data = await fetch_stock_quote(symbol, api_key)
@@ -516,26 +529,26 @@ async def get_dashboard_opportunities(
                 market_cap = stock_data.get("market_cap", 0) or 0
                 earnings_date = stock_data.get("earnings_date")
                 
-                # PHASE 4: Apply System Scan Filters
+                # ========== PHASE 4: SYSTEM SCAN FILTERS ==========
+                
                 # Filter 1: Price range $30-$90
                 if current_price < SYSTEM_FILTERS["min_price"] or current_price > SYSTEM_FILTERS["max_price"]:
-                    rejected_symbols.append({"symbol": symbol, "reason": f"Price ${current_price:.2f} outside $30-$90 range"})
+                    rejected_symbols.append({"symbol": symbol, "reason": f"Price ${current_price:.2f} outside $30-$90"})
                     continue
                 
                 # Filter 2: Average volume ≥ 1M
-                if avg_volume < SYSTEM_FILTERS["min_avg_volume"]:
+                if avg_volume > 0 and avg_volume < SYSTEM_FILTERS["min_avg_volume"]:
                     rejected_symbols.append({"symbol": symbol, "reason": f"Avg volume {avg_volume:,} < 1M"})
                     continue
                 
                 # Filter 3: Market cap ≥ $5B
-                if market_cap < SYSTEM_FILTERS["min_market_cap"]:
+                if market_cap > 0 and market_cap < SYSTEM_FILTERS["min_market_cap"]:
                     rejected_symbols.append({"symbol": symbol, "reason": f"Market cap ${market_cap/1e9:.1f}B < $5B"})
                     continue
                 
                 # Filter 4: No earnings within 7 days
                 if earnings_date:
                     try:
-                        from datetime import datetime
                         earnings_dt = datetime.strptime(earnings_date[:10], "%Y-%m-%d")
                         days_to_earnings = (earnings_dt - datetime.now()).days
                         if 0 <= days_to_earnings <= SYSTEM_FILTERS["earnings_exclusion_days"]:
@@ -544,7 +557,11 @@ async def get_dashboard_opportunities(
                     except:
                         pass
                 
-                # Get options - Weekly (7-14 DTE) and Monthly (21-45 DTE)
+                passed_filter_count += 1
+                
+                # ========== FETCH OPTIONS ==========
+                
+                # Get Weekly options (7-14 DTE)
                 weekly_options = await fetch_options_chain(
                     symbol, api_key, "call", 
                     SYSTEM_FILTERS["weekly_dte_max"], 
@@ -552,6 +569,7 @@ async def get_dashboard_opportunities(
                     current_price=current_price
                 )
                 
+                # Get Monthly options (21-45 DTE)
                 monthly_options = await fetch_options_chain(
                     symbol, api_key, "call", 
                     SYSTEM_FILTERS["monthly_dte_max"], 
@@ -559,162 +577,145 @@ async def get_dashboard_opportunities(
                     current_price=current_price
                 )
                 
-                # Process all options for this symbol
-                symbol_opportunities = []
+                # ========== PROCESS OPTIONS ==========
                 
-                for options, expiry_type in [(weekly_options, "Weekly"), (monthly_options, "Monthly")]:
-                    if not options:
+                for options_list, timeframe in [(weekly_options, "Weekly"), (monthly_options, "Monthly")]:
+                    if not options_list:
                         continue
                     
-                    for opt in options:
-                    strike = opt.get("strike", 0)
-                    dte = opt.get("dte", 0)
-                    expiry = opt.get("expiry", "")
-                    expiry_type = opt.get("expiry_type", "Monthly")
-                    open_interest = opt.get("open_interest", 0) or 0
-                    
-                    # PHASE 1 FIX: Use BID price for SELL legs (Covered Call)
-                    bid_price = opt.get("bid", 0) or 0
-                    close_price = opt.get("close", 0) or opt.get("vwap", 0) or 0
-                    
-                    if bid_price > 0:
+                    for opt in options_list:
+                        strike = opt.get("strike", 0)
+                        dte = opt.get("dte", 0)
+                        expiry = opt.get("expiry", "")
+                        open_interest = opt.get("open_interest", 0) or 0
+                        
+                        # BID-ONLY pricing (Phase 3 rule)
+                        bid_price = opt.get("bid", 0) or 0
+                        
+                        if bid_price <= 0:
+                            continue  # REJECT: No bid price
+                        
                         premium = bid_price
-                    elif close_price > 0:
-                        premium = close_price
-                    else:
-                        continue
-                    
-                    if not premium or premium <= 0:
-                        continue
-                    
-                    # PHASE 2: Validate trade structure BEFORE scoring
-                    is_valid, rejection_reason = validate_cc_trade(
-                        symbol=symbol,
-                        stock_price=current_price,
-                        strike=strike,
-                        expiry=expiry,
-                        bid=bid_price,
-                        dte=dte,
-                        open_interest=open_interest
-                    )
-                    
-                    if not is_valid:
-                        logging.debug(f"CC trade rejected: {symbol} ${strike} - {rejection_reason}")
-                        continue
-                    
-                    # DATA QUALITY FILTER: Premium sanity check (tighter for OTM)
-                    # OTM calls premium shouldn't exceed 10% of stock price
-                    max_reasonable_premium = current_price * 0.10
-                    if premium > max_reasonable_premium:
-                        continue
-                    
-                    # Filter for OTM calls
-                    if strike <= current_price:
-                        continue
-                    
-                    strike_pct = ((strike - current_price) / current_price) * 100
-                    if strike_pct > 10:  # Max 10% OTM
-                        continue
-                    
-                    roi_pct = (premium / current_price) * 100
-                    
-                    # ROI filters - Weekly needs at least 0.8%, Monthly needs at least 2.5%
-                    if expiry_type == "Weekly" and roi_pct < 0.8:
-                        continue
-                    if expiry_type == "Monthly" and roi_pct < 2.5:
-                        continue
-                    
-                    annualized_roi = (roi_pct / max(dte, 1)) * 365
-                    
-                    # Estimate delta based on strike distance
-                    estimated_delta = max(0.15, min(0.50, 0.50 - strike_pct * 0.025))
-                    
-                    # Get implied volatility from the option data
-                    iv = opt.get("implied_volatility", 0)
-                    if iv and iv > 0:
-                        iv = iv * 100  # Convert to percentage
-                    else:
-                        iv = 30  # Default estimate
-                    
-                    # Determine moneyness
-                    if strike_pct >= -2 and strike_pct <= 2:
-                        moneyness = "ATM"
-                    else:
-                        moneyness = "OTM"
-                    
-                    # Calculate score with liquidity bonus
-                    base_score = roi_pct * 10 + annualized_roi / 10 + (50 - iv) / 10
-                    
-                    # Liquidity bonus
-                    liquidity_bonus = 0
-                    if open_interest >= 1000:
-                        liquidity_bonus = 10
-                    elif open_interest >= 500:
-                        liquidity_bonus = 7
-                    elif open_interest >= 100:
-                        liquidity_bonus = 5
-                    elif open_interest >= 50:
-                        liquidity_bonus = 2
-                    
-                    score = round(base_score + liquidity_bonus, 1)
-                    
-                    opp_data = {
-                        "symbol": symbol,
-                        "stock_price": round(current_price, 2),
-                        "strike": strike,
-                        "strike_pct": round(strike_pct, 1),
-                        "moneyness": moneyness,
-                        "expiry": opt.get("expiry", ""),
-                        "expiry_type": expiry_type,
-                        "dte": dte,
-                        "premium": round(premium, 2),
-                        "bid": opt.get("bid", 0),  # PHASE 1: Show bid for transparency
-                        "ask": opt.get("ask", 0),  # PHASE 1: Show ask for transparency
-                        "roi_pct": round(roi_pct, 2),
-                        "annualized_roi": round(annualized_roi, 1),
-                        "delta": round(estimated_delta, 2),
-                        "iv": round(iv, 0),
-                        "iv_rank": round(min(100, iv * 1.5), 0),
-                        "open_interest": open_interest,
-                        "score": score,
-                        "analyst_rating": analyst_rating,
-                        "data_source": opt.get("source", "yahoo")
-                    }
-                    
-                    if expiry_type == "Weekly":
-                        weekly_opportunities.append(opp_data)
-                    else:
-                        monthly_opportunities.append(opp_data)
-                    
+                        
+                        # Validate trade structure (Phase 2)
+                        is_valid, rejection_reason = validate_cc_trade(
+                            symbol=symbol,
+                            stock_price=current_price,
+                            strike=strike,
+                            expiry=expiry,
+                            bid=bid_price,
+                            dte=dte,
+                            open_interest=open_interest
+                        )
+                        
+                        if not is_valid:
+                            continue
+                        
+                        # OTM filter: Must be 2-10% out of the money
+                        if strike <= current_price:
+                            continue  # ITM - skip
+                        
+                        strike_pct = ((strike - current_price) / current_price) * 100
+                        
+                        if strike_pct < SYSTEM_FILTERS["min_otm_pct"] or strike_pct > SYSTEM_FILTERS["max_otm_pct"]:
+                            continue
+                        
+                        # Premium sanity check
+                        max_reasonable_premium = current_price * 0.10
+                        if premium > max_reasonable_premium:
+                            continue
+                        
+                        # Calculate ROI
+                        roi_pct = (premium / current_price) * 100
+                        
+                        # ROI minimums
+                        if timeframe == "Weekly" and roi_pct < 0.8:
+                            continue
+                        if timeframe == "Monthly" and roi_pct < 2.5:
+                            continue
+                        
+                        annualized_roi = (roi_pct / max(dte, 1)) * 365
+                        
+                        # Estimate delta
+                        estimated_delta = max(0.15, min(0.50, 0.50 - strike_pct * 0.025))
+                        
+                        # IV from option data
+                        iv = opt.get("implied_volatility", 0)
+                        if iv and iv > 0:
+                            iv = iv * 100
+                        else:
+                            iv = 30
+                        
+                        # Score calculation with liquidity bonus
+                        base_score = roi_pct * 10 + annualized_roi / 10 + (50 - iv) / 10
+                        
+                        liquidity_bonus = 0
+                        if open_interest >= 1000:
+                            liquidity_bonus = 10
+                        elif open_interest >= 500:
+                            liquidity_bonus = 7
+                        elif open_interest >= 100:
+                            liquidity_bonus = 5
+                        elif open_interest >= 50:
+                            liquidity_bonus = 2
+                        
+                        score = round(base_score + liquidity_bonus, 1)
+                        
+                        all_opportunities.append({
+                            "symbol": symbol,
+                            "stock_price": round(current_price, 2),
+                            "strike": strike,
+                            "strike_pct": round(strike_pct, 1),
+                            "moneyness": "OTM",
+                            "expiry": expiry,
+                            "expiry_type": timeframe,
+                            "dte": dte,
+                            "premium": round(premium, 2),
+                            "bid": bid_price,
+                            "ask": opt.get("ask", 0),
+                            "roi_pct": round(roi_pct, 2),
+                            "annualized_roi": round(annualized_roi, 1),
+                            "delta": round(estimated_delta, 2),
+                            "iv": round(iv, 0),
+                            "iv_rank": round(min(100, iv * 1.5), 0),
+                            "open_interest": open_interest,
+                            "score": score,
+                            "analyst_rating": analyst_rating,
+                            "market_cap": market_cap,
+                            "avg_volume": avg_volume,
+                            "data_source": opt.get("source", "yahoo")
+                        })
+                
             except Exception as e:
                 logging.error(f"Dashboard scan error for {symbol}: {e}")
+                rejected_symbols.append({"symbol": symbol, "reason": str(e)})
                 continue
         
-        # Sort each list and take top 5
-        weekly_opportunities.sort(key=lambda x: x["score"], reverse=True)
-        monthly_opportunities.sort(key=lambda x: x["score"], reverse=True)
+        # ========== SINGLE-CANDIDATE RULE ==========
+        # One best trade per symbol (highest score wins)
+        best_by_symbol = {}
+        for opp in all_opportunities:
+            sym = opp["symbol"]
+            if sym not in best_by_symbol or opp["score"] > best_by_symbol[sym]["score"]:
+                best_by_symbol[sym] = opp
         
-        # Dedupe by symbol within each category
-        def dedupe_by_symbol(opps, limit):
-            best_by_symbol = {}
-            for opp in opps:
-                sym = opp["symbol"]
-                if sym not in best_by_symbol or opp["score"] > best_by_symbol[sym]["score"]:
-                    best_by_symbol[sym] = opp
-            return sorted(best_by_symbol.values(), key=lambda x: x["score"], reverse=True)[:limit]
+        # Sort by score and take top 10
+        final_opportunities = sorted(best_by_symbol.values(), key=lambda x: x["score"], reverse=True)[:10]
         
-        top_weekly = dedupe_by_symbol(weekly_opportunities, 5)
-        top_monthly = dedupe_by_symbol(monthly_opportunities, 5)
-        
-        # Combine: Weekly first, then Monthly
-        opportunities = top_weekly + top_monthly
+        # Count weekly vs monthly in final results
+        weekly_count = sum(1 for o in final_opportunities if o["expiry_type"] == "Weekly")
+        monthly_count = sum(1 for o in final_opportunities if o["expiry_type"] == "Monthly")
         
         result = {
-            "opportunities": opportunities, 
-            "total": len(opportunities), 
-            "weekly_count": len(top_weekly),
-            "monthly_count": len(top_monthly),
+            "opportunities": final_opportunities, 
+            "total": len(final_opportunities),
+            "weekly_count": weekly_count,
+            "monthly_count": monthly_count,
+            "symbols_scanned": len(symbols_to_scan[:50]),
+            "passed_system_filters": passed_filter_count,
             "is_live": True,
+            "phase": 4,
+            "filters_applied": SYSTEM_FILTERS,
             "data_source": "yahoo_primary"
         }
         await funcs['set_cached_data'](cache_key, result)
