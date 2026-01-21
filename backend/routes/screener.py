@@ -1012,16 +1012,16 @@ async def screen_pmcc(
                     if strike > current_price:  # OTM
                         strike_pct = ((strike - current_price) / current_price) * 100
                         
-                        # Use actual delta from options data if available, otherwise estimate
-                        actual_delta = opt.get("delta", 0) or 0
-                        if actual_delta > 0:
-                            opt_delta = actual_delta
-                        else:
-                            # Estimate delta based on moneyness
-                            opt_delta = max(0.15, 0.50 - strike_pct * 0.03)
+                        # Estimate delta based on moneyness (no actual delta from Yahoo)
+                        # OTM calls have delta between 0 and 0.5
+                        # At strike_pct = 0% (ATM): delta ≈ 0.50
+                        # At strike_pct = 5%: delta ≈ 0.35
+                        # At strike_pct = 10%: delta ≈ 0.20
+                        opt_delta = max(0.10, 0.50 - strike_pct * 0.03)
+                        opt_delta = round(opt_delta, 2)
                         
                         if min_short_delta <= opt_delta <= max_short_delta:
-                            opt["delta"] = round(opt_delta, 2)
+                            opt["delta"] = opt_delta
                             opt["premium"] = premium * 100
                             opt["open_interest"] = open_interest
                             if opt["premium"] > 0:
