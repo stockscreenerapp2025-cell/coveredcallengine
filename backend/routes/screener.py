@@ -1031,7 +1031,8 @@ async def screen_pmcc(
                         continue
                     
                     # DATA QUALITY FILTER: Skip very low OI (relaxed for LEAPS)
-                    if open_interest < 5:  # Relaxed from 10 to 5 for LEAPS
+                    # When market is closed, Yahoo returns OI=0, so only filter when OI > 0
+                    if open_interest > 0 and open_interest < 5:
                         continue
                     
                     # DATA QUALITY FILTER: Premium sanity check for LEAPS
