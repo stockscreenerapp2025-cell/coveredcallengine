@@ -714,7 +714,7 @@ async def get_dashboard_opportunities(
                         else:
                             iv = 30
                         
-                        # Score calculation with liquidity bonus
+                        # PHASE 6: Calculate base score with liquidity bonus
                         base_score = roi_pct * 10 + annualized_roi / 10 + (50 - iv) / 10
                         
                         liquidity_bonus = 0
@@ -727,7 +727,7 @@ async def get_dashboard_opportunities(
                         elif open_interest >= 50:
                             liquidity_bonus = 2
                         
-                        score = round(base_score + liquidity_bonus, 1)
+                        base_score = round(base_score + liquidity_bonus, 1)
                         
                         opp_data = {
                             "symbol": symbol,
@@ -747,7 +747,8 @@ async def get_dashboard_opportunities(
                             "iv": round(iv, 0),
                             "iv_rank": round(min(100, iv * 1.5), 0),
                             "open_interest": open_interest,
-                            "score": score,
+                            "base_score": base_score,  # PHASE 6: Store base score
+                            "score": base_score,  # Will be adjusted below
                             "analyst_rating": analyst_rating,
                             "market_cap": market_cap,
                             "avg_volume": avg_volume,
@@ -764,6 +765,16 @@ async def get_dashboard_opportunities(
                 logging.error(f"Dashboard scan error for {symbol}: {e}")
                 rejected_symbols.append({"symbol": symbol, "reason": str(e)})
                 continue
+        
+        # ========== PHASE 6: APPLY MARKET BIAS AFTER FILTERING ==========
+        market_sentiment = await fetch_market_sentiment()
+        bias_weight = market_sentiment.get("weight_cc", 1.0)
+        
+        # Apply bias to all opportunities
+        for opp in weekly_opportunities:
+            opp["score"] = apply_bias_to_score(opp["base_score"], bias_weight, opp["delta"])
+        for opp in monthly_opportunities:
+            opp["score"] = apply_bias_to_score(opp["base_score"], bias_weight, opp["delta"])
         
         # ========== TOP 5 WEEKLY + TOP 5 MONTHLY (Weekly Preference) ==========
         
@@ -800,6 +811,9 @@ async def get_dashboard_opportunities(
             "symbols_scanned": len(symbols_to_scan[:60]),
             "passed_filters": passed_filter_count,
             "is_live": True,
+            "phase": 6,  # PHASE 6
+            "market_bias": market_sentiment.get("bias", "neutral"),
+            "bias_weight": bias_weight,
             "filters_applied": DASHBOARD_FILTERS,
             "data_source": "yahoo_primary"
         }
