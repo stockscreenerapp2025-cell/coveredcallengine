@@ -982,7 +982,7 @@ async def screen_pmcc(
                     strike = opt.get("strike", 0)
                     open_interest = opt.get("open_interest", 0) or 0
                     
-                    # PHASE 1 FIX: Use BID price for SELL legs (PMCC short call)
+                    # PHASE 3: Use BID price for SELL legs (PMCC short call)
                     bid_price = opt.get("bid", 0) or 0
                     close_price = opt.get("close", 0) or opt.get("vwap", 0) or 0
                     
@@ -993,8 +993,8 @@ async def screen_pmcc(
                     else:
                         continue
                     
-                    # DATA QUALITY FILTER: Skip low OI
-                    if open_interest < 10:
+                    # DATA QUALITY FILTER: Skip very low OI
+                    if open_interest < 5:  # Relaxed from 10 to 5
                         continue
                     
                     # DATA QUALITY FILTER: Premium sanity for OTM short calls
