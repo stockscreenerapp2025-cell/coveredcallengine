@@ -452,6 +452,7 @@ async def screen_covered_calls(
             "total": len(opportunities), 
             "is_live": True, 
             "from_cache": False,
+            "phase": 4 if enforce_phase4 else None,
             "data_source": "polygon"
         }
         await funcs['set_cached_data'](cache_key, result)
