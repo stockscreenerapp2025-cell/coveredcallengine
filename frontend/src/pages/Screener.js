@@ -199,8 +199,8 @@ const Screener = () => {
   });
 
   useEffect(() => {
-    // On initial load, fetch available scans and auto-load a pre-computed scan
-    // This ensures users always see data (from previous market close)
+    // On initial load, load Custom Scan by default (user preference)
+    // Pre-computed scans available via Quick Scans buttons
     const initializeData = async () => {
       fetchSavedFilters();
       fetchMarketStatus();
@@ -209,24 +209,10 @@ const Screener = () => {
         const res = await scansApi.getAvailable();
         setAvailableScans(res.data.scans);
         
-        // Auto-load aggressive pre-computed scan for best initial UX (usually has most results)
-        const ccScans = res.data.scans?.covered_call || [];
-        const aggressiveScan = ccScans.find(s => s.risk_profile === 'aggressive');
-        const balancedScan = ccScans.find(s => s.risk_profile === 'balanced');
-        const conservativeScan = ccScans.find(s => s.risk_profile === 'conservative');
-        
-        if (aggressiveScan?.available && aggressiveScan?.count > 0) {
-          loadPrecomputedScan('aggressive');
-        } else if (balancedScan?.available && balancedScan?.count > 0) {
-          loadPrecomputedScan('balanced');
-        } else if (conservativeScan?.available && conservativeScan?.count > 0) {
-          loadPrecomputedScan('conservative');
-        } else {
-          // Fallback to custom scan only if no pre-computed data exists
-          fetchOpportunities();
-        }
+        // Default to Custom Scan - user can click Quick Scans for pre-computed
+        fetchOpportunities();
       } catch (error) {
-        console.log('Could not fetch available scans, falling back to custom:', error);
+        console.log('Could not fetch available scans, loading custom scan:', error);
         fetchOpportunities();
       }
     };
