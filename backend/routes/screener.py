@@ -784,8 +784,8 @@ async def get_dashboard_opportunities(
 
 @screener_router.get("/pmcc")
 async def screen_pmcc(
-    min_price: float = Query(20, ge=0),
-    max_price: float = Query(150, ge=0),
+    min_price: float = Query(30, ge=0),  # Phase 5: Default $30
+    max_price: float = Query(90, ge=0),  # Phase 5: Default $90
     min_leaps_dte: int = Query(180, ge=30),
     max_leaps_dte: int = Query(730, ge=30),
     min_short_dte: int = Query(14, ge=1),
@@ -797,11 +797,17 @@ async def screen_pmcc(
     min_roi: float = Query(2.0, ge=0),
     min_annualized_roi: float = Query(20.0, ge=0),
     bypass_cache: bool = Query(False),
+    enforce_phase5: bool = Query(True),  # Phase 5: Enable system filters
     user: dict = Depends(get_current_user)
 ):
     """
     Screen for Poor Man's Covered Call (PMCC) opportunities.
-    Generates multiple combinations per symbol for better coverage.
+    
+    PHASE 5 RULES (when enforce_phase5=True - Custom Scan):
+    - Price filter: $30-$90 for stocks (ETFs exempt)
+    - Volume ≥1M, Market Cap ≥$5B, No earnings within 7 days
+    - Single-Candidate Rule: ONE best trade per symbol
+    - ASK pricing for BUY legs (LEAPS), BID pricing for SELL legs (short calls)
     
     DATA SOURCES:
     - Options: Polygon/Massive ONLY
@@ -809,13 +815,23 @@ async def screen_pmcc(
     """
     funcs = _get_server_functions()
     
+    # PHASE 5: System Scan Filters
+    PHASE5_FILTERS = {
+        "min_price": 30,
+        "max_price": 90,
+        "min_avg_volume": 1_000_000,  # 1M
+        "min_market_cap": 5_000_000_000,  # $5B
+        "earnings_exclusion_days": 7,
+    }
+    
     cache_params = {
         "min_price": min_price, "max_price": max_price,
         "min_leaps_dte": min_leaps_dte, "max_leaps_dte": max_leaps_dte,
         "min_short_dte": min_short_dte, "max_short_dte": max_short_dte,
-        "min_roi": min_roi, "min_annualized_roi": min_annualized_roi
+        "min_roi": min_roi, "min_annualized_roi": min_annualized_roi,
+        "enforce_phase5": enforce_phase5  # Phase 5
     }
-    cache_key = funcs['generate_cache_key']("pmcc_screener", cache_params)
+    cache_key = funcs['generate_cache_key']("pmcc_screener_v2_phase5", cache_params)
     
     if not bypass_cache:
         cached_data = await funcs['get_cached_data'](cache_key)
@@ -829,40 +845,85 @@ async def screen_pmcc(
         return {"opportunities": [], "total": 0, "message": "API key required for PMCC screening", "is_mock": True}
     
     try:
-        # Expanded symbol list for more opportunities
+        # Extended symbol list including ETFs for Phase 5
         symbols_to_scan = [
-            # Tech
+            # Tech - various price ranges
             "INTC", "AMD", "MU", "QCOM", "CSCO", "HPQ", "DELL", "IBM",
+            "AAPL", "MSFT", "NVDA", "META",  # Large tech
             # Financials
             "BAC", "WFC", "C", "USB", "PNC", "KEY", "RF", "CFG",
+            "JPM", "GS",  # Large financials
             # Consumer
             "KO", "PEP", "NKE", "SBUX", "DIS", "GM", "F",
             # Healthcare
-            "PFE", "MRK", "ABBV", "BMY", "GILD",
+            "PFE", "MRK", "ABBV", "BMY", "GILD", "JNJ",
             # Energy
-            "OXY", "DVN", "APA", "HAL", "SLB",
+            "OXY", "DVN", "APA", "HAL", "SLB", "XOM", "CVX",
             # Growth/Fintech
-            "PYPL", "UBER", "SNAP", "SQ", "HOOD",
+            "PYPL", "UBER", "SNAP", "SQ", "HOOD", "ROKU",
             # Airlines/Travel
             "AAL", "DAL", "UAL", "CCL", "NCLH",
             # High volatility
-            "PLTR", "SOFI"
+            "PLTR", "SOFI", "LYFT",
+            # ETFs (exempt from price filter)
+            "SPY", "QQQ", "IWM", "XLF", "XLE", "XLK", "XLV", "ARKK", "GLD", "SLV"
         ]
         
         opportunities = []
+        rejected_symbols = []
+        passed_filter_count = 0
         
         for symbol in symbols_to_scan:
             try:
-                # Get stock price using centralized data provider
+                # Check if ETF (exempt from price filter in Phase 5)
+                is_etf = symbol.upper() in ETF_SYMBOLS
+                
+                # Get stock data with fundamentals
                 stock_data = await fetch_stock_quote(symbol, api_key)
                 
                 if not stock_data or stock_data.get("price", 0) == 0:
+                    rejected_symbols.append({"symbol": symbol, "reason": "No price data"})
                     continue
                 
                 current_price = stock_data["price"]
+                avg_volume = stock_data.get("avg_volume", 0) or 0
+                market_cap = stock_data.get("market_cap", 0) or 0
+                earnings_date = stock_data.get("earnings_date")
                 
-                if current_price < min_price or current_price > max_price:
-                    continue
+                # ========== PHASE 5: SYSTEM SCAN FILTERS ==========
+                if enforce_phase5:
+                    # Filter 1: Price range $30-$90 (ETFs exempt)
+                    if not is_etf:
+                        if current_price < PHASE5_FILTERS["min_price"] or current_price > PHASE5_FILTERS["max_price"]:
+                            rejected_symbols.append({"symbol": symbol, "reason": f"Price ${current_price:.2f} outside $30-$90"})
+                            continue
+                    
+                    # Filter 2: Average volume ≥ 1M
+                    if avg_volume > 0 and avg_volume < PHASE5_FILTERS["min_avg_volume"]:
+                        rejected_symbols.append({"symbol": symbol, "reason": f"Avg volume {avg_volume:,} < 1M"})
+                        continue
+                    
+                    # Filter 3: Market cap ≥ $5B (skip for ETFs)
+                    if not is_etf and market_cap > 0 and market_cap < PHASE5_FILTERS["min_market_cap"]:
+                        rejected_symbols.append({"symbol": symbol, "reason": f"Market cap ${market_cap/1e9:.1f}B < $5B"})
+                        continue
+                    
+                    # Filter 4: No earnings within 7 days (skip for ETFs)
+                    if not is_etf and earnings_date:
+                        try:
+                            earnings_dt = datetime.strptime(earnings_date[:10], "%Y-%m-%d")
+                            days_to_earnings = (earnings_dt - datetime.now()).days
+                            if 0 <= days_to_earnings <= PHASE5_FILTERS["earnings_exclusion_days"]:
+                                rejected_symbols.append({"symbol": symbol, "reason": f"Earnings in {days_to_earnings} days"})
+                                continue
+                        except:
+                            pass
+                else:
+                    # Non-Phase 5 (Dashboard/Pre-computed): Use user-provided price filters
+                    if current_price < min_price or current_price > max_price:
+                        continue
+                
+                passed_filter_count += 1
                 
                 # Get LEAPS options from Polygon ONLY (long leg)
                 leaps_options = await fetch_options_chain(
