@@ -322,6 +322,15 @@ const Admin = () => {
     }
   };
   
+  const fetchPaypalLinks = async () => {
+    try {
+      const response = await api.get('/paypal/admin/links');
+      setPaypalLinks(response.data);
+    } catch (error) {
+      console.error('PayPal links error:', error);
+    }
+  };
+  
   const savePaypalSettings = async () => {
     setPaypalSaving(true);
     try {
@@ -346,6 +355,27 @@ const Admin = () => {
     }
   };
   
+  const savePaypalLinks = async () => {
+    setPaypalLinksSaving(true);
+    try {
+      const params = new URLSearchParams({
+        active_mode: paypalLinks.active_mode,
+        sandbox_trial: paypalLinks.sandbox_links?.trial || '',
+        sandbox_monthly: paypalLinks.sandbox_links?.monthly || '',
+        sandbox_yearly: paypalLinks.sandbox_links?.yearly || '',
+        live_trial: paypalLinks.live_links?.trial || '',
+        live_monthly: paypalLinks.live_links?.monthly || '',
+        live_yearly: paypalLinks.live_links?.yearly || ''
+      });
+      await api.post(`/paypal/admin/links?${params.toString()}`);
+      toast.success('PayPal links saved');
+    } catch (error) {
+      toast.error('Failed to save PayPal links');
+    } finally {
+      setPaypalLinksSaving(false);
+    }
+  };
+  
   const testPaypalConnection = async () => {
     setPaypalTesting(true);
     try {
@@ -366,6 +396,7 @@ const Admin = () => {
     try {
       await api.post(`/paypal/admin/switch-mode?mode=${mode}`);
       setPaypalSettings(prev => ({ ...prev, mode }));
+      setPaypalLinks(prev => ({ ...prev, active_mode: mode }));
       toast.success(`Switched to ${mode} mode`);
     } catch (error) {
       toast.error('Failed to switch mode');
