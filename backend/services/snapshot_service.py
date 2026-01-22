@@ -517,6 +517,15 @@ class SnapshotService:
         """
         Process a single option contract row.
         
+        CCE MASTER ARCHITECTURE - LAYER 1 COMPLIANT
+        
+        MANDATORY FIELDS IN OUTPUT:
+        - bid, ask (SEPARATE - never averaged)
+        - open_interest, volume
+        - implied_volatility
+        - delta (estimated for filtering)
+        - iv_rank (placeholder if not available from source)
+        
         CRITICAL: Stores BID and ASK separately for enforcement in scan phase.
         Rejects contracts with missing/invalid BID.
         """
@@ -531,21 +540,66 @@ class SnapshotService:
         if ask and (isinstance(ask, float) and math.isnan(ask)):
             ask = 0
         
+        # Get all available fields from Yahoo
+        volume = row.get('volume', 0) if row.get('volume') else 0
+        open_interest = row.get('openInterest', 0) if row.get('openInterest') else 0
+        implied_volatility = row.get('impliedVolatility', 0) if row.get('impliedVolatility') else 0
+        last_price = row.get('lastPrice', 0) if row.get('lastPrice') else 0
+        
+        # Handle NaN in numeric fields
+        if isinstance(volume, float) and math.isnan(volume):
+            volume = 0
+        if isinstance(open_interest, float) and math.isnan(open_interest):
+            open_interest = 0
+        if isinstance(implied_volatility, float) and math.isnan(implied_volatility):
+            implied_volatility = 0
+        if isinstance(last_price, float) and math.isnan(last_price):
+            last_price = 0
+        
+        # LAYER 1 COMPLIANT: Full schema with all downstream fields
         contract = {
+            # IDENTITY
             "contract_symbol": row.get('contractSymbol', ''),
             "strike": float(strike) if strike else 0,
             "expiry": expiry,
             "dte": dte,
             "option_type": option_type,
+            # PRICING (MANDATORY - separate bid/ask)
             "bid": float(bid) if bid else 0,
             "ask": float(ask) if ask else 0,
-            "last_price": float(row.get('lastPrice', 0)) if row.get('lastPrice') else 0,
-            "volume": int(row.get('volume', 0)) if row.get('volume') else 0,
-            "open_interest": int(row.get('openInterest', 0)) if row.get('openInterest') else 0,
-            "implied_volatility": float(row.get('impliedVolatility', 0)) if row.get('impliedVolatility') else 0,
+            "last_price": float(last_price),
+            # LIQUIDITY (MANDATORY)
+            "volume": int(volume),
+            "open_interest": int(open_interest),
+            # GREEKS (MANDATORY)
+            "implied_volatility": float(implied_volatility),
+            "delta": 0.0,  # Estimated below
+            "gamma": 0.0,  # Placeholder - not available from Yahoo
+            "theta": 0.0,  # Placeholder - not available from Yahoo
+            "vega": 0.0,   # Placeholder - not available from Yahoo
+            "iv_rank": None,  # Placeholder - requires historical IV data
+            # VALIDATION
             "valid": False,
             "rejection_reason": None
         }
+        
+        # ESTIMATE DELTA for filtering (Layer 3 will use this)
+        if stock_price > 0 and strike > 0:
+            if option_type == "call":
+                # Call delta estimation based on moneyness
+                moneyness = (stock_price - strike) / stock_price
+                if moneyness > 0:  # ITM
+                    contract["delta"] = min(0.95, 0.50 + moneyness * 2)
+                else:  # OTM
+                    contract["delta"] = max(0.05, 0.50 + moneyness * 2)
+            else:  # put
+                moneyness = (strike - stock_price) / stock_price
+                if moneyness > 0:  # ITM
+                    contract["delta"] = max(-0.95, -0.50 - moneyness * 2)
+                else:  # OTM
+                    contract["delta"] = min(-0.05, -0.50 - moneyness * 2)
+            
+            contract["delta"] = round(contract["delta"], 4)
         
         # VALIDATION: BID must exist and be > 0 for valid contract
         if contract["bid"] <= 0:
@@ -557,7 +611,8 @@ class SnapshotService:
             contract["rejection_reason"] = "ASK is zero or missing"
             return contract
         
-        # VALIDATION: Bid-Ask spread sanity check (reject if spread > 50%)
+        # VALIDATION: Bid-Ask spread sanity check (reject if spread > 50% at ingestion)
+        # NOTE: Layer 2 will apply stricter 10% threshold during validation
         if contract["ask"] > 0 and contract["bid"] > 0:
             spread_pct = (contract["ask"] - contract["bid"]) / contract["ask"] * 100
             if spread_pct > 50:
