@@ -468,6 +468,7 @@ async def screen_pmcc(
                     leap_delta=leap_delta,
                     leap_oi=leap.get("open_interest", 0),
                     short_strike=short_strike,
+                    short_expiry=short_expiry,
                     short_bid=short_premium,
                     short_dte=short_dte
                 )
