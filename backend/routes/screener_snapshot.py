@@ -64,8 +64,7 @@ from services.market_bias import (
 # PHASE 7: Import quality scoring module
 from services.quality_score import (
     calculate_cc_quality_score,
-    calculate_pmcc_quality_score,
-    score_to_dict
+    calculate_pmcc_quality_score
 )
 
 screener_router = APIRouter(tags=["Screener"])
