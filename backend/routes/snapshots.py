@@ -114,7 +114,10 @@ async def ingest_full_snapshot(
     """
     Ingest both stock and option chain snapshot for a symbol.
     
+    CCE MASTER ARCHITECTURE - LAYER 1 COMPLIANT
+    
     This is the recommended way to ingest data for scanning.
+    Uses stock_close_price (previous NYSE close) and cross-validates dates.
     """
     service = get_snapshot_service()
     
@@ -128,17 +131,20 @@ async def ingest_full_snapshot(
             "error": f"Stock data incomplete: {stock_result.get('error')}"
         }
     
-    # Then option chain
+    # Then option chain - use stock_close_price and stock_price_trade_date for cross-validation
     chain_result = await service.ingest_option_chain_snapshot(
         symbol, 
-        stock_result.get("price", 0)
+        stock_result.get("stock_close_price", stock_result.get("price", 0)),
+        stock_result.get("stock_price_trade_date")  # Pass for date cross-validation
     )
     
     return {
         "symbol": symbol,
         "success": chain_result.get("completeness_flag", False),
+        "date_validation_passed": chain_result.get("date_validation_passed", True),
         "stock": {
-            "price": stock_result.get("price"),
+            "stock_close_price": stock_result.get("stock_close_price"),
+            "stock_price_trade_date": stock_result.get("stock_price_trade_date"),
             "source": stock_result.get("source"),
             "data_age_hours": stock_result.get("data_age_hours")
         },
@@ -146,7 +152,8 @@ async def ingest_full_snapshot(
             "valid_contracts": chain_result.get("valid_contracts", 0),
             "total_contracts": chain_result.get("total_contracts", 0),
             "expiries": len(chain_result.get("expiries", [])),
-            "completeness_flag": chain_result.get("completeness_flag")
+            "completeness_flag": chain_result.get("completeness_flag"),
+            "options_data_trade_day": chain_result.get("options_data_trade_day")
         }
     }
 
