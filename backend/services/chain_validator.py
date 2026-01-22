@@ -561,22 +561,28 @@ class OptionChainValidator:
         short_strike: float,
         short_expiry: str,
         short_bid: float,
-        short_dte: int
+        short_dte: int,
+        leap_bid: float = None,
+        short_ask: float = None
     ) -> Tuple[bool, Optional[str]]:
         """
         Validate a Poor Man's Covered Call (PMCC) structure.
         
+        CCE MASTER ARCHITECTURE - LAYER 2 COMPLIANT
+        
         LEAP Qualification:
         - DTE ≥ 365
-        - Delta ≥ 0.70
-        - Bid-Ask spread ≤ 10% (handled by contract validation)
+        - Delta ≥ 0.70 (ideal 0.75–0.80)
         - OI ≥ 500
+        - Spread ≤ 10%
+        - ASK > 0
         
         Short Call Rules:
         - DTE 14-45
         - Delta 0.20-0.30 (implied by strike selection)
         - Strike > LEAP breakeven
         - BID > 0
+        - Spread ≤ 10%
         
         Structural Rules:
         - Width > 0 (short strike > leap strike)
@@ -588,8 +594,13 @@ class OptionChainValidator:
         if not leap_expiry:
             return False, "LEAP: Missing expiry date"
         
-        if not leap_ask or leap_ask <= 0:
-            return False, "LEAP: ASK is zero or missing (required for BUY leg)"
+        # LEAP uses ASK (BUY leg) - validate with spread check
+        leap_desc = f"{symbol} LEAP ${leap_strike} {leap_expiry}"
+        valid, reason, _ = self.pricing_validator.validate_buy_leg(
+            leap_ask, leap_bid, leap_desc
+        )
+        if not valid:
+            return False, reason
         
         if leap_dte < 365:
             return False, f"LEAP: DTE {leap_dte} is less than required 365 days"
@@ -597,8 +608,8 @@ class OptionChainValidator:
         if leap_delta < 0.70:
             return False, f"LEAP: Delta {leap_delta:.2f} is less than required 0.70"
         
-        if leap_oi < 500:
-            return False, f"LEAP: Open Interest {leap_oi} is less than required 500"
+        if leap_oi < MIN_OI_FOR_LEAPS:
+            return False, f"LEAP: Open Interest {leap_oi} is less than required {MIN_OI_FOR_LEAPS}"
         
         # SHORT CALL VALIDATION
         if not short_strike or short_strike <= 0:
@@ -607,8 +618,13 @@ class OptionChainValidator:
         if not short_expiry:
             return False, "Short Call: Missing expiry date"
         
-        if not short_bid or short_bid <= 0:
-            return False, "Short Call: BID is zero or missing (required for SELL leg)"
+        # Short call uses BID (SELL leg) - validate with spread check
+        short_desc = f"{symbol} Short ${short_strike} {short_expiry}"
+        valid, reason, _ = self.pricing_validator.validate_sell_leg(
+            short_bid, short_ask, short_desc
+        )
+        if not valid:
+            return False, reason
         
         if short_dte < 14 or short_dte > 45:
             return False, f"Short Call: DTE {short_dte} outside valid range 14-45"
