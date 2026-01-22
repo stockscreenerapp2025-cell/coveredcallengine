@@ -353,7 +353,7 @@ class SnapshotService:
         
         CCE MASTER ARCHITECTURE - LAYER 1 COMPLIANT
         
-        CRITICAL: Returns ONLY previousClose as the price source.
+        CRITICAL: Returns the ACTUAL NYSE CLOSE PRICE for the Last Trading Day.
         
         ❌ FORBIDDEN FIELDS (NEVER USE):
            - regularMarketPrice (intraday)
@@ -361,8 +361,10 @@ class SnapshotService:
            - preMarketPrice (pre-market)
            - postMarketPrice (after-hours)
         
-        ✅ ALLOWED FIELD:
-           - previousClose (last NYSE market close)
+        ✅ CORRECT APPROACH:
+           - Use history() to get the actual close price for LTD
+           - This ensures we get Jan 22's close after Jan 22 market closes,
+             not Jan 21's close which is what previousClose would return
         """
         def _fetch_sync():
             try:
@@ -372,22 +374,47 @@ class SnapshotService:
                 if not info:
                     return None
                 
-                # CRITICAL: Get previousClose ONLY
-                previous_close = info.get("previousClose")
+                # Get the actual close price from history
+                # This is more accurate than previousClose after market hours
+                hist = ticker.history(period="5d")
                 
-                if not previous_close:
-                    # previousClose is MANDATORY - cannot proceed without it
-                    logger.warning(f"[LAYER1 VIOLATION] {symbol}: No previousClose available, rejecting")
+                if hist.empty:
+                    logger.warning(f"[LAYER1] {symbol}: No history data available")
                     return None
                 
-                # VALIDATION: Ensure we're not accidentally using intraday prices
-                # Log if regularMarketPrice differs significantly from previousClose
-                # This is for debugging only - we NEVER use regularMarketPrice
-                regular_price = info.get("regularMarketPrice")
-                if regular_price and previous_close:
-                    diff_pct = abs(regular_price - previous_close) / previous_close * 100
-                    if diff_pct > 5:
-                        logger.debug(f"[LAYER1] {symbol}: regularMarketPrice=${regular_price} differs {diff_pct:.1f}% from previousClose=${previous_close} - USING previousClose")
+                # Get the most recent trading day's close
+                # This will be today's close if market has closed, or yesterday's if still open
+                latest_close = hist['Close'].iloc[-1]
+                latest_date = hist.index[-1].strftime('%Y-%m-%d')
+                
+                # Also get previous day's close for comparison
+                prev_close_from_info = info.get("previousClose")
+                
+                # Determine which price to use based on market status
+                # Get the LTD from our calendar logic
+                ltd = self._get_last_trading_day_sync()
+                ltd_str = ltd.strftime('%Y-%m-%d')
+                
+                # Find the close price for LTD from history
+                ltd_close = None
+                for idx in hist.index:
+                    if idx.strftime('%Y-%m-%d') == ltd_str:
+                        ltd_close = hist.loc[idx, 'Close']
+                        break
+                
+                if ltd_close is not None:
+                    actual_close = float(ltd_close)
+                    logger.info(f"[LAYER1] {symbol}: Using LTD ({ltd_str}) close=${actual_close:.2f} from history")
+                else:
+                    # Fallback to latest available close if LTD not in history
+                    actual_close = float(latest_close)
+                    logger.info(f"[LAYER1] {symbol}: LTD not in history, using latest close=${actual_close:.2f} ({latest_date})")
+                
+                # Log comparison for debugging
+                if prev_close_from_info:
+                    diff_pct = abs(actual_close - prev_close_from_info) / prev_close_from_info * 100
+                    if diff_pct > 1:
+                        logger.debug(f"[LAYER1] {symbol}: history close=${actual_close:.2f} vs previousClose=${prev_close_from_info:.2f} (diff {diff_pct:.1f}%)")
                 
                 # Get earnings date
                 earnings_date = None
@@ -401,9 +428,9 @@ class SnapshotService:
                 except Exception:
                     pass
                 
-                # Return ONLY previousClose as the price
+                # Return the ACTUAL close price for LTD
                 return {
-                    "previous_close": previous_close,  # THE ONLY VALID PRICE
+                    "previous_close": actual_close,  # THE ACTUAL NYSE CLOSE FOR LTD
                     "volume": info.get("regularMarketVolume"),
                     "market_cap": info.get("marketCap"),
                     "avg_volume": info.get("averageVolume"),
@@ -416,6 +443,39 @@ class SnapshotService:
         
         loop = asyncio.get_event_loop()
         return await loop.run_in_executor(self._executor, _fetch_sync)
+    
+    def _get_last_trading_day_sync(self) -> datetime:
+        """Synchronous helper to get last trading day."""
+        from datetime import datetime, timezone, timedelta
+        import pandas_market_calendars as mcal
+        
+        now = datetime.now(timezone.utc)
+        nyse = mcal.get_calendar('NYSE')
+        
+        start = now - timedelta(days=10)
+        schedule = nyse.schedule(
+            start_date=start.strftime('%Y-%m-%d'),
+            end_date=now.strftime('%Y-%m-%d')
+        )
+        
+        if schedule.empty:
+            current = now
+            while current.weekday() >= 5:
+                current -= timedelta(days=1)
+            return current.replace(hour=16, minute=0, second=0, microsecond=0)
+        
+        # Check if market has closed today
+        last_session = schedule.index[-1]
+        market_close = schedule.iloc[-1]['market_close'].to_pydatetime()
+        
+        if now >= market_close:
+            # Market closed - use today's close
+            return last_session.to_pydatetime().replace(tzinfo=timezone.utc)
+        elif len(schedule) > 1:
+            # Market still open - use previous day's close
+            return schedule.index[-2].to_pydatetime().replace(tzinfo=timezone.utc)
+        else:
+            return last_session.to_pydatetime().replace(tzinfo=timezone.utc)
     
     async def _fetch_stock_polygon(self, symbol: str) -> Optional[Dict]:
         """Fetch stock data from Polygon as fallback."""
