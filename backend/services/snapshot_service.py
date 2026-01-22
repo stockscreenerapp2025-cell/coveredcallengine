@@ -308,14 +308,46 @@ class SnapshotService:
         return snapshot
     
     async def _fetch_stock_yahoo(self, symbol: str) -> Optional[Dict]:
-        """Fetch stock data from Yahoo Finance."""
+        """
+        Fetch stock data from Yahoo Finance.
+        
+        CCE MASTER ARCHITECTURE - LAYER 1 COMPLIANT
+        
+        CRITICAL: Returns ONLY previousClose as the price source.
+        
+        ❌ FORBIDDEN FIELDS (NEVER USE):
+           - regularMarketPrice (intraday)
+           - currentPrice (intraday)
+           - preMarketPrice (pre-market)
+           - postMarketPrice (after-hours)
+        
+        ✅ ALLOWED FIELD:
+           - previousClose (last NYSE market close)
+        """
         def _fetch_sync():
             try:
                 ticker = yf.Ticker(symbol)
                 info = ticker.info
                 
-                if not info or not info.get("regularMarketPrice"):
+                if not info:
                     return None
+                
+                # CRITICAL: Get previousClose ONLY
+                previous_close = info.get("previousClose")
+                
+                if not previous_close:
+                    # previousClose is MANDATORY - cannot proceed without it
+                    logger.warning(f"[LAYER1 VIOLATION] {symbol}: No previousClose available, rejecting")
+                    return None
+                
+                # VALIDATION: Ensure we're not accidentally using intraday prices
+                # Log if regularMarketPrice differs significantly from previousClose
+                # This is for debugging only - we NEVER use regularMarketPrice
+                regular_price = info.get("regularMarketPrice")
+                if regular_price and previous_close:
+                    diff_pct = abs(regular_price - previous_close) / previous_close * 100
+                    if diff_pct > 5:
+                        logger.debug(f"[LAYER1] {symbol}: regularMarketPrice=${regular_price} differs {diff_pct:.1f}% from previousClose=${previous_close} - USING previousClose")
                 
                 # Get earnings date
                 earnings_date = None
@@ -329,9 +361,9 @@ class SnapshotService:
                 except:
                     pass
                 
+                # Return ONLY previousClose as the price
                 return {
-                    "price": info.get("regularMarketPrice"),
-                    "previous_close": info.get("previousClose"),
+                    "previous_close": previous_close,  # THE ONLY VALID PRICE
                     "volume": info.get("regularMarketVolume"),
                     "market_cap": info.get("marketCap"),
                     "avg_volume": info.get("averageVolume"),
