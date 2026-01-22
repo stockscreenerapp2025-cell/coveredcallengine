@@ -745,10 +745,13 @@ def validate_cc_trade(
     expiry: str,
     bid: float,
     dte: int,
-    open_interest: int = 0
+    open_interest: int = 0,
+    ask: float = None
 ) -> Tuple[bool, Optional[str]]:
     """
     Convenience function to validate a single Covered Call trade.
+    
+    CCE MASTER ARCHITECTURE - LAYER 2 COMPLIANT
     
     Returns: (is_valid, rejection_reason)
     """
@@ -760,7 +763,8 @@ def validate_cc_trade(
         expiry=expiry,
         bid=bid,
         dte=dte,
-        open_interest=open_interest
+        open_interest=open_interest,
+        ask=ask
     )
 
 
@@ -776,10 +780,14 @@ def validate_pmcc_trade(
     short_strike: float,
     short_expiry: str,
     short_bid: float,
-    short_dte: int
+    short_dte: int,
+    leap_bid: float = None,
+    short_ask: float = None
 ) -> Tuple[bool, Optional[str]]:
     """
     Convenience function to validate a PMCC trade structure.
+    
+    CCE MASTER ARCHITECTURE - LAYER 2 COMPLIANT
     
     Returns: (is_valid, rejection_reason)
     """
@@ -796,5 +804,73 @@ def validate_pmcc_trade(
         short_strike=short_strike,
         short_expiry=short_expiry,
         short_bid=short_bid,
-        short_dte=short_dte
+        short_dte=short_dte,
+        leap_bid=leap_bid,
+        short_ask=short_ask
     )
+
+
+def validate_sell_pricing(
+    bid: float,
+    ask: float = None,
+    contract_desc: str = ""
+) -> Tuple[bool, Optional[str], Optional[float]]:
+    """
+    Validate pricing for a SELL leg.
+    
+    CCE MASTER ARCHITECTURE - LAYER 2 COMPLIANT
+    SELL legs → BID ONLY, Spread ≤ 10%
+    
+    Returns: (is_valid, rejection_reason, valid_price)
+    """
+    validator = get_pricing_validator()
+    return validator.validate_sell_leg(bid, ask, contract_desc)
+
+
+def validate_buy_pricing(
+    ask: float,
+    bid: float = None,
+    contract_desc: str = ""
+) -> Tuple[bool, Optional[str], Optional[float]]:
+    """
+    Validate pricing for a BUY leg.
+    
+    CCE MASTER ARCHITECTURE - LAYER 2 COMPLIANT
+    BUY legs → ASK ONLY, Spread ≤ 10%
+    
+    Returns: (is_valid, rejection_reason, valid_price)
+    """
+    validator = get_pricing_validator()
+    return validator.validate_buy_leg(ask, bid, contract_desc)
+
+
+def validate_spread(
+    bid: float,
+    ask: float,
+    contract_desc: str = ""
+) -> Tuple[bool, Optional[str]]:
+    """
+    Validate bid-ask spread.
+    
+    CCE MASTER ARCHITECTURE - LAYER 2 COMPLIANT
+    Spread > 10% → REJECTED
+    
+    Returns: (is_valid, rejection_reason)
+    """
+    validator = get_pricing_validator()
+    return validator.validate_spread(bid, ask, contract_desc)
+
+
+def validate_snapshot_dates(
+    stock_trade_date: str,
+    options_trade_date: str
+) -> Tuple[bool, Optional[str]]:
+    """
+    Validate that stock and options snapshot dates match.
+    
+    CCE MASTER ARCHITECTURE - LAYER 2 COMPLIANT
+    
+    Returns: (is_valid, rejection_reason)
+    """
+    validator = get_calendar_validator()
+    return validator.validate_snapshot_dates(stock_trade_date, options_trade_date)
