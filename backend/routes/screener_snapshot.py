@@ -286,19 +286,23 @@ async def screen_covered_calls(
                 continue
             
             # Calculate quality score (Phase 7)
-            quality_result = calculate_cc_quality_score(
-                iv_rank=iv * 100 if iv < 1 else iv,  # Convert to percentage if needed
-                delta=0.3,  # Estimate
-                premium_yield=premium_yield,
-                dte=dte,
-                otm_pct=otm_pct,
-                open_interest=oi,
-                near_earnings=False,
-                is_etf=symbol in ETF_SYMBOLS
-            )
+            # Note: Function expects a trade_data dict
+            trade_data = {
+                "iv": iv,
+                "iv_rank": iv * 100 if iv < 1 else iv,  # Convert to percentage if needed
+                "delta": call.get("delta", 0.3),  # Use actual delta from snapshot
+                "roi_pct": premium_yield,
+                "premium": premium,
+                "stock_price": stock_price,
+                "dte": dte,
+                "strike": strike,
+                "open_interest": oi,
+                "is_etf": symbol in ETF_SYMBOLS
+            }
+            quality_result = calculate_cc_quality_score(trade_data)
             
             # Apply market bias (Phase 6)
-            final_score = apply_bias_to_score(quality_result.final_score, bias_weight)
+            final_score = apply_bias_to_score(quality_result.total_score, bias_weight)
             
             opportunities.append({
                 "symbol": symbol,
