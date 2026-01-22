@@ -316,9 +316,13 @@ async def screen_covered_calls(
                 "implied_volatility": round(iv * 100, 1) if iv < 1 else round(iv, 1),
                 "open_interest": oi,
                 "volume": call.get("volume", 0),
-                "base_score": round(quality_result.final_score, 1),
+                "base_score": round(quality_result.total_score, 1),
                 "score": round(final_score, 1),
-                "score_breakdown": score_to_dict(quality_result),
+                "score_breakdown": {
+                    "total": round(quality_result.total_score, 1),
+                    "pillars": {k: {"score": round(v.actual_score, 1), "max": v.max_score} 
+                               for k, v in quality_result.pillars.items()} if quality_result.pillars else {}
+                },
                 "market_cap": stock_snapshot.get("market_cap"),
                 "analyst_rating": stock_snapshot.get("analyst_rating"),
                 "earnings_date": stock_snapshot.get("earnings_date"),
