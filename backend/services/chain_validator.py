@@ -504,17 +504,23 @@ class OptionChainValidator:
         expiry: str,
         bid: float,
         dte: int,
-        open_interest: int = 0
+        open_interest: int = 0,
+        ask: float = None
     ) -> Tuple[bool, Optional[str]]:
         """
         Validate a Covered Call trade structure.
+        
+        CCE MASTER ARCHITECTURE - LAYER 2 COMPLIANT
         
         Rules:
         - Strike must exist exactly
         - Expiry must exist exactly
         - BID must be > 0 (SELL leg)
+        - Spread ≤ 10% (if ASK provided)
         - DTE must be in valid range
         """
+        contract_desc = f"{symbol} CC ${strike} {expiry}"
+        
         # VALIDATION 1: Strike
         if not strike or strike <= 0:
             return False, "Invalid strike price"
@@ -523,9 +529,12 @@ class OptionChainValidator:
         if not expiry:
             return False, "Missing expiry date"
         
-        # VALIDATION 3: BID (SELL leg)
-        if not bid or bid <= 0:
-            return False, "BID is zero or missing"
+        # VALIDATION 3: BID (SELL leg) with spread validation
+        valid, reason, _ = self.pricing_validator.validate_sell_leg(
+            bid, ask, contract_desc
+        )
+        if not valid:
+            return False, reason
         
         # VALIDATION 4: DTE range
         if dte < 1:
