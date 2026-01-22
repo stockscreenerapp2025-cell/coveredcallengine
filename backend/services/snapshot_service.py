@@ -132,30 +132,48 @@ class SnapshotService:
         """
         Fetch and store stock snapshot with full metadata.
         
+        CCE MASTER ARCHITECTURE - LAYER 1 COMPLIANT
+        
+        MANDATORY: Uses PREVIOUS NYSE CLOSE ONLY
+        ❌ FORBIDDEN: regularMarketPrice, currentPrice, preMarket, afterHours
+        
         Returns snapshot document with:
+        - stock_close_price: THE ONLY VALID PRICE (previous NYSE close)
+        - stock_price_trade_date: LTD when price was established
         - snapshot_trade_date: The trading day this data represents
         - snapshot_time: When the snapshot was taken
         - data_age_hours: Hours since market close
         - completeness_flag: Whether all required fields are present
         - source: Data provider used
+        - volume, avg_volume, market_cap: Liquidity/size metrics
+        - earnings_date: For ±7 day exclusion in Layer 3
         """
         now = datetime.now(timezone.utc)
         ltd = self.get_last_trading_day(now)
+        ltd_str = ltd.strftime('%Y-%m-%d')
         
+        # LAYER 1 COMPLIANT SCHEMA
         snapshot = {
             "symbol": symbol.upper(),
-            "snapshot_trade_date": ltd.strftime('%Y-%m-%d'),
+            # DATE FIELDS (must be consistent)
+            "snapshot_trade_date": ltd_str,
+            "stock_price_trade_date": ltd_str,  # MANDATORY: LTD for price
             "snapshot_time": now.isoformat(),
             "data_age_hours": 0,
-            "completeness_flag": False,
-            "source": None,
+            # PRICE FIELD - PREVIOUS CLOSE ONLY
+            "stock_close_price": None,  # THE ONLY VALID PRICE
+            # Legacy field for backward compatibility (will be deprecated)
             "price": None,
-            "previous_close": None,
+            # LIQUIDITY/SIZE METRICS
             "volume": None,
-            "market_cap": None,
             "avg_volume": None,
+            "market_cap": None,
+            # DOWNSTREAM FIELDS
             "earnings_date": None,
             "analyst_rating": None,
+            # METADATA
+            "completeness_flag": False,
+            "source": None,
             "error": None
         }
         
@@ -163,11 +181,14 @@ class SnapshotService:
             # Try Yahoo Finance first
             data = await self._fetch_stock_yahoo(symbol)
             
-            if data and data.get("price"):
+            if data and data.get("previous_close"):
+                # CRITICAL: Use ONLY previousClose, not regularMarketPrice
+                previous_close = data["previous_close"]
+                
                 snapshot.update({
                     "source": "yahoo",
-                    "price": data["price"],
-                    "previous_close": data.get("previous_close"),
+                    "stock_close_price": previous_close,  # MANDATORY FIELD
+                    "price": previous_close,  # Legacy compatibility
                     "volume": data.get("volume"),
                     "market_cap": data.get("market_cap"),
                     "avg_volume": data.get("avg_volume"),
@@ -175,19 +196,24 @@ class SnapshotService:
                     "analyst_rating": data.get("analyst_rating"),
                     "completeness_flag": True
                 })
+                
+                logger.info(f"[LAYER1] {symbol}: Using previousClose=${previous_close} (LTD={ltd_str})")
+                
             elif self.polygon_api_key:
-                # Fallback to Polygon
+                # Fallback to Polygon (already uses close price from previous day)
                 data = await self._fetch_stock_polygon(symbol)
                 if data and data.get("price"):
                     snapshot.update({
                         "source": "polygon",
-                        "price": data["price"],
-                        "previous_close": data.get("previous_close"),
+                        "stock_close_price": data["price"],  # Polygon /prev returns previous close
+                        "price": data["price"],  # Legacy compatibility
                         "volume": data.get("volume"),
                         "completeness_flag": True
                     })
+                    
+                    logger.info(f"[LAYER1] {symbol}: Polygon fallback, close=${data['price']} (LTD={ltd_str})")
             
-            # Calculate data age
+            # Calculate data age from market close
             market_close = self.get_market_close_time(ltd)
             if market_close:
                 age_delta = now - market_close
@@ -200,7 +226,7 @@ class SnapshotService:
                 upsert=True
             )
             
-            logger.info(f"Ingested stock snapshot for {symbol}: price=${snapshot.get('price')}, source={snapshot.get('source')}")
+            logger.info(f"Ingested stock snapshot for {symbol}: stock_close_price=${snapshot.get('stock_close_price')}, source={snapshot.get('source')}")
             
         except Exception as e:
             snapshot["error"] = str(e)
