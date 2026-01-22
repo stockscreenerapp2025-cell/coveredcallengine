@@ -856,6 +856,11 @@ class SnapshotService:
         """
         Batch ingest stock and option chain snapshots for multiple symbols.
         
+        CCE MASTER ARCHITECTURE - LAYER 1 COMPLIANT
+        
+        CRITICAL: Cross-validates stock and options dates.
+        Rejects symbols where dates don't match.
+        
         This should be called:
         - After market close (4:45 PM ET)
         - Before running any scans
@@ -863,6 +868,7 @@ class SnapshotService:
         results = {
             "success": [],
             "failed": [],
+            "date_mismatch": [],  # Specific tracking for date validation failures
             "total": len(symbols),
             "started_at": datetime.now(timezone.utc).isoformat()
         }
@@ -879,16 +885,32 @@ class SnapshotService:
                     })
                     continue
                 
-                # Ingest option chain
+                # CRITICAL: Pass stock_trade_date for cross-validation
+                stock_trade_date = stock_snapshot.get("stock_price_trade_date")
+                stock_close_price = stock_snapshot.get("stock_close_price")
+                
+                # Ingest option chain with cross-validation
                 chain_snapshot = await self.ingest_option_chain_snapshot(
                     symbol, 
-                    stock_snapshot.get("price", 0)
+                    stock_close_price,  # Use stock_close_price, not legacy "price"
+                    stock_trade_date    # Pass for date cross-validation
                 )
+                
+                # Check for date mismatch (HARD FAIL condition)
+                if not chain_snapshot.get("date_validation_passed"):
+                    results["date_mismatch"].append({
+                        "symbol": symbol,
+                        "stock_date": stock_trade_date,
+                        "options_date": chain_snapshot.get("options_data_trade_day"),
+                        "reason": chain_snapshot.get("error") or "Date mismatch between stock and options"
+                    })
+                    continue
                 
                 if chain_snapshot.get("completeness_flag"):
                     results["success"].append({
                         "symbol": symbol,
-                        "price": stock_snapshot.get("price"),
+                        "stock_close_price": stock_close_price,
+                        "stock_trade_date": stock_trade_date,
                         "valid_contracts": chain_snapshot.get("valid_contracts", 0)
                     })
                 else:
@@ -909,8 +931,9 @@ class SnapshotService:
         results["completed_at"] = datetime.now(timezone.utc).isoformat()
         results["success_count"] = len(results["success"])
         results["failed_count"] = len(results["failed"])
+        results["date_mismatch_count"] = len(results["date_mismatch"])
         
-        logger.info(f"Batch ingestion complete: {results['success_count']} success, {results['failed_count']} failed")
+        logger.info(f"Batch ingestion complete: {results['success_count']} success, {results['failed_count']} failed, {results['date_mismatch_count']} date mismatch")
         
         return results
     
