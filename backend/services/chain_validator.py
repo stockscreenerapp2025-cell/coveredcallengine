@@ -675,26 +675,54 @@ class OptionChainValidator:
         }
 
 
-# Global validator instance
+# ==================== GLOBAL INSTANCES ====================
+
 _validator: Optional[OptionChainValidator] = None
+_pricing_validator: Optional[PricingValidator] = None
+_calendar_validator: Optional[CalendarValidator] = None
 
 
 def get_validator() -> OptionChainValidator:
     """Get or create the global validator instance."""
     global _validator
     if _validator is None:
-        _validator = OptionChainValidator()
+        _validator = OptionChainValidator(
+            min_strikes_required=MIN_STRIKES_REQUIRED,
+            max_spread_pct=MAX_SPREAD_PCT  # LAYER 2 COMPLIANT: 10%
+        )
     return _validator
 
+
+def get_pricing_validator() -> PricingValidator:
+    """Get or create the global pricing validator instance."""
+    global _pricing_validator
+    if _pricing_validator is None:
+        _pricing_validator = PricingValidator(max_spread_pct=MAX_SPREAD_PCT)
+    return _pricing_validator
+
+
+def get_calendar_validator() -> CalendarValidator:
+    """Get or create the global calendar validator instance."""
+    global _calendar_validator
+    if _calendar_validator is None:
+        _calendar_validator = CalendarValidator()
+    return _calendar_validator
+
+
+# ==================== CONVENIENCE FUNCTIONS ====================
 
 def validate_chain_for_cc(
     symbol: str,
     stock_price: float,
     calls: List[Dict],
-    expiries: List[str] = None
+    expiries: List[str] = None,
+    stock_trade_date: str = None,
+    options_trade_date: str = None
 ) -> Tuple[bool, Optional[str]]:
     """
     Convenience function to validate a chain for Covered Call scanning.
+    
+    CCE MASTER ARCHITECTURE - LAYER 2 COMPLIANT
     
     Returns: (is_valid, rejection_reason)
     """
@@ -704,7 +732,9 @@ def validate_chain_for_cc(
         stock_price=stock_price,
         calls=calls,
         expiries=expiries,
-        require_puts=False
+        require_puts=False,
+        stock_trade_date=stock_trade_date,
+        options_trade_date=options_trade_date
     )
 
 
