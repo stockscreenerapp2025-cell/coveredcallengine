@@ -234,37 +234,77 @@ class SnapshotService:
         
         return snapshot
     
-    async def ingest_option_chain_snapshot(self, symbol: str, stock_price: float) -> Dict[str, Any]:
+    async def ingest_option_chain_snapshot(
+        self, 
+        symbol: str, 
+        stock_price: float,
+        stock_trade_date: str = None
+    ) -> Dict[str, Any]:
         """
         Fetch and store complete option chain snapshot with full metadata.
         
-        CRITICAL: Stores BID and ASK separately for proper pricing enforcement.
+        CCE MASTER ARCHITECTURE - LAYER 1 COMPLIANT
         
-        Returns snapshot document with:
-        - All expiries and strikes available
-        - BID/ASK for each contract (not midpoint!)
-        - Completeness validation
+        CRITICAL RULES:
+        - Stores BID and ASK separately (NEVER averaged)
+        - stock_trade_date MUST match options_data_trade_day (HARD FAIL otherwise)
+        - All mandatory fields populated or rejected
+        
+        Args:
+            symbol: Stock ticker
+            stock_price: MUST be stock_close_price from stock snapshot
+            stock_trade_date: LTD from stock snapshot (for cross-validation)
+        
+        Returns snapshot document with full chain data
         """
         now = datetime.now(timezone.utc)
         ltd = self.get_last_trading_day(now)
+        ltd_str = ltd.strftime('%Y-%m-%d')
+        
+        # Use provided stock_trade_date or default to LTD
+        # Cross-validation will fail if these don't match
+        expected_trade_date = stock_trade_date or ltd_str
         
         snapshot = {
             "symbol": symbol.upper(),
-            "stock_price": stock_price,
-            "snapshot_trade_date": ltd.strftime('%Y-%m-%d'),
+            "stock_price": stock_price,  # This MUST be stock_close_price (previous close)
+            # DATE FIELDS - ALL MUST MATCH
+            "snapshot_trade_date": ltd_str,
             "options_snapshot_time": now.isoformat(),
-            "options_data_trade_day": ltd.strftime('%Y-%m-%d'),
+            "options_data_trade_day": ltd_str,
+            "stock_trade_date_from_stock_snapshot": expected_trade_date,  # For cross-validation
+            # DATA AGE
             "data_age_hours": 0,
-            "completeness_flag": False,
-            "source": None,
+            # CHAIN DATA
             "expiries": [],
             "calls": [],
             "puts": [],
             "total_contracts": 0,
             "valid_contracts": 0,
             "rejection_reasons": [],
+            # VALIDATION FLAGS
+            "completeness_flag": False,
+            "date_validation_passed": False,
+            "source": None,
             "error": None
         }
+        
+        # CRITICAL: Cross-validate dates
+        if expected_trade_date != ltd_str:
+            error_msg = f"DATE MISMATCH: stock_trade_date={expected_trade_date} != options_trade_date={ltd_str}"
+            logger.error(f"[LAYER1 HARD FAIL] {symbol}: {error_msg}")
+            snapshot["error"] = error_msg
+            snapshot["date_validation_passed"] = False
+            
+            # Store the failed snapshot for debugging
+            await self.db.option_chain_snapshots.update_one(
+                {"symbol": symbol.upper()},
+                {"$set": snapshot},
+                upsert=True
+            )
+            return snapshot
+        
+        snapshot["date_validation_passed"] = True
         
         try:
             # Fetch from Yahoo (has BID/ASK data)
@@ -299,7 +339,7 @@ class SnapshotService:
                 upsert=True
             )
             
-            logger.info(f"Ingested option chain for {symbol}: {snapshot['valid_contracts']} valid contracts, complete={snapshot['completeness_flag']}")
+            logger.info(f"Ingested option chain for {symbol}: {snapshot['valid_contracts']} valid contracts, complete={snapshot['completeness_flag']}, date_match={snapshot['date_validation_passed']}")
             
         except Exception as e:
             snapshot["error"] = str(e)
