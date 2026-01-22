@@ -61,7 +61,8 @@ from routes.stocks import stocks_router
 from routes.options import options_router
 from routes.admin import admin_router
 from routes.portfolio import portfolio_router
-from routes.screener import screener_router
+# TWO-PHASE ARCHITECTURE: Use snapshot-based screener (NO live data)
+from routes.screener_snapshot import screener_router  # Phase 2: Snapshot-only scanning
 from routes.simulator import simulator_router
 from routes.support import support_router
 from routes.invitations import invitation_router
