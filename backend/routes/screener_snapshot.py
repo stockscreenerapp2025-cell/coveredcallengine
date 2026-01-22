@@ -463,6 +463,7 @@ async def screen_pmcc(
                     symbol=symbol,
                     stock_price=stock_price,
                     leap_strike=leap_strike,
+                    leap_expiry=leap_expiry,
                     leap_ask=leap_cost,
                     leap_dte=leap_dte,
                     leap_delta=leap_delta,
