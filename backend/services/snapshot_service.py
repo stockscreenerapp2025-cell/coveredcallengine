@@ -1,15 +1,36 @@
 """
 Snapshot Service - PHASE 1: Data Ingestion Layer
+=================================================
+
+CCE MASTER ARCHITECTURE COMPLIANCE - LAYER 1
 
 This service implements the two-phase architecture:
 - PHASE 1 (Ingestion): Fetch and store snapshots with full metadata
 - PHASE 2 (Scan): Read-only access to stored snapshots
 
-GLOBAL RULES ENFORCED:
-- No live data during scans
+GLOBAL RULES ENFORCED (NON-NEGOTIABLE):
+- Stock price = PREVIOUS NYSE MARKET CLOSE ONLY
+  ❌ No intraday prices (regularMarketPrice)
+  ❌ No pre-market prices
+  ❌ No after-hours prices
+- NYSE trading calendar enforced for all date logic
 - BID only for SELL legs
 - ASK only for BUY legs (PMCC LEAP)
+- Stock and options snapshot dates MUST match
 - Full chain validation before storage
+
+MANDATORY SNAPSHOT SCHEMA FIELDS:
+Stock Snapshots:
+  - stock_close_price (previous NYSE close - THE ONLY VALID PRICE)
+  - stock_price_trade_date (LTD - must equal snapshot_trade_date)
+  - volume, avg_volume, market_cap
+  - earnings_date, analyst_rating
+
+Option Snapshots:
+  - bid, ask (separate - NEVER averaged)
+  - open_interest, implied_volatility
+  - delta (estimated for ITM), iv_rank
+  - options_data_trade_day (must equal stock trade date)
 """
 
 import logging
@@ -24,10 +45,17 @@ from motor.motor_asyncio import AsyncIOMotorDatabase
 
 logger = logging.getLogger(__name__)
 
-# Constants
+# ==================== LAYER 1 CONSTANTS ====================
 HTTP_TIMEOUT = httpx.Timeout(30.0, connect=10.0)
 POLYGON_BASE_URL = "https://api.polygon.io"
 MAX_DATA_AGE_HOURS = 48  # Reject snapshots older than this
+
+# CRITICAL: These are the ONLY valid price sources
+# ✅ previousClose - Last NYSE market close
+# ❌ regularMarketPrice - FORBIDDEN (intraday)
+# ❌ currentPrice - FORBIDDEN (intraday)
+# ❌ preMarketPrice - FORBIDDEN
+# ❌ postMarketPrice - FORBIDDEN
 
 
 class SnapshotService:
