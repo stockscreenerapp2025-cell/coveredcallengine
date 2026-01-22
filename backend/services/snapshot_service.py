@@ -960,7 +960,16 @@ class SnapshotService:
     # ==================== ADMIN UTILITIES ====================
     
     async def get_snapshot_status(self) -> Dict[str, Any]:
-        """Get status of all snapshots for admin dashboard."""
+        """
+        Get status of all snapshots for admin dashboard.
+        
+        CCE MASTER ARCHITECTURE - LAYER 1 COMPLIANT
+        
+        Reports on:
+        - Total, valid, stale, incomplete snapshots
+        - Date validation status
+        - Price source verification
+        """
         stock_count = await self.db.stock_snapshots.count_documents({})
         chain_count = await self.db.option_chain_snapshots.count_documents({})
         
@@ -980,20 +989,36 @@ class SnapshotService:
             "completeness_flag": False
         })
         
+        # LAYER 1 SPECIFIC: Count date mismatches
+        date_mismatch_chains = await self.db.option_chain_snapshots.count_documents({
+            "date_validation_passed": False
+        })
+        
+        # LAYER 1 SPECIFIC: Count snapshots using correct price field
+        stocks_with_close_price = await self.db.stock_snapshots.count_documents({
+            "stock_close_price": {"$exists": True, "$ne": None}
+        })
+        
         return {
             "stock_snapshots": {
                 "total": stock_count,
                 "stale": stale_stocks,
                 "incomplete": incomplete_stocks,
-                "valid": stock_count - stale_stocks - incomplete_stocks
+                "valid": max(0, stock_count - stale_stocks - incomplete_stocks),
+                "with_stock_close_price": stocks_with_close_price  # LAYER 1 compliance check
             },
             "option_chain_snapshots": {
                 "total": chain_count,
                 "stale": stale_chains,
                 "incomplete": incomplete_chains,
-                "valid": chain_count - stale_chains - incomplete_chains
+                "date_mismatch": date_mismatch_chains,  # LAYER 1 compliance check
+                "valid": max(0, chain_count - stale_chains - incomplete_chains - date_mismatch_chains)
             },
-            "max_data_age_hours": MAX_DATA_AGE_HOURS,
+            "layer1_compliance": {
+                "max_data_age_hours": MAX_DATA_AGE_HOURS,
+                "price_source": "previousClose ONLY",
+                "date_validation": "stock_trade_date must equal options_data_trade_day"
+            },
             "checked_at": datetime.now(timezone.utc).isoformat()
         }
     
