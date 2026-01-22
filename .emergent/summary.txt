@@ -1,173 +1,134 @@
 <analysis>**original_problem_statement:**
-The user wants to build a web-based application named Covered Call Engine. The primary features include AI-assisted Covered Call (CC) and Poor Man's Covered Call (PMCC) screeners, a multi-phased AI Support Ticket System, a role-based Invitation System, Portfolio Tracking, and Stripe Subscriptions.
+The user wants to build a web-based application named Covered Call Engine. The primary features include AI-assisted Covered Call (CC) and Poor Man's Covered Call (PMCC) screeners, a multi-phased AI Support Ticket System, a role-based Invitation System, Portfolio Tracking, and payment subscriptions.
 
-The project is undergoing a comprehensive, phased rebuild of the screener to transform it into a deterministic, institution-grade engine. The rebuild is structured into multiple phases, with Phases 0-8 now being complete.
+After discovering that the screener was giving inconsistent results due to mixing live data and cached data, the user issued an authoritative, multi-step directive to perform a major architectural refactor.
 
-**PRODUCT REQUIREMENTS (Phased Rebuild):**
-*   **PHASE 0-5 (Completed):** Initial setup, validation, pricing enforcement, and core rebuild of the CC and PMCC engines.
-*   **PHASE 6 (Completed):** Re-order the application of market bias logic in the scoring process.
-*   **PHASE 7 (Completed):** Rewrite the scoring engine to use an explainable, pillar-based system.
-*   **PHASE 8 (Completed):** Enhance the Admin panel with detailed logging and screener status, culminating in a comprehensive Data Quality monitoring scorecard.
+**PRODUCT REQUIREMENTS (Current Mandate):**
+The application's core screener must be rebuilt into a deterministic, two-phase architecture:
+*   **Phase 1 - Daily Ingestion:** A daily, trading-day-aware process fetches all required stock and options data and stores it in immutable snapshots in MongoDB. This is the *only* place live data is permitted.
+*   **Phase 2 - Strategy Scan:** The scanner endpoints (CC, PMCC, Dashboard) must be **read-only**. They can *only* read from the stored MongoDB snapshots. They are forbidden from making any live API calls or using fallbacks. If a snapshot for any symbol is missing, stale, or incomplete, the scan must abort with a clear error message (fail-closed).
+*   **PayPal Re-integration:** After the new architecture is stable and validated, PayPal will be re-integrated as the sole payment provider, replacing Stripe.
 
 **User's preferred language**: English
 
 **what currently exists?**
-A full-stack FastAPI/React application for screening options strategies. The entire phased rebuild of the core screener engine (Phases 0-8) is now functionally complete.
-*   **Screener Engines (Phase 4 & 5):** The Covered Call and PMCC screeners are rebuilt with strict, deterministic filtering and validation rules.
-*   **Market Bias (Phase 6):** The scoring logic has been corrected to apply market bias *after* trades are deemed eligible, not during the filtering stage.
-*   **Quality Score (Phase 7):** A new pillar-based scoring system has been implemented for both CC and PMCC, providing explainable scores. The UI includes a tooltip on the screener pages to show the score breakdown on hover.
-*   **Admin Panel (Phase 8):** The Admin panel UI has been significantly overhauled. All tabs now appear in a single row, and a new Data Quality tab has been added. This tab contains a detailed, 8-part monitoring scorecard as specified by the user, providing real-time health checks on the entire screener engine.
-*   **UI Bug Fix:** A recurring issue where Delta and DTE values were not clearly visible on the PMCC page has been resolved by increasing their font size and color contrast.
+The agent has successfully rolled back the codebase and completed **Part A** of the architectural refactor.
+*   **Two-Phase Architecture (Foundation):** A new snapshot-based screener () has been created and is now the active screener. It reads exclusively from MongoDB. The old live-data screener is no longer in use.
+*   **Snapshot-Driven Data:** The  database has been populated with 71 valid stock and option chain snapshots via a manual ingestion process.
+*   **Fail-Closed Behavior:** The screener now correctly aborts with an HTTP 409 error if required snapshots are missing, as per the user's mandate.
+*   **Functional UI:** The Dashboard, Screener, and PMCC pages are all functional and displaying data sourced exclusively from the new snapshot-based backend.
 
 **Last working item**:
--   **Last item agent was working:** The agent completed a major overhaul of the Admin Panel based on detailed user specifications. This involved refactoring the UI to have a single row of tabs, creating a new Data Quality tab, and building a comprehensive 8-part monitoring scorecard with its own backend endpoint (). The agent successfully debugged frontend issues (blank page due to duplicate icon imports) to make the new panel functional.
--   **Status:** USER VERIFICATION PENDING
--   **Agent Testing Done:** Y (via screenshots)
--   **Which testing method agent to use?** screenshot tool. The next agent should take a screenshot of the  page, click on the Data Quality tab, and present the resulting scorecard to the user for final confirmation.
+-   **Last item agent was working:** The agent finished implementing and validating Part A of the user-mandated architectural refactor. This involved creating the new snapshot-only screener, debugging several implementation issues (database connection, function signatures), and successfully passing a comprehensive acceptance test matrix provided by the user to prove the new architecture is deterministic and free of live data calls.
+-   **Status:** IN PROGRESS (Part A is complete; the overall refactor task continues).
+-   **Agent Testing Done:** Y (Extensive testing via  and screenshots against the user's acceptance criteria).
+-   **Which testing method agent to use?** N/A (The next task is implementation, not verification).
 -   **User Testing Done:** N
 
 **All Pending/In progress Issue list**:
--   **Issue 1: Verify Admin Panel Data Quality Tab (P0):** Confirm with the user that the new Data Quality scorecard in the Admin panel meets all their detailed requirements.
--   **Issue 2: PMCC aggressive pre-computed scan has 0 results. (P1)**
--   **Issue 3: Inbound email replies are not reaching the support dashboard. (P1)**
-
-**Issues Detail:**
--   **Issue 1: Verify Admin Panel Data Quality Tab**
-    -   **Attempted fixes:** The agent successfully implemented the user's design by creating a new backend endpoint for data, refactoring the  component to add the new tab and scorecard UI, fixing the tab layout, and resolving frontend build errors that caused a blank page.
-    -   **Next debug checklist:**
-        1.  Take a screenshot of .
-        2.  In the screenshot tool, click on the Data Quality tab.
-        3.  Present the screenshot of the scorecard to the user for final approval.
-    -   **Why fix this issue and what will be achieved with the fix?** This completes the Phase 8 requirements and the entire screener engine rebuild project.
-    -   **Status:** USER VERIFICATION PENDING
-    -   **Is recurring issue?** N
-    -   **Should Test frontend/backend/both after fix?** frontend
-    -   **Blocked on other issue:** None
-
--   **Issue 2: PMCC aggressive pre-computed scan has 0 results.**
-    -   **Attempted fixes:** None in this session.
-    -   **Next debug checklist:**
-        1.  Manually trigger the aggressive PMCC pre-computed scan via the API () to repopulate data.
-        2.  Check backend logs for  rate-limiting or other errors during the scan.
-    -   **Why fix this issue and what will be achieved with the fix?** To ensure all pre-computed scan profiles have data available for users.
-    -   **Status:** NOT STARTED
-    -   **Is recurring issue?** Y
-    -   **Should Test frontend/backend/both after fix?** backend
-    -   **Blocked on other issue:** None
-
--   **Issue 3: Inbound email replies are not reaching the support dashboard.**
-    -   **Attempted fixes:** None in this session.
-    -   **Next debug checklist:**
-        1.  Ask the user to send a test reply to an existing support ticket email.
-        2.  Trigger a manual sync from the Admin panel and observe backend logs for IMAP errors.
-    -   **Why fix this issue and what will be achieved with the fix?** Completes Phase 2 of the automated support ticket system.
-    -   **Status:** BLOCKED
-    -   **Is recurring issue?** Y
-    -   **Should Test frontend/backend/both after fix?** both
-    -   **Blocked on other issue:** None
+There are no issues in the traditional sense. The current work is a single, large, user-directed task broken into parts. The highest priority is to continue with the user's plan.
 
 **In progress Task List**:
-None.
+-   **Task 1: Complete Architectural Refactor (P0)**
+    -   **Where to resume:** The agent has completed Part A. The next step is to begin implementing **Part B: Automating Snapshot Ingestion**.
+    -   **What will be achieved with this?** This will complete the user's core architectural mandate, making the application's data layer robust, deterministic, and maintainable.
+    -   **Status:** IN PROGRESS
+    -   **Should Test frontend/backend/both after fix?** backend
+    -   **Blocked on something:** No
 
 **Upcoming and Future Tasks**
 *   **Upcoming Tasks:**
-    *   (P2) **Refactor Frontend Components**: Break down large components like , , and  for better maintainability.
+    *   (P0) **Part B - Automate Snapshot Ingestion:** Create a recurring background job (using APScheduler) that is trading-day-aware (using NYSE calendar) to run the snapshot ingestion process automatically.
+    *   (P0) **Part C - Formalize Snapshot Health Check:** Enhance the  endpoint to provide a clear, structured report on snapshot health (total symbols, found, valid, stale, incomplete) as a primary debugging tool.
 *   **Future Tasks:**
-    *   (P2) Support System - AI Learning.
-    -   (P2) Admin Panel - Content & Announcement Manager.
-    -   (P3) Admin Panel - Roles & Permissions and Audit Logs.
-    -   (P3) Portfolio Tracker - Generic CSV import.
+    *   (P1) **PayPal Re-integration:** Once the snapshot architecture is stable, re-integrate PayPal as the sole payment provider. This includes handling free trial follow-up emails, welcome emails, and a terms & privacy acceptance checkbox.
+    *   (P2) **Expand Symbol Universe:** Increase the number of symbols covered by the scanner once the new architecture is proven stable.
+    *   (P2) **Fix Inbound Email:** Resolve the long-standing issue where inbound email replies do not appear in the support dashboard.
+    -   (P3) **Frontend Refactor:** Break down large components like , , and  for better maintainability.
+    -   (P3) **Admin Panel & Other Features:** Resume work on backlog items like the AI Learning for the support system, Content Manager, and Portfolio Tracker enhancements.
 
 **Completed work in this session**
--   **PMCC UI Fix (DONE):** Resolved an issue where Delta (δ) and DTE values were hard to see by increasing their font size and contrast in .
--   **PHASE 6 — Market Bias Order Fix (DONE):** Refactored  to apply market bias scoring *after* filtering, not during. Created  to house the logic.
--   **PHASE 7 — Quality Score Rewrite (DONE):** Implemented a new pillar-based scoring engine in  and integrated it into all screener endpoints. Added a  tooltip to the  and  UI.
--   **PHASE 8 — Admin Panel Overhaul (DONE):** Completely redesigned the Admin panel according to user specifications. This included fixing the tab layout, removing old UI sections, and building a new Data Quality tab with a detailed monitoring scorecard powered by a new admin-specific backend endpoint.
+-   **Architectural Refactor (Part A - DONE):**
+    -   Rolled back the codebase to a stable state to remove a faulty PayPal implementation.
+    -   Created and wired up , a new screener that is 100% driven by MongoDB snapshots.
+    -   Successfully implemented and validated the fail-closed principle, where scans abort if data is incomplete.
+    -   Populated the production database with valid data snapshots, enabling the screener to function.
+    -   Passed a rigorous, user-defined acceptance test matrix to prove the new architecture is deterministic and free from live data dependencies.
 
 **Earlier issues found/mentioned but not fixed**
-None new in this session. The two pre-existing issues (PMCC aggressive scan, inbound email) remain.
+-   **Inbound email replies are not reaching the support dashboard:** This is a known, persistent issue to be addressed after the current high-priority refactor.
 
 **Known issue recurrence from previous fork**
 -   **Inbound email issue:** This is a persistent, unresolved issue.
--   **PMCC aggressive pre-computed scan:** This is a recurring issue where the scan data is empty.
+-   **PMCC aggressive pre-computed scan:** The root cause of this (and other data inconsistencies) was identified as the old live-data architecture. The new snapshot-based system resolves this class of problem, provided the ingestion runs correctly.
 
 **Code Architecture**
 
 
 **Key Technical Concepts**
--   **Pillar-Based Scoring (Phase 7):** A modular scoring system where the final score is a weighted sum of explainable pillars (e.g., Volatility, Greeks, LEAP Quality), making the logic transparent.
--   **Separation of Concerns (Phase 6):** The screener logic was refactored to first build a list of all  based on hard filters, and only then apply  and  to the valid list.
--   **Admin Monitoring Scorecard (Phase 8):** A new UI in the Admin panel that consumes data from a dedicated backend endpoint () to provide a real-time health check of the entire screener engine.
--   **Frontend Build/Cache Debugging:** A blank page error in the Admin panel was traced to duplicate  icon imports in . The fix required removing the duplicates and restarting the frontend service to clear the webpack cache.
+-   **Two-Phase Architecture:** A strict separation of concerns where data is first ingested into MongoDB snapshots (Phase 1), and then the application exclusively reads from those snapshots (Phase 2), ensuring deterministic, reproducible results.
+-   **Fail-Closed Principle:** A core design choice where the system prefers to abort a process (like a scan) rather than produce potentially incorrect results from incomplete data. This is implemented via HTTP 409 errors when snapshots are missing.
 
 **key DB schema**
-No changes in this session.
+-   : 
+-   : 
 
 **changes in tech stack**
-No changes in this session.
+No new technologies, but a fundamental shift in the application's data-access architecture.
 
 **All files of reference**
-*   
-*   
-*   
-*   
-*   
-*   
-*   
-*   
-*   
-*   
+*    (New core screener)
+*    (Core snapshot logic)
+*    (Ingestion endpoints)
+*    (Router configuration)
 
 **Areas that need refactoring**:
-*   , , and  are large monolithic components that would benefit from being broken down into smaller, reusable sub-components.
+*   The snapshot ingestion process is currently a manual API call. This must be refactored into an automated, recurring background job using .
 
 **key api endpoints**
-*   : (New) Provides comprehensive data for the new Admin Data Quality scorecard.
-*   : (New) Returns the current market bias and its contributing factors.
-*   : (New) Admin endpoint to force a refresh of market sentiment data.
-*   All primary screener endpoints (, , ) were updated to incorporate the new Phase 6 and Phase 7 logic.
+*   : Runs the CC screener against stored snapshots.
+*   : Runs the PMCC screener against stored snapshots.
+*   : Provides a health check on snapshot availability.
+*   : (To be implemented/used) Triggers background ingestion for all symbols.
 
 **Critical Info for New Agent**
-*   Your first and only task is to **verify the new Admin Panel Data Quality tab** with the user. The screener engine rebuild (Phases 4-8) is now feature-complete, pending this final sign-off.
-*   The implementation in  was complex and involved fixing a blank-page error caused by duplicate icon imports and webpack caching. Be cautious if you need to edit this file.
-*   Once the user approves the Admin panel, the next logical step is to propose refactoring the large frontend components (, , ) or address the backlog tasks from the PRD.
+*   **Follow the User's Plan:** Your mandate comes directly from the user's CCE ROLLBACK + FIX INSTRUCTION message. Adhere to it strictly.
+*   **Architecture is Final:** The two-phase, snapshot-only architecture is non-negotiable. Do not re-introduce live data calls or fallbacks into the scanning process.
+*   **Immediate Next Step:** Your first task is to implement **Part B: Automating Snapshot Ingestion**. This involves creating a recurring background job.
+*   **Do Not Start PayPal:** The user has explicitly forbidden starting the PayPal re-integration until the new snapshot architecture (Parts B and C) is fully implemented and stable.
 
 **documents and test reports created in this job**
-*    (Updated)
-*   
-*   
-*   
+None. The previous PRD is outdated by the new architectural mandate.
 
 **Last 10 User Messages and any pending HUMAN messages**
-1.  **User:** Requests to proceed with Phase 6, providing the correct logic flow.
-2.  **Agent:** Implements Phase 6.
-3.  **User:** Asks for instructions on how to test the Phase 6 changes.
-4.  **Agent:** Explains how to test via API and offers to add a UI indicator.
-5.  **User:** Requests to proceed with Phase 7, providing detailed specs for pillar-based scoring.
-6.  **Agent:** Implements Phase 7, including UI tooltips for the score breakdown.
-7.  **User:** Requests to start Phase 8, asking to add score reasons to the Admin panel and noting the Data Quality section is missing.
-8.  **Agent:** Implements a first version of the Data Quality section inside the main Admin dashboard.
-9.  **User:** Rejects the implementation and provides very detailed, prescriptive requirements for a new, separate Data Quality tab with a specific 8-part monitoring scorecard.
-10. **(Agent just completed):** The agent successfully re-implemented Phase 8 according to the user's detailed design, including fixing the tab layout and debugging frontend errors. Now awaiting user verification.
+1.  **User (Summary):** Provided an authoritative, multi-step command to roll back the codebase and refactor the entire screener to a deterministic, two-phase (Ingestion -> Read-Only Scan) architecture using MongoDB snapshots. This was in response to inconsistent data and a faulty PayPal integration attempt.
+2.  **User (Summary):** Clarified the plan, instructing the agent to proceed in parts (A, B, C), with PayPal re-integration only happening *after* the new architecture is proven stable. Mandated a fail-closed approach and a kill switch on old live-data functions.
+3.  **Agent:** Acknowledged the instructions and began work on Part A.
+4.  **Agent:** Successfully completed Part A and passed all user-defined acceptance tests, confirming the new architecture works as specified. The UI is now displaying data correctly from the snapshot-only backend. The agent is ready to proceed to Part B.
 
 **Project Health Check:**
 *   **Broken:**
-    *   Inbound email reply ingestion for the support system.
-    *   The pre-computed scan for aggressive PMCC is empty.
+    *   The snapshot ingestion process is currently manual and needs to be automated.
+    *   The original issue with inbound email replies for the support system is still unresolved.
 *   **Mocked:** None.
-*   **Technical Debt:** , , and  are large, complex components that need refactoring.
+*   **Technical Debt:** The manual ingestion process is the most significant debt. Large frontend components (, etc.) are still pending a refactor.
 
 **3rd Party Integrations**
-*   Yahoo Finance (), Polygon.io, pandas-market-calendars, Stripe, Resend, MarketAux.com, Hostinger IMAP, APScheduler.
+*   **Yahoo Finance (), Polygon.io:** Used *only* for the data ingestion phase.
+*   **:** Used for trading day calculations in the ingestion logic.
+*   **:** Present in the environment, intended for automating the ingestion job.
+*   **Stripe:** Code exists in the rolled-back state but is to be fully replaced by PayPal.
+*   **PayPal:** To be re-integrated *after* the architectural refactor is complete.
+*   **Resend, Hostinger IMAP:** Used for the support ticket system.
 
 **Testing status**
 -   **Testing agent used after significant changes:** NO
 -   **Troubleshoot agent used after agent stuck in loop:** NO
--   **Test files created:** None in this session.
--   **Known regressions:** None.
+-   **Test files created:** None
+-   **Known regressions:** The previous PayPal integration was intentionally removed via a rollback as part of the fix.
 
 **Credentials to test flow:**
-Admin user  with password  is available for testing.
+Admin user  with password .
 
 **What agent forgot to execute**
-The agent's initial implementation of Phase 8 did not align with the user's vision, necessitating a full rework based on more detailed specifications provided by the user afterward. This underscores the importance of confirming UI/UX-heavy requirements before beginning implementation, especially for complex features like a monitoring dashboard.</analysis>
+The agent correctly followed the user's explicit, phased instructions and is mid-way through the plan. Nothing was forgotten; the next steps are clearly defined.</analysis>
