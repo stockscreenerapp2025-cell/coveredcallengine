@@ -661,11 +661,17 @@ class SnapshotService:
         """
         Get stored stock snapshot for scanning.
         
+        CCE MASTER ARCHITECTURE - LAYER 1 COMPLIANT (Read Interface)
+        
         Returns: (snapshot, error_message)
         - Returns snapshot if valid
         - Returns None with error if missing, incomplete, or stale
         
         SCAN MUST ABORT if this returns None!
+        
+        The returned snapshot contains:
+        - stock_close_price: THE price to use (previous NYSE close)
+        - stock_price_trade_date: The trading day this price represents
         """
         snapshot = await self.db.stock_snapshots.find_one(
             {"symbol": symbol.upper()},
@@ -681,15 +687,25 @@ class SnapshotService:
         if snapshot.get("data_age_hours", 999) > MAX_DATA_AGE_HOURS:
             return None, f"Snapshot stale for {symbol}: {snapshot.get('data_age_hours')}h old (max {MAX_DATA_AGE_HOURS}h)"
         
+        # LAYER 1 COMPLIANT: Verify stock_close_price exists
+        if not snapshot.get("stock_close_price"):
+            # Backward compatibility: check legacy "price" field
+            if snapshot.get("price"):
+                snapshot["stock_close_price"] = snapshot["price"]
+            else:
+                return None, f"No stock_close_price in snapshot for {symbol}"
+        
         return snapshot, None
     
     async def get_option_chain_snapshot(self, symbol: str) -> Tuple[Optional[Dict], Optional[str]]:
         """
         Get stored option chain snapshot for scanning.
         
+        CCE MASTER ARCHITECTURE - LAYER 1 COMPLIANT (Read Interface)
+        
         Returns: (snapshot, error_message)
         - Returns snapshot if valid
-        - Returns None with error if missing, incomplete, or stale
+        - Returns None with error if missing, incomplete, stale, or date mismatch
         
         SCAN MUST ABORT if this returns None!
         """
@@ -706,6 +722,10 @@ class SnapshotService:
         
         if snapshot.get("data_age_hours", 999) > MAX_DATA_AGE_HOURS:
             return None, f"Option chain stale for {symbol}: {snapshot.get('data_age_hours')}h old (max {MAX_DATA_AGE_HOURS}h)"
+        
+        # LAYER 1 COMPLIANT: Check date validation passed
+        if snapshot.get("date_validation_passed") is False:
+            return None, f"Date mismatch in option chain for {symbol}: stock_date != options_date"
         
         return snapshot, None
     
