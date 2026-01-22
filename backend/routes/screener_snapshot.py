@@ -477,17 +477,17 @@ async def screen_pmcc(
                     continue
                 
                 # Calculate quality score
-                quality_result = calculate_pmcc_quality_score(
-                    leap_delta=leap_delta,
-                    leap_dte=leap_dte,
-                    leap_spread_pct=((leap["ask"] - leap["bid"]) / leap["ask"] * 100) if leap["ask"] > 0 else 0,
-                    short_premium_pct=roi_per_cycle,
-                    short_dte=short_dte,
-                    short_otm_pct=((short_strike - stock_price) / stock_price) * 100,
-                    is_etf=symbol in ETF_SYMBOLS
-                )
+                pmcc_trade_data = {
+                    "leap_delta": leap_delta,
+                    "leap_dte": leap_dte,
+                    "short_dte": short_dte,
+                    "short_otm_pct": ((short_strike - stock_price) / stock_price) * 100,
+                    "roi_pct": roi_per_cycle,
+                    "is_etf": symbol in ETF_SYMBOLS
+                }
+                quality_result = calculate_pmcc_quality_score(pmcc_trade_data)
                 
-                final_score = apply_bias_to_score(quality_result.final_score, bias_weight)
+                final_score = apply_bias_to_score(quality_result.total_score, bias_weight)
                 
                 opportunities.append({
                     "symbol": symbol,
@@ -508,9 +508,13 @@ async def screen_pmcc(
                     "max_profit": round(max_profit, 2),
                     "roi_per_cycle": round(roi_per_cycle, 2),
                     "annualized_roi": round(annualized_roi, 1),
-                    "base_score": round(quality_result.final_score, 1),
+                    "base_score": round(quality_result.total_score, 1),
                     "score": round(final_score, 1),
-                    "score_breakdown": score_to_dict(quality_result),
+                    "score_breakdown": {
+                        "total": round(quality_result.total_score, 1),
+                        "pillars": {k: {"score": round(v.actual_score, 1), "max": v.max_score} 
+                                   for k, v in quality_result.pillars.items()} if quality_result.pillars else {}
+                    },
                     "snapshot_date": sym_data["snapshot_date"],
                     "data_age_hours": sym_data["data_age_hours"]
                 })
