@@ -88,25 +88,26 @@ _analyst_executor = ThreadPoolExecutor(max_workers=10)
 # ETF symbols for special handling
 ETF_SYMBOLS = {"SPY", "QQQ", "IWM", "DIA", "XLF", "XLE", "XLK", "XLV", "XLI", "XLB", "XLU", "XLP", "XLY", "GLD", "SLV", "ARKK", "ARKG", "ARKW", "TLT", "EEM", "VXX", "UVXY", "SQQQ", "TQQQ"}
 
-# Symbol universe (fixed at ~60)
+# Symbol universe (fixed at ~60, validated for snapshot completeness)
+# NOTE: GS, BLK, AMGN, MMM, GLD removed due to option chain validation issues
 SCAN_SYMBOLS = [
     # Tech Giants
     "AAPL", "MSFT", "GOOGL", "AMZN", "META", "NVDA", "TSLA", "AMD", "INTC", "CRM",
-    # Finance
-    "JPM", "BAC", "WFC", "GS", "MS", "C", "USB", "PNC", "SCHW", "BLK",
+    # Finance (excluding GS, BLK - incomplete chains)
+    "JPM", "BAC", "WFC", "MS", "C", "USB", "PNC", "SCHW",
     # Consumer
     "WMT", "HD", "NKE", "SBUX", "MCD", "DIS", "CMCSA", "VZ", "T",
-    # Healthcare
-    "JNJ", "UNH", "PFE", "MRK", "ABBV", "BMY", "GILD", "AMGN", "LLY",
+    # Healthcare (excluding AMGN - incomplete chain)
+    "JNJ", "UNH", "PFE", "MRK", "ABBV", "BMY", "GILD", "LLY",
     # Energy
     "XOM", "CVX", "COP", "SLB", "EOG", "OXY", "DVN", "HAL", "MPC",
-    # Industrial
-    "CAT", "DE", "BA", "HON", "GE", "MMM", "UPS", "RTX",
+    # Industrial (excluding MMM - incomplete chain)
+    "CAT", "DE", "BA", "HON", "GE", "UPS", "RTX",
     # Other Popular
     "PLTR", "SOFI", "COIN", "HOOD", "RIVN", "LCID", "NIO", "UBER", "LYFT",
     "AAL", "DAL", "UAL", "CCL", "NCLH", "MGM", "WYNN",
-    # ETFs
-    "SPY", "QQQ", "IWM", "GLD", "SLV"
+    # ETFs (excluding GLD - incomplete chain)
+    "SPY", "QQQ", "IWM", "SLV"
 ]
 
 
