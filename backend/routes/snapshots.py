@@ -86,23 +86,29 @@ async def ingest_stock_snapshot(
 @snapshot_router.post("/ingest/chain/{symbol}")
 async def ingest_option_chain_snapshot(
     symbol: str,
-    stock_price: float = Query(..., description="Current stock price"),
+    stock_price: float = Query(..., description="Stock close price (previous NYSE close)"),
+    stock_trade_date: str = Query(None, description="Stock trade date for cross-validation"),
     user: dict = Depends(get_current_user)
 ):
     """
     Ingest option chain snapshot for a symbol.
     
-    Requires stock_price to validate chain completeness.
+    CCE MASTER ARCHITECTURE - LAYER 1 COMPLIANT
+    
+    Requires stock_price (must be stock_close_price from stock snapshot).
+    Optionally validates date consistency with stock_trade_date.
     """
     service = get_snapshot_service()
-    result = await service.ingest_option_chain_snapshot(symbol, stock_price)
+    result = await service.ingest_option_chain_snapshot(symbol, stock_price, stock_trade_date)
     
     return {
         "symbol": symbol,
         "success": result.get("completeness_flag", False),
+        "date_validation_passed": result.get("date_validation_passed", True),
         "valid_contracts": result.get("valid_contracts", 0),
         "total_contracts": result.get("total_contracts", 0),
-        "snapshot_time": result.get("options_snapshot_time")
+        "snapshot_time": result.get("options_snapshot_time"),
+        "options_data_trade_day": result.get("options_data_trade_day")
     }
 
 
