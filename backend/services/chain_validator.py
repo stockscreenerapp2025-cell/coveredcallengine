@@ -1,28 +1,49 @@
 """
-Option Chain Validator - PHASE 2: Pass/Fail Validation
+Option Chain Validator - LAYER 2: Validation & Structure Layer
+==============================================================
+
+CCE MASTER ARCHITECTURE COMPLIANCE - LAYER 2
 
 This validator runs BEFORE any strategy logic to reject bad chains.
+It acts as the GATEKEEPER between ingested data and strategy selection.
 
-VALIDATION RULES:
+INCLUDES:
+- OptionChainValidator - Main chain validation
+- PricingValidator - BID/ASK/Spread enforcement
+- CalendarValidator - Date/timestamp consistency
+
+VALIDATION RULES (NON-NEGOTIABLE):
 - Expiry must exist exactly (no inference)
 - Strike must exist exactly (no rounding)
-- Both calls and puts must exist
+- Both calls and puts must exist (for relevant strategies)
 - Strikes must exist within ±20% of spot price
 - BID must not be null or zero
+- ASK must not be null or zero  
+- Spread ≤ 10% (NOT 50%)
 - Timestamp must be consistent
 
-FAILURE ACTION:
-- Reject symbol entirely
+FAILURE BEHAVIOR:
+- Reject symbol ENTIRELY
+- Store rejection reason
+- Symbol INVISIBLE to all downstream layers
 - Do NOT score
 - Do NOT display
-- Log explicit rejection reason
 """
 
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from typing import Dict, List, Optional, Tuple, Any
+import pandas_market_calendars as mcal
 
 logger = logging.getLogger(__name__)
+
+# ==================== LAYER 2 CONSTANTS ====================
+# CRITICAL: Spread threshold per CCE Master Architecture Spec
+MAX_SPREAD_PCT = 10.0  # MANDATORY: 10%, not 50%
+
+# Minimum requirements
+MIN_STRIKES_REQUIRED = 3
+MIN_OI_FOR_LEAPS = 500
 
 
 class ChainValidationError(Exception):
@@ -31,6 +52,218 @@ class ChainValidationError(Exception):
         self.symbol = symbol
         self.reason = reason
         super().__init__(f"{symbol}: {reason}")
+
+
+# ==================== CALENDAR VALIDATOR ====================
+
+class CalendarValidator:
+    """
+    CCE MASTER ARCHITECTURE - LAYER 2: Calendar Validation
+    
+    Validates:
+    - NYSE trading calendar compliance
+    - Timestamp consistency between stock and options
+    - Data freshness
+    """
+    
+    def __init__(self):
+        self._nyse_calendar = mcal.get_calendar('NYSE')
+    
+    def get_last_trading_day(self, reference_date: datetime = None) -> datetime:
+        """Get the most recent NYSE trading day."""
+        if reference_date is None:
+            reference_date = datetime.now(timezone.utc)
+        
+        start = reference_date - timedelta(days=10)
+        end = reference_date
+        
+        schedule = self._nyse_calendar.schedule(
+            start_date=start.strftime('%Y-%m-%d'),
+            end_date=end.strftime('%Y-%m-%d')
+        )
+        
+        if schedule.empty:
+            current = reference_date
+            while current.weekday() >= 5:
+                current -= timedelta(days=1)
+            return current.replace(hour=16, minute=0, second=0, microsecond=0)
+        
+        last_day = schedule.index[-1]
+        return last_day.to_pydatetime().replace(tzinfo=timezone.utc)
+    
+    def is_trading_day(self, date: datetime = None) -> bool:
+        """Check if a given date is an NYSE trading day."""
+        if date is None:
+            date = datetime.now(timezone.utc)
+        
+        schedule = self._nyse_calendar.schedule(
+            start_date=date.strftime('%Y-%m-%d'),
+            end_date=date.strftime('%Y-%m-%d')
+        )
+        return not schedule.empty
+    
+    def validate_snapshot_dates(
+        self,
+        stock_trade_date: str,
+        options_trade_date: str
+    ) -> Tuple[bool, Optional[str]]:
+        """
+        Validate that stock and options snapshot dates match.
+        
+        CCE MASTER ARCHITECTURE RULE:
+        stock_price_trade_date MUST equal options_data_trade_day
+        
+        Returns: (is_valid, rejection_reason)
+        """
+        if not stock_trade_date:
+            return False, "Stock trade date is missing"
+        
+        if not options_trade_date:
+            return False, "Options trade date is missing"
+        
+        if stock_trade_date != options_trade_date:
+            return False, f"DATE MISMATCH: stock_trade_date={stock_trade_date} != options_trade_date={options_trade_date}"
+        
+        # Verify it's a valid trading day
+        try:
+            trade_dt = datetime.strptime(stock_trade_date, '%Y-%m-%d')
+            if not self.is_trading_day(trade_dt):
+                return False, f"Trade date {stock_trade_date} is not a valid NYSE trading day"
+        except ValueError as e:
+            return False, f"Invalid date format: {e}"
+        
+        return True, None
+    
+    def validate_data_freshness(
+        self,
+        data_age_hours: float,
+        max_age_hours: float = 48.0
+    ) -> Tuple[bool, Optional[str]]:
+        """
+        Validate that data is not stale.
+        
+        Returns: (is_valid, rejection_reason)
+        """
+        if data_age_hours is None:
+            return False, "Data age not available"
+        
+        if data_age_hours > max_age_hours:
+            return False, f"Data is stale: {data_age_hours:.1f}h old (max {max_age_hours}h)"
+        
+        return True, None
+
+
+# ==================== PRICING VALIDATOR ====================
+
+class PricingValidator:
+    """
+    CCE MASTER ARCHITECTURE - LAYER 2: Pricing Validation
+    
+    Enforces:
+    - SELL legs → BID ONLY
+    - BUY legs → ASK ONLY
+    - Spread ≤ 10%
+    - BID=0 or ASK=0 → REJECTED
+    - No midpoint, no last trade, no averaging
+    """
+    
+    def __init__(self, max_spread_pct: float = MAX_SPREAD_PCT):
+        """
+        Initialize pricing validator.
+        
+        Args:
+            max_spread_pct: Maximum allowed bid-ask spread (default 10%)
+        """
+        self.max_spread_pct = max_spread_pct
+    
+    def validate_sell_leg(
+        self,
+        bid: float,
+        ask: float = None,
+        contract_desc: str = ""
+    ) -> Tuple[bool, Optional[str], Optional[float]]:
+        """
+        Validate pricing for a SELL leg.
+        
+        CCE MASTER ARCHITECTURE RULE:
+        SELL legs (CC short call, PMCC short call) → BID ONLY
+        
+        Args:
+            bid: Bid price
+            ask: Ask price (for spread validation)
+            contract_desc: Description for error messages
+        
+        Returns: (is_valid, rejection_reason, valid_price)
+        """
+        # BID must exist and be > 0
+        if bid is None or bid <= 0:
+            return False, f"{contract_desc}: BID is zero or missing (SELL leg requires BID)", None
+        
+        # If ASK available, validate spread
+        if ask is not None and ask > 0:
+            spread_pct = ((ask - bid) / ask) * 100
+            if spread_pct > self.max_spread_pct:
+                return False, f"{contract_desc}: Spread {spread_pct:.1f}% exceeds max {self.max_spread_pct}%", None
+        
+        return True, None, bid
+    
+    def validate_buy_leg(
+        self,
+        ask: float,
+        bid: float = None,
+        contract_desc: str = ""
+    ) -> Tuple[bool, Optional[str], Optional[float]]:
+        """
+        Validate pricing for a BUY leg.
+        
+        CCE MASTER ARCHITECTURE RULE:
+        BUY legs (PMCC LEAP) → ASK ONLY
+        
+        Args:
+            ask: Ask price
+            bid: Bid price (for spread validation)
+            contract_desc: Description for error messages
+        
+        Returns: (is_valid, rejection_reason, valid_price)
+        """
+        # ASK must exist and be > 0
+        if ask is None or ask <= 0:
+            return False, f"{contract_desc}: ASK is zero or missing (BUY leg requires ASK)", None
+        
+        # If BID available, validate spread
+        if bid is not None and bid > 0:
+            spread_pct = ((ask - bid) / ask) * 100
+            if spread_pct > self.max_spread_pct:
+                return False, f"{contract_desc}: Spread {spread_pct:.1f}% exceeds max {self.max_spread_pct}%", None
+        
+        return True, None, ask
+    
+    def validate_spread(
+        self,
+        bid: float,
+        ask: float,
+        contract_desc: str = ""
+    ) -> Tuple[bool, Optional[str]]:
+        """
+        Validate bid-ask spread independently.
+        
+        CCE MASTER ARCHITECTURE RULE:
+        If (ASK − BID) / ASK > 10% → option REJECTED
+        
+        Returns: (is_valid, rejection_reason)
+        """
+        if bid is None or bid <= 0:
+            return False, f"{contract_desc}: BID is zero or missing"
+        
+        if ask is None or ask <= 0:
+            return False, f"{contract_desc}: ASK is zero or missing"
+        
+        spread_pct = ((ask - bid) / ask) * 100
+        
+        if spread_pct > self.max_spread_pct:
+            return False, f"{contract_desc}: Spread {spread_pct:.1f}% exceeds maximum {self.max_spread_pct}%"
+        
+        return True, None
 
 
 class OptionChainValidator:
