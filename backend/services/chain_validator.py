@@ -266,27 +266,47 @@ class PricingValidator:
         return True, None
 
 
+# ==================== OPTION CHAIN VALIDATOR ====================
+
 class OptionChainValidator:
     """
-    Validates option chains before any strategy logic.
+    CCE MASTER ARCHITECTURE - LAYER 2: Main Chain Validator
     
-    A chain that fails validation is REJECTED entirely:
+    A chain that fails validation is REJECTED ENTIRELY:
     - Symbol is excluded from results
     - No scoring is performed
-    - Rejection reason is logged
+    - Symbol invisible to downstream layers
+    - Rejection reason is logged and stored
+    
+    FAILURE CONDITIONS (per spec):
+    - Exact expiry missing
+    - Exact strike missing
+    - Calls or puts missing (when required)
+    - Missing strikes ±20% of spot
+    - Timestamp inconsistency
+    - Any required bid/ask missing
+    - Spread > 10%
     """
     
-    def __init__(self, min_strikes_required: int = 3, max_spread_pct: float = 50.0):
+    def __init__(
+        self, 
+        min_strikes_required: int = MIN_STRIKES_REQUIRED, 
+        max_spread_pct: float = MAX_SPREAD_PCT  # LAYER 2 COMPLIANT: 10%
+    ):
         """
         Initialize validator.
         
         Args:
             min_strikes_required: Minimum strikes needed within ±20% of spot
-            max_spread_pct: Maximum bid-ask spread percentage allowed
+            max_spread_pct: Maximum bid-ask spread percentage (default 10%)
         """
         self.min_strikes_required = min_strikes_required
         self.max_spread_pct = max_spread_pct
         self.rejection_log: List[Dict] = []
+        
+        # Component validators
+        self.pricing_validator = PricingValidator(max_spread_pct)
+        self.calendar_validator = CalendarValidator()
     
     def validate_chain(
         self,
@@ -295,18 +315,24 @@ class OptionChainValidator:
         calls: List[Dict],
         puts: List[Dict] = None,
         expiries: List[str] = None,
-        require_puts: bool = False
+        require_puts: bool = False,
+        stock_trade_date: str = None,
+        options_trade_date: str = None
     ) -> Tuple[bool, Optional[str]]:
         """
         Validate an option chain for a symbol.
         
+        CCE MASTER ARCHITECTURE - LAYER 2 COMPLIANT
+        
         Args:
             symbol: Stock symbol
-            stock_price: Current stock price
+            stock_price: Stock close price (must be previous NYSE close)
             calls: List of call option contracts
             puts: List of put option contracts (optional for CC)
             expiries: List of available expiration dates
             require_puts: Whether puts are required (for spreads)
+            stock_trade_date: Stock snapshot trade date (for cross-validation)
+            options_trade_date: Options snapshot trade date (for cross-validation)
         
         Returns:
             (is_valid, rejection_reason)
@@ -316,21 +342,29 @@ class OptionChainValidator:
         try:
             # VALIDATION 1: Stock price must be valid
             if not stock_price or stock_price <= 0:
-                return self._reject(symbol, "Invalid stock price")
+                return self._reject(symbol, "Invalid stock price (must be previous NYSE close)")
             
-            # VALIDATION 2: Expiries must exist
+            # VALIDATION 2: Date cross-validation (LAYER 1 compliance check)
+            if stock_trade_date and options_trade_date:
+                date_valid, date_error = self.calendar_validator.validate_snapshot_dates(
+                    stock_trade_date, options_trade_date
+                )
+                if not date_valid:
+                    return self._reject(symbol, date_error)
+            
+            # VALIDATION 3: Expiries must exist
             if not expiries or len(expiries) == 0:
                 return self._reject(symbol, "No expiration dates available")
             
-            # VALIDATION 3: Calls must exist
+            # VALIDATION 4: Calls must exist
             if not calls or len(calls) == 0:
                 return self._reject(symbol, "No call options available")
             
-            # VALIDATION 4: Puts must exist if required
+            # VALIDATION 5: Puts must exist if required
             if require_puts and (not puts or len(puts) == 0):
                 return self._reject(symbol, "No put options available (required for strategy)")
             
-            # VALIDATION 5: Check strikes within ±20% of spot
+            # VALIDATION 6: Check strikes within ±20% of spot
             min_strike = stock_price * 0.80
             max_strike = stock_price * 1.20
             
@@ -345,7 +379,7 @@ class OptionChainValidator:
                     f"Insufficient strikes within ±20% of spot (found {len(valid_strikes)}, need {self.min_strikes_required})"
                 )
             
-            # VALIDATION 6: Check BID prices
+            # VALIDATION 7: Check BID prices (SELL legs require BID)
             contracts_with_bid = [c for c in valid_strikes if c.get("bid", 0) > 0]
             
             if len(contracts_with_bid) < self.min_strikes_required:
@@ -354,27 +388,45 @@ class OptionChainValidator:
                     f"Insufficient contracts with valid BID (found {len(contracts_with_bid)}, need {self.min_strikes_required})"
                 )
             
-            # VALIDATION 7: Check bid-ask spread on valid contracts
+            # VALIDATION 8: Check ASK prices (for spread validation)
+            contracts_with_ask = [c for c in valid_strikes if c.get("ask", 0) > 0]
+            
+            if len(contracts_with_ask) < self.min_strikes_required:
+                return self._reject(
+                    symbol,
+                    f"Insufficient contracts with valid ASK (found {len(contracts_with_ask)}, need {self.min_strikes_required})"
+                )
+            
+            # VALIDATION 9: Check bid-ask spread on valid contracts (10% MAX)
+            contracts_passing_spread = []
             wide_spread_contracts = []
+            
             for c in contracts_with_bid:
                 bid = c.get("bid", 0)
                 ask = c.get("ask", 0)
+                
                 if bid > 0 and ask > 0:
-                    spread_pct = ((ask - bid) / ask) * 100
-                    if spread_pct > self.max_spread_pct:
+                    spread_valid, _ = self.pricing_validator.validate_spread(
+                        bid, ask, f"${c.get('strike')}"
+                    )
+                    if spread_valid:
+                        contracts_passing_spread.append(c)
+                    else:
+                        spread_pct = ((ask - bid) / ask) * 100
                         wide_spread_contracts.append({
                             "strike": c.get("strike"),
                             "spread_pct": round(spread_pct, 1)
                         })
             
-            # If ALL contracts have wide spreads, reject
-            if len(wide_spread_contracts) == len(contracts_with_bid):
+            # Need at least min_strikes_required contracts passing spread check
+            if len(contracts_passing_spread) < self.min_strikes_required:
                 return self._reject(
                     symbol,
-                    f"All contracts have bid-ask spread > {self.max_spread_pct}%"
+                    f"Insufficient contracts with spread ≤{self.max_spread_pct}% (found {len(contracts_passing_spread)}, need {self.min_strikes_required})"
                 )
             
             # Chain is valid
+            logger.info(f"[LAYER2] {symbol}: Chain validated - {len(contracts_passing_spread)} contracts pass spread check")
             return True, None
             
         except Exception as e:
