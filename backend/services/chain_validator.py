@@ -442,43 +442,50 @@ class OptionChainValidator:
         """
         Validate a single option contract.
         
+        CCE MASTER ARCHITECTURE - LAYER 2 COMPLIANT
+        
         Args:
             symbol: Stock symbol
             contract: Option contract data
-            stock_price: Current stock price
+            stock_price: Stock close price (previous NYSE close)
             is_buy_leg: True if this is a BUY leg (uses ASK), False for SELL (uses BID)
         
         Returns:
             (is_valid, rejection_reason)
         """
         try:
-            # VALIDATION 1: Strike must exist exactly
             strike = contract.get("strike")
+            expiry = contract.get("expiry")
+            bid = contract.get("bid", 0)
+            ask = contract.get("ask", 0)
+            
+            contract_desc = f"{symbol} ${strike} {expiry}"
+            
+            # VALIDATION 1: Strike must exist exactly
             if not strike or strike <= 0:
                 return False, "Strike price missing or invalid"
             
             # VALIDATION 2: Expiry must exist exactly
-            expiry = contract.get("expiry")
             if not expiry:
                 return False, "Expiry date missing"
             
-            # VALIDATION 3: BID must exist for SELL legs
-            bid = contract.get("bid", 0)
-            if not is_buy_leg and (not bid or bid <= 0):
-                return False, "BID is zero or missing (required for SELL leg)"
+            # VALIDATION 3: Use PricingValidator for BID/ASK/Spread
+            if is_buy_leg:
+                # BUY leg → ASK ONLY
+                valid, reason, _ = self.pricing_validator.validate_buy_leg(
+                    ask, bid, contract_desc
+                )
+                if not valid:
+                    return False, reason
+            else:
+                # SELL leg → BID ONLY
+                valid, reason, _ = self.pricing_validator.validate_sell_leg(
+                    bid, ask, contract_desc
+                )
+                if not valid:
+                    return False, reason
             
-            # VALIDATION 4: ASK must exist for BUY legs
-            ask = contract.get("ask", 0)
-            if is_buy_leg and (not ask or ask <= 0):
-                return False, "ASK is zero or missing (required for BUY leg)"
-            
-            # VALIDATION 5: Bid-Ask spread sanity check
-            if bid > 0 and ask > 0:
-                spread_pct = ((ask - bid) / ask) * 100
-                if spread_pct > self.max_spread_pct:
-                    return False, f"Bid-Ask spread too wide: {spread_pct:.1f}% (max {self.max_spread_pct}%)"
-            
-            # VALIDATION 6: Strike must be reasonable relative to stock price
+            # VALIDATION 4: Strike must be reasonable relative to stock price
             if stock_price > 0:
                 strike_ratio = strike / stock_price
                 if strike_ratio < 0.5 or strike_ratio > 2.0:
