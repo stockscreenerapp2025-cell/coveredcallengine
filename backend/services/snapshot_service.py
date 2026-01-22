@@ -398,7 +398,7 @@ class SnapshotService:
                             earnings_dates = calendar.loc['Earnings Date']
                             if len(earnings_dates) > 0:
                                 earnings_date = str(earnings_dates.iloc[0])[:10]
-                except:
+                except Exception:
                     pass
                 
                 # Return ONLY previousClose as the price
