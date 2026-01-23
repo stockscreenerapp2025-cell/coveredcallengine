@@ -372,6 +372,8 @@ async def validate_all_snapshots(symbols: List[str]) -> Dict[str, Any]:
     """
     Validate that ALL symbols have valid snapshots before scanning.
     
+    CCE MASTER ARCHITECTURE - LAYER 3 COMPLIANT
+    
     FAIL CLOSED: If ANY symbol is missing/stale/incomplete, raise SnapshotValidationError.
     
     Returns validation results if all pass.
@@ -397,12 +399,20 @@ async def validate_all_snapshots(symbols: List[str]) -> Dict[str, Any]:
             rejection_reasons.append(f"{symbol}: {chain_error}")
             continue
         
+        # LAYER 1 COMPLIANT: Use stock_close_price (fallback to price for backward compat)
+        stock_price = stock.get("stock_close_price") or stock.get("price")
+        
         valid_symbols.append({
             "symbol": symbol,
-            "stock_price": stock.get("price"),
+            "stock_price": stock_price,
+            "stock_price_trade_date": stock.get("stock_price_trade_date") or stock.get("snapshot_trade_date"),
             "snapshot_date": stock.get("snapshot_trade_date"),
             "data_age_hours": stock.get("data_age_hours"),
-            "valid_contracts": chain.get("valid_contracts", 0)
+            "valid_contracts": chain.get("valid_contracts", 0),
+            # Additional metadata for Layer 3
+            "market_cap": stock.get("market_cap"),
+            "avg_volume": stock.get("avg_volume"),
+            "earnings_date": stock.get("earnings_date")
         })
     
     validation_result = {
