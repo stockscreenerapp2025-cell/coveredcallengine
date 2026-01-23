@@ -238,7 +238,7 @@ def check_cc_eligibility(
 
 
 # ============================================================
-# LAYER 3: GREEKS ENRICHMENT
+# LAYER 3: GREEKS ENRICHMENT (ENHANCED)
 # ============================================================
 
 def enrich_option_greeks(
@@ -249,22 +249,23 @@ def enrich_option_greeks(
     """
     Enrich option contract with computed/estimated Greeks.
     
-    CCE MASTER ARCHITECTURE - LAYER 3 COMPLIANT
+    CCE MASTER ARCHITECTURE - LAYER 3 COMPLIANT (ENHANCED)
     
     Computes/estimates:
-    - Delta (from snapshot or estimated)
+    - Delta (from snapshot or estimated using validated previousClose)
     - IV (from snapshot)
-    - IV Rank (placeholder - requires historical data)
-    - Theta (estimated)
-    - Gamma (estimated)
+    - IV Rank (estimated from current IV relative to typical range)
+    - Theta (estimated based on premium and DTE)
+    - Gamma (estimated based on moneyness and time)
+    - ROI (%) = (Premium / Stock Price) * 100 * (365 / DTE)
     
     Args:
         contract: Option contract data from snapshot
-        stock_price: Stock close price
+        stock_price: Stock close price (validated previousClose from Layer 1)
         risk_free_rate: Risk-free rate for calculations
     
     Returns:
-        Enriched contract with Greeks
+        Enriched contract with Greeks and ROI
     """
     enriched = contract.copy()
     
@@ -272,6 +273,8 @@ def enrich_option_greeks(
     dte = contract.get("dte", 30)
     iv = contract.get("implied_volatility", 0)
     option_type = contract.get("option_type", "call")
+    premium = contract.get("bid", 0) or contract.get("premium", 0)
+    ask = contract.get("ask", 0)
     
     # DELTA - use from snapshot or estimate
     if "delta" not in enriched or enriched["delta"] == 0:
@@ -293,38 +296,203 @@ def enrich_option_greeks(
     if iv > 0 and iv < 5:  # Likely decimal form (0.30 = 30%)
         enriched["iv_pct"] = round(iv * 100, 1)
     else:
-        enriched["iv_pct"] = round(iv, 1)
+        enriched["iv_pct"] = round(iv, 1) if iv else 0
     
-    # IV RANK - placeholder (would require 52-week IV history)
-    # For now, use a simple estimate based on current IV
+    # IV RANK - estimated from current IV relative to typical range
+    # Uses range 15-80% as typical for most stocks
     if iv > 0:
-        # Rough estimate: assume typical IV range is 20-60%
         iv_pct = iv * 100 if iv < 5 else iv
-        enriched["iv_rank"] = min(100, max(0, (iv_pct - 20) / 40 * 100))
+        # More accurate IV rank estimation
+        # 15% = 0 rank, 50% = 50 rank, 80%+ = 100 rank
+        enriched["iv_rank"] = min(100, max(0, round((iv_pct - 15) / 65 * 100)))
     else:
         enriched["iv_rank"] = None
     
     # THETA estimate (simplified)
-    if dte > 0 and iv > 0:
+    if dte > 0 and premium > 0:
         # Rough theta estimate: premium decay accelerates near expiry
-        premium = contract.get("bid", 0) or contract.get("premium", 0)
-        if premium > 0:
-            daily_decay = premium / dte
-            # Adjust for time decay acceleration
-            if dte < 7:
-                daily_decay *= 1.5
-            elif dte < 14:
-                daily_decay *= 1.2
-            enriched["theta_estimate"] = -round(daily_decay, 3)
+        daily_decay = premium / dte
+        # Adjust for time decay acceleration (theta increases as expiry approaches)
+        if dte < 7:
+            daily_decay *= 1.5
+        elif dte < 14:
+            daily_decay *= 1.2
+        enriched["theta_estimate"] = -round(daily_decay, 3)
+    else:
+        enriched["theta_estimate"] = 0
     
     # GAMMA estimate (simplified)
-    if "delta" in enriched and dte > 0:
+    if "delta" in enriched and dte > 0 and stock_price > 0 and strike > 0:
         # Gamma is highest ATM and near expiry
         atm_factor = 1 - abs((stock_price - strike) / stock_price)
         time_factor = max(0.1, 1 - dte / 60)
         enriched["gamma_estimate"] = round(atm_factor * time_factor * 0.05, 4)
+    else:
+        enriched["gamma_estimate"] = 0
+    
+    # VEGA estimate (simplified - based on IV and DTE)
+    if iv > 0 and dte > 0 and stock_price > 0:
+        # Vega is higher for longer DTE and ATM options
+        atm_factor = 1 - abs((stock_price - strike) / stock_price) if strike > 0 else 0.5
+        time_factor = min(1.0, dte / 30)  # Normalize to 30 days
+        enriched["vega_estimate"] = round(stock_price * 0.01 * atm_factor * time_factor, 3)
+    else:
+        enriched["vega_estimate"] = 0
+    
+    # ROI CALCULATION: (Premium / Stock Price) * 100 * (365 / DTE)
+    # This is the annualized return on investment
+    if stock_price > 0 and premium > 0 and dte > 0:
+        roi_per_trade = (premium / stock_price) * 100
+        annualized_roi = roi_per_trade * (365 / dte)
+        enriched["roi_pct"] = round(roi_per_trade, 2)
+        enriched["roi_annualized"] = round(annualized_roi, 1)
+    else:
+        enriched["roi_pct"] = 0
+        enriched["roi_annualized"] = 0
+    
+    # Premium Ask (for reference)
+    enriched["premium_ask"] = round(ask, 2) if ask else None
     
     return enriched
+
+
+def enrich_pmcc_metrics(
+    leap_contract: Dict,
+    short_contract: Dict,
+    stock_price: float
+) -> Dict:
+    """
+    Compute PMCC-specific metrics for eligible contracts.
+    
+    CCE MASTER ARCHITECTURE - LAYER 3 COMPLIANT (PMCC ENRICHMENT)
+    
+    Computes:
+    - Leaps BUY eligibility
+    - Premium Ask (for LEAP BUY leg)
+    - Delta
+    - DTE
+    - Cost Calculation (LEAP cost)
+    - Width (spread between short call strike and LEAP strike)
+    - ROI per cycle
+    - Annualized ROI
+    
+    Args:
+        leap_contract: LEAP option data (BUY leg)
+        short_contract: Short call option data (SELL leg)
+        stock_price: Stock close price
+    
+    Returns:
+        Dict with PMCC metrics
+    """
+    pmcc_metrics = {}
+    
+    leap_strike = leap_contract.get("strike", 0)
+    leap_ask = leap_contract.get("ask", 0) or leap_contract.get("premium", 0)
+    leap_dte = leap_contract.get("dte", 0)
+    leap_delta = leap_contract.get("delta", 0)
+    leap_oi = leap_contract.get("open_interest", 0)
+    
+    short_strike = short_contract.get("strike", 0)
+    short_bid = short_contract.get("bid", 0) or short_contract.get("premium", 0)
+    short_dte = short_contract.get("dte", 0)
+    
+    # LEAP BUY eligibility (DTE >= 365, Delta >= 0.70, OI >= 500)
+    pmcc_metrics["leaps_buy_eligible"] = (
+        leap_dte >= 365 and 
+        leap_delta >= 0.70 and 
+        leap_oi >= 500 and
+        leap_ask > 0
+    )
+    
+    # Premium Ask (LEAP cost per contract)
+    pmcc_metrics["premium_ask"] = round(leap_ask, 2)
+    
+    # Delta
+    pmcc_metrics["delta"] = round(leap_delta, 3)
+    
+    # DTE
+    pmcc_metrics["leap_dte"] = leap_dte
+    pmcc_metrics["short_dte"] = short_dte
+    
+    # Cost Calculation (LEAP cost - what you pay to buy)
+    pmcc_metrics["leap_cost"] = round(leap_ask * 100, 2)  # Per contract (100 shares)
+    
+    # Width (spread between short call strike and LEAP strike)
+    pmcc_metrics["width"] = round(short_strike - leap_strike, 2) if short_strike > leap_strike else 0
+    
+    # Net Debit (what you pay upfront)
+    net_debit = leap_ask - short_bid
+    pmcc_metrics["net_debit"] = round(net_debit, 2)
+    pmcc_metrics["net_debit_total"] = round(net_debit * 100, 2)  # Per contract
+    
+    # Max Profit (if stock rises to short strike at expiry)
+    if short_strike > leap_strike and net_debit > 0:
+        max_profit = (short_strike - leap_strike) - net_debit
+        pmcc_metrics["max_profit"] = round(max_profit, 2)
+        pmcc_metrics["max_profit_total"] = round(max_profit * 100, 2)
+    else:
+        pmcc_metrics["max_profit"] = 0
+        pmcc_metrics["max_profit_total"] = 0
+    
+    # ROI per cycle (Short premium / LEAP cost)
+    if leap_ask > 0 and short_bid > 0:
+        roi_per_cycle = (short_bid / leap_ask) * 100
+        pmcc_metrics["roi_per_cycle"] = round(roi_per_cycle, 2)
+        
+        # Annualized ROI (assuming monthly cycles)
+        if short_dte > 0:
+            cycles_per_year = 365 / short_dte
+            pmcc_metrics["roi_annualized"] = round(roi_per_cycle * cycles_per_year, 1)
+        else:
+            pmcc_metrics["roi_annualized"] = 0
+    else:
+        pmcc_metrics["roi_per_cycle"] = 0
+        pmcc_metrics["roi_annualized"] = 0
+    
+    # Breakeven price
+    if leap_strike > 0 and net_debit > 0:
+        pmcc_metrics["breakeven"] = round(leap_strike + net_debit, 2)
+    else:
+        pmcc_metrics["breakeven"] = 0
+    
+    return pmcc_metrics
+
+
+def log_price_discrepancy(
+    symbol: str,
+    source1_name: str,
+    source1_price: float,
+    source2_name: str,
+    source2_price: float,
+    threshold_pct: float = 0.1
+) -> bool:
+    """
+    Log warning if price discrepancy exceeds threshold.
+    
+    Args:
+        symbol: Stock symbol
+        source1_name: Name of first price source
+        source1_price: Price from first source
+        source2_name: Name of second price source
+        source2_price: Price from second source
+        threshold_pct: Threshold percentage for logging (default 0.1%)
+    
+    Returns:
+        True if discrepancy detected, False otherwise
+    """
+    if source1_price <= 0 or source2_price <= 0:
+        return False
+    
+    diff_pct = abs(source1_price - source2_price) / source1_price * 100
+    
+    if diff_pct > threshold_pct:
+        logging.warning(
+            f"[PRICE DISCREPANCY] {symbol}: {source1_name}=${source1_price:.2f} vs "
+            f"{source2_name}=${source2_price:.2f} (diff={diff_pct:.2f}% > {threshold_pct}%)"
+        )
+        return True
+    
+    return False
 
 
 # ============================================================
