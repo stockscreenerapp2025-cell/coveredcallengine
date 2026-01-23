@@ -188,15 +188,15 @@ def check_cc_eligibility(
     """
     is_etf = symbol in ETF_SYMBOLS
     
-    # ETFs are exempt from some checks
+    # ETFs are exempt from most checks - they follow different rules
     if is_etf:
-        # ETFs still need price check
-        if scan_mode in ("system", "custom"):
-            if stock_price < CC_SYSTEM_MIN_PRICE or stock_price > CC_SYSTEM_MAX_PRICE:
-                return False, f"Price ${stock_price:.2f} outside $30-$90 range"
+        # ETFs have NO price restriction (SPY is ~$600, QQQ is ~$530)
+        # Only reject if price is completely unreasonable
+        if stock_price < 1 or stock_price > 2000:
+            return False, f"ETF price ${stock_price:.2f} outside valid range"
         return True, "ETF - eligible"
     
-    # PRICE CHECK
+    # PRICE CHECK (Stocks only)
     if scan_mode in ("system", "custom"):
         if stock_price < CC_SYSTEM_MIN_PRICE:
             return False, f"Price ${stock_price:.2f} below minimum ${CC_SYSTEM_MIN_PRICE}"
