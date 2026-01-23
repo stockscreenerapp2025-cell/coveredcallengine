@@ -1067,22 +1067,64 @@ async def get_dashboard_opportunities(
     """
     Get top opportunities for dashboard display.
     
+    Returns Top 5 Weekly + Top 5 Monthly covered calls for dashboard display.
+    
     ARCHITECTURE: Phase 2 - Reads ONLY from stored Mongo snapshots.
     
     FAIL CLOSED: Returns HTTP 409 if snapshot validation fails.
     """
-    # Use the covered calls endpoint with default parameters
-    return await screen_covered_calls(
-        limit=10,
+    # Get a broader set to filter into weekly and monthly
+    all_opportunities = await screen_covered_calls(
+        limit=100,  # Get more to ensure we have enough in each category
         risk_profile="moderate",
-        min_dte=7,
-        max_dte=45,
+        dte_mode="all",  # Get both weekly and monthly
+        scan_mode="system",
+        min_dte=None,
+        max_dte=None,
         min_premium_yield=0.5,
         max_premium_yield=20.0,
         min_otm_pct=0.0,
         max_otm_pct=15.0,
         user=user
     )
+    
+    results = all_opportunities.get("opportunities", all_opportunities.get("results", []))
+    
+    # Separate into weekly (DTE <= 14) and monthly (DTE > 14)
+    weekly_opps = [opp for opp in results if opp.get("dte", 0) <= WEEKLY_MAX_DTE]
+    monthly_opps = [opp for opp in results if opp.get("dte", 0) > WEEKLY_MAX_DTE]
+    
+    # Sort each by score descending
+    weekly_opps.sort(key=lambda x: x.get("score", 0), reverse=True)
+    monthly_opps.sort(key=lambda x: x.get("score", 0), reverse=True)
+    
+    # Take top 5 from each
+    top_weekly = weekly_opps[:5]
+    top_monthly = monthly_opps[:5]
+    
+    # Mark with expiry_type for frontend styling
+    for opp in top_weekly:
+        opp["expiry_type"] = "Weekly"
+    for opp in top_monthly:
+        opp["expiry_type"] = "Monthly"
+    
+    # Combine: Weekly first, then Monthly
+    combined = top_weekly + top_monthly
+    
+    return {
+        "total": len(combined),
+        "opportunities": combined,
+        "weekly_count": len(top_weekly),
+        "monthly_count": len(top_monthly),
+        "weekly_opportunities": top_weekly,
+        "monthly_opportunities": top_monthly,
+        # Preserve metadata from original response
+        "market_bias": all_opportunities.get("market_bias"),
+        "snapshot_validation": all_opportunities.get("snapshot_validation"),
+        "layer": 3,
+        "architecture": "TOP5_WEEKLY_TOP5_MONTHLY",
+        "live_data_used": False
+    }
 
 
 # ============================================================
