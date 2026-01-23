@@ -737,8 +737,11 @@ const Dashboard = () => {
               <Target className="w-5 h-5 text-emerald-400" />
               Top 10 Covered Call Opportunities
             </CardTitle>
-            <p className="text-xs text-zinc-500 mt-1">
-              Top 5 Weekly + Top 5 Monthly • $15-$500 stocks • OTM strikes • Weekly ≥0.8% ROI, Monthly ≥2.5% ROI
+            <p className="text-xs text-zinc-500 mt-1 flex items-center gap-2">
+              <Badge className="bg-cyan-500/20 text-cyan-400 border-cyan-500/30 text-xs">Top 5 Weekly</Badge>
+              <span>+</span>
+              <Badge className="bg-violet-500/20 text-violet-400 border-violet-500/30 text-xs">Top 5 Monthly</Badge>
+              <span className="ml-2">• OTM strikes • DTE {`<`}14 Weekly, {`>`}14 Monthly</span>
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -783,6 +786,7 @@ const Dashboard = () => {
                     <th>DTE</th>
                     <th>Premium</th>
                     <th>ROI</th>
+                    <th>ROI Ann.</th>
                     <th>Delta</th>
                     <th>IV</th>
                     <th>IV Rank</th>
@@ -793,82 +797,95 @@ const Dashboard = () => {
                   </tr>
                 </thead>
                 <tbody>
-                  {opportunities.map((opp, index) => (
-                    <tr 
-                      key={index} 
-                      className="cursor-pointer hover:bg-zinc-800/50 transition-colors" 
-                      data-testid={`opportunity-${opp.symbol}`}
-                      onClick={() => {
-                        setSelectedStock(opp.symbol);
-                        setIsModalOpen(true);
-                      }}
-                      title={`Click to view ${opp.symbol} details`}
-                    >
-                      <td className="font-semibold text-white">
-                        {opp.symbol}
-                        {opp.has_dividend && <span className="ml-1 text-yellow-400 text-xs">💰</span>}
-                      </td>
-                      <td>${opp.stock_price?.toFixed(2)}</td>
-                      <td>
-                        <div className="flex flex-col">
-                          <span className="font-mono text-sm text-emerald-400">{formatOptionContract(opp.dte, opp.strike, opp.expiry)}</span>
-                          <Badge className={`mt-0.5 w-fit ${opp.moneyness === 'ATM' ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30 text-xs' : 'bg-blue-500/20 text-blue-400 border-blue-500/30 text-xs'}`}>
-                            {opp.moneyness || (opp.strike_pct !== undefined ? (opp.strike_pct >= -2 && opp.strike_pct <= 2 ? 'ATM' : 'OTM') : 'OTM')}
+                  {opportunities.map((opp, index) => {
+                    const isWeekly = opp.expiry_type === 'Weekly' || opp.dte <= 14;
+                    const rowBorderClass = isWeekly 
+                      ? 'border-l-2 border-l-cyan-500/50' 
+                      : 'border-l-2 border-l-violet-500/50';
+                    
+                    return (
+                      <tr 
+                        key={index} 
+                        className={`cursor-pointer hover:bg-zinc-800/50 transition-colors ${rowBorderClass}`}
+                        data-testid={`opportunity-${opp.symbol}`}
+                        onClick={() => {
+                          setSelectedStock(opp.symbol);
+                          setIsModalOpen(true);
+                        }}
+                        title={`Click to view ${opp.symbol} details`}
+                      >
+                        <td className="font-semibold text-white">
+                          {opp.symbol}
+                          {opp.has_dividend && <span className="ml-1 text-yellow-400 text-xs">💰</span>}
+                        </td>
+                        <td>${opp.stock_price?.toFixed(2)}</td>
+                        <td>
+                          <div className="flex flex-col">
+                            <span className={`font-mono text-sm ${isWeekly ? 'text-cyan-400' : 'text-violet-400'}`}>
+                              {formatOptionContract(opp.dte, opp.strike, opp.expiry)}
+                            </span>
+                            <Badge className={`mt-0.5 w-fit ${opp.moneyness === 'ATM' ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30 text-xs' : 'bg-blue-500/20 text-blue-400 border-blue-500/30 text-xs'}`}>
+                              {opp.moneyness || (opp.otm_pct !== undefined ? (Math.abs(opp.otm_pct) <= 2 ? 'ATM' : 'OTM') : 'OTM')}
+                            </Badge>
+                          </div>
+                        </td>
+                        <td>
+                          <Badge className={isWeekly 
+                            ? 'bg-cyan-500/20 text-cyan-400 border-cyan-500/30' 
+                            : 'bg-violet-500/20 text-violet-400 border-violet-500/30'
+                          }>
+                            {isWeekly ? 'Weekly' : 'Monthly'}
                           </Badge>
-                        </div>
-                      </td>
-                      <td>
-                        <Badge className={opp.expiry_type === 'Weekly' ? 'bg-cyan-500/20 text-cyan-400 border-cyan-500/30' : 'bg-violet-500/20 text-violet-400 border-violet-500/30'}>
-                          {opp.expiry_type || (opp.dte <= 7 ? 'Weekly' : 'Monthly')}
-                        </Badge>
-                      </td>
-                      <td>{opp.dte}d</td>
-                      <td className="text-emerald-400">${opp.premium?.toFixed(2)}</td>
-                      <td className="text-cyan-400 font-medium">{opp.roi_pct?.toFixed(2)}%</td>
-                      <td>{opp.delta?.toFixed(2)}</td>
-                      <td>{opp.iv ? `${opp.iv?.toFixed(0)}%` : '-'}</td>
-                      <td>{opp.iv_rank ? `${opp.iv_rank?.toFixed(0)}%` : '-'}</td>
-                      <td className="text-zinc-400">{opp.open_interest ? opp.open_interest.toLocaleString() : '-'}</td>
-                      <td>
-                        <Badge className={`${opp.score >= 70 ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' : opp.score >= 50 ? 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30' : 'bg-cyan-500/20 text-cyan-400 border-cyan-500/30'}`}>
-                          {opp.score?.toFixed(0)}
-                        </Badge>
-                      </td>
-                      <td>
-                        {opp.analyst_rating ? (
-                          <Badge className={`text-xs ${
-                            opp.analyst_rating === 'Strong Buy' 
-                              ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30'
-                              : opp.analyst_rating === 'Buy'
-                                ? 'bg-green-500/20 text-green-400 border-green-500/30'
-                                : opp.analyst_rating === 'Hold'
-                                  ? 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30'
-                                  : 'bg-red-500/20 text-red-400 border-red-500/30'
-                          }`}>
-                            {opp.analyst_rating}
+                        </td>
+                        <td className={isWeekly ? 'text-cyan-300' : 'text-violet-300'}>{opp.dte}d</td>
+                        <td className="text-emerald-400">${opp.premium?.toFixed(2)}</td>
+                        <td className="text-cyan-400 font-medium">{opp.roi_pct?.toFixed(2) || opp.premium_yield?.toFixed(2)}%</td>
+                        <td className="text-amber-400 text-sm">{opp.roi_annualized ? `${opp.roi_annualized.toFixed(0)}%` : '-'}</td>
+                        <td>{opp.delta?.toFixed(2)}</td>
+                        <td>{opp.implied_volatility ? `${opp.implied_volatility?.toFixed(0)}%` : (opp.iv ? `${opp.iv?.toFixed(0)}%` : '-')}</td>
+                        <td>{opp.iv_rank ? `${opp.iv_rank?.toFixed(0)}%` : '-'}</td>
+                        <td className="text-zinc-400">{opp.open_interest ? opp.open_interest.toLocaleString() : '-'}</td>
+                        <td>
+                          <Badge className={`${opp.score >= 70 ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' : opp.score >= 50 ? 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30' : 'bg-cyan-500/20 text-cyan-400 border-cyan-500/30'}`}>
+                            {opp.score?.toFixed(0)}
                           </Badge>
-                        ) : (
-                          <span className="text-zinc-600 text-xs">-</span>
-                        )}
-                      </td>
-                      <td className="text-center">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setSimulateOpp(opp);
-                            setSimulateModalOpen(true);
-                          }}
-                          className="bg-violet-500/10 border-violet-500/30 text-violet-400 hover:bg-violet-500/20 hover:text-violet-300"
-                          data-testid={`dashboard-simulate-btn-${opp.symbol}`}
-                        >
-                          <Play className="w-3 h-3 mr-1" />
-                          Simulate
-                        </Button>
-                      </td>
-                    </tr>
-                  ))}
+                        </td>
+                        <td>
+                          {opp.analyst_rating ? (
+                            <Badge className={`text-xs ${
+                              opp.analyst_rating === 'Strong Buy' 
+                                ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30'
+                                : opp.analyst_rating === 'Buy'
+                                  ? 'bg-green-500/20 text-green-400 border-green-500/30'
+                                  : opp.analyst_rating === 'Hold'
+                                    ? 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30'
+                                    : 'bg-red-500/20 text-red-400 border-red-500/30'
+                            }`}>
+                              {opp.analyst_rating}
+                            </Badge>
+                          ) : (
+                            <span className="text-zinc-600 text-xs">-</span>
+                          )}
+                        </td>
+                        <td className="text-center">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSimulateOpp(opp);
+                              setSimulateModalOpen(true);
+                            }}
+                            className="bg-violet-500/10 border-violet-500/30 text-violet-400 hover:bg-violet-500/20 hover:text-violet-300"
+                            data-testid={`dashboard-simulate-btn-${opp.symbol}`}
+                          >
+                            <Play className="w-3 h-3 mr-1" />
+                            Simulate
+                          </Button>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
