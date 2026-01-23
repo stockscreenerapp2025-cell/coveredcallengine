@@ -741,21 +741,28 @@ async def screen_covered_calls(
             if not is_valid:
                 continue
             
-            # LAYER 3: Enrich with Greeks
+            # LAYER 3: Enrich with Greeks and ROI
             enriched_call = enrich_option_greeks(call, stock_price)
+            
+            # Use enriched ROI calculation
+            roi_pct = enriched_call.get("roi_pct", premium_yield)
+            roi_annualized = enriched_call.get("roi_annualized", 0)
             
             # Calculate quality score (Phase 7)
             trade_data = {
                 "iv": iv,
                 "iv_rank": enriched_call.get("iv_rank", iv * 100 if iv < 1 else iv),
                 "delta": enriched_call.get("delta", 0.3),
-                "roi_pct": premium_yield,
+                "roi_pct": roi_pct,
                 "premium": premium,
                 "stock_price": stock_price,
                 "dte": dte,
                 "strike": strike,
                 "open_interest": oi,
-                "is_etf": symbol in ETF_SYMBOLS
+                "volume": call.get("volume", 0),
+                "is_etf": symbol in ETF_SYMBOLS,
+                "market_cap": stock_snapshot.get("market_cap"),
+                "analyst_rating": stock_snapshot.get("analyst_rating")
             }
             quality_result = calculate_cc_quality_score(trade_data)
             
@@ -770,13 +777,19 @@ async def screen_covered_calls(
                 "dte_category": "weekly" if dte <= WEEKLY_MAX_DTE else "monthly",
                 "stock_price": round(stock_price, 2),
                 "premium": round(premium, 2),
+                "premium_ask": enriched_call.get("premium_ask"),
                 "premium_yield": round(premium_yield, 2),
                 "otm_pct": round(otm_pct, 2),
+                # LAYER 3: Enhanced ROI
+                "roi_pct": round(roi_pct, 2),
+                "roi_annualized": round(roi_annualized, 1),
                 # LAYER 3: Enriched Greeks
                 "delta": round(enriched_call.get("delta", 0), 4),
+                "gamma": enriched_call.get("gamma_estimate", 0),
+                "theta": enriched_call.get("theta_estimate", 0),
+                "vega": enriched_call.get("vega_estimate", 0),
                 "implied_volatility": round(enriched_call.get("iv_pct", iv * 100 if iv < 1 else iv), 1),
                 "iv_rank": round(enriched_call.get("iv_rank", 0), 1) if enriched_call.get("iv_rank") else None,
-                "theta_estimate": enriched_call.get("theta_estimate"),
                 "open_interest": oi,
                 "volume": call.get("volume", 0),
                 # Scores
