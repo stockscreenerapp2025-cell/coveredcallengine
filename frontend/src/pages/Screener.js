@@ -95,6 +95,9 @@ const Screener = () => {
     
     setSimulateLoading(true);
     try {
+      // Handle both iv and implied_volatility field names
+      const ivValue = simulateOpp.iv || (simulateOpp.implied_volatility ? simulateOpp.implied_volatility / 100 : 0);
+      
       const tradeData = {
         symbol: simulateOpp.symbol,
         strategy_type: 'covered_call',
@@ -103,7 +106,7 @@ const Screener = () => {
         short_call_expiry: simulateOpp.expiry,
         short_call_premium: simulateOpp.premium,
         short_call_delta: simulateOpp.delta,
-        short_call_iv: simulateOpp.iv,
+        short_call_iv: ivValue,
         contracts: simulateContracts,
         scan_parameters: {
           score: simulateOpp.score,
