@@ -425,6 +425,49 @@ class TestLayerComplianceAudit:
                     f"Annualized mismatch: {annualized} vs {expected_annual}"
         
         print("✓ ROI Calculation Formula PASSED")
+    
+    def test_etf_flows_through_pipeline(self, auth_token):
+        """
+        ETF-SPECIFIC TEST: At least one ETF must flow end-to-end.
+        
+        ETFs must:
+        - Have instrument_type = "ETF"
+        - Use same pricing rules (SELL=BID)
+        - Appear in results with full data
+        """
+        response = requests.get(
+            f"{BASE_URL}/api/screener/covered-calls",
+            params={"dte_mode": "all", "limit": 100},
+            headers={"Authorization": f"Bearer {auth_token}"}
+        )
+        assert response.status_code == 200
+        data = response.json()
+        
+        # Find ETFs in results
+        etf_opps = [
+            opp for opp in data.get("opportunities", [])
+            if opp.get("is_etf") or opp.get("underlying", {}).get("instrument_type") == "ETF"
+        ]
+        
+        assert len(etf_opps) > 0, "No ETFs found in CC scan results"
+        
+        # Verify ETF structure matches contract
+        etf = etf_opps[0]
+        symbol = etf.get("symbol") or etf.get("underlying", {}).get("symbol")
+        
+        # Check instrument_type is set
+        inst_type = etf.get("instrument_type") or etf.get("underlying", {}).get("instrument_type")
+        assert inst_type == "ETF", f"ETF {symbol} has wrong instrument_type: {inst_type}"
+        
+        # Check pricing rules (premium = BID)
+        short_call = etf.get("short_call", {})
+        premium = short_call.get("premium", etf.get("premium"))
+        bid = short_call.get("bid", etf.get("premium"))
+        
+        assert abs(premium - bid) <= PREMIUM_TOLERANCE, \
+            f"ETF {symbol} premium != BID: {premium} vs {bid}"
+        
+        print(f"✓ ETF Pipeline Test PASSED (Found {len(etf_opps)} ETFs, verified: {symbol})")
 
 
 if __name__ == "__main__":
