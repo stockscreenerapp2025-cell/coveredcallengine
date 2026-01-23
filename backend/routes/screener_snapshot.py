@@ -779,10 +779,13 @@ async def screen_covered_calls(
             # ==============================================================
             # AUTHORITATIVE CC CONTRACT - LAYER 3 COMPLIANT
             # ==============================================================
+            is_etf = symbol in ETF_SYMBOLS
+            
             opportunities.append({
                 # UNDERLYING object
                 "underlying": {
                     "symbol": symbol,
+                    "instrument_type": "ETF" if is_etf else "STOCK",
                     "last_price": round(stock_price, 2),
                     "price_source": "BID",  # Layer 1 authoritative
                     "snapshot_date": sym_data["snapshot_date"],
@@ -826,6 +829,7 @@ async def screen_covered_calls(
                 "metadata": {
                     "dte_category": "weekly" if dte <= WEEKLY_MAX_DTE else "monthly",
                     "earnings_safe": stock_snapshot.get("earnings_date") is None,
+                    "is_etf": is_etf,
                     "validation_flags": {
                         "spread_ok": spread_pct < 10,
                         "liquidity_ok": oi >= 100,
