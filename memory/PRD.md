@@ -5,7 +5,7 @@
 ## Overview
 Web-based application for screening Covered Call (CC) and Poor Man's Covered Call (PMCC) options strategies with AI-assisted scoring.
 
-## Current Status: LAYER 3 ENRICHMENT COMPLETE
+## Current Status: LAYER 3 DATA PIPELINE FIX COMPLETE
 Major architectural refactor progressing through 5-layer compliance.
 
 ## Architectural Layers
@@ -15,8 +15,32 @@ Major architectural refactor progressing through 5-layer compliance.
 | 1 | Data Ingestion & Snapshot | ✅ Complete | Jan 22, 2026 |
 | 2 | Validation & Structure | ✅ Complete | Jan 22, 2026 |
 | 3 | Strategy Selection & Enrichment | ✅ Complete | Jan 23, 2026 |
+| 3.1 | Data Pipeline Fix | ✅ Complete | Jan 23, 2026 |
 | 4 | Scoring & Ranking | 🔜 Next | - |
 | 5 | Presentation & Watchlist | 📋 Backlog | - |
+
+## Layer 3.1 Data Pipeline Fix (Jan 23, 2026)
+
+### Issues Fixed
+1. **Screener CC IV Column Blank** - Fixed field mapping (implied_volatility → iv fallback)
+2. **Duplicate Symbols in Screener** - Added deduplication logic to CC and PMCC endpoints
+3. **PMCC Missing Columns** - Fixed normalizer to handle leap_* and leaps_* prefixes
+4. **Simulator Incorrect IV** - Fixed IV conversion from percentage to decimal
+
+### Backend Changes
+- Deduplication: Both CC and PMCC endpoints now return only best option per symbol
+- PMCC: All fields (leap_ask, leap_delta, width, breakeven) now populated
+- Dashboard: Returns `weekly_opportunities` and `monthly_opportunities` arrays
+
+### Frontend Changes
+- Screener.js: IV column maps to `implied_volatility` with fallbacks
+- PMCC.js: normalizeOpp() handles both `leap_*` and `leaps_*` prefixes
+- Dashboard.js: Fixed IV conversion for simulator, fixed expiry formatting
+- Simulator.js: IV display handles multiple field name formats
+
+### Test Coverage
+- 37 tests passing (20 unit + 9 pipeline fix + 8 integration)
+- Test files: test_layer3_enrichment.py, test_layer3_pipeline_fix.py, test_layer3_integration.py
 
 ## Layer 3 Enhancements (Jan 23, 2026)
 
