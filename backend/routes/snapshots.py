@@ -21,8 +21,8 @@ snapshot_router = APIRouter(prefix="/api/snapshots", tags=["snapshots"])
 
 # Default symbols for CC screening
 CC_SYMBOLS = [
-    # Tech
-    "AAPL", "MSFT", "GOOGL", "META", "NVDA", "AMD", "INTC", "CSCO", "ORCL", "IBM",
+    # Tech (GOOGL = Class A, GOOG = Class C - both included)
+    "AAPL", "MSFT", "GOOGL", "GOOG", "META", "NVDA", "AMD", "INTC", "CSCO", "ORCL", "IBM",
     "MU", "QCOM", "TXN", "ADI", "MCHP", "ON", "HPQ", "DELL",
     # Financials
     "JPM", "BAC", "WFC", "C", "GS", "MS", "USB", "PNC", "TFC", "KEY", "RF", "CFG",
