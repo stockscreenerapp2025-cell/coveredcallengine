@@ -926,7 +926,7 @@ const Dashboard = () => {
                 </div>
                 <div className="flex justify-between">
                   <span className="text-zinc-400">Expiry</span>
-                  <span className="text-white">{formatOptionContract(simulateOpp.expiry, simulateOpp.strike)}</span>
+                  <span className="text-white">{formatOptionContract(simulateOpp.dte, simulateOpp.strike, simulateOpp.expiry)}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-zinc-400">Premium</span>
