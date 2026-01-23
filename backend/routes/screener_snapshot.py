@@ -1077,10 +1077,122 @@ async def screen_pmcc(
                 # Width calculation
                 width = short_strike - leap_strike
                 
+                # LAYER 3: Compute short call delta (if not from snapshot)
+                # Estimate based on moneyness for OTM calls
+                short_delta = short.get("delta", 0)
+                if short_delta == 0 and stock_price > 0 and short_strike > 0:
+                    moneyness = (stock_price - short_strike) / stock_price
+                    # OTM call delta estimation
+                    if moneyness < 0:  # OTM
+                        short_delta = max(0.05, 0.50 + moneyness * 2)
+                    else:  # ITM
+                        short_delta = min(0.95, 0.50 + moneyness * 2)
+                
+                # Calculate short call Greeks
+                short_gamma = short.get("gamma", 0)
+                short_theta = short.get("theta", 0)
+                short_vega = short.get("vega", 0)
+                
+                # Estimate if not provided
+                if short_theta == 0 and short_premium > 0 and short_dte > 0:
+                    short_theta = -round(short_premium / short_dte, 4)
+                
+                # Calculate spread percentages
+                short_spread_pct = ((short_ask - short_premium) / short_premium * 100) if short_premium > 0 and short_ask else 0
+                leap_spread_pct = ((leap_ask - leap.get("bid", leap_ask)) / leap_ask * 100) if leap_ask > 0 else 0
+                
+                # Build contract symbols
+                short_exp_fmt = datetime.strptime(short_expiry, "%Y-%m-%d").strftime("%y%m%d")
+                leap_exp_fmt = datetime.strptime(leap_expiry, "%Y-%m-%d").strftime("%y%m%d")
+                short_contract_symbol = f"{symbol}{short_exp_fmt}C{int(short_strike * 1000):08d}"
+                leap_contract_symbol = f"{symbol}{leap_exp_fmt}C{int(leap_strike * 1000):08d}"
+                
+                # ==============================================================
+                # AUTHORITATIVE PMCC CONTRACT - LAYER 3 COMPLIANT
+                # ==============================================================
                 opportunities.append({
+                    # UNDERLYING object
+                    "underlying": {
+                        "symbol": symbol,
+                        "last_price": round(stock_price, 2),
+                        "price_source": "BID",
+                        "snapshot_date": sym_data["snapshot_date"],
+                        "market_cap": stock_snapshot.get("market_cap"),
+                        "analyst_rating": stock_snapshot.get("analyst_rating")
+                    },
+                    
+                    # SHORT_CALL object - SELL leg
+                    "short_call": {
+                        "strike": short_strike,
+                        "expiry": short_expiry,
+                        "dte": short_dte,
+                        "contract_symbol": short_contract_symbol,
+                        "premium": round(short_premium, 2),  # BID ONLY
+                        "bid": round(short_premium, 2),
+                        "ask": round(short_ask, 2) if short_ask else None,
+                        "spread_pct": round(short_spread_pct, 2),
+                        "delta": round(short_delta, 4),
+                        "gamma": round(short_gamma, 4) if short_gamma else None,
+                        "theta": round(short_theta, 4) if short_theta else None,
+                        "vega": round(short_vega, 4) if short_vega else None,
+                        "implied_volatility": round(short_iv * 100 if short_iv < 1 else short_iv, 1),
+                        "open_interest": short.get("open_interest", 0),
+                        "volume": short.get("volume", 0)
+                    },
+                    
+                    # LONG_CALL object - BUY leg (LEAP)
+                    "long_call": {
+                        "strike": leap_strike,
+                        "expiry": leap_expiry,
+                        "dte": leap_dte,
+                        "contract_symbol": leap_contract_symbol,
+                        "premium": round(leap_ask, 2),  # ASK ONLY for buys
+                        "bid": round(leap.get("bid", 0), 2) if leap.get("bid") else None,
+                        "ask": round(leap_ask, 2),
+                        "spread_pct": round(leap_spread_pct, 2),
+                        "delta": round(leap_delta, 4),
+                        "implied_volatility": round(leap_iv * 100 if leap_iv < 1 else leap_iv, 1),
+                        "open_interest": leap_oi,
+                        "volume": leap.get("volume", 0)
+                    },
+                    
+                    # ECONOMICS object
+                    "economics": {
+                        "net_debit": round(net_debit, 2),
+                        "net_debit_total": round(net_debit * 100, 2),
+                        "width": round(width, 2),
+                        "max_profit": round(pmcc_metrics.get("max_profit_total", max_profit), 2),
+                        "breakeven": round(pmcc_metrics.get("breakeven", leap_strike + net_debit), 2),
+                        "roi_pct": round(roi_per_cycle, 2),
+                        "annualized_roi_pct": round(annualized_roi, 1)
+                    },
+                    
+                    # METADATA object
+                    "metadata": {
+                        "leaps_buy_eligible": pmcc_metrics.get("leaps_buy_eligible", False),
+                        "analyst_rating": stock_snapshot.get("analyst_rating"),
+                        "validation_flags": {
+                            "leap_delta_ok": leap_delta >= 0.70,
+                            "leap_dte_ok": leap_dte >= 365,
+                            "short_otm_ok": short_strike > stock_price
+                        },
+                        "data_age_hours": sym_data["data_age_hours"]
+                    },
+                    
+                    # SCORING object
+                    "scoring": {
+                        "base_score": round(quality_result.total_score, 1),
+                        "final_score": round(final_score, 1),
+                        "pillars": {k: {"score": round(v.actual_score, 1), "max": v.max_score} 
+                                   for k, v in quality_result.pillars.items()} if quality_result.pillars else {}
+                    },
+                    
+                    # ==============================================================
+                    # LEGACY FLAT FIELDS - For backwards compatibility during transition
+                    # These will be REMOVED once frontend is updated
+                    # ==============================================================
                     "symbol": symbol,
                     "stock_price": round(stock_price, 2),
-                    # LEAP (BUY leg) - ENHANCED
                     "leap_strike": leap_strike,
                     "leap_expiry": leap_expiry,
                     "leap_dte": leap_dte,
@@ -1090,14 +1202,13 @@ async def screen_pmcc(
                     "leap_open_interest": leap_oi,
                     "leap_iv": round(leap_iv * 100 if leap_iv < 1 else leap_iv, 1),
                     "leaps_buy_eligible": pmcc_metrics.get("leaps_buy_eligible", False),
-                    # Short (SELL leg) - ENHANCED
                     "short_strike": short_strike,
                     "short_expiry": short_expiry,
                     "short_dte": short_dte,
                     "short_premium": round(short_premium, 2),
                     "short_ask": round(short_ask, 2) if short_ask else None,
                     "short_iv": round(short_iv * 100 if short_iv < 1 else short_iv, 1),
-                    # PMCC Metrics - ENHANCED
+                    "short_delta": round(short_delta, 4),  # NEW: Short call delta
                     "width": round(width, 2),
                     "net_debit": round(net_debit, 2),
                     "net_debit_total": round(net_debit * 100, 2),
@@ -1105,7 +1216,6 @@ async def screen_pmcc(
                     "breakeven": pmcc_metrics.get("breakeven", 0),
                     "roi_per_cycle": round(roi_per_cycle, 2),
                     "annualized_roi": round(annualized_roi, 1),
-                    # Scores
                     "base_score": round(quality_result.total_score, 1),
                     "score": round(final_score, 1),
                     "score_breakdown": {
@@ -1113,7 +1223,6 @@ async def screen_pmcc(
                         "pillars": {k: {"score": round(v.actual_score, 1), "max": v.max_score} 
                                    for k, v in quality_result.pillars.items()} if quality_result.pillars else {}
                     },
-                    # Stock metadata
                     "analyst_rating": stock_snapshot.get("analyst_rating"),
                     "market_cap": stock_snapshot.get("market_cap"),
                     "snapshot_date": sym_data["snapshot_date"],
