@@ -88,40 +88,64 @@ const PMCC = () => {
   const [simulateLoading, setSimulateLoading] = useState(false);
 
   // Helper to normalize PMCC data from both custom API (leap_*) and pre-computed API (long_*)
-  // Note: Backend uses leap_* (singular), some legacy code uses leaps_* (plural)
+  // Note: Backend now uses nested objects (short_call, long_call) + legacy flat fields
   const normalizeOpp = (opp) => {
     if (!opp) return null;
     
+    // Handle nested object structure (new) vs flat fields (legacy)
+    const shortCall = opp.short_call || {};
+    const longCall = opp.long_call || {};
+    
     // Handle both leap_ and leaps_ naming (backend uses singular)
-    const leapsDte = opp.leap_dte || opp.leaps_dte || opp.long_dte;
-    const leapsStrike = opp.leap_strike || opp.leaps_strike || opp.long_strike;
-    const leapsAsk = opp.leap_ask || opp.leaps_ask || opp.long_premium;
-    const leapsDelta = opp.leap_delta || opp.leaps_delta || opp.long_delta;
-    const leapsExpiry = opp.leap_expiry || opp.leaps_expiry || opp.long_expiry;
-    const leapsOi = opp.leap_open_interest || opp.leaps_open_interest || 0;
-    const leapsIv = opp.leap_iv || opp.leaps_iv || 0;
+    const leapsDte = longCall.dte || opp.leap_dte || opp.leaps_dte || opp.long_dte;
+    const leapsStrike = longCall.strike || opp.leap_strike || opp.leaps_strike || opp.long_strike;
+    const leapsAsk = longCall.premium || longCall.ask || opp.leap_ask || opp.leaps_ask || opp.long_premium;
+    const leapsDelta = longCall.delta || opp.leap_delta || opp.leaps_delta || opp.long_delta;
+    const leapsExpiry = longCall.expiry || opp.leap_expiry || opp.leaps_expiry || opp.long_expiry;
+    const leapsOi = longCall.open_interest || opp.leap_open_interest || opp.leaps_open_interest || 0;
+    const leapsIv = longCall.implied_volatility || opp.leap_iv || opp.leaps_iv || 0;
     
     // Cost: backend sends per-share, we need total (×100)
     const rawLeapCost = opp.leap_cost || opp.leaps_cost || leapsAsk;
     const leapsCost = rawLeapCost < 50 ? rawLeapCost * 100 : rawLeapCost; // Normalize to total
     
-    const shortDelta = opp.short_delta;
-    const shortDte = opp.short_dte;
-    const shortPremium = opp.short_premium || 0;
+    // Short call data - use nested object first, then flat fields
+    const shortDelta = shortCall.delta || opp.short_delta || 0;
+    const shortDte = shortCall.dte || opp.short_dte;
+    const shortPremium = shortCall.premium || shortCall.bid || opp.short_premium || 0;
     const shortPremiumTotal = shortPremium < 10 ? shortPremium * 100 : shortPremium; // Normalize to total
+    const shortIv = shortCall.implied_volatility || opp.short_iv || 0;
+    const shortStrike = shortCall.strike || opp.short_strike;
+    const shortExpiry = shortCall.expiry || opp.short_expiry;
+    const shortAsk = shortCall.ask || opp.short_ask;
     
     // Use backend width if available, otherwise calculate
-    const strikeWidth = opp.width || opp.strike_width || (opp.short_strike && leapsStrike ? opp.short_strike - leapsStrike : 0);
+    const economics = opp.economics || {};
+    const strikeWidth = economics.width || opp.width || opp.strike_width || (shortStrike && leapsStrike ? shortStrike - leapsStrike : 0);
     
     // Net debit: backend sends per-share, normalize to total if small
-    const rawNetDebit = opp.net_debit || opp.net_debit_total || (leapsCost - shortPremiumTotal);
+    const rawNetDebit = economics.net_debit || opp.net_debit || opp.net_debit_total || (leapsCost - shortPremiumTotal);
     const netDebit = rawNetDebit < 50 ? rawNetDebit * 100 : rawNetDebit;
     
-    const roiPerCycle = opp.roi_per_cycle || opp.roi_pct || (netDebit > 0 ? (shortPremiumTotal / netDebit) * 100 : 0);
-    const annualizedRoi = opp.annualized_roi || (shortDte > 0 ? roiPerCycle * (365 / shortDte) : 0);
+    const roiPerCycle = economics.roi_pct || opp.roi_per_cycle || opp.roi_pct || (netDebit > 0 ? (shortPremiumTotal / netDebit) * 100 : 0);
+    const annualizedRoi = economics.annualized_roi_pct || opp.annualized_roi || (shortDte > 0 ? roiPerCycle * (365 / shortDte) : 0);
+    const breakeven = economics.breakeven || opp.breakeven || 0;
+    const maxProfit = economics.max_profit || opp.max_profit || 0;
     
     return {
       ...opp,
+      // Short call normalized fields
+      short_call: shortCall,  // Preserve nested object
+      short_delta: shortDelta,
+      short_dte: shortDte,
+      short_premium: shortPremium,
+      short_premium_total: shortPremiumTotal,
+      short_iv: shortIv,
+      short_strike: shortStrike,
+      short_expiry: shortExpiry,
+      short_ask: shortAsk,
+      // Long call (LEAPS) normalized fields
+      long_call: longCall,  // Preserve nested object
       leaps_dte: leapsDte,
       leaps_strike: leapsStrike,
       leaps_premium: leapsAsk,
@@ -131,13 +155,13 @@ const PMCC = () => {
       leaps_expiry: leapsExpiry,
       leaps_oi: leapsOi,
       leaps_iv: leapsIv,
-      short_delta: shortDelta,
-      short_dte: shortDte,
-      short_premium_total: shortPremiumTotal,
+      // Economics normalized fields
       net_debit: netDebit,
       strike_width: strikeWidth,
       roi_per_cycle: roiPerCycle,
       annualized_roi: annualizedRoi,
+      breakeven: breakeven,
+      max_profit: maxProfit,
     };
   };
 
