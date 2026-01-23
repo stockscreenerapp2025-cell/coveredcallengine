@@ -929,12 +929,17 @@ async def screen_pmcc(
             leap_delta = leap["delta"]
             leap_dte = leap["dte"]
             leap_expiry = leap["expiry"]
+            leap_ask = leap.get("ask", leap_cost)
+            leap_oi = leap.get("open_interest", 0)
+            leap_iv = leap.get("implied_volatility", 0)
             
             for short in shorts:
                 short_strike = short["strike"]
                 short_premium = short["premium"]  # BID price
                 short_dte = short["dte"]
                 short_expiry = short["expiry"]
+                short_ask = short.get("ask", 0)
+                short_iv = short.get("implied_volatility", 0)
                 
                 # PMCC structure validation
                 if short_strike <= leap_strike:
@@ -970,6 +975,9 @@ async def screen_pmcc(
                 if not is_valid:
                     continue
                 
+                # LAYER 3: Compute PMCC-specific metrics
+                pmcc_metrics = enrich_pmcc_metrics(leap, short, stock_price)
+                
                 # Calculate quality score
                 pmcc_trade_data = {
                     "leap_delta": leap_delta,
@@ -983,25 +991,38 @@ async def screen_pmcc(
                 
                 final_score = apply_bias_to_score(quality_result.total_score, bias_weight)
                 
+                # Width calculation
+                width = short_strike - leap_strike
+                
                 opportunities.append({
                     "symbol": symbol,
                     "stock_price": round(stock_price, 2),
-                    # LEAP (BUY leg)
+                    # LEAP (BUY leg) - ENHANCED
                     "leap_strike": leap_strike,
                     "leap_expiry": leap_expiry,
                     "leap_dte": leap_dte,
                     "leap_cost": round(leap_cost, 2),
                     "leap_delta": round(leap_delta, 3),
-                    # Short (SELL leg)
+                    "leap_ask": round(leap_ask, 2),
+                    "leap_open_interest": leap_oi,
+                    "leap_iv": round(leap_iv * 100 if leap_iv < 1 else leap_iv, 1),
+                    "leaps_buy_eligible": pmcc_metrics.get("leaps_buy_eligible", False),
+                    # Short (SELL leg) - ENHANCED
                     "short_strike": short_strike,
                     "short_expiry": short_expiry,
                     "short_dte": short_dte,
                     "short_premium": round(short_premium, 2),
-                    # Metrics
+                    "short_ask": round(short_ask, 2) if short_ask else None,
+                    "short_iv": round(short_iv * 100 if short_iv < 1 else short_iv, 1),
+                    # PMCC Metrics - ENHANCED
+                    "width": round(width, 2),
                     "net_debit": round(net_debit, 2),
-                    "max_profit": round(max_profit, 2),
+                    "net_debit_total": round(net_debit * 100, 2),
+                    "max_profit": round(pmcc_metrics.get("max_profit_total", max_profit), 2),
+                    "breakeven": pmcc_metrics.get("breakeven", 0),
                     "roi_per_cycle": round(roi_per_cycle, 2),
                     "annualized_roi": round(annualized_roi, 1),
+                    # Scores
                     "base_score": round(quality_result.total_score, 1),
                     "score": round(final_score, 1),
                     "score_breakdown": {
@@ -1009,6 +1030,9 @@ async def screen_pmcc(
                         "pillars": {k: {"score": round(v.actual_score, 1), "max": v.max_score} 
                                    for k, v in quality_result.pillars.items()} if quality_result.pillars else {}
                     },
+                    # Stock metadata
+                    "analyst_rating": stock_snapshot.get("analyst_rating"),
+                    "market_cap": stock_snapshot.get("market_cap"),
                     "snapshot_date": sym_data["snapshot_date"],
                     "data_age_hours": sym_data["data_age_hours"]
                 })
