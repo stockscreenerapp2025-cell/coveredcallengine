@@ -95,25 +95,32 @@ const Screener = () => {
     
     setSimulateLoading(true);
     try {
-      // Handle both iv and implied_volatility field names
-      const ivValue = simulateOpp.iv || (simulateOpp.implied_volatility ? simulateOpp.implied_volatility / 100 : 0);
+      // LAYER 3 CONTRACT: IV is stored as percentage (39.5 = 39.5%)
+      // short_call_iv should be stored as DECIMAL for calculation compatibility (0.395)
+      let ivPct = simulateOpp.short_call?.implied_volatility || 
+                  simulateOpp.implied_volatility || 
+                  simulateOpp.iv || 0;
+      
+      // If IV is already in percentage form (> 1), convert to decimal for storage
+      const ivDecimal = ivPct > 1 ? ivPct / 100 : ivPct;
       
       const tradeData = {
         symbol: simulateOpp.symbol,
         strategy_type: 'covered_call',
-        underlying_price: simulateOpp.stock_price,
-        short_call_strike: simulateOpp.strike,
-        short_call_expiry: simulateOpp.expiry,
-        short_call_premium: simulateOpp.premium,
-        short_call_delta: simulateOpp.delta,
-        short_call_iv: ivValue,
+        underlying_price: simulateOpp.underlying?.last_price || simulateOpp.stock_price,
+        short_call_strike: simulateOpp.short_call?.strike || simulateOpp.strike,
+        short_call_expiry: simulateOpp.short_call?.expiry || simulateOpp.expiry,
+        short_call_premium: simulateOpp.short_call?.premium || simulateOpp.premium,
+        short_call_delta: simulateOpp.short_call?.delta || simulateOpp.delta,
+        short_call_iv: ivDecimal,  // Store as decimal (0.395)
         contracts: simulateContracts,
         scan_parameters: {
-          score: simulateOpp.score,
-          roi_pct: simulateOpp.roi_pct,
-          dte: simulateOpp.dte,
-          iv_rank: simulateOpp.iv_rank,
-          open_interest: simulateOpp.open_interest
+          score: simulateOpp.scoring?.final_score || simulateOpp.score,
+          roi_pct: simulateOpp.economics?.roi_pct || simulateOpp.roi_pct,
+          dte: simulateOpp.short_call?.dte || simulateOpp.dte,
+          iv_rank: simulateOpp.short_call?.iv_rank || simulateOpp.iv_rank,
+          open_interest: simulateOpp.short_call?.open_interest || simulateOpp.open_interest,
+          iv_pct: ivPct  // Store percentage for display
         }
       };
       
