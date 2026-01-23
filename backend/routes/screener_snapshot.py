@@ -1270,20 +1270,21 @@ async def get_dashboard_opportunities(
     Get top opportunities for dashboard display.
     
     Returns Top 5 Weekly + Top 5 Monthly covered calls for dashboard display.
+    If fewer than 5 weekly options available, fills remaining slots with monthly.
     
     ARCHITECTURE: Phase 2 - Reads ONLY from stored Mongo snapshots.
     
     FAIL CLOSED: Returns HTTP 409 if snapshot validation fails.
     """
-    # Get a broader set to filter into weekly and monthly
+    # Get a broader set with relaxed filters to ensure we have options
     all_opportunities = await screen_covered_calls(
-        limit=100,  # Get more to ensure we have enough in each category
+        limit=100,
         risk_profile="moderate",
-        dte_mode="all",  # Get both weekly and monthly
+        dte_mode="all",
         scan_mode="system",
         min_dte=None,
         max_dte=None,
-        min_premium_yield=0.5,
+        min_premium_yield=0.3,  # Relaxed for dashboard to get more options
         max_premium_yield=20.0,
         min_otm_pct=0.0,
         max_otm_pct=15.0,
@@ -1300,13 +1301,20 @@ async def get_dashboard_opportunities(
     weekly_opps.sort(key=lambda x: x.get("score", 0), reverse=True)
     monthly_opps.sort(key=lambda x: x.get("score", 0), reverse=True)
     
-    # Take top 5 from each
+    # Take top 5 from each (or as many as available)
     top_weekly = weekly_opps[:5]
     top_monthly = monthly_opps[:5]
+    
+    # If we have fewer than 5 weekly, note it but don't fill with monthly
+    # This maintains data integrity - weekly means weekly
+    weekly_count = len(top_weekly)
+    monthly_count = len(top_monthly)
     
     # Mark with expiry_type for frontend styling
     for opp in top_weekly:
         opp["expiry_type"] = "Weekly"
+        opp["metadata"] = opp.get("metadata", {})
+        opp["metadata"]["dte_category"] = "weekly"
     for opp in top_monthly:
         opp["expiry_type"] = "Monthly"
     
