@@ -815,6 +815,17 @@ async def screen_covered_calls(
     # Sort by score descending
     opportunities.sort(key=lambda x: x["score"], reverse=True)
     
+    # DEDUPLICATION: Keep only the best opportunity per symbol
+    # This ensures each symbol appears only once with its highest-scoring option
+    seen_symbols = set()
+    deduplicated = []
+    for opp in opportunities:
+        if opp["symbol"] not in seen_symbols:
+            seen_symbols.add(opp["symbol"])
+            deduplicated.append(opp)
+    
+    opportunities = deduplicated
+    
     return {
         "total": len(opportunities),
         "results": opportunities[:limit],
