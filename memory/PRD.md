@@ -1,22 +1,56 @@
 # Covered Call Engine - Product Requirements Document
 
-## Last Updated: January 21, 2026
+## Last Updated: January 23, 2026
 
 ## Overview
 Web-based application for screening Covered Call (CC) and Poor Man's Covered Call (PMCC) options strategies with AI-assisted scoring.
 
-## Current Status: PHASE 8 COMPLETE
-All major screener rebuild phases (4-8) are now complete.
+## Current Status: LAYER 3 ENRICHMENT COMPLETE
+Major architectural refactor progressing through 5-layer compliance.
 
-## Phased Rebuild Summary
+## Architectural Layers
 
-| Phase | Name | Status | Date |
+| Layer | Name | Status | Date |
 |-------|------|--------|------|
-| 4 | CC Engine Rebuild | ✅ Complete | Jan 21, 2026 |
-| 5 | PMCC Engine Rebuild | ✅ Complete | Jan 21, 2026 |
-| 6 | Market Bias Order Fix | ✅ Complete | Jan 21, 2026 |
-| 7 | Quality Score Rewrite | ✅ Complete | Jan 21, 2026 |
-| 8 | Storage, Logging & Admin | ✅ Complete | Jan 21, 2026 |
+| 1 | Data Ingestion & Snapshot | ✅ Complete | Jan 22, 2026 |
+| 2 | Validation & Structure | ✅ Complete | Jan 22, 2026 |
+| 3 | Strategy Selection & Enrichment | ✅ Complete | Jan 23, 2026 |
+| 4 | Scoring & Ranking | 🔜 Next | - |
+| 5 | Presentation & Watchlist | 📋 Backlog | - |
+
+## Layer 3 Enhancements (Jan 23, 2026)
+
+### Greeks Enrichment
+- Delta, Gamma, Theta, Vega estimates
+- IV percentage conversion
+- IV Rank calculation (0-100)
+- ROI calculation: (Premium / Stock Price) * 100 * (365 / DTE)
+
+### PMCC Metrics
+- LEAPS BUY eligibility check
+- Width (spread) calculation
+- Net debit and max profit
+- Breakeven price
+- Analyst ratings integration
+
+### DTE Modes
+- Weekly (7-14 DTE)
+- Monthly (21-45 DTE)
+- All (7-45 DTE)
+
+### Dashboard Updates
+- Top 5 Weekly + Top 5 Monthly display
+- Color-coded rows (Cyan=Weekly, Violet=Monthly)
+- ROI Annualized column added
+
+### Symbol Handling
+- GOOG and GOOGL treated separately
+- Both included in scan universe
+
+### Data Validation
+- Price discrepancy detection (>0.1% threshold)
+- Failed enrichment logging
+- Layer 1 previousClose authoritative
 
 ## Original Problem Statement
 Build a web-based application named "Covered Call Engine" to identify, analyze, and manage Covered Call and Poor Man's Covered Call (PMCC) strategies.
@@ -27,6 +61,7 @@ Build a web-based application named "Covered Call Engine" to identify, analyze, 
 - Display new opportunities, market indices, stock data
 - Live news feed (MarketAux API with rate limiting)
 - Portfolio performance graph (mocked for new users, live for users with data)
+- **Top 10 Opportunities**: Top 5 Weekly + Top 5 Monthly (NEW - Jan 23, 2026)
 
 ### 2. Covered Call Screener
 - Powerful screening engine with extensive filters
