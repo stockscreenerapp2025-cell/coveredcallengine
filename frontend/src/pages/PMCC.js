@@ -87,15 +87,24 @@ const PMCC = () => {
   const [simulateContracts, setSimulateContracts] = useState(1);
   const [simulateLoading, setSimulateLoading] = useState(false);
 
-  // Helper to normalize PMCC data from both custom API (leaps_*) and pre-computed API (long_*)
+  // Helper to normalize PMCC data from both custom API (leap_*) and pre-computed API (long_*)
+  // Note: Backend uses leap_* (singular), some legacy code uses leaps_* (plural)
   const normalizeOpp = (opp) => {
     if (!opp) return null;
-    const leapsDte = opp.leaps_dte || opp.long_dte;
-    const leapsStrike = opp.leaps_strike || opp.long_strike;
-    const leapsPremium = opp.leaps_premium || opp.long_premium;
-    const leapsCost = opp.leaps_cost || (leapsPremium ? leapsPremium * 100 : 0);
-    const leapsDelta = opp.leaps_delta || opp.long_delta;
-    const leapsExpiry = opp.leaps_expiry || opp.long_expiry;
+    
+    // Handle both leap_ and leaps_ naming (backend uses singular)
+    const leapsDte = opp.leap_dte || opp.leaps_dte || opp.long_dte;
+    const leapsStrike = opp.leap_strike || opp.leaps_strike || opp.long_strike;
+    const leapsAsk = opp.leap_ask || opp.leaps_ask || opp.long_premium;
+    const leapsDelta = opp.leap_delta || opp.leaps_delta || opp.long_delta;
+    const leapsExpiry = opp.leap_expiry || opp.leaps_expiry || opp.long_expiry;
+    const leapsOi = opp.leap_open_interest || opp.leaps_open_interest || 0;
+    const leapsIv = opp.leap_iv || opp.leaps_iv || 0;
+    
+    // Cost: backend sends per-share, we need total (×100)
+    const rawLeapCost = opp.leap_cost || opp.leaps_cost || leapsAsk;
+    const leapsCost = rawLeapCost < 50 ? rawLeapCost * 100 : rawLeapCost; // Normalize to total
+    
     const shortDelta = opp.short_delta;
     const shortDte = opp.short_dte;
     const shortPremium = opp.short_premium || 0;
