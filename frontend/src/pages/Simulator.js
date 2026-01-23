@@ -777,7 +777,7 @@ const Simulator = () => {
                           {trade.current_delta?.toFixed(2) || trade.short_call_delta?.toFixed(2) || '-'}
                         </td>
                         <td className="text-violet-400 font-mono">
-                          {trade.iv ? `${(trade.iv * 100).toFixed(1)}%` : (trade.short_call_iv ? `${(trade.short_call_iv * 100).toFixed(1)}%` : '-')}
+                          {trade.iv ? `${(trade.iv * 100).toFixed(1)}%` : (trade.short_call_iv ? `${(trade.short_call_iv * 100).toFixed(1)}%` : (trade.implied_volatility ? `${trade.implied_volatility.toFixed(1)}%` : '-'))}
                         </td>
                         <td className="text-amber-400 font-mono">
                           {trade.iv_rank ? `${trade.iv_rank.toFixed(0)}%` : (trade.scan_parameters?.iv_rank ? `${trade.scan_parameters.iv_rank.toFixed(0)}%` : '-')}
