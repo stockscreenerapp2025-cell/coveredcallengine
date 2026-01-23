@@ -5,8 +5,8 @@
 ## Overview
 Web-based application for screening Covered Call (CC) and Poor Man's Covered Call (PMCC) options strategies with AI-assisted scoring.
 
-## Current Status: LAYER 3 DATA CONTRACT ENFORCEMENT COMPLETE
-Authoritative data contracts implemented. Golden payload tests passing.
+## Current Status: LAYER 3.3 ETF SUPPORT & IV FIX COMPLETE
+ETF support added, Simulator IV display fixed, Golden payload tests passing (10/10).
 
 ## Architectural Layers
 
@@ -17,8 +17,31 @@ Authoritative data contracts implemented. Golden payload tests passing.
 | 3 | Strategy Selection & Enrichment | ✅ Complete | Jan 23, 2026 |
 | 3.1 | Data Pipeline Fix | ✅ Complete | Jan 23, 2026 |
 | 3.2 | Data Contract Enforcement | ✅ Complete | Jan 23, 2026 |
+| 3.3 | ETF Support & IV Fix | ✅ Complete | Jan 23, 2026 |
 | 4 | Scoring & Ranking | 🔜 Next | - |
 | 5 | Presentation & Watchlist | 📋 Backlog | - |
+
+## Layer 3.3 ETF Support & IV Fix (Jan 23, 2026)
+
+### ETF Support (ADDITIVE - No Schema Changes)
+- ETFs now flow through same Layer 1-3 pipeline as stocks
+- Added `instrument_type: "ETF" | "STOCK"` to underlying object
+- ETFs exempt from price restrictions (SPY ~$600, QQQ ~$530 allowed)
+- Same pricing rules (SELL=BID, BUY=ASK) apply to ETFs
+- ETF test added to golden payload suite
+
+### Simulator IV Fix
+- **Root Cause**: IV stored as decimal (0.395), displayed with `* 100` = 3950%
+- **Fix**: Frontend now stores `iv_pct` in `scan_parameters` for display
+- `short_call_iv` stored as decimal for calculation compatibility
+- Display uses `scan_parameters.iv_pct` first, then fallback to `short_call_iv * 100`
+
+### Simulator Sub-Pages (Logs/Analytics/PMCC Tracker)
+- **NOT bugs** - Pages show empty because:
+  - Logs: No automated rules have triggered yet
+  - Analytics: Requires closed trades (0 currently)
+  - PMCC Tracker: Requires PMCC trades
+- These populate automatically when user creates relevant data
 
 ## Layer 3.2 Data Contract Enforcement (Jan 23, 2026)
 
@@ -27,10 +50,10 @@ Authoritative data contracts implemented. Golden payload tests passing.
 #### CC Contract Structure
 ```json
 {
-  "underlying": { "symbol", "last_price", "price_source", "snapshot_date" },
+  "underlying": { "symbol", "instrument_type", "last_price", "price_source", "snapshot_date" },
   "short_call": { "strike", "expiry", "dte", "premium", "bid", "ask", "spread_pct", "delta", "gamma", "theta", "vega", "implied_volatility", "iv_rank", "open_interest", "volume" },
   "economics": { "max_profit", "breakeven", "roi_pct", "annualized_roi_pct" },
-  "metadata": { "dte_category", "earnings_safe", "validation_flags" }
+  "metadata": { "dte_category", "earnings_safe", "is_etf", "validation_flags" }
 }
 ```
 
@@ -50,9 +73,10 @@ Authoritative data contracts implemented. Golden payload tests passing.
 - **IV**: Stored as percentage (32.4), no % ↔ decimal conversion in frontend
 - **ROI**: Calculated once in Layer 3, frontend display only
 
-### Golden Payload Test
+### Golden Payload Tests
 Test file: `/app/backend/tests/test_golden_payload.py`
-- 8 passing tests validating data contract
+- 10 passing tests (9 active, 1 skipped for role access)
+- Includes ETF-specific end-to-end test
 - Blocks deployment if any test fails
 
 ### Issues Fixed
