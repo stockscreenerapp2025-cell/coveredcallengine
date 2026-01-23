@@ -89,9 +89,10 @@ ETF_SYMBOLS = {"SPY", "QQQ", "IWM", "DIA", "XLF", "XLE", "XLK", "XLV", "XLI", "X
 
 # Symbol universe (fixed at ~60, validated for snapshot completeness)
 # NOTE: GS, BLK, AMGN, MMM, GLD removed due to option chain validation issues
+# NOTE: GOOGL = Class A shares, GOOG = Class C shares (both included)
 SCAN_SYMBOLS = [
-    # Tech Giants
-    "AAPL", "MSFT", "GOOGL", "AMZN", "META", "NVDA", "TSLA", "AMD", "INTC", "CRM",
+    # Tech Giants (GOOGL = Class A, GOOG = Class C)
+    "AAPL", "MSFT", "GOOGL", "GOOG", "AMZN", "META", "NVDA", "TSLA", "AMD", "INTC", "CRM",
     # Finance (excluding GS, BLK - incomplete chains)
     "JPM", "BAC", "WFC", "MS", "C", "USB", "PNC", "SCHW",
     # Consumer
