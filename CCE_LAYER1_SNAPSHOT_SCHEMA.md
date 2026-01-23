@@ -1,8 +1,24 @@
 # CCE Layer 1 - Snapshot Schema Definition
 
-**Version:** 1.0  
+**Version:** 1.1  
 **Status:** LAYER 1 COMPLIANT  
 **Date:** January 2026
+
+---
+
+## Data Source
+
+**Primary Source:** Yahoo Finance (yfinance library)  
+**Fallback Source:** Polygon.io (if API key configured)
+
+### Expected Price Variance
+Yahoo Finance prices may differ from other data providers by up to **±0.1%** due to:
+- Data feed timing differences
+- Rounding methods
+- Regular close vs adjusted close
+- Different exchange feed sources
+
+**This variance is acceptable** for CCE's screening purposes. For trade execution, users should verify prices with their broker.
 
 ---
 
