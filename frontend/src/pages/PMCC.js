@@ -109,8 +109,14 @@ const PMCC = () => {
     const shortDte = opp.short_dte;
     const shortPremium = opp.short_premium || 0;
     const shortPremiumTotal = shortPremium < 10 ? shortPremium * 100 : shortPremium; // Normalize to total
-    const netDebit = opp.net_debit || (leapsCost - shortPremiumTotal);
-    const strikeWidth = opp.strike_width || (opp.short_strike && leapsStrike ? opp.short_strike - leapsStrike : 0);
+    
+    // Use backend width if available, otherwise calculate
+    const strikeWidth = opp.width || opp.strike_width || (opp.short_strike && leapsStrike ? opp.short_strike - leapsStrike : 0);
+    
+    // Net debit: backend sends per-share, normalize to total if small
+    const rawNetDebit = opp.net_debit || opp.net_debit_total || (leapsCost - shortPremiumTotal);
+    const netDebit = rawNetDebit < 50 ? rawNetDebit * 100 : rawNetDebit;
+    
     const roiPerCycle = opp.roi_per_cycle || opp.roi_pct || (netDebit > 0 ? (shortPremiumTotal / netDebit) * 100 : 0);
     const annualizedRoi = opp.annualized_roi || (shortDte > 0 ? roiPerCycle * (365 / shortDte) : 0);
     
@@ -118,10 +124,13 @@ const PMCC = () => {
       ...opp,
       leaps_dte: leapsDte,
       leaps_strike: leapsStrike,
-      leaps_premium: leapsPremium,
+      leaps_premium: leapsAsk,
+      leaps_ask: leapsAsk,
       leaps_cost: leapsCost,
       leaps_delta: leapsDelta,
       leaps_expiry: leapsExpiry,
+      leaps_oi: leapsOi,
+      leaps_iv: leapsIv,
       short_delta: shortDelta,
       short_dte: shortDte,
       short_premium_total: shortPremiumTotal,
