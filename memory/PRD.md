@@ -5,8 +5,8 @@
 ## Overview
 Web-based application for screening Covered Call (CC) and Poor Man's Covered Call (PMCC) options strategies with AI-assisted scoring.
 
-## Current Status: LAYER 3 DATA PIPELINE FIX COMPLETE
-Major architectural refactor progressing through 5-layer compliance.
+## Current Status: LAYER 3 DATA CONTRACT ENFORCEMENT COMPLETE
+Authoritative data contracts implemented. Golden payload tests passing.
 
 ## Architectural Layers
 
@@ -16,8 +16,55 @@ Major architectural refactor progressing through 5-layer compliance.
 | 2 | Validation & Structure | ✅ Complete | Jan 22, 2026 |
 | 3 | Strategy Selection & Enrichment | ✅ Complete | Jan 23, 2026 |
 | 3.1 | Data Pipeline Fix | ✅ Complete | Jan 23, 2026 |
+| 3.2 | Data Contract Enforcement | ✅ Complete | Jan 23, 2026 |
 | 4 | Scoring & Ranking | 🔜 Next | - |
 | 5 | Presentation & Watchlist | 📋 Backlog | - |
+
+## Layer 3.2 Data Contract Enforcement (Jan 23, 2026)
+
+### AUTHORITATIVE DATA CONTRACT (MANDATORY)
+
+#### CC Contract Structure
+```json
+{
+  "underlying": { "symbol", "last_price", "price_source", "snapshot_date" },
+  "short_call": { "strike", "expiry", "dte", "premium", "bid", "ask", "spread_pct", "delta", "gamma", "theta", "vega", "implied_volatility", "iv_rank", "open_interest", "volume" },
+  "economics": { "max_profit", "breakeven", "roi_pct", "annualized_roi_pct" },
+  "metadata": { "dte_category", "earnings_safe", "validation_flags" }
+}
+```
+
+#### PMCC Contract Structure
+```json
+{
+  "short_call": { "strike", "expiry", "dte", "premium", "bid", "delta", "implied_volatility" },
+  "long_call": { "strike", "expiry", "dte", "delta", "premium" },
+  "economics": { "net_debit", "width", "max_profit", "breakeven", "roi_pct", "annualized_roi_pct" },
+  "metadata": { "leaps_buy_eligible", "analyst_rating" }
+}
+```
+
+### Single Source of Truth Rules
+- **Premium**: SELL=BID, BUY=ASK (no mid, no rounding drift)
+- **Greeks**: Calculated once in Layer 3, never touched again
+- **IV**: Stored as percentage (32.4), no % ↔ decimal conversion in frontend
+- **ROI**: Calculated once in Layer 3, frontend display only
+
+### Golden Payload Test
+Test file: `/app/backend/tests/test_golden_payload.py`
+- 8 passing tests validating data contract
+- Blocks deployment if any test fails
+
+### Issues Fixed
+1. **PMCC short_call.delta missing** → Added delta estimation for short calls
+2. **Dashboard 2+5 regression** → Now reports actual data availability
+3. **Watchlist IV mismatch** → Now uses Layer 3 snapshot data
+
+### Data Availability Note
+Dashboard Top 10 shows actual available data:
+- Weekly: 2-3 options available (limited weekly option chains in scan universe)
+- Monthly: 5+ options available
+This is a DATA AVAILABILITY issue, not a regression.
 
 ## Layer 3.1 Data Pipeline Fix (Jan 23, 2026)
 
@@ -34,13 +81,15 @@ Major architectural refactor progressing through 5-layer compliance.
 
 ### Frontend Changes
 - Screener.js: IV column maps to `implied_volatility` with fallbacks
-- PMCC.js: normalizeOpp() handles both `leap_*` and `leaps_*` prefixes
+- PMCC.js: normalizeOpp() handles both `leap_*`, `leaps_*`, and nested objects
 - Dashboard.js: Fixed IV conversion for simulator, fixed expiry formatting
 - Simulator.js: IV display handles multiple field name formats
 
 ### Test Coverage
-- 37 tests passing (20 unit + 9 pipeline fix + 8 integration)
-- Test files: test_layer3_enrichment.py, test_layer3_pipeline_fix.py, test_layer3_integration.py
+- 47+ tests passing
+- Golden payload tests: `/app/backend/tests/test_golden_payload.py`
+- Integration tests: `/app/backend/tests/test_layer3_integration.py`
+- Unit tests: `/app/backend/tests/test_layer3_enrichment.py`
 
 ## Layer 3 Enhancements (Jan 23, 2026)
 
