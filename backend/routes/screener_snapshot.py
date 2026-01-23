@@ -1317,6 +1317,8 @@ async def get_dashboard_opportunities(
         opp["metadata"]["dte_category"] = "weekly"
     for opp in top_monthly:
         opp["expiry_type"] = "Monthly"
+        opp["metadata"] = opp.get("metadata", {})
+        opp["metadata"]["dte_category"] = "monthly"
     
     # Combine: Weekly first, then Monthly
     combined = top_weekly + top_monthly
@@ -1324,10 +1326,14 @@ async def get_dashboard_opportunities(
     return {
         "total": len(combined),
         "opportunities": combined,
-        "weekly_count": len(top_weekly),
-        "monthly_count": len(top_monthly),
+        "weekly_count": weekly_count,
+        "monthly_count": monthly_count,
         "weekly_opportunities": top_weekly,
         "monthly_opportunities": top_monthly,
+        # Data availability note
+        "weekly_available": len(weekly_opps),
+        "monthly_available": len(monthly_opps),
+        "data_note": f"Weekly: {weekly_count}/5 available, Monthly: {monthly_count}/5 available" if weekly_count < 5 else None,
         # Preserve metadata from original response
         "market_bias": all_opportunities.get("market_bias"),
         "snapshot_validation": all_opportunities.get("snapshot_validation"),
