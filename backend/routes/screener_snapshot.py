@@ -769,7 +769,83 @@ async def screen_covered_calls(
             # Apply market bias (Phase 6)
             final_score = apply_bias_to_score(quality_result.total_score, bias_weight)
             
+            # Calculate bid-ask spread percentage
+            spread_pct = ((ask - premium) / premium * 100) if premium > 0 else 0
+            
+            # Build contract symbol (e.g., AAPL240119C00190000)
+            exp_formatted = datetime.strptime(expiry, "%Y-%m-%d").strftime("%y%m%d")
+            contract_symbol = f"{symbol}{exp_formatted}C{int(strike * 1000):08d}"
+            
+            # ==============================================================
+            # AUTHORITATIVE CC CONTRACT - LAYER 3 COMPLIANT
+            # ==============================================================
             opportunities.append({
+                # UNDERLYING object
+                "underlying": {
+                    "symbol": symbol,
+                    "last_price": round(stock_price, 2),
+                    "price_source": "BID",  # Layer 1 authoritative
+                    "snapshot_date": sym_data["snapshot_date"],
+                    "market_cap": stock_snapshot.get("market_cap"),
+                    "avg_volume": stock_snapshot.get("avg_volume"),
+                    "analyst_rating": stock_snapshot.get("analyst_rating"),
+                    "earnings_date": stock_snapshot.get("earnings_date")
+                },
+                
+                # SHORT_CALL object - ALL option data here
+                "short_call": {
+                    "strike": strike,
+                    "expiry": expiry,
+                    "dte": dte,
+                    "contract_symbol": contract_symbol,
+                    "premium": round(premium, 2),  # BID ONLY
+                    "bid": round(premium, 2),
+                    "ask": round(ask, 2) if ask else None,
+                    "spread_pct": round(spread_pct, 2),
+                    "delta": round(enriched_call.get("delta", 0), 4),
+                    "gamma": round(enriched_call.get("gamma_estimate", 0), 4),
+                    "theta": round(enriched_call.get("theta_estimate", 0), 4),
+                    "vega": round(enriched_call.get("vega_estimate", 0), 4),
+                    "implied_volatility": round(enriched_call.get("iv_pct", iv * 100 if iv < 1 else iv), 1),
+                    "iv_rank": round(enriched_call.get("iv_rank", 0), 1) if enriched_call.get("iv_rank") else None,
+                    "open_interest": oi,
+                    "volume": call.get("volume", 0)
+                },
+                
+                # ECONOMICS object
+                "economics": {
+                    "max_profit": round(premium * 100, 2),  # Per contract
+                    "breakeven": round(stock_price - premium, 2),
+                    "roi_pct": round(roi_pct, 2),
+                    "annualized_roi_pct": round(roi_annualized, 1),
+                    "premium_yield": round(premium_yield, 2),
+                    "otm_pct": round(otm_pct, 2)
+                },
+                
+                # METADATA object
+                "metadata": {
+                    "dte_category": "weekly" if dte <= WEEKLY_MAX_DTE else "monthly",
+                    "earnings_safe": stock_snapshot.get("earnings_date") is None,
+                    "validation_flags": {
+                        "spread_ok": spread_pct < 10,
+                        "liquidity_ok": oi >= 100,
+                        "delta_ok": 0.20 <= enriched_call.get("delta", 0) <= 0.50
+                    },
+                    "data_age_hours": sym_data["data_age_hours"]
+                },
+                
+                # SCORING object
+                "scoring": {
+                    "base_score": round(quality_result.total_score, 1),
+                    "final_score": round(final_score, 1),
+                    "pillars": {k: {"score": round(v.actual_score, 1), "max": v.max_score} 
+                               for k, v in quality_result.pillars.items()} if quality_result.pillars else {}
+                },
+                
+                # ==============================================================
+                # LEGACY FLAT FIELDS - For backwards compatibility during transition
+                # These will be REMOVED once frontend is updated
+                # ==============================================================
                 "symbol": symbol,
                 "strike": strike,
                 "expiry": expiry,
@@ -777,22 +853,19 @@ async def screen_covered_calls(
                 "dte_category": "weekly" if dte <= WEEKLY_MAX_DTE else "monthly",
                 "stock_price": round(stock_price, 2),
                 "premium": round(premium, 2),
-                "premium_ask": enriched_call.get("premium_ask"),
+                "premium_ask": round(ask, 2) if ask else None,
                 "premium_yield": round(premium_yield, 2),
                 "otm_pct": round(otm_pct, 2),
-                # LAYER 3: Enhanced ROI
                 "roi_pct": round(roi_pct, 2),
                 "roi_annualized": round(roi_annualized, 1),
-                # LAYER 3: Enriched Greeks
                 "delta": round(enriched_call.get("delta", 0), 4),
-                "gamma": enriched_call.get("gamma_estimate", 0),
-                "theta": enriched_call.get("theta_estimate", 0),
-                "vega": enriched_call.get("vega_estimate", 0),
+                "gamma": round(enriched_call.get("gamma_estimate", 0), 4),
+                "theta": round(enriched_call.get("theta_estimate", 0), 4),
+                "vega": round(enriched_call.get("vega_estimate", 0), 4),
                 "implied_volatility": round(enriched_call.get("iv_pct", iv * 100 if iv < 1 else iv), 1),
                 "iv_rank": round(enriched_call.get("iv_rank", 0), 1) if enriched_call.get("iv_rank") else None,
                 "open_interest": oi,
                 "volume": call.get("volume", 0),
-                # Scores
                 "base_score": round(quality_result.total_score, 1),
                 "score": round(final_score, 1),
                 "score_breakdown": {
@@ -800,7 +873,6 @@ async def screen_covered_calls(
                     "pillars": {k: {"score": round(v.actual_score, 1), "max": v.max_score} 
                                for k, v in quality_result.pillars.items()} if quality_result.pillars else {}
                 },
-                # Stock metadata
                 "market_cap": stock_snapshot.get("market_cap"),
                 "avg_volume": stock_snapshot.get("avg_volume"),
                 "analyst_rating": stock_snapshot.get("analyst_rating"),
