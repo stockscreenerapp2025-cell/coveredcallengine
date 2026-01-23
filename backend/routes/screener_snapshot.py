@@ -870,6 +870,8 @@ async def screen_covered_calls(
                 "iv_rank": round(enriched_call.get("iv_rank", 0), 1) if enriched_call.get("iv_rank") else None,
                 "open_interest": oi,
                 "volume": call.get("volume", 0),
+                "is_etf": is_etf,
+                "instrument_type": "ETF" if is_etf else "STOCK",
                 "base_score": round(quality_result.total_score, 1),
                 "score": round(final_score, 1),
                 "score_breakdown": {
