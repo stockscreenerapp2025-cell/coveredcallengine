@@ -1,6 +1,9 @@
 """
 Screener Routes - Covered Call and PMCC screening endpoints
 ============================================================
+
+CCE MASTER ARCHITECTURE - LAYER 3: Strategy Selection Layer
+
 TWO-PHASE ARCHITECTURE (NON-NEGOTIABLE):
 
 PHASE 1 - INGESTION (services/snapshot_service.py):
@@ -15,6 +18,13 @@ PHASE 2 - SCAN (this file):
     - ZERO live API calls during scan
     - NO "market open/closed" logic
 
+LAYER 3 RESPONSIBILITIES:
+    - Apply CC eligibility filters (price, volume, market cap)
+    - Enforce earnings ±7 days exclusion
+    - Separate Weekly (7-14 DTE) and Monthly (21-45 DTE) modes
+    - Compute/enrich Greeks (Delta, IV, IV Rank, OI)
+    - Prepare enriched data for downstream scoring
+    
 🚫 ABSOLUTE RULES:
     - NO live API calls during scan
     - NO cache used for trade eligibility
@@ -48,12 +58,14 @@ from utils.auth import get_current_user
 # Import SnapshotService for TWO-PHASE ARCHITECTURE
 from services.snapshot_service import SnapshotService
 
-# PHASE 2: Import chain validator
+# LAYER 2: Import validators
 from services.chain_validator import (
     get_validator,
     validate_chain_for_cc,
     validate_cc_trade,
-    validate_pmcc_trade
+    validate_pmcc_trade,
+    validate_sell_pricing,
+    MAX_SPREAD_PCT
 )
 # PHASE 6: Import market bias module
 from services.market_bias import (
@@ -87,6 +99,29 @@ _analyst_executor = ThreadPoolExecutor(max_workers=10)
 # ETF symbols for special handling
 ETF_SYMBOLS = {"SPY", "QQQ", "IWM", "DIA", "XLF", "XLE", "XLK", "XLV", "XLI", "XLB", "XLU", "XLP", "XLY", "GLD", "SLV", "ARKK", "ARKG", "ARKW", "TLT", "EEM", "VXX", "UVXY", "SQQQ", "TQQQ"}
 
+# ============================================================
+# LAYER 3 CONSTANTS - CC ELIGIBILITY FILTERS
+# ============================================================
+
+# System/Custom Scan Eligibility (strict)
+CC_SYSTEM_MIN_PRICE = 30.0      # Minimum stock price
+CC_SYSTEM_MAX_PRICE = 90.0      # Maximum stock price
+CC_SYSTEM_MIN_VOLUME = 1_000_000  # Minimum average daily volume
+CC_SYSTEM_MIN_MARKET_CAP = 5_000_000_000  # Minimum $5B market cap
+
+# Manual Scan Eligibility (relaxed price, strict structure)
+CC_MANUAL_MIN_PRICE = 15.0      # Lower bound for manual
+CC_MANUAL_MAX_PRICE = 500.0     # Upper bound for manual
+
+# DTE Ranges per CCE Master Architecture
+WEEKLY_MIN_DTE = 7
+WEEKLY_MAX_DTE = 14
+MONTHLY_MIN_DTE = 21
+MONTHLY_MAX_DTE = 45
+
+# Earnings exclusion window (days before and after)
+EARNINGS_EXCLUSION_DAYS = 7
+
 # Symbol universe (fixed at ~60, validated for snapshot completeness)
 # NOTE: GS, BLK, AMGN, MMM, GLD removed due to option chain validation issues
 # NOTE: GOOGL = Class A shares, GOOG = Class C shares (both included)
@@ -109,6 +144,211 @@ SCAN_SYMBOLS = [
     # ETFs (excluding GLD - incomplete chain)
     "SPY", "QQQ", "IWM", "SLV"
 ]
+
+
+# ============================================================
+# LAYER 3: CC ELIGIBILITY CHECKER
+# ============================================================
+
+def check_cc_eligibility(
+    symbol: str,
+    stock_price: float,
+    market_cap: float,
+    avg_volume: float,
+    earnings_date: str,
+    scan_mode: str = "system",
+    scan_date: str = None
+) -> tuple[bool, str]:
+    """
+    Check if a symbol is eligible for Covered Call scanning.
+    
+    CCE MASTER ARCHITECTURE - LAYER 3 COMPLIANT
+    
+    System/Custom Scan Rules:
+    - Price: $30-$90
+    - Avg volume: ≥1M
+    - Market cap: ≥$5B
+    - No earnings ±7 days
+    
+    Manual Scan Rules:
+    - Price: $15-$500 (flagged but allowed)
+    - All structure & pricing rules still enforced
+    
+    Args:
+        symbol: Stock ticker
+        stock_price: Current stock close price
+        market_cap: Market capitalization
+        avg_volume: Average daily volume
+        earnings_date: Next earnings date (YYYY-MM-DD or None)
+        scan_mode: "system", "custom", or "manual"
+        scan_date: Date to check against (default: today)
+    
+    Returns:
+        (is_eligible, rejection_reason or warning)
+    """
+    is_etf = symbol in ETF_SYMBOLS
+    
+    # ETFs are exempt from some checks
+    if is_etf:
+        # ETFs still need price check
+        if scan_mode in ("system", "custom"):
+            if stock_price < CC_SYSTEM_MIN_PRICE or stock_price > CC_SYSTEM_MAX_PRICE:
+                return False, f"Price ${stock_price:.2f} outside $30-$90 range"
+        return True, "ETF - eligible"
+    
+    # PRICE CHECK
+    if scan_mode in ("system", "custom"):
+        if stock_price < CC_SYSTEM_MIN_PRICE:
+            return False, f"Price ${stock_price:.2f} below minimum ${CC_SYSTEM_MIN_PRICE}"
+        if stock_price > CC_SYSTEM_MAX_PRICE:
+            return False, f"Price ${stock_price:.2f} above maximum ${CC_SYSTEM_MAX_PRICE}"
+    elif scan_mode == "manual":
+        if stock_price < CC_MANUAL_MIN_PRICE:
+            return False, f"Price ${stock_price:.2f} below manual minimum ${CC_MANUAL_MIN_PRICE}"
+        if stock_price > CC_MANUAL_MAX_PRICE:
+            return False, f"Price ${stock_price:.2f} above manual maximum ${CC_MANUAL_MAX_PRICE}"
+    
+    # VOLUME CHECK (System/Custom only)
+    if scan_mode in ("system", "custom"):
+        if avg_volume and avg_volume < CC_SYSTEM_MIN_VOLUME:
+            return False, f"Avg volume {avg_volume:,.0f} below minimum {CC_SYSTEM_MIN_VOLUME:,.0f}"
+    
+    # MARKET CAP CHECK (System/Custom only, non-ETF)
+    if scan_mode in ("system", "custom"):
+        if market_cap and market_cap < CC_SYSTEM_MIN_MARKET_CAP:
+            return False, f"Market cap ${market_cap/1e9:.1f}B below minimum $5B"
+    
+    # EARNINGS CHECK (All modes)
+    if earnings_date:
+        try:
+            earnings_dt = datetime.strptime(earnings_date, '%Y-%m-%d')
+            if scan_date:
+                today = datetime.strptime(scan_date, '%Y-%m-%d')
+            else:
+                today = datetime.now()
+            
+            days_to_earnings = (earnings_dt - today).days
+            
+            if -EARNINGS_EXCLUSION_DAYS <= days_to_earnings <= EARNINGS_EXCLUSION_DAYS:
+                return False, f"Earnings in {days_to_earnings} days (within ±{EARNINGS_EXCLUSION_DAYS} day window)"
+        except ValueError:
+            pass  # Invalid date format, skip check
+    
+    return True, "Eligible"
+
+
+# ============================================================
+# LAYER 3: GREEKS ENRICHMENT
+# ============================================================
+
+def enrich_option_greeks(
+    contract: Dict,
+    stock_price: float,
+    risk_free_rate: float = 0.05
+) -> Dict:
+    """
+    Enrich option contract with computed/estimated Greeks.
+    
+    CCE MASTER ARCHITECTURE - LAYER 3 COMPLIANT
+    
+    Computes/estimates:
+    - Delta (from snapshot or estimated)
+    - IV (from snapshot)
+    - IV Rank (placeholder - requires historical data)
+    - Theta (estimated)
+    - Gamma (estimated)
+    
+    Args:
+        contract: Option contract data from snapshot
+        stock_price: Stock close price
+        risk_free_rate: Risk-free rate for calculations
+    
+    Returns:
+        Enriched contract with Greeks
+    """
+    enriched = contract.copy()
+    
+    strike = contract.get("strike", 0)
+    dte = contract.get("dte", 30)
+    iv = contract.get("implied_volatility", 0)
+    option_type = contract.get("option_type", "call")
+    
+    # DELTA - use from snapshot or estimate
+    if "delta" not in enriched or enriched["delta"] == 0:
+        # Estimate delta based on moneyness
+        if stock_price > 0 and strike > 0:
+            moneyness = (stock_price - strike) / stock_price
+            if option_type == "call":
+                if moneyness > 0:  # ITM
+                    enriched["delta"] = min(0.95, 0.50 + moneyness * 2)
+                else:  # OTM
+                    enriched["delta"] = max(0.05, 0.50 + moneyness * 2)
+            else:  # put
+                if moneyness < 0:  # ITM put
+                    enriched["delta"] = max(-0.95, -0.50 + moneyness * 2)
+                else:  # OTM put
+                    enriched["delta"] = min(-0.05, -0.50 + moneyness * 2)
+    
+    # IV - convert to percentage if needed
+    if iv > 0 and iv < 5:  # Likely decimal form (0.30 = 30%)
+        enriched["iv_pct"] = round(iv * 100, 1)
+    else:
+        enriched["iv_pct"] = round(iv, 1)
+    
+    # IV RANK - placeholder (would require 52-week IV history)
+    # For now, use a simple estimate based on current IV
+    if iv > 0:
+        # Rough estimate: assume typical IV range is 20-60%
+        iv_pct = iv * 100 if iv < 5 else iv
+        enriched["iv_rank"] = min(100, max(0, (iv_pct - 20) / 40 * 100))
+    else:
+        enriched["iv_rank"] = None
+    
+    # THETA estimate (simplified)
+    if dte > 0 and iv > 0:
+        # Rough theta estimate: premium decay accelerates near expiry
+        premium = contract.get("bid", 0) or contract.get("premium", 0)
+        if premium > 0:
+            daily_decay = premium / dte
+            # Adjust for time decay acceleration
+            if dte < 7:
+                daily_decay *= 1.5
+            elif dte < 14:
+                daily_decay *= 1.2
+            enriched["theta_estimate"] = -round(daily_decay, 3)
+    
+    # GAMMA estimate (simplified)
+    if "delta" in enriched and dte > 0:
+        # Gamma is highest ATM and near expiry
+        atm_factor = 1 - abs((stock_price - strike) / stock_price)
+        time_factor = max(0.1, 1 - dte / 60)
+        enriched["gamma_estimate"] = round(atm_factor * time_factor * 0.05, 4)
+    
+    return enriched
+
+
+# ============================================================
+# LAYER 3: DTE MODE HELPERS
+# ============================================================
+
+def get_dte_range(mode: str) -> tuple[int, int]:
+    """
+    Get DTE range based on scan mode.
+    
+    CCE MASTER ARCHITECTURE - LAYER 3 COMPLIANT
+    
+    Args:
+        mode: "weekly", "monthly", or "all"
+    
+    Returns:
+        (min_dte, max_dte)
+    """
+    if mode == "weekly":
+        return WEEKLY_MIN_DTE, WEEKLY_MAX_DTE
+    elif mode == "monthly":
+        return MONTHLY_MIN_DTE, MONTHLY_MAX_DTE
+    else:  # "all" or default
+        return WEEKLY_MIN_DTE, MONTHLY_MAX_DTE
 
 
 class SnapshotValidationError(HTTPException):
