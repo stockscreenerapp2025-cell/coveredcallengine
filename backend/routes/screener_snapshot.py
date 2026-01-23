@@ -1051,6 +1051,16 @@ async def screen_pmcc(
     # Sort by annualized ROI
     opportunities.sort(key=lambda x: x["annualized_roi"], reverse=True)
     
+    # DEDUPLICATION: Keep only the best PMCC opportunity per symbol
+    seen_symbols = set()
+    deduplicated = []
+    for opp in opportunities:
+        if opp["symbol"] not in seen_symbols:
+            seen_symbols.add(opp["symbol"])
+            deduplicated.append(opp)
+    
+    opportunities = deduplicated
+    
     return {
         "total": len(opportunities),
         "results": opportunities[:limit],
