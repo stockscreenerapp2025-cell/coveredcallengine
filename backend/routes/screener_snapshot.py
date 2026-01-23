@@ -426,15 +426,17 @@ async def validate_all_snapshots(symbols: List[str]) -> Dict[str, Any]:
 
 
 # ============================================================
-# COVERED CALL SCREENER (Phase 2 - READ-ONLY FROM SNAPSHOTS)
+# COVERED CALL SCREENER (LAYER 3 - Strategy Selection)
 # ============================================================
 
 @screener_router.get("/covered-calls")
 async def screen_covered_calls(
     limit: int = Query(50, ge=1, le=200),
     risk_profile: str = Query("moderate", regex="^(conservative|moderate|aggressive)$"),
-    min_dte: int = Query(7, ge=1),
-    max_dte: int = Query(45, le=180),
+    dte_mode: str = Query("all", regex="^(weekly|monthly|all)$"),
+    scan_mode: str = Query("system", regex="^(system|custom|manual)$"),
+    min_dte: int = Query(None, ge=1),
+    max_dte: int = Query(None, le=180),
     min_premium_yield: float = Query(0.5, ge=0),
     max_premium_yield: float = Query(20.0, le=50),
     min_otm_pct: float = Query(0.0, ge=0),
@@ -444,12 +446,30 @@ async def screen_covered_calls(
     """
     Screen for Covered Call opportunities.
     
-    ARCHITECTURE: Phase 2 - Reads ONLY from stored Mongo snapshots.
+    CCE MASTER ARCHITECTURE - LAYER 3: Strategy Selection
+    
+    ARCHITECTURE: Reads ONLY from stored Mongo snapshots.
     NO live data fetching. NO market open/closed logic.
+    
+    LAYER 3 FEATURES:
+    - CC eligibility filters (price $30-$90, volume ≥1M, market cap ≥$5B)
+    - Earnings ±7 days exclusion
+    - Weekly (7-14 DTE) / Monthly (21-45 DTE) modes
+    - Greeks enrichment (Delta, IV, IV Rank, OI)
+    
+    Args:
+        dte_mode: "weekly" (7-14), "monthly" (21-45), or "all" (7-45)
+        scan_mode: "system" (strict filters), "custom", or "manual" (relaxed price)
     
     FAIL CLOSED: Returns HTTP 409 if snapshot validation fails.
     """
     snapshot_service = get_snapshot_service()
+    
+    # LAYER 3: Determine DTE range based on mode
+    if min_dte is None or max_dte is None:
+        auto_min_dte, auto_max_dte = get_dte_range(dte_mode)
+        min_dte = min_dte if min_dte is not None else auto_min_dte
+        max_dte = max_dte if max_dte is not None else auto_max_dte
     
     # Step 1: Validate ALL snapshots (FAIL CLOSED)
     try:
@@ -471,11 +491,30 @@ async def screen_covered_calls(
     opportunities = []
     symbols_scanned = 0
     symbols_with_results = 0
+    symbols_filtered = []  # Track filtered symbols for debugging
     
     for sym_data in validation["valid_symbols"]:
         symbol = sym_data["symbol"]
         stock_price = sym_data["stock_price"]
         symbols_scanned += 1
+        
+        # Get stock snapshot for eligibility check
+        stock_snapshot, _ = await snapshot_service.get_stock_snapshot(symbol)
+        
+        # LAYER 3: Check CC eligibility (price, volume, market cap, earnings)
+        is_eligible, eligibility_reason = check_cc_eligibility(
+            symbol=symbol,
+            stock_price=stock_price,
+            market_cap=stock_snapshot.get("market_cap"),
+            avg_volume=stock_snapshot.get("avg_volume"),
+            earnings_date=stock_snapshot.get("earnings_date"),
+            scan_mode=scan_mode,
+            scan_date=sym_data.get("snapshot_date")
+        )
+        
+        if not is_eligible:
+            symbols_filtered.append({"symbol": symbol, "reason": eligibility_reason})
+            continue
         
         # Get valid calls from snapshot (Phase 2: READ-ONLY)
         calls, error = await snapshot_service.get_valid_calls_for_scan(
@@ -490,9 +529,6 @@ async def screen_covered_calls(
         if error or not calls:
             continue
         
-        # Get stock snapshot for additional data
-        stock_snapshot, _ = await snapshot_service.get_stock_snapshot(symbol)
-        
         for call in calls:
             strike = call["strike"]
             premium = call["premium"]  # BID price (already validated)
@@ -500,6 +536,7 @@ async def screen_covered_calls(
             expiry = call["expiry"]
             iv = call.get("implied_volatility", 0)
             oi = call.get("open_interest", 0)
+            ask = call.get("ask", 0)
             
             # Calculate metrics
             premium_yield = (premium / stock_price) * 100
@@ -511,7 +548,7 @@ async def screen_covered_calls(
             if otm_pct < min_otm_pct or otm_pct > max_otm_pct:
                 continue
             
-            # Validate trade structure
+            # Validate trade structure (includes Layer 2 spread check)
             is_valid, rejection = validate_cc_trade(
                 symbol=symbol,
                 stock_price=stock_price,
@@ -519,18 +556,21 @@ async def screen_covered_calls(
                 expiry=expiry,
                 bid=premium,
                 dte=dte,
-                open_interest=oi
+                open_interest=oi,
+                ask=ask  # Pass ASK for spread validation
             )
             
             if not is_valid:
                 continue
             
+            # LAYER 3: Enrich with Greeks
+            enriched_call = enrich_option_greeks(call, stock_price)
+            
             # Calculate quality score (Phase 7)
-            # Note: Function expects a trade_data dict
             trade_data = {
                 "iv": iv,
-                "iv_rank": iv * 100 if iv < 1 else iv,  # Convert to percentage if needed
-                "delta": call.get("delta", 0.3),  # Use actual delta from snapshot
+                "iv_rank": enriched_call.get("iv_rank", iv * 100 if iv < 1 else iv),
+                "delta": enriched_call.get("delta", 0.3),
                 "roi_pct": premium_yield,
                 "premium": premium,
                 "stock_price": stock_price,
@@ -549,13 +589,19 @@ async def screen_covered_calls(
                 "strike": strike,
                 "expiry": expiry,
                 "dte": dte,
+                "dte_category": "weekly" if dte <= WEEKLY_MAX_DTE else "monthly",
                 "stock_price": round(stock_price, 2),
                 "premium": round(premium, 2),
                 "premium_yield": round(premium_yield, 2),
                 "otm_pct": round(otm_pct, 2),
-                "implied_volatility": round(iv * 100, 1) if iv < 1 else round(iv, 1),
+                # LAYER 3: Enriched Greeks
+                "delta": round(enriched_call.get("delta", 0), 4),
+                "implied_volatility": round(enriched_call.get("iv_pct", iv * 100 if iv < 1 else iv), 1),
+                "iv_rank": round(enriched_call.get("iv_rank", 0), 1) if enriched_call.get("iv_rank") else None,
+                "theta_estimate": enriched_call.get("theta_estimate"),
                 "open_interest": oi,
                 "volume": call.get("volume", 0),
+                # Scores
                 "base_score": round(quality_result.total_score, 1),
                 "score": round(final_score, 1),
                 "score_breakdown": {
@@ -563,7 +609,9 @@ async def screen_covered_calls(
                     "pillars": {k: {"score": round(v.actual_score, 1), "max": v.max_score} 
                                for k, v in quality_result.pillars.items()} if quality_result.pillars else {}
                 },
+                # Stock metadata
                 "market_cap": stock_snapshot.get("market_cap"),
+                "avg_volume": stock_snapshot.get("avg_volume"),
                 "analyst_rating": stock_snapshot.get("analyst_rating"),
                 "earnings_date": stock_snapshot.get("earnings_date"),
                 "snapshot_date": sym_data["snapshot_date"],
@@ -582,13 +630,26 @@ async def screen_covered_calls(
         "opportunities": opportunities[:limit],  # Backward compatibility
         "symbols_scanned": symbols_scanned,
         "symbols_with_results": symbols_with_results,
+        "symbols_filtered": len(symbols_filtered),
+        "filter_reasons": symbols_filtered[:10],  # First 10 for debugging
         "market_bias": market_bias,
         "bias_weight": bias_weight,
         "snapshot_validation": {
             "total": validation["symbols_total"],
             "valid": validation["symbols_valid"]
         },
-        "phase": 7,
+        # LAYER 3 metadata
+        "layer": 3,
+        "scan_mode": scan_mode,
+        "dte_mode": dte_mode,
+        "dte_range": {"min": min_dte, "max": max_dte},
+        "eligibility_filters": {
+            "price_range": f"${CC_SYSTEM_MIN_PRICE}-${CC_SYSTEM_MAX_PRICE}" if scan_mode != "manual" else f"${CC_MANUAL_MIN_PRICE}-${CC_MANUAL_MAX_PRICE}",
+            "min_volume": f"{CC_SYSTEM_MIN_VOLUME:,}" if scan_mode != "manual" else "N/A",
+            "min_market_cap": f"${CC_SYSTEM_MIN_MARKET_CAP/1e9:.0f}B" if scan_mode != "manual" else "N/A",
+            "earnings_exclusion": f"±{EARNINGS_EXCLUSION_DAYS} days"
+        },
+        "spread_threshold": f"{MAX_SPREAD_PCT}%",
         "architecture": "TWO_PHASE_SNAPSHOT_ONLY",
         "live_data_used": False
     }
