@@ -141,8 +141,8 @@ SCAN_SYMBOLS = [
     # Other Popular
     "PLTR", "SOFI", "COIN", "HOOD", "RIVN", "LCID", "NIO", "UBER", "LYFT",
     "AAL", "DAL", "UAL", "CCL", "NCLH", "MGM", "WYNN",
-    # ETFs (excluding GLD - incomplete chain)
-    "SPY", "QQQ", "IWM", "SLV"
+    # ETFs - Expanded list for better coverage
+    "SPY", "QQQ", "IWM", "SLV", "GLD", "TLT", "XLF", "XLE", "XLK", "EEM", "ARKK", "DIA"
 ]
 
 
