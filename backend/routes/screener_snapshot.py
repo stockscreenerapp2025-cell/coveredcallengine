@@ -805,16 +805,34 @@ async def screen_covered_calls(
             continue
         
         # Get valid calls from snapshot (Phase 2: READ-ONLY)
-        calls, error = await snapshot_service.get_valid_calls_for_scan(
-            symbol=symbol,
-            min_dte=min_dte,
-            max_dte=max_dte,
-            min_strike_pct=1.0 + (min_otm_pct / 100),
-            max_strike_pct=1.0 + (max_otm_pct / 100),
-            min_bid=0.05
-        )
+        # ADR-001: Get valid calls from EOD contract
+        try:
+            if use_eod_contract:
+                calls = await eod_contract.get_valid_calls_for_scan(
+                    symbol=symbol,
+                    trade_date=sym_data.get("stock_price_trade_date"),
+                    min_dte=min_dte,
+                    max_dte=max_dte,
+                    min_strike_pct=1.0 + (min_otm_pct / 100),
+                    max_strike_pct=1.0 + (max_otm_pct / 100),
+                    min_bid=0.05
+                )
+            else:
+                calls, error = await snapshot_service.get_valid_calls_for_scan(
+                    symbol=symbol,
+                    min_dte=min_dte,
+                    max_dte=max_dte,
+                    min_strike_pct=1.0 + (min_otm_pct / 100),
+                    max_strike_pct=1.0 + (max_otm_pct / 100),
+                    min_bid=0.05
+                )
+                if error:
+                    calls = []
+        except (EODOptionsNotFoundError, Exception) as e:
+            logging.debug(f"No calls for {symbol}: {e}")
+            continue
         
-        if error or not calls:
+        if not calls:
             continue
         
         for call in calls:
@@ -871,8 +889,8 @@ async def screen_covered_calls(
                 "open_interest": oi,
                 "volume": call.get("volume", 0),
                 "is_etf": symbol in ETF_SYMBOLS,
-                "market_cap": stock_snapshot.get("market_cap"),
-                "analyst_rating": stock_snapshot.get("analyst_rating")
+                "market_cap": market_cap,
+                "analyst_rating": None  # Not available in EOD contract
             }
             quality_result = calculate_cc_quality_score(trade_data)
             
