@@ -1083,21 +1083,29 @@ async def screen_pmcc(
     min_short_dte: int = Query(21, ge=7),
     max_short_dte: int = Query(60, le=90),
     min_delta: float = Query(0.70, ge=0.5, le=0.95),
+    use_eod_contract: bool = Query(True, description="ADR-001: Use EOD contract"),
     user: dict = Depends(get_current_user)
 ):
     """
     Screen for Poor Man's Covered Call (PMCC) opportunities.
     
-    ARCHITECTURE: Phase 2 - Reads ONLY from stored Mongo snapshots.
-    NO live data fetching. NO market open/closed logic.
+    ADR-001 COMPLIANT: Uses canonical EOD Market Close Price Contract.
     
-    FAIL CLOSED: Returns HTTP 409 if snapshot validation fails.
+    ARCHITECTURE:
+    - Reads ONLY from canonical eod_market_close and eod_options_chain
+    - NO live data fetching. NO market open/closed logic.
+    
+    FAIL CLOSED: Returns HTTP 409 if EOD data validation fails.
     """
-    snapshot_service = get_snapshot_service()
+    eod_contract = get_eod_contract()
+    snapshot_service = get_snapshot_service()  # Fallback for metadata
     
-    # Step 1: Validate ALL snapshots (FAIL CLOSED)
+    # Step 1: Validate ALL EOD data (FAIL CLOSED) - ADR-001 COMPLIANT
     try:
-        validation = await validate_all_snapshots(SCAN_SYMBOLS)
+        if use_eod_contract:
+            validation = await validate_eod_data(SCAN_SYMBOLS)
+        else:
+            validation = await validate_all_snapshots(SCAN_SYMBOLS)
     except SnapshotValidationError:
         raise
     
@@ -1110,41 +1118,74 @@ async def screen_pmcc(
         market_bias = "neutral"
         bias_weight = 1.0
     
-    # Step 3: Scan each symbol for PMCC opportunities
+    # Step 3: Scan each symbol for PMCC opportunities using EOD data
     opportunities = []
     symbols_scanned = 0
     
     for sym_data in validation["valid_symbols"]:
         symbol = sym_data["symbol"]
-        stock_price = sym_data["stock_price"]
+        stock_price = sym_data["stock_price"]  # ADR-001: market_close_price
+        trade_date = sym_data.get("stock_price_trade_date")
         symbols_scanned += 1
         
-        # Get LEAPS from snapshot (BUY leg - uses ASK)
-        leaps, leap_error = await snapshot_service.get_valid_leaps_for_pmcc(
-            symbol=symbol,
-            min_dte=min_leap_dte,
-            max_dte=max_leap_dte,
-            min_delta=min_delta
-        )
-        
-        if leap_error or not leaps:
+        # ADR-001: Get LEAPS from EOD contract (BUY leg - uses ASK)
+        try:
+            if use_eod_contract:
+                leaps = await eod_contract.get_valid_leaps_for_pmcc(
+                    symbol=symbol,
+                    trade_date=trade_date,
+                    min_dte=min_leap_dte,
+                    max_dte=max_leap_dte,
+                    min_delta=min_delta
+                )
+            else:
+                leaps, leap_error = await snapshot_service.get_valid_leaps_for_pmcc(
+                    symbol=symbol,
+                    min_dte=min_leap_dte,
+                    max_dte=max_leap_dte,
+                    min_delta=min_delta
+                )
+                if leap_error:
+                    leaps = []
+        except (EODOptionsNotFoundError, Exception) as e:
+            logging.debug(f"No LEAPs for {symbol}: {e}")
             continue
         
-        # Get short calls from snapshot (SELL leg - uses BID)
-        shorts, short_error = await snapshot_service.get_valid_calls_for_scan(
-            symbol=symbol,
-            min_dte=min_short_dte,
-            max_dte=max_short_dte,
-            min_strike_pct=1.02,  # 2% OTM minimum
-            max_strike_pct=1.15,  # 15% OTM maximum
-            min_bid=0.10
-        )
-        
-        if short_error or not shorts:
+        if not leaps:
             continue
         
-        # Get stock snapshot for metadata
-        stock_snapshot, _ = await snapshot_service.get_stock_snapshot(symbol)
+        # ADR-001: Get short calls from EOD contract (SELL leg - uses BID)
+        try:
+            if use_eod_contract:
+                shorts = await eod_contract.get_valid_calls_for_scan(
+                    symbol=symbol,
+                    trade_date=trade_date,
+                    min_dte=min_short_dte,
+                    max_dte=max_short_dte,
+                    min_strike_pct=1.02,  # 2% OTM minimum
+                    max_strike_pct=1.15,  # 15% OTM maximum
+                    min_bid=0.10
+                )
+            else:
+                shorts, short_error = await snapshot_service.get_valid_calls_for_scan(
+                    symbol=symbol,
+                    min_dte=min_short_dte,
+                    max_dte=max_short_dte,
+                    min_strike_pct=1.02,
+                    max_strike_pct=1.15,
+                    min_bid=0.10
+                )
+                if short_error:
+                    shorts = []
+        except (EODOptionsNotFoundError, Exception) as e:
+            logging.debug(f"No short calls for {symbol}: {e}")
+            continue
+        
+        if not shorts:
+            continue
+        
+        # Get metadata
+        market_cap = sym_data.get("market_cap")
         
         # Build PMCC combinations
         for leap in leaps:
