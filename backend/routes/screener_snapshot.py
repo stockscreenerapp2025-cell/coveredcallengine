@@ -708,15 +708,18 @@ async def screen_covered_calls(
     max_premium_yield: float = Query(20.0, le=50),
     min_otm_pct: float = Query(0.0, ge=0),
     max_otm_pct: float = Query(20.0, le=50),
+    use_eod_contract: bool = Query(True, description="ADR-001: Use EOD contract (recommended)"),
     user: dict = Depends(get_current_user)
 ):
     """
     Screen for Covered Call opportunities.
     
-    CCE MASTER ARCHITECTURE - LAYER 3: Strategy Selection
+    ADR-001 COMPLIANT: Uses canonical EOD Market Close Price Contract.
     
-    ARCHITECTURE: Reads ONLY from stored Mongo snapshots.
-    NO live data fetching. NO market open/closed logic.
+    ARCHITECTURE:
+    - Reads ONLY from canonical eod_market_close and eod_options_chain
+    - NO live data fetching. NO market open/closed logic.
+    - Uses market_close_price captured at 04:05 PM ET
     
     LAYER 3 FEATURES:
     - CC eligibility filters (price $30-$90, volume ≥1M, market cap ≥$5B)
@@ -727,10 +730,12 @@ async def screen_covered_calls(
     Args:
         dte_mode: "weekly" (7-14), "monthly" (21-45), or "all" (7-45)
         scan_mode: "system" (strict filters), "custom", or "manual" (relaxed price)
+        use_eod_contract: If True (default), uses ADR-001 EOD contract. If False, uses legacy snapshots.
     
-    FAIL CLOSED: Returns HTTP 409 if snapshot validation fails.
+    FAIL CLOSED: Returns HTTP 409 if EOD data validation fails.
     """
-    snapshot_service = get_snapshot_service()
+    eod_contract = get_eod_contract()
+    snapshot_service = get_snapshot_service()  # Fallback for metadata
     
     # LAYER 3: Determine DTE range based on mode
     if min_dte is None or max_dte is None:
@@ -738,9 +743,12 @@ async def screen_covered_calls(
         min_dte = min_dte if min_dte is not None else auto_min_dte
         max_dte = max_dte if max_dte is not None else auto_max_dte
     
-    # Step 1: Validate ALL snapshots (FAIL CLOSED)
+    # Step 1: Validate ALL EOD data (FAIL CLOSED) - ADR-001 COMPLIANT
     try:
-        validation = await validate_all_snapshots(SCAN_SYMBOLS)
+        if use_eod_contract:
+            validation = await validate_eod_data(SCAN_SYMBOLS)
+        else:
+            validation = await validate_all_snapshots(SCAN_SYMBOLS)
     except SnapshotValidationError:
         raise  # Re-raise to return 409
     
@@ -754,7 +762,7 @@ async def screen_covered_calls(
         market_bias = "neutral"
         bias_weight = 1.0
     
-    # Step 3: Scan each symbol using SNAPSHOT DATA ONLY
+    # Step 3: Scan each symbol using EOD DATA ONLY (ADR-001)
     opportunities = []
     symbols_scanned = 0
     symbols_with_results = 0
@@ -762,21 +770,34 @@ async def screen_covered_calls(
     
     for sym_data in validation["valid_symbols"]:
         symbol = sym_data["symbol"]
-        stock_price = sym_data["stock_price"]
+        stock_price = sym_data["stock_price"]  # ADR-001: market_close_price
         symbols_scanned += 1
         
-        # Get stock snapshot for eligibility check
-        stock_snapshot, _ = await snapshot_service.get_stock_snapshot(symbol)
+        # Get metadata for eligibility check
+        market_cap = sym_data.get("market_cap")
+        avg_volume = sym_data.get("avg_volume")
+        earnings_date = sym_data.get("earnings_date")
+        
+        # If metadata missing from EOD, try legacy snapshot
+        if market_cap is None or avg_volume is None:
+            try:
+                stock_snapshot, _ = await snapshot_service.get_stock_snapshot(symbol)
+                if stock_snapshot:
+                    market_cap = market_cap or stock_snapshot.get("market_cap")
+                    avg_volume = avg_volume or stock_snapshot.get("avg_volume")
+                    earnings_date = earnings_date or stock_snapshot.get("earnings_date")
+            except Exception:
+                pass
         
         # LAYER 3: Check CC eligibility (price, volume, market cap, earnings)
         is_eligible, eligibility_reason = check_cc_eligibility(
             symbol=symbol,
             stock_price=stock_price,
-            market_cap=stock_snapshot.get("market_cap"),
-            avg_volume=stock_snapshot.get("avg_volume"),
-            earnings_date=stock_snapshot.get("earnings_date"),
+            market_cap=market_cap,
+            avg_volume=avg_volume,
+            earnings_date=earnings_date,
             scan_mode=scan_mode,
-            scan_date=sym_data.get("snapshot_date")
+            scan_date=sym_data.get("stock_price_trade_date")
         )
         
         if not is_eligible:
