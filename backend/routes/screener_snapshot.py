@@ -1008,12 +1008,12 @@ async def screen_covered_calls(
                     "pillars": {k: {"score": round(v.actual_score, 1), "max": v.max_score} 
                                for k, v in quality_result.pillars.items()} if quality_result.pillars else {}
                 },
-                "market_cap": stock_snapshot.get("market_cap"),
-                "avg_volume": stock_snapshot.get("avg_volume"),
-                "analyst_rating": stock_snapshot.get("analyst_rating"),
-                "earnings_date": stock_snapshot.get("earnings_date"),
-                "snapshot_date": sym_data["snapshot_date"],
-                "data_age_hours": sym_data["data_age_hours"]
+                "market_cap": market_cap,
+                "avg_volume": avg_volume,
+                "analyst_rating": None,  # Not in EOD contract
+                "earnings_date": earnings_date,
+                "snapshot_date": sym_data.get("stock_price_trade_date"),
+                "data_source": "eod_contract" if use_eod_contract else "legacy_snapshot"  # ADR-001
             })
         
         if calls:
@@ -1045,7 +1045,13 @@ async def screen_covered_calls(
         "bias_weight": bias_weight,
         "snapshot_validation": {
             "total": validation["symbols_total"],
-            "valid": validation["symbols_valid"]
+            "valid": validation["symbols_valid"],
+            "data_source": validation.get("data_source", "legacy")  # ADR-001
+        },
+        # ADR-001: EOD Contract metadata
+        "eod_contract": {
+            "enabled": use_eod_contract,
+            "version": "ADR-001"
         },
         # LAYER 3 metadata
         "layer": 3,
