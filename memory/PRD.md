@@ -1,12 +1,12 @@
 # Covered Call Engine - Product Requirements Document
 
-## Last Updated: January 23, 2026
+## Last Updated: January 26, 2026
 
 ## Overview
 Web-based application for screening Covered Call (CC) and Poor Man's Covered Call (PMCC) options strategies with AI-assisted scoring.
 
-## Current Status: LAYER 3.3 ETF SUPPORT & IV FIX COMPLETE
-ETF support added, Simulator IV display fixed, Golden payload tests passing (10/10).
+## Current Status: ADR-001 EOD PRICE CONTRACT IMPLEMENTED
+The EOD Market Close Price Contract is now live. All snapshot-based modules use canonical eod_market_close data.
 
 ## Architectural Layers
 
@@ -18,8 +18,79 @@ ETF support added, Simulator IV display fixed, Golden payload tests passing (10/
 | 3.1 | Data Pipeline Fix | ✅ Complete | Jan 23, 2026 |
 | 3.2 | Data Contract Enforcement | ✅ Complete | Jan 23, 2026 |
 | 3.3 | ETF Support & IV Fix | ✅ Complete | Jan 23, 2026 |
+| **ADR-001** | **EOD Price Contract** | ✅ **Complete** | **Jan 26, 2026** |
 | 4 | Scoring & Ranking | 🔜 Next | - |
 | 5 | Presentation & Watchlist | 📋 Backlog | - |
+
+## ADR-001: EOD Market Close Price Contract (Jan 26, 2026)
+
+### Overview
+Implemented a permanent, non-negotiable EOD Price Contract that defines:
+- Market close price captured at **04:05 PM ET** (after NYSE close candle finalizes)
+- **Immutable** per symbol+trade_date once `is_final: true`
+- **Idempotent** ingestion (re-runs without override are no-ops)
+
+### New Collections (MongoDB)
+| Collection | Purpose |
+|------------|---------|
+| `eod_market_close` | Canonical stock EOD prices |
+| `eod_options_chain` | Canonical options data |
+
+### Schema: eod_market_close
+```json
+{
+  "symbol": "AAPL",
+  "trade_date": "2026-01-23",
+  "market_close_price": 198.45,
+  "market_close_timestamp": "2026-01-23T16:05:00-05:00",
+  "source": "yahoo",
+  "ingestion_run_id": "run_20260123_1605_abc123",
+  "is_final": true,
+  "metadata": { "volume", "market_cap", "avg_volume", "earnings_date" }
+}
+```
+
+### Module Usage Rules (ADR-001 Enforced)
+| Module | Data Source | Fallback? | Price Label |
+|--------|-------------|-----------|-------------|
+| Dashboard | `eod_market_close` | ❌ FAIL FAST | `EOD_CONTRACT` |
+| Screener CC | `eod_market_close` | ❌ FAIL FAST | `EOD_CONTRACT` |
+| PMCC | `eod_market_close` | ❌ FAIL FAST | `EOD_CONTRACT` |
+| Watchlist (snapshot) | `eod_market_close` | ❌ FAIL FAST | `EOD_CONTRACT` |
+| Watchlist (live) | Yahoo LIVE | N/A | `LIVE_PRICE` |
+| Simulator | Yahoo LIVE | N/A | `LIVE_PRICE` |
+
+### Scheduled Ingestion
+- **APScheduler job**: Runs at **04:05 PM ET** on trading days (Mon-Fri)
+- **Idempotent**: Re-runs for same trade_date are no-ops
+- **Override flag**: Admin can force re-ingestion with `override=true`
+
+### New API Endpoints
+| Endpoint | Method | Purpose |
+|----------|--------|---------|
+| `/api/eod/health` | GET | Health check (no auth) |
+| `/api/eod/price/{symbol}` | GET | Get canonical EOD price |
+| `/api/eod/calls/{symbol}` | GET | Get valid calls for CC |
+| `/api/eod/leaps/{symbol}` | GET | Get valid LEAPs for PMCC |
+| `/api/eod/ingest/batch` | POST | Batch ingestion (admin) |
+| `/api/eod/status` | GET | EOD data status |
+
+### Files Created/Modified
+| File | Action |
+|------|--------|
+| `/app/backend/services/eod_ingestion_service.py` | NEW |
+| `/app/backend/routes/eod.py` | NEW |
+| `/app/backend/docs/ADR-001-EOD-PRICE-CONTRACT.md` | NEW |
+| `/app/backend/scripts/migrate_to_eod_contract.py` | NEW |
+| `/app/backend/tests/test_eod_contract.py` | NEW |
+| `/app/backend/routes/screener_snapshot.py` | MODIFIED |
+| `/app/backend/routes/watchlist.py` | MODIFIED |
+| `/app/backend/server.py` | MODIFIED |
+
+### Migration Completed
+- 72 stocks migrated to `eod_market_close`
+- 72 options chains migrated to `eod_options_chain`
+- Legacy `stock_snapshots` and `option_chain_snapshots` still available
 
 ## Layer 3.3 ETF Support & IV Fix (Jan 23, 2026)
 
