@@ -1223,7 +1223,9 @@ api_router.include_router(simulator_router, prefix="/simulator")
 api_router.include_router(support_router)
 api_router.include_router(invitation_router)
 api_router.include_router(scans_router)  # Pre-computed scans
-app.include_router(snapshot_router)  # PHASE 1: Snapshot management (no prefix - already has /api/snapshots)
+app.include_router(snapshot_router)  # PHASE 1: Snapshot management (legacy - no prefix)
+# ADR-001: EOD Market Close Price Contract
+app.include_router(eod_router)  # Canonical EOD data (no prefix - already has /api/eod)
 
 app.include_router(api_router)
 
