@@ -1,8 +1,17 @@
 """
 Watchlist routes - Enhanced with price tracking and opportunities
-Uses unified data provider (Yahoo primary, Polygon backup)
+
+ADR-001 COMPLIANT: 
+- Snapshot mode: Uses canonical EOD Market Close data (eod_market_close, eod_options_chain)
+- Live mode: Explicitly labeled as LIVE_PRICE, isolated from EOD persistence
+
+FORBIDDEN in snapshot mode:
+- regularMarketPrice
+- currentPrice
+- previousClose
+- Any live API fallback
 """
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, Query
 from datetime import datetime, timezone
 from typing import List, Dict, Any
 import uuid
@@ -18,6 +27,13 @@ from models.schemas import WatchlistItemCreate
 from utils.auth import get_current_user
 from services.data_provider import fetch_stock_quote, fetch_options_chain, fetch_stock_quotes_batch
 
+# ADR-001: Import EOD Price Contract
+from services.eod_ingestion_service import (
+    EODPriceContract,
+    EODPriceNotFoundError,
+    EODOptionsNotFoundError
+)
+
 watchlist_router = APIRouter(tags=["Watchlist"])
 
 
@@ -25,6 +41,124 @@ def _get_server_functions():
     """Lazy import to avoid circular dependencies"""
     from server import get_massive_api_key, MOCK_STOCKS
     return get_massive_api_key, MOCK_STOCKS
+
+
+# ADR-001: EOD Price Contract singleton
+_eod_price_contract = None
+
+def _get_eod_contract() -> EODPriceContract:
+    """Get or create the EOD Price Contract singleton."""
+    global _eod_price_contract
+    if _eod_price_contract is None:
+        _eod_price_contract = EODPriceContract(db)
+    return _eod_price_contract
+
+
+async def _get_best_opportunity_eod(symbol: str, trade_date: str = None) -> dict:
+    """
+    ADR-001 COMPLIANT: Get best covered call opportunity from EOD contract.
+    
+    Uses canonical eod_market_close and eod_options_chain data.
+    FAILS FAST if EOD data not available (no live fallback).
+    """
+    eod_contract = _get_eod_contract()
+    
+    try:
+        # Get canonical EOD stock price
+        stock_price, stock_doc = await eod_contract.get_market_close_price(symbol, trade_date)
+        
+        # Get valid calls from EOD contract
+        calls = await eod_contract.get_valid_calls_for_scan(
+            symbol=symbol,
+            trade_date=trade_date,
+            min_dte=1,
+            max_dte=45,
+            min_strike_pct=0.98,
+            max_strike_pct=1.10,
+            min_bid=0.05
+        )
+        
+        if not calls:
+            return None
+        
+        best_opp = None
+        best_score = 0
+        
+        for call in calls:
+            strike = call.get("strike", 0)
+            expiry = call.get("expiry", "")
+            dte = call.get("dte", 0)
+            premium = call.get("bid", 0) or call.get("premium", 0)
+            ask = call.get("ask", 0)
+            open_interest = call.get("open_interest", 0)
+            iv = call.get("implied_volatility", 0)
+            delta = call.get("delta", 0)
+            
+            if premium <= 0 or strike <= 0 or dte < 1:
+                continue
+            
+            # Calculate ROI
+            roi_pct = (premium / stock_price) * 100 if stock_price > 0 else 0
+            annualized_roi = roi_pct * (365 / dte) if dte > 0 else 0
+            
+            if roi_pct < 0.3:
+                continue
+            
+            # Estimate delta if not provided
+            if delta == 0 and stock_price > 0 and strike > 0:
+                moneyness = (stock_price - strike) / stock_price
+                if moneyness < 0:
+                    delta = max(0.05, 0.50 + moneyness * 2)
+                else:
+                    delta = min(0.95, 0.50 + moneyness * 2)
+            
+            option_type = "Weekly" if dte <= 14 else "Monthly"
+            iv_pct = iv * 100 if iv > 0 and iv < 5 else iv
+            iv_rank = min(100, max(0, (iv_pct - 15) / 65 * 100)) if iv_pct > 0 else 0
+            
+            # Calculate score
+            roi_score = min(roi_pct * 15, 40)
+            iv_score = min(iv_pct / 5, 20) if iv_pct > 0 else 10
+            delta_score = max(0, 20 - abs(delta - 0.35) * 50)
+            liquidity_score = 10 if open_interest >= 500 else 5 if open_interest >= 100 else 2
+            
+            ai_score = round(roi_score + iv_score + delta_score + liquidity_score, 1)
+            
+            if ai_score > best_score:
+                best_score = ai_score
+                spread_pct = ((ask - premium) / premium * 100) if premium > 0 and ask else 0
+                
+                best_opp = {
+                    "strike": strike,
+                    "expiry": expiry,
+                    "dte": dte,
+                    "premium": round(premium, 2),
+                    "bid": round(premium, 2),
+                    "ask": round(ask, 2) if ask else None,
+                    "spread_pct": round(spread_pct, 2),
+                    "delta": round(delta, 4),
+                    "implied_volatility": round(iv_pct, 1),
+                    "iv": round(iv_pct, 1),
+                    "iv_rank": round(iv_rank, 0),
+                    "volume": call.get("volume", 0),
+                    "open_interest": open_interest,
+                    "roi_pct": round(roi_pct, 2),
+                    "annualized_roi_pct": round(annualized_roi, 1),
+                    "type": option_type,
+                    "ai_score": ai_score,
+                    "source": "eod_contract",  # ADR-001 marker
+                    "data_source": "eod_contract",
+                    "market_close_timestamp": stock_doc.get("market_close_timestamp")
+                }
+        
+        return best_opp
+        
+    except (EODPriceNotFoundError, EODOptionsNotFoundError) as e:
+        logging.warning(f"[ADR-001] No EOD data for {symbol}: {e}")
+        return None
+    except Exception as e:
+        logging.error(f"[ADR-001] Error getting EOD opportunity for {symbol}: {e}")
+        return None
 
 
 async def _get_best_opportunity(symbol: str, api_key: str, underlying_price: float) -> dict:
