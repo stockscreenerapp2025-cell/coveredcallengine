@@ -406,16 +406,46 @@ async def get_watchlist(
     # Get API key
     api_key = await get_massive_api_key()
     
-    # Fetch stock quotes in batch (Yahoo primary)
-    stock_data = await fetch_stock_quotes_batch(symbols, api_key)
+    # ADR-001: Conditionally fetch live prices
+    if use_live_prices:
+        # Fetch stock quotes in batch (Yahoo primary) - LIVE data
+        stock_data = await fetch_stock_quotes_batch(symbols, api_key)
+    else:
+        stock_data = {}
     
-    # Enrich items with current prices and opportunities
+    # ADR-001: Get EOD prices if EOD contract is enabled
+    eod_prices = {}
+    if use_eod_contract:
+        eod_contract = _get_eod_contract()
+        for symbol in symbols:
+            try:
+                price, doc = await eod_contract.get_market_close_price(symbol)
+                eod_prices[symbol] = {
+                    "market_close_price": price,
+                    "trade_date": doc.get("trade_date"),
+                    "market_close_timestamp": doc.get("market_close_timestamp")
+                }
+            except (EODPriceNotFoundError, Exception):
+                pass
+    
+    # Enrich items with prices and opportunities
     enriched_items = []
     for item in items:
         symbol = item.get("symbol", "")
-        data = stock_data.get(symbol, {})
+        live_data = stock_data.get(symbol, {})
+        eod_data = eod_prices.get(symbol, {})
         
-        current_price = data.get("price", 0)
+        # ADR-001: Price source labeling
+        if use_live_prices and live_data.get("price"):
+            current_price = live_data.get("price", 0)
+            price_source = "LIVE_PRICE"  # Explicit ADR-001 label
+        elif eod_data.get("market_close_price"):
+            current_price = eod_data.get("market_close_price", 0)
+            price_source = "EOD_CONTRACT"  # ADR-001 label
+        else:
+            current_price = 0
+            price_source = "UNAVAILABLE"
+        
         price_when_added = item.get("price_when_added", 0)
         
         # Calculate price movement since added
@@ -429,19 +459,30 @@ async def get_watchlist(
         enriched = {
             **item,
             "current_price": current_price,
-            "change": data.get("change", 0),
-            "change_pct": data.get("change_pct", 0),
+            "price_source": price_source,  # ADR-001: Explicit labeling
+            "change": live_data.get("change", 0) if use_live_prices else 0,
+            "change_pct": live_data.get("change_pct", 0) if use_live_prices else 0,
             "price_when_added": price_when_added,
             "movement": round(movement, 2),
             "movement_pct": round(movement_pct, 2),
-            "analyst_rating": data.get("analyst_rating"),
-            "opportunity": None
+            "analyst_rating": live_data.get("analyst_rating"),
+            "opportunity": None,
+            "eod_trade_date": eod_data.get("trade_date"),
+            "eod_market_close_timestamp": eod_data.get("market_close_timestamp")
         }
         
-        # Get best opportunity if current price exists
-        if current_price > 0:
-            opp = await _get_best_opportunity(symbol, api_key, current_price)
+        # Get best opportunity
+        if use_eod_contract:
+            # ADR-001: Use EOD contract for opportunities (no live fallback)
+            opp = await _get_best_opportunity_eod(symbol, eod_data.get("trade_date"))
             enriched["opportunity"] = opp
+            enriched["opportunity_source"] = "eod_contract" if opp else None
+        else:
+            # Legacy: Use snapshot with live fallback
+            if current_price > 0:
+                opp = await _get_best_opportunity(symbol, api_key, current_price)
+                enriched["opportunity"] = opp
+                enriched["opportunity_source"] = opp.get("source") if opp else None
         
         enriched_items.append(enriched)
     
