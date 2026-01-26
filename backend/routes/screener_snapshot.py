@@ -1353,7 +1353,7 @@ async def screen_pmcc(
                     # METADATA object
                     "metadata": {
                         "leaps_buy_eligible": pmcc_metrics.get("leaps_buy_eligible", False),
-                        "analyst_rating": stock_snapshot.get("analyst_rating"),
+                        "analyst_rating": None,  # ADR-001: Not in EOD contract
                         "validation_flags": {
                             "leap_delta_ok": leap_delta >= 0.70,
                             "leap_dte_ok": leap_dte >= 365,
