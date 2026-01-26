@@ -55,8 +55,15 @@ from utils.auth import get_current_user
 # from services.data_provider import fetch_options_chain, fetch_stock_quote
 # ^^^ DELIBERATELY NOT IMPORTED - ANY USAGE WILL CAUSE RUNTIME ERROR
 
-# Import SnapshotService for TWO-PHASE ARCHITECTURE
+# Import SnapshotService for TWO-PHASE ARCHITECTURE (LEGACY - being replaced by EOD Contract)
 from services.snapshot_service import SnapshotService
+
+# ADR-001: EOD Market Close Price Contract
+from services.eod_ingestion_service import (
+    EODPriceContract,
+    EODPriceNotFoundError,
+    EODOptionsNotFoundError
+)
 
 # LAYER 2: Import validators
 from services.chain_validator import (
