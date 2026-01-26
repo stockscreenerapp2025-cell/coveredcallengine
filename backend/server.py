@@ -1278,6 +1278,14 @@ async def startup():
     await db.invitations.create_index("token", unique=True)
     await db.invitations.create_index([("email", 1), ("status", 1)])
     
+    # ADR-001: EOD Market Close Price Contract - Create indexes for canonical EOD collections
+    await db.eod_market_close.create_index([("symbol", 1), ("trade_date", 1)], unique=True)
+    await db.eod_market_close.create_index([("trade_date", 1), ("is_final", 1)])
+    await db.eod_market_close.create_index("ingestion_run_id")
+    await db.eod_options_chain.create_index([("symbol", 1), ("trade_date", 1)], unique=True)
+    await db.eod_options_chain.create_index([("trade_date", 1), ("is_final", 1)])
+    await db.eod_options_chain.create_index("ingestion_run_id")
+    
     # Create default admin if not exists (production only - credentials should be changed immediately)
     admin = await db.users.find_one({"is_admin": True})
     if not admin:
