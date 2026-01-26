@@ -381,8 +381,18 @@ async def _get_best_opportunity_live(symbol: str, api_key: str, underlying_price
 
 
 @watchlist_router.get("/")
-async def get_watchlist(user: dict = Depends(get_current_user)):
-    """Get user's watchlist with current prices and opportunities"""
+async def get_watchlist(
+    use_eod_contract: bool = Query(True, description="ADR-001: Use EOD contract for opportunities"),
+    use_live_prices: bool = Query(True, description="Use live prices for current price display"),
+    user: dict = Depends(get_current_user)
+):
+    """
+    Get user's watchlist with current prices and opportunities.
+    
+    ADR-001 COMPLIANT:
+    - use_eod_contract=True: Opportunities use canonical EOD data (recommended)
+    - use_live_prices=True: Current prices use live data (explicitly labeled as LIVE)
+    """
     get_massive_api_key, _ = _get_server_functions()
     
     items = await db.watchlist.find({"user_id": user["id"]}, {"_id": 0}).to_list(100)
