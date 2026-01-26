@@ -1290,17 +1290,18 @@ async def screen_pmcc(
                 leap_contract_symbol = f"{symbol}{leap_exp_fmt}C{int(leap_strike * 1000):08d}"
                 
                 # ==============================================================
-                # AUTHORITATIVE PMCC CONTRACT - LAYER 3 COMPLIANT
+                # AUTHORITATIVE PMCC CONTRACT - ADR-001 COMPLIANT
                 # ==============================================================
                 opportunities.append({
-                    # UNDERLYING object
+                    # UNDERLYING object - ADR-001: Uses market_close_price
                     "underlying": {
                         "symbol": symbol,
                         "last_price": round(stock_price, 2),
-                        "price_source": "BID",
-                        "snapshot_date": sym_data["snapshot_date"],
-                        "market_cap": stock_snapshot.get("market_cap"),
-                        "analyst_rating": stock_snapshot.get("analyst_rating")
+                        "price_source": "EOD_CONTRACT" if use_eod_contract else "BID",  # ADR-001
+                        "snapshot_date": sym_data.get("stock_price_trade_date"),
+                        "market_close_timestamp": sym_data.get("market_close_timestamp"),  # ADR-001
+                        "market_cap": market_cap,
+                        "analyst_rating": None  # Not in EOD contract
                     },
                     
                     # SHORT_CALL object - SELL leg
