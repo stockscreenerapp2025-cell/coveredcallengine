@@ -621,6 +621,78 @@ async def validate_all_snapshots(symbols: List[str]) -> Dict[str, Any]:
 
 
 # ============================================================
+# ADR-001: EOD PRICE CONTRACT VALIDATION - FAIL CLOSED
+# ============================================================
+
+async def validate_eod_data(symbols: List[str], trade_date: str = None) -> Dict[str, Any]:
+    """
+    ADR-001 COMPLIANT: Validate that ALL symbols have canonical EOD data.
+    
+    Uses eod_market_close and eod_options_chain collections.
+    
+    FAIL CLOSED: If ANY symbol is missing final EOD data, raise SnapshotValidationError.
+    
+    Returns validation results if all pass.
+    """
+    eod_contract = get_eod_contract()
+    
+    valid_symbols = []
+    invalid_symbols = []
+    rejection_reasons = []
+    
+    for symbol in symbols:
+        try:
+            # Get canonical EOD stock price
+            price, stock_doc = await eod_contract.get_market_close_price(symbol, trade_date)
+            
+            # Get canonical EOD options chain
+            chain_doc = await eod_contract.get_options_chain(symbol, trade_date)
+            
+            valid_symbols.append({
+                "symbol": symbol,
+                "stock_price": price,  # Canonical market_close_price
+                "stock_price_trade_date": stock_doc.get("trade_date"),
+                "market_close_timestamp": stock_doc.get("market_close_timestamp"),
+                "valid_contracts": chain_doc.get("valid_contracts", 0),
+                "is_final": stock_doc.get("is_final") and chain_doc.get("is_final"),
+                # Metadata for Layer 3
+                "market_cap": stock_doc.get("metadata", {}).get("market_cap"),
+                "avg_volume": stock_doc.get("metadata", {}).get("avg_volume"),
+                "earnings_date": stock_doc.get("metadata", {}).get("earnings_date"),
+                "source": "eod_contract"  # ADR-001 marker
+            })
+            
+        except EODPriceNotFoundError as e:
+            invalid_symbols.append(symbol)
+            rejection_reasons.append(f"{symbol}: No canonical EOD price - {e}")
+            
+        except EODOptionsNotFoundError as e:
+            invalid_symbols.append(symbol)
+            rejection_reasons.append(f"{symbol}: No canonical options chain - {e}")
+    
+    validation_result = {
+        "symbols_total": len(symbols),
+        "symbols_valid": len(valid_symbols),
+        "symbols_invalid": len(invalid_symbols),
+        "valid_symbols": valid_symbols,
+        "invalid_symbols": invalid_symbols,
+        "rejection_reasons": rejection_reasons,
+        "data_source": "eod_contract",  # ADR-001 marker
+        "trade_date_filter": trade_date
+    }
+    
+    # FAIL CLOSED: Abort if ANY symbol is invalid
+    if invalid_symbols:
+        raise SnapshotValidationError(
+            missing=len(invalid_symbols),
+            total=len(symbols),
+            details=rejection_reasons
+        )
+    
+    return validation_result
+
+
+# ============================================================
 # COVERED CALL SCREENER (LAYER 3 - Strategy Selection)
 # ============================================================
 
