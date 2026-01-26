@@ -88,17 +88,27 @@ from services.quality_score import (
 
 screener_router = APIRouter(tags=["Screener"])
 
-# Initialize SnapshotService (singleton)
+# Initialize SnapshotService (singleton) - LEGACY, being replaced by EOD Contract
 import os
 _snapshot_service = None
 
 def get_snapshot_service() -> SnapshotService:
-    """Get or create the SnapshotService singleton."""
+    """Get or create the SnapshotService singleton. LEGACY - use EOD Contract."""
     global _snapshot_service
     if _snapshot_service is None:
         polygon_key = os.environ.get('POLYGON_API_KEY')
         _snapshot_service = SnapshotService(db, polygon_api_key=polygon_key)
     return _snapshot_service
+
+# ADR-001: EOD Price Contract singleton
+_eod_price_contract = None
+
+def get_eod_contract() -> EODPriceContract:
+    """Get or create the EOD Price Contract singleton. ADR-001 COMPLIANT."""
+    global _eod_price_contract
+    if _eod_price_contract is None:
+        _eod_price_contract = EODPriceContract(db)
+    return _eod_price_contract
 
 # Thread pool for analyst ratings (still needed for scoring enrichment)
 _analyst_executor = ThreadPoolExecutor(max_workers=10)
