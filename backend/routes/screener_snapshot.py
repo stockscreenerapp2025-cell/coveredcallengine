@@ -910,17 +910,18 @@ async def screen_covered_calls(
             is_etf = symbol in ETF_SYMBOLS
             
             opportunities.append({
-                # UNDERLYING object
+                # UNDERLYING object - ADR-001: Uses market_close_price
                 "underlying": {
                     "symbol": symbol,
                     "instrument_type": "ETF" if is_etf else "STOCK",
                     "last_price": round(stock_price, 2),
-                    "price_source": "BID",  # Layer 1 authoritative
-                    "snapshot_date": sym_data["snapshot_date"],
-                    "market_cap": stock_snapshot.get("market_cap"),
-                    "avg_volume": stock_snapshot.get("avg_volume"),
-                    "analyst_rating": stock_snapshot.get("analyst_rating"),
-                    "earnings_date": stock_snapshot.get("earnings_date")
+                    "price_source": "EOD_CONTRACT" if use_eod_contract else "BID",  # ADR-001 marker
+                    "snapshot_date": sym_data.get("stock_price_trade_date"),
+                    "market_close_timestamp": sym_data.get("market_close_timestamp"),  # ADR-001
+                    "market_cap": market_cap,
+                    "avg_volume": avg_volume,
+                    "analyst_rating": None,  # Not in EOD contract
+                    "earnings_date": earnings_date
                 },
                 
                 # SHORT_CALL object - ALL option data here
@@ -956,14 +957,14 @@ async def screen_covered_calls(
                 # METADATA object
                 "metadata": {
                     "dte_category": "weekly" if dte <= WEEKLY_MAX_DTE else "monthly",
-                    "earnings_safe": stock_snapshot.get("earnings_date") is None,
+                    "earnings_safe": earnings_date is None,
                     "is_etf": is_etf,
                     "validation_flags": {
                         "spread_ok": spread_pct < 10,
                         "liquidity_ok": oi >= 100,
                         "delta_ok": 0.20 <= enriched_call.get("delta", 0) <= 0.50
                     },
-                    "data_age_hours": sym_data["data_age_hours"]
+                    "data_source": "eod_contract" if use_eod_contract else "legacy_snapshot"  # ADR-001
                 },
                 
                 # SCORING object
