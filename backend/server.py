@@ -1382,8 +1382,41 @@ async def startup():
         replace_existing=True
     )
     
+    # ADR-001: EOD Market Close Price Contract - Scheduled Ingestion at 04:05 PM ET
+    async def run_eod_ingestion():
+        """
+        ADR-001 COMPLIANT: Scheduled EOD ingestion at 04:05 PM ET.
+        
+        Captures canonical market close prices for all symbols.
+        Must run after market close candle finalizes.
+        """
+        try:
+            from services.eod_ingestion_service import EODIngestionService
+            from routes.eod import EOD_SYMBOLS
+            
+            logger.info("[ADR-001] Starting scheduled EOD ingestion at 04:05 PM ET")
+            
+            eod_service = EODIngestionService(db)
+            results = await eod_service.ingest_all_eod(EOD_SYMBOLS)
+            
+            summary = results.get("summary", {})
+            logger.info(f"[ADR-001] EOD ingestion complete: "
+                       f"stocks={summary.get('stock_ingested', 0)}, "
+                       f"options={summary.get('options_ingested', 0)}, "
+                       f"skipped={summary.get('stock_skipped', 0)}")
+            
+        except Exception as e:
+            logger.error(f"[ADR-001] EOD ingestion error: {e}")
+    
+    scheduler.add_job(
+        run_eod_ingestion,
+        CronTrigger(hour=16, minute=5, day_of_week='mon-fri', timezone='America/New_York'),
+        id='eod_market_close_ingestion',
+        replace_existing=True
+    )
+    
     scheduler.start()
-    logger.info("Schedulers started - Simulator: 4:30 PM ET, Pre-computed scans: 4:45 PM ET, Support: every 5 min, IMAP: every 6 hours")
+    logger.info("Schedulers started - EOD: 4:05 PM ET, Simulator: 4:30 PM ET, Pre-computed scans: 4:45 PM ET, Support: every 5 min, IMAP: every 6 hours")
 
 @app.on_event("shutdown")
 async def shutdown_db_client():
