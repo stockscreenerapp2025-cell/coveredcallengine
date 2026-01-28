@@ -884,15 +884,9 @@ async def screen_covered_calls(
             
             if not is_valid:
                 continue
-                open_interest=oi,
-                ask=ask  # Pass ASK for spread validation
-            )
-            
-            if not is_valid:
-                continue
             
             # LAYER 3: Enrich with Greeks and ROI
-            enriched_call = enrich_option_greeks(call, stock_price)
+            enriched_call = enrich_option_greeks(opt, stock_price)
             
             # Use enriched ROI calculation
             roi_pct = enriched_call.get("roi_pct", premium_yield)
@@ -909,10 +903,10 @@ async def screen_covered_calls(
                 "dte": dte,
                 "strike": strike,
                 "open_interest": oi,
-                "volume": call.get("volume", 0),
+                "volume": volume,
                 "is_etf": symbol in ETF_SYMBOLS,
                 "market_cap": market_cap,
-                "analyst_rating": None  # Not available in EOD contract
+                "analyst_rating": None
             }
             quality_result = calculate_cc_quality_score(trade_data)
             
@@ -920,11 +914,14 @@ async def screen_covered_calls(
             final_score = apply_bias_to_score(quality_result.total_score, bias_weight)
             
             # Calculate bid-ask spread percentage
-            spread_pct = ((ask - premium) / premium * 100) if premium > 0 else 0
+            spread_pct = ((ask - premium) / premium * 100) if premium > 0 and ask > 0 else 0
             
             # Build contract symbol (e.g., AAPL240119C00190000)
-            exp_formatted = datetime.strptime(expiry, "%Y-%m-%d").strftime("%y%m%d")
-            contract_symbol = f"{symbol}{exp_formatted}C{int(strike * 1000):08d}"
+            try:
+                exp_formatted = datetime.strptime(expiry, "%Y-%m-%d").strftime("%y%m%d")
+                contract_symbol = f"{symbol}{exp_formatted}C{int(strike * 1000):08d}"
+            except:
+                contract_symbol = f"{symbol}_{strike}_{expiry}"
             
             # ==============================================================
             # AUTHORITATIVE CC CONTRACT - LAYER 3 COMPLIANT
