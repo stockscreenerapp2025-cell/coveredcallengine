@@ -156,14 +156,18 @@ class TestDataFetchingRules:
         """
         Rule 2: Verify watchlist opportunities are fetched LIVE
         """
-        # Add a symbol to watchlist
+        # Add a symbol to watchlist (use trailing slash for redirect)
         add_response = self.session.post(
-            f"{BASE_URL}/api/watchlist",
-            json={"symbol": "MSFT", "target_price": 400, "notes": "Test"}
+            f"{BASE_URL}/api/watchlist/",
+            json={"symbol": "MSFT", "target_price": 400, "notes": "Test"},
+            allow_redirects=True
         )
         
-        # Get watchlist
-        response = self.session.get(f"{BASE_URL}/api/watchlist?use_live_prices=true")
+        # Get watchlist (use trailing slash for redirect)
+        response = self.session.get(
+            f"{BASE_URL}/api/watchlist/?use_live_prices=true",
+            allow_redirects=True
+        )
         
         assert response.status_code == 200
         data = response.json()
@@ -178,13 +182,14 @@ class TestDataFetchingRules:
                     f"Watchlist opportunity should be from yahoo_live, got: {opp_source}"
                 print(f"✓ Rule 2 PASS: Watchlist opportunity_source: {opp_source}")
             else:
-                print("⚠ No opportunity found for watchlist item")
+                # Market may be closed - opportunity_source will be null
+                print("⚠ No opportunity found for watchlist item (market may be closed)")
         
         # Cleanup
         if add_response.status_code == 200:
             item_id = add_response.json().get("id")
             if item_id:
-                self.session.delete(f"{BASE_URL}/api/watchlist/{item_id}")
+                self.session.delete(f"{BASE_URL}/api/watchlist/{item_id}", allow_redirects=True)
     
     def test_rule2_simulator_update_uses_live_prices(self):
         """
