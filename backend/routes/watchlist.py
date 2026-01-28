@@ -365,7 +365,7 @@ async def _get_best_opportunity(symbol: str, api_key: str, underlying_price: flo
         return best_opp
     except Exception as e:
         logging.error(f"Error getting opportunity for {symbol} from snapshot: {e}")
-        return await _get_best_opportunity_live(symbol, api_key, underlying_price)
+        return await _get_best_opportunity_live_fallback(symbol, api_key, underlying_price)
 
 
 async def _get_best_opportunity_live_fallback(symbol: str, api_key: str, underlying_price: float) -> dict:
