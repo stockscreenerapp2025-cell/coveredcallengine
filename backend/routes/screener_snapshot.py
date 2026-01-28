@@ -960,7 +960,7 @@ async def screen_covered_calls(
                     "implied_volatility": round(enriched_call.get("iv_pct", iv * 100 if iv < 1 else iv), 1),
                     "iv_rank": round(enriched_call.get("iv_rank", 0), 1) if enriched_call.get("iv_rank") else None,
                     "open_interest": oi,
-                    "volume": call.get("volume", 0)
+                    "volume": volume
                 },
                 
                 # ECONOMICS object
@@ -1017,7 +1017,7 @@ async def screen_covered_calls(
                 "implied_volatility": round(enriched_call.get("iv_pct", iv * 100 if iv < 1 else iv), 1),
                 "iv_rank": round(enriched_call.get("iv_rank", 0), 1) if enriched_call.get("iv_rank") else None,
                 "open_interest": oi,
-                "volume": call.get("volume", 0),
+                "volume": volume,
                 "is_etf": is_etf,
                 "instrument_type": "ETF" if is_etf else "STOCK",
                 "base_score": round(quality_result.total_score, 1),
@@ -1029,20 +1029,19 @@ async def screen_covered_calls(
                 },
                 "market_cap": market_cap,
                 "avg_volume": avg_volume,
-                "analyst_rating": None,  # Not in EOD contract
+                "analyst_rating": None,
                 "earnings_date": earnings_date,
-                "snapshot_date": sym_data.get("stock_price_trade_date"),
-                "data_source": "eod_contract" if use_eod_contract else "legacy_snapshot"  # ADR-001
+                "snapshot_date": sym_data.get("trade_date"),
+                "data_source": "live_options"  # Now fetched LIVE
             })
         
-        if calls:
+        if live_options:
             symbols_with_results += 1
     
     # Sort by score descending
     opportunities.sort(key=lambda x: x["score"], reverse=True)
     
     # DEDUPLICATION: Keep only the best opportunity per symbol
-    # This ensures each symbol appears only once with its highest-scoring option
     seen_symbols = set()
     deduplicated = []
     for opp in opportunities:
@@ -1055,24 +1054,15 @@ async def screen_covered_calls(
     return {
         "total": len(opportunities),
         "results": opportunities[:limit],
-        "opportunities": opportunities[:limit],  # Backward compatibility
+        "opportunities": opportunities[:limit],
         "symbols_scanned": symbols_scanned,
         "symbols_with_results": symbols_with_results,
         "symbols_filtered": len(symbols_filtered),
-        "filter_reasons": symbols_filtered[:10],  # First 10 for debugging
+        "filter_reasons": symbols_filtered[:10],
         "market_bias": market_bias,
         "bias_weight": bias_weight,
-        "snapshot_validation": {
-            "total": validation["symbols_total"],
-            "valid": validation["symbols_valid"],
-            "data_source": validation.get("data_source", "legacy")  # ADR-001
-        },
-        # ADR-001: EOD Contract metadata
-        "eod_contract": {
-            "enabled": use_eod_contract,
-            "version": "ADR-001"
-        },
-        # LAYER 3 metadata
+        "stock_price_source": "previous_close",  # Rule #1
+        "options_chain_source": "yahoo_live",    # Rule #3
         "layer": 3,
         "scan_mode": scan_mode,
         "dte_mode": dte_mode,
@@ -1084,8 +1074,8 @@ async def screen_covered_calls(
             "earnings_exclusion": f"±{EARNINGS_EXCLUSION_DAYS} days"
         },
         "spread_threshold": f"{MAX_SPREAD_PCT}%",
-        "architecture": "TWO_PHASE_SNAPSHOT_ONLY",
-        "live_data_used": False
+        "architecture": "LIVE_OPTIONS_PREVIOUS_CLOSE_STOCK",
+        "live_data_used": True
     }
 
 
