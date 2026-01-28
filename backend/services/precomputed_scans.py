@@ -506,21 +506,17 @@ class PrecomputedScanService:
                             if est_delta < delta_min or est_delta > delta_max:
                                 continue
                             
-                            # Get premium - PHASE 1 FIX: Use BID for SELL legs
-                            last_price = row.get('lastPrice', 0)
+                            # PRICING RULES - SELL leg (covered call):
+                            # - Use BID only
+                            # - If BID is None, 0, or missing → reject the contract
+                            # - Never use: lastPrice, mid, ASK, theoretical price
                             bid = row.get('bid', 0)
                             ask = row.get('ask', 0)
                             
-                            # BID ONLY for covered call (SELL leg)
-                            if bid and bid > 0:
-                                premium = bid
-                            elif last_price and last_price > 0:
-                                premium = last_price  # Fallback only
-                            else:
-                                continue
+                            if not bid or bid <= 0:
+                                continue  # Reject - no valid BID for SELL leg
                             
-                            if premium <= 0:
-                                continue
+                            premium = bid  # BID only for SELL leg
                             
                             # DATA QUALITY FILTER: Premium sanity check
                             max_reasonable_premium = current_price * 0.20
