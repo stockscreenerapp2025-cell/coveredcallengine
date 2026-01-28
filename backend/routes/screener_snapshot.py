@@ -4,19 +4,17 @@ Screener Routes - Covered Call and PMCC screening endpoints
 
 CCE MASTER ARCHITECTURE - LAYER 3: Strategy Selection Layer
 
-TWO-PHASE ARCHITECTURE (NON-NEGOTIABLE):
+DATA FETCHING RULES (NON-NEGOTIABLE):
 
-PHASE 1 - INGESTION (services/snapshot_service.py):
-    - Trading-day aware using NYSE calendar
-    - Fetch stock + options data from Yahoo/Polygon
-    - Store in MongoDB with full metadata
-    - Run ONLY after market close
+1. STOCK PRICES: Use PREVIOUS US MARKET CLOSE on trading days only
+   - Source: eod_market_close or previousClose from Yahoo
+   - ❌ No intraday prices (regularMarketPrice)
+   - ❌ No pre-market or after-hours prices
 
-PHASE 2 - SCAN (this file):
-    - READ-ONLY from stored Mongo snapshots
-    - MUST ABORT if snapshot missing/stale/incomplete
-    - ZERO live API calls during scan
-    - NO "market open/closed" logic
+2. OPTIONS CHAIN: MUST be fetched LIVE per symbol, per expiry
+   - Source: Yahoo Finance at scan time
+   - ❌ Never cached, stored, or reconstructed
+   - ❌ Never inferred from derived data
 
 LAYER 3 RESPONSIBILITIES:
     - Apply CC eligibility filters (price, volume, market cap)
@@ -24,15 +22,6 @@ LAYER 3 RESPONSIBILITIES:
     - Separate Weekly (7-14 DTE) and Monthly (21-45 DTE) modes
     - Compute/enrich Greeks (Delta, IV, IV Rank, OI)
     - Prepare enriched data for downstream scoring
-    
-🚫 ABSOLUTE RULES:
-    - NO live API calls during scan
-    - NO cache used for trade eligibility
-    - NO fallback to Yahoo / live data
-    - NO market open/closed logic in scan
-    
-KILL SWITCH: fetch_stock_quote() and fetch_options_chain() are NOT imported.
-Any accidental usage will cause a runtime error.
 """
 from fastapi import APIRouter, Depends, Query, HTTPException
 from pydantic import BaseModel
@@ -49,16 +38,13 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from database import db
 from utils.auth import get_current_user
 
-# ============================================================
-# KILL SWITCH: DO NOT IMPORT LIVE DATA FUNCTIONS
-# ============================================================
-# from services.data_provider import fetch_options_chain, fetch_stock_quote
-# ^^^ DELIBERATELY NOT IMPORTED - ANY USAGE WILL CAUSE RUNTIME ERROR
+# Import data_provider for LIVE options fetching
+from services.data_provider import fetch_options_chain, fetch_stock_quote
 
-# Import SnapshotService for TWO-PHASE ARCHITECTURE (LEGACY - being replaced by EOD Contract)
+# Import SnapshotService for stock metadata (not for options)
 from services.snapshot_service import SnapshotService
 
-# ADR-001: EOD Market Close Price Contract
+# ADR-001: EOD Market Close Price Contract (for stock prices ONLY)
 from services.eod_ingestion_service import (
     EODPriceContract,
     EODPriceNotFoundError,
