@@ -18,10 +18,25 @@ Build a web-based application named "Covered Call Engine" for options traders. T
 - **Verification**: API returns `price_source: "LIVE_INTRADAY"`, `is_live_price: true`
 
 ### Rule 3: Options Chain Data
-- **Source**: Fetched LIVE from Yahoo Finance at scan time
+- **Source**: Latest available BID/ASK from Yahoo Finance
+- **Market state**: Irrelevant - use whatever BID/ASK is available
 - **NEVER**: Cached, stored, reconstructed, or inferred from derived data
 - **Implementation**: `fetch_options_chain()` called on every scan request
 - **Verification**: API returns `options_chain_source: "yahoo_live"`, `live_data_used: true`
+
+### Pricing Rules (SELL vs BUY legs)
+
+#### SELL Legs (Short Calls in CC and PMCC)
+- **Use**: BID only
+- **Reject if**: BID is None, 0, or missing
+- **NEVER use**: lastPrice, mid, ASK, theoretical price
+
+#### BUY Legs (LEAPS in PMCC)
+- **Use**: ASK only
+- **Reject if**: ASK is None, 0, or missing
+- **NEVER use**: BID, lastPrice, mid
+
+**Note:** During market closed hours, Yahoo Finance may return BID=0 and ASK=0 for most options. In this case, contracts are correctly rejected per the pricing rules. This is expected behavior.
 
 ## Tech Stack
 - **Frontend**: React with Shadcn/UI components
