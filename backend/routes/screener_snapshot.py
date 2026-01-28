@@ -1191,10 +1191,14 @@ async def screen_pmcc(
             ask = opt.get("ask", 0)
             bid = opt.get("bid", 0)
             
-            # Use ASK for BUY leg (LEAP)
-            premium = ask if ask > 0 else bid
-            if premium <= 0:
-                continue
+            # PRICING RULES - BUY leg (LEAP):
+            # - Use ASK only
+            # - If ASK is None, 0, or missing → reject the contract
+            # - Never use: BID, lastPrice, mid
+            if not ask or ask <= 0:
+                continue  # Reject - no valid ASK for BUY leg
+            
+            premium = ask  # BUY leg uses ASK only
             
             # Calculate delta estimate if not provided
             moneyness = stock_price / strike if strike > 0 else 0
@@ -1212,7 +1216,7 @@ async def screen_pmcc(
                 "strike": strike,
                 "expiry": opt.get("expiry", ""),
                 "dte": opt.get("dte", 0),
-                "premium": premium,
+                "premium": premium,  # ASK only for BUY leg
                 "ask": ask,
                 "bid": bid,
                 "delta": delta,
@@ -1247,9 +1251,17 @@ async def screen_pmcc(
         for opt in live_shorts:
             strike = opt.get("strike", 0)
             bid = opt.get("bid", 0)
+            ask = opt.get("ask", 0)
             
-            # Use BID for SELL leg
-            if bid <= 0.10:  # Minimum $0.10 premium
+            # PRICING RULES - SELL leg (short call):
+            # - Use BID only
+            # - If BID is None, 0, or missing → reject the contract
+            # - Never use: lastPrice, mid, ASK, theoretical price
+            if not bid or bid <= 0:
+                continue  # Reject - no valid BID for SELL leg
+            
+            # Minimum $0.10 premium for short call
+            if bid < 0.10:
                 continue
             
             # Must be OTM (strike > stock price)
@@ -1263,7 +1275,7 @@ async def screen_pmcc(
                 "expiry": opt.get("expiry", ""),
                 "dte": opt.get("dte", 0),
                 "premium": bid,  # BID only for SELL leg
-                "ask": opt.get("ask", 0),
+                "ask": ask,
                 "implied_volatility": opt.get("implied_volatility", 0),
                 "open_interest": opt.get("open_interest", 0)
             })
