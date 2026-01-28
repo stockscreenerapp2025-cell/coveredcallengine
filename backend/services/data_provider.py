@@ -35,6 +35,19 @@ POLYGON_BASE_URL = "https://api.polygon.io"
 # Thread pool for blocking yfinance calls
 _yahoo_executor = ThreadPoolExecutor(max_workers=8)
 
+
+def shutdown_executor():
+    """
+    Shutdown the Yahoo Finance thread pool executor.
+    
+    Called during application shutdown to ensure clean thread cleanup
+    and prevent memory leaks on application restart.
+    """
+    global _yahoo_executor
+    if _yahoo_executor:
+        _yahoo_executor.shutdown(wait=True)
+        logging.info("Yahoo Finance thread pool executor shut down")
+
 # =============================================================================
 # MARKET STATUS HELPERS
 # =============================================================================
