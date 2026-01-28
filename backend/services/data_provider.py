@@ -320,8 +320,10 @@ def _fetch_options_chain_yahoo_sync(
                             continue
                     
                     # Get premium - Store BID and ASK separately
-                    # The consuming code decides which to use (BID for sell, ASK for buy)
-                    last_price = row.get('lastPrice', 0)
+                    # PRICING RULES:
+                    # - SELL legs → BID only (reject if BID is None/0/missing)
+                    # - BUY legs → ASK only (reject if ASK is None/0/missing)
+                    # NEVER use: lastPrice, mid, theoretical price
                     bid = row.get('bid', 0) if row.get('bid') and not (hasattr(row.get('bid'), '__len__') and len(row.get('bid')) == 0) else 0
                     ask = row.get('ask', 0) if row.get('ask') and not (hasattr(row.get('ask'), '__len__') and len(row.get('ask')) == 0) else 0
                     
@@ -331,19 +333,14 @@ def _fetch_options_chain_yahoo_sync(
                         bid = 0
                     if ask and isinstance(ask, float) and math.isnan(ask):
                         ask = 0
-                    if last_price and isinstance(last_price, float) and math.isnan(last_price):
-                        last_price = 0
                     
-                    # LAYER 2 PRICING RULES: SELL legs must use BID only, never lastPrice or ASK
-                    # Reject contract if no valid BID - lastPrice fallback removed to prevent
-                    # overstating premium (lastPrice could be from a BUY transaction at ASK)
-                    if bid and bid > 0:
-                        premium = bid
-                    else:
-                        continue  # Reject contract if no valid BID
-                    
-                    if premium <= 0:
-                        continue
+                    # Validate based on option_type context:
+                    # For "call" type used in CC screener (SELL leg) - require valid BID
+                    # For "call" type used in PMCC LEAPS (BUY leg) - require valid ASK
+                    # The consuming code will apply the correct validation
+                    # Here we just ensure at least one price exists
+                    if bid <= 0 and ask <= 0:
+                        continue  # No valid pricing at all
                     
                     # Get IV and OI
                     iv = row.get('impliedVolatility', 0)
@@ -361,7 +358,6 @@ def _fetch_options_chain_yahoo_sync(
                         "expiry": expiry,
                         "dte": dte,
                         "type": option_type,
-                        "close": round(float(premium), 2),
                         "bid": float(bid) if bid else 0,
                         "ask": float(ask) if ask else 0,
                         "volume": int(volume) if volume else 0,
