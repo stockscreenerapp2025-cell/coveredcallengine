@@ -113,14 +113,18 @@ class TestDataFetchingRules:
         """
         Rule 2: Verify watchlist endpoint uses LIVE intraday prices
         """
-        # First add a symbol to watchlist
+        # First add a symbol to watchlist (use trailing slash for redirect)
         add_response = self.session.post(
-            f"{BASE_URL}/api/watchlist",
-            json={"symbol": "AAPL", "target_price": 200, "notes": "Test"}
+            f"{BASE_URL}/api/watchlist/",
+            json={"symbol": "AAPL", "target_price": 200, "notes": "Test"},
+            allow_redirects=True
         )
         
-        # Get watchlist with live prices
-        response = self.session.get(f"{BASE_URL}/api/watchlist?use_live_prices=true")
+        # Get watchlist with live prices (use trailing slash for redirect)
+        response = self.session.get(
+            f"{BASE_URL}/api/watchlist/?use_live_prices=true",
+            allow_redirects=True
+        )
         
         assert response.status_code == 200, f"Expected 200, got {response.status_code}: {response.text}"
         
@@ -146,7 +150,7 @@ class TestDataFetchingRules:
         if add_response.status_code == 200:
             item_id = add_response.json().get("id")
             if item_id:
-                self.session.delete(f"{BASE_URL}/api/watchlist/{item_id}")
+                self.session.delete(f"{BASE_URL}/api/watchlist/{item_id}", allow_redirects=True)
     
     def test_rule2_watchlist_opportunity_source(self):
         """
