@@ -48,6 +48,91 @@ def shutdown_executor():
         _yahoo_executor.shutdown(wait=True)
         logging.info("Yahoo Finance thread pool executor shut down")
 
+
+# =============================================================================
+# YAHOO FINANCE - LIVE INTRADAY PRICES (For Simulator & Watchlist ONLY)
+# =============================================================================
+
+def _fetch_live_stock_quote_yahoo_sync(symbol: str) -> Dict[str, Any]:
+    """
+    Fetch LIVE intraday stock quote from Yahoo Finance (blocking call).
+    
+    ⚠️ USE ONLY FOR: Simulator and Watchlist pages
+    ❌ NEVER USE FOR: Screener (which requires previousClose only)
+    
+    This function returns the CURRENT market price (regularMarketPrice),
+    which may be intraday, pre-market, or after-hours depending on timing.
+    """
+    try:
+        import yfinance as yf
+        ticker = yf.Ticker(symbol)
+        info = ticker.info
+        
+        # Get LIVE intraday price - regularMarketPrice or currentPrice
+        current_price = info.get("regularMarketPrice") or info.get("currentPrice") or info.get("previousClose", 0)
+        previous_close = info.get("previousClose", current_price)
+        
+        if not current_price or current_price <= 0:
+            logging.warning(f"Yahoo live quote: No current price for {symbol}")
+            return None
+        
+        change = current_price - previous_close if previous_close else 0
+        change_pct = (change / previous_close * 100) if previous_close else 0
+        
+        return {
+            "symbol": symbol,
+            "price": round(current_price, 2),  # LIVE intraday price
+            "previous_close": round(previous_close, 2),
+            "change": round(change, 2),
+            "change_pct": round(change_pct, 2),
+            "source": "yahoo_live",
+            "is_live": True
+        }
+    except Exception as e:
+        logging.warning(f"Yahoo live stock quote failed for {symbol}: {e}")
+        return None
+
+
+async def fetch_live_stock_quote(symbol: str, api_key: str = None) -> Dict[str, Any]:
+    """
+    Fetch LIVE intraday stock quote - Yahoo primary, Polygon backup.
+    
+    ⚠️ USE ONLY FOR: Simulator and Watchlist pages
+    ❌ NEVER USE FOR: Screener (which requires previousClose only)
+    
+    This is explicitly for pages that need real-time price updates.
+    """
+    loop = asyncio.get_event_loop()
+    
+    # Try Yahoo first for live price
+    result = await loop.run_in_executor(_yahoo_executor, _fetch_live_stock_quote_yahoo_sync, symbol)
+    
+    if result and result.get("price", 0) > 0:
+        return result
+    
+    # Fallback to previousClose-based quote
+    return await fetch_stock_quote(symbol, api_key)
+
+
+async def fetch_live_stock_quotes_batch(symbols: List[str], api_key: str = None) -> Dict[str, Dict]:
+    """
+    Fetch LIVE stock quotes for multiple symbols in parallel.
+    
+    ⚠️ USE ONLY FOR: Simulator and Watchlist pages
+    """
+    if not symbols:
+        return {}
+    
+    tasks = [fetch_live_stock_quote(symbol, api_key) for symbol in set(symbols)]
+    results = await asyncio.gather(*tasks, return_exceptions=True)
+    
+    quotes = {}
+    for result in results:
+        if isinstance(result, dict) and result.get("symbol"):
+            quotes[result["symbol"]] = result
+    
+    return quotes
+
 # =============================================================================
 # MARKET STATUS HELPERS
 # =============================================================================
