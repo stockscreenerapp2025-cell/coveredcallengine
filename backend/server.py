@@ -994,6 +994,13 @@ async def scheduled_price_update():
     Automated daily price update for all active simulator trades.
     Runs at market close (4:00 PM ET) on weekdays.
     """
+    # Check if market is open today (skip weekends and NYSE holidays)
+    from services.snapshot_service import SnapshotService
+    snapshot_service = SnapshotService(db)
+    if not snapshot_service.is_trading_day():
+        logging.info("Market closed today (holiday or weekend), skipping scheduled_price_update")
+        return
+    
     logging.info("Starting scheduled simulator price update...")
     
     try:
@@ -1370,6 +1377,13 @@ async def startup():
     async def run_precomputed_scans():
         """Run nightly pre-computed scans for covered calls and PMCC."""
         try:
+            # Check if market is open today (skip weekends and NYSE holidays)
+            from services.snapshot_service import SnapshotService
+            snapshot_service = SnapshotService(db)
+            if not snapshot_service.is_trading_day():
+                logger.info("Market closed today (holiday or weekend), skipping run_precomputed_scans")
+                return
+            
             from services.precomputed_scans import PrecomputedScanService
             
             # Get API key
@@ -1406,6 +1420,13 @@ async def startup():
         Must run after market close candle finalizes.
         """
         try:
+            # Check if market is open today (skip weekends and NYSE holidays)
+            from services.snapshot_service import SnapshotService
+            snapshot_service = SnapshotService(db)
+            if not snapshot_service.is_trading_day():
+                logger.info("[ADR-001] Market closed today (holiday or weekend), skipping run_eod_ingestion")
+                return
+            
             from services.eod_ingestion_service import EODIngestionService
             from routes.eod import EOD_SYMBOLS
             
