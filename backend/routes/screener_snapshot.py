@@ -1103,7 +1103,6 @@ async def screen_pmcc(
     2. OPTIONS CHAINS: Fetched LIVE from Yahoo Finance at scan time
     """
     eod_contract = get_eod_contract()
-    snapshot_service = get_snapshot_service()
     
     # Step 1: Get stock prices (previous close) for all symbols
     stock_data = {}
