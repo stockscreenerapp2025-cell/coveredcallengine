@@ -1,0 +1,86 @@
+{
+  "summary": "Data Fetching Rules verification completed. All 18 backend tests passed. Fixed a bug in watchlist.py where duplicate function names caused a TypeError. The three data fetching rules are correctly implemented: 1) Screener uses previousClose for stock prices, 2) Watchlist/Simulator use LIVE intraday prices, 3) Options chain fetched LIVE at scan time.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {
+        "endpoint": "/api/watchlist/",
+        "issue": "Yahoo API rate limiting causing UNAVAILABLE price_source during heavy testing. Falls back to Polygon correctly.",
+        "priority": "LOW"
+      }
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_data_fetching_rules.py",
+    "/app/test_reports/pytest/pytest_data_fetching_rules.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "✓ Rule 1: Screener CC/PMCC returns stock_price_source: 'previous_close'",
+    "✓ Rule 2: Watchlist uses fetch_live_stock_quotes_batch for LIVE intraday prices",
+    "✓ Rule 2: Watchlist returns price_source: 'LIVE_INTRADAY' when data available",
+    "✓ Rule 3: Screener returns options_chain_source: 'yahoo_live'",
+    "✓ Rule 3: Screener returns live_data_used: true",
+    "✓ Architecture label: 'LIVE_OPTIONS_PREVIOUS_CLOSE_STOCK'",
+    "✓ Individual opportunities have data_source: 'live_options'",
+    "BUG FIXED: Renamed duplicate _get_best_opportunity_live function to _get_best_opportunity_live_fallback in watchlist.py"
+  ],
+  "updated_files": [
+    "/app/backend/routes/watchlist.py",
+    "/app/backend/tests/test_data_fetching_rules.py"
+  ],
+  "success_rate": {
+    "backend": "100% (18/18 tests passed)"
+  },
+  "test_credentials": {
+    "email": "admin@premiumhunter.com",
+    "password": "admin123"
+  },
+  "seed_data_creation": "Added AAPL to watchlist for testing",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Data fetching rules fully verified. All three rules implemented correctly: 1) Screener stock prices = previousClose, 2) Watchlist/Simulator = LIVE intraday, 3) Options = always LIVE from Yahoo. Fixed duplicate function name bug in watchlist.py. Market is closed so options return 0 results (expected - BID values are 0 outside market hours).",
+  "data_fetching_rules_verification": {
+    "rule_1_screener_previous_close": "PASS - stock_price_source: 'previous_close'",
+    "rule_2_watchlist_live_intraday": "PASS - price_source: 'LIVE_INTRADAY' (when not rate limited)",
+    "rule_2_simulator_live_prices": "PASS - update-prices endpoint uses fetch_live_stock_quote",
+    "rule_3_options_chain_live": "PASS - options_chain_source: 'yahoo_live'",
+    "rule_3_live_data_used": "PASS - live_data_used: true",
+    "architecture_label": "PASS - 'LIVE_OPTIONS_PREVIOUS_CLOSE_STOCK'"
+  },
+  "api_verification": {
+    "screener_cc_endpoint": {
+      "stock_price_source": "previous_close",
+      "options_chain_source": "yahoo_live",
+      "live_data_used": true,
+      "architecture": "LIVE_OPTIONS_PREVIOUS_CLOSE_STOCK"
+    },
+    "screener_pmcc_endpoint": {
+      "stock_price_source": "previous_close",
+      "options_chain_source": "yahoo_live",
+      "live_data_used": true,
+      "architecture": "LIVE_OPTIONS_PREVIOUS_CLOSE_STOCK"
+    },
+    "watchlist_endpoint": {
+      "price_source": "LIVE_INTRADAY",
+      "is_live_price": true,
+      "opportunity_source": "yahoo_live"
+    }
+  },
+  "bug_fixed": {
+    "file": "/app/backend/routes/watchlist.py",
+    "issue": "Duplicate function name _get_best_opportunity_live defined at line 61 and line 371",
+    "error": "TypeError: _get_best_opportunity_live() missing 1 required positional argument: 'underlying_price'",
+    "fix": "Renamed second function to _get_best_opportunity_live_fallback",
+    "lines_changed": [368, 371]
+  },
+  "mocked_apis": {
+    "has_mocked_apis": false,
+    "note": "All data from real Yahoo Finance API (with Polygon fallback)"
+  }
+}
