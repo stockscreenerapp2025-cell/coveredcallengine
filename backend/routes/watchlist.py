@@ -1,15 +1,11 @@
 """
 Watchlist routes - Enhanced with price tracking and opportunities
 
-ADR-001 COMPLIANT: 
-- Snapshot mode: Uses canonical EOD Market Close data (eod_market_close, eod_options_chain)
-- Live mode: Explicitly labeled as LIVE_PRICE, isolated from EOD persistence
+DATA FETCHING RULES:
+1. STOCK PRICES: Watchlist and Simulator use LIVE intraday prices (regularMarketPrice)
+2. OPPORTUNITIES: Fetched LIVE from Yahoo Finance, never cached
 
-FORBIDDEN in snapshot mode:
-- regularMarketPrice
-- currentPrice
-- previousClose
-- Any live API fallback
+This is different from Screener which uses previous close for stock prices.
 """
 from fastapi import APIRouter, HTTPException, Depends, Query
 from datetime import datetime, timezone
@@ -25,9 +21,17 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from database import db
 from models.schemas import WatchlistItemCreate
 from utils.auth import get_current_user
-from services.data_provider import fetch_stock_quote, fetch_options_chain, fetch_stock_quotes_batch
 
-# ADR-001: Import EOD Price Contract
+# Import LIVE price functions for Watchlist (Rule #2)
+from services.data_provider import (
+    fetch_live_stock_quote,  # LIVE intraday prices for Watchlist
+    fetch_live_stock_quotes_batch,  # Batch LIVE prices
+    fetch_options_chain,  # LIVE options fetch
+    fetch_stock_quote,  # Previous close (for fallback)
+    fetch_stock_quotes_batch  # Batch previous close
+)
+
+# ADR-001: Import EOD Price Contract (for backward compat only)
 from services.eod_ingestion_service import (
     EODPriceContract,
     EODPriceNotFoundError,
@@ -54,12 +58,94 @@ def _get_eod_contract() -> EODPriceContract:
     return _eod_price_contract
 
 
+async def _get_best_opportunity_live(symbol: str, stock_price: float = None) -> dict:
+    """
+    Get best covered call opportunity using LIVE options data.
+    
+    DATA RULES COMPLIANT:
+    - Options chain fetched LIVE from Yahoo
+    - Stock price can be provided or fetched LIVE
+    """
+    try:
+        # Get LIVE stock price if not provided
+        if not stock_price:
+            quote = await fetch_live_stock_quote(symbol)
+            if not quote or quote.get("price", 0) <= 0:
+                return None
+            stock_price = quote["price"]
+        
+        # Fetch LIVE options chain
+        calls = await fetch_options_chain(
+            symbol=symbol,
+            api_key=None,
+            option_type="call",
+            max_dte=45,
+            min_dte=1,
+            current_price=stock_price
+        )
+        
+        if not calls:
+            return None
+        
+        best_opp = None
+        best_score = 0
+        
+        for call in calls:
+            strike = call.get("strike", 0)
+            expiry = call.get("expiry", "")
+            dte = call.get("dte", 0)
+            bid = call.get("bid", 0)
+            ask = call.get("ask", 0)
+            open_interest = call.get("open_interest", 0)
+            iv = call.get("implied_volatility", 0)
+            
+            # Use BID for SELL leg
+            premium = bid
+            if premium <= 0 or strike <= 0 or dte < 1:
+                continue
+            
+            # Filter for reasonable strikes
+            if strike <= stock_price * 0.98 or strike > stock_price * 1.15:
+                continue
+            
+            # Calculate ROI
+            roi_pct = (premium / stock_price) * 100 if stock_price > 0 else 0
+            roi_annualized = (roi_pct * 365 / dte) if dte > 0 else 0
+            
+            # Simple scoring: ROI + IV consideration
+            score = roi_pct * 2 + (iv * 10 if iv < 1 else iv / 10)
+            
+            if score > best_score:
+                best_score = score
+                best_opp = {
+                    "symbol": symbol,
+                    "strike": strike,
+                    "expiry": expiry,
+                    "dte": dte,
+                    "premium": round(premium, 2),
+                    "bid": round(bid, 2),
+                    "ask": round(ask, 2) if ask else None,
+                    "stock_price": round(stock_price, 2),
+                    "roi_pct": round(roi_pct, 2),
+                    "roi_annualized": round(roi_annualized, 1),
+                    "iv": round(iv * 100 if iv < 1 else iv, 1),
+                    "open_interest": open_interest,
+                    "data_source": "yahoo_live"
+                }
+        
+        return best_opp
+        
+    except Exception as e:
+        logging.warning(f"Error getting live opportunity for {symbol}: {e}")
+        return None
+
+
 async def _get_best_opportunity_eod(symbol: str, trade_date: str = None) -> dict:
     """
-    ADR-001 COMPLIANT: Get best covered call opportunity from EOD contract.
+    LEGACY: Get best covered call opportunity from EOD contract.
     
-    Uses canonical eod_market_close and eod_options_chain data.
-    FAILS FAST if EOD data not available (no live fallback).
+    NOTE: This is deprecated in favor of _get_best_opportunity_live
+    Kept for backward compatibility only.
     """
     eod_contract = _get_eod_contract()
     
