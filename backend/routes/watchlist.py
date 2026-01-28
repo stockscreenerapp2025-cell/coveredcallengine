@@ -99,10 +99,17 @@ async def _get_best_opportunity_live(symbol: str, stock_price: float = None) -> 
             open_interest = call.get("open_interest", 0)
             iv = call.get("implied_volatility", 0)
             
-            # Use BID for SELL leg
-            premium = bid
-            if premium <= 0 or strike <= 0 or dte < 1:
+            # PRICING RULES - SELL leg (covered call):
+            # - Use BID only
+            # - If BID is None, 0, or missing → reject the contract
+            # - Never use: lastPrice, mid, ASK, theoretical price
+            if not bid or bid <= 0:
+                continue  # Reject - no valid BID for SELL leg
+            
+            if strike <= 0 or dte < 1:
                 continue
+            
+            premium = bid  # SELL leg uses BID only
             
             # Filter for reasonable strikes
             if strike <= stock_price * 0.98 or strike > stock_price * 1.15:
