@@ -1,85 +1,72 @@
 <analysis>**original_problem_statement:**
 The user wants to build a web-based application named Covered Call Engine. The primary features include AI-assisted Covered Call (CC) and Poor Man's Covered Call (PMCC) screeners, a multi-phased AI Support Ticket System, a role-based Invitation System, Portfolio Tracking, and payment subscriptions.
 
-The project is undergoing a major architectural refactor to enforce a user-provided MASTER ARCHITECTURE SPEC which defines a strict 5-layer architecture. Development must proceed layer-by-layer with user approval.
-
-The most recent user requests focused on fixing severe data integrity and consistency issues within Layer 3 (Strategy & Enrichment). This includes enforcing a strict, non-negotiable data contract for CC and PMCC API responses, fixing calculation errors, ensuring data is identical across all frontend pages (Dashboard, Screener, PMCC, Watchlist, Simulator), and adding support for ETFs. The user's latest request is for a pure documentation-style explanation of the current data ingestion and usage logic, without any code changes.
+The project is undergoing a major architectural refactor to enforce a user-provided MASTER ARCHITECTURE SPEC. The most recent user mandate was to implement a strict, non-negotiable **EOD (End-of-Day) Price Contract** to serve as the single source of truth for all stock and options data, ensuring data consistency and determinism across the platform.
 
 **PRODUCT REQUIREMENTS (Current Mandate):**
-1.  **Enforce Authoritative Data Contract:** All CC and PMCC data must conform to a specific nested structure (, , , ) throughout the entire pipeline (backend enrichment -> API serialization -> frontend consumption). No frontend re-computation of critical metrics (IV, Delta, ROI) is allowed.
-2.  **Fix Data Inconsistencies:** Ensure metrics like IV, Delta, and Premium are identical for the same option contract across all 5 frontend pages.
-3.  **Fix Manual Filters:** Ensure manual filters on the screener pages correctly narrow the results without bypassing the core Layer 3 logic.
-4.  **Add ETF Support:** ETFs must be included in CC and PMCC scans, flowing through the same pipeline as equities but with appropriate, relaxed eligibility criteria (e.g., for price and volume).
-5.  **Document Data Flow:** Provide a detailed, documentation-style explanation of the current data ingestion and usage logic across the application. This is the immediate task.
-6.  **Stabilize Layer 3:** All of the above must be completed and verified before any work on Layer 4 (Scoring) can begin.
+1.  **Implement Full EOD Price Contract:** Enforce an architectural contract (ADR-001) where all snapshot-based modules (Dashboard, Screeners) use an immutable, once-daily EOD price and options chain snapshot taken at 4:05 PM ET. These modules must fail fast if data is unavailable and never fall back to live APIs.
+2.  **Isolate Live Data:** Modules like Watchlist and Simulator that use live data must be explicitly isolated and never pollute or be used as a fallback for the EOD data pipeline.
+3.  **Automate Ingestion:** The EOD snapshot ingestion must be automated via a scheduler.
+4.  **Fix Manual Filters:** After the EOD contract is stable, fix the manual filters on the CC/PMCC screener pages, which are not narrowing results correctly.
+5.  **Stabilize Layer 3:** All of the above must be completed and verified before any work on Layer 4 (Scoring) can begin.
 
 **User's preferred language**: English
 
 **what currently exists?**
-The application has a FastAPI backend and a React frontend. The agent has performed a significant refactor to enforce the user's Authoritative Data Contract for Layer 3.
+The application has a FastAPI backend and a React frontend. A foundational EOD Price Contract (ADR-001) has been implemented to establish a single source of truth for market data.
 
--   **Backend**: The  route now generates deeply nested JSON objects for CC and PMCC opportunities, ensuring a consistent structure. The  route has been modified to consume this centralized snapshot data, eliminating a major source of data inconsistency where it previously fetched its own live data. Logic has been added to support ETFs with relaxed price constraints.
--   **Frontend**: The , , , and  pages have been updated to consume the new nested data structure. A critical bug causing an incorrect IV display (e.g., 3900%) in the Simulator has been fixed.
--   **Testing**: A Golden Payload integration test suite () has been created to assert end-to-end data consistency, as mandated by the user. Unit tests for Layer 3 enrichment and a specific test for ETF flow have also been added.
+-   **Backend**:
+    -   **New EOD Collections**:  and  collections in MongoDB store immutable, daily snapshots.
+    -   **New EOD Service**:  provides timed, idempotent data ingestion.
+    -   **New EOD Routes**:  exposes EOD data.
+    -   **Automated Ingestion**:  now uses  to trigger a daily ingestion job at 4:05 PM ET.
+    -   **Refactored Routes**:  (CC/PMCC) and  have been refactored to use the new EOD contract, removing all live data fallbacks for snapshot-based operations.
+-   **Data Migration**: A migration script was created and executed to populate the new EOD collections from the old snapshot data.
+-   **Testing**: A new test suite () was created to validate the contract. The agent performed extensive verification to prove data consistency from the database to the API and finally to the screener output.
 
 **Last working item**:
--   **Last item agent was working:** The agent was executing the user's request to create a pure documentation-style explanation of the platform's current data ingestion and usage logic. The agent began by analyzing the backend code, starting with , to trace the data flow from source to consumption.
--   **Status:** IN PROGRESS
--   **Agent Testing Done:** N/A (This is a documentation task)
--   **Which testing method agent to use?** N/A
+-   **Last item agent was working:** The agent completed the full implementation and verification of the user-mandated **EOD Price Contract (ADR-001)**. This included creating new database schemas, a new ingestion service, automating the ingestion process, refactoring all relevant backend routes (Screener, Watchlist), migrating old data, and running a fresh ingestion for the date . The agent provided a detailed, evidence-backed report confirming that data for the symbol UBER was consistent across the database, API, and screener, fulfilling the user's strict verification requirements.
+-   **Status:** USER VERIFICATION PENDING
+-   **Agent Testing Done:** Y
+-   **Which testing method agent to use?** both
 -   **User Testing Done:** N
 
 **All Pending/In progress Issue list**:
 -   **Issue 1: Manual filters are not working correctly (P0)**
-    -   **Description:** The user reported that manual filters for CC and PMCC screeners produce incorrect results. The agent's initial investigation suggests the filter application order might be the issue, but a complete fix has not been implemented.
+    -   **Description:** The user reported that manual filters for CC and PMCC screeners (e.g., , ) produce incorrect results. Now that the underlying data source is stable and deterministic via the EOD contract, this bug is the top priority.
     -   **Status:** NOT STARTED
--   **Issue 2: Simulator sub-pages (Logs, Analytics, PMCC Tracker) appear blank (P1)**
-    -   **Description:** The user reported that these three pages are blank. The agent investigated and concluded this is the expected behavior because no trades have been closed (for Analytics) and no automated rules have been triggered (for Logs).
-    -   **Status:** RESOLVED (Needs communication to user)
 
 **In progress Task List**:
--   **Task 1: Document Data Ingestion and Usage Logic (P0)**
-    -   **Where to resume:** Continue analyzing the codebase, starting with the  backend route, to fulfill the user's request for a detailed breakdown of how stock and options data is fetched, stored, and used across all modules (Dashboard, Screener, PMCC, Watchlist, Simulator).
-    -   **What will be achieved with this?** A clear, code-based report explaining the current data flow reality, which will serve as a baseline for future architectural decisions.
-    -   **Status:** IN PROGRESS
-    -   **Should Test frontend/backend/both after fix?** N/A
-    -   **Blocked on something:** No
+-   None.
 
 **Upcoming and Future Tasks**
 *   **Upcoming Tasks:**
-    *   (P0) **Fix Manual Filters:** Once the documentation task is complete, address the incorrect behavior of manual filters, ensuring they are applied *after* the main Layer 3 enrichment and only narrow the valid opportunity set.
-    *   (P0) **Implement Layer 4 - Scoring & Ranking:** After Layer 3 is fully stable and approved, refactor the scoring logic in  to be pillar-based.
-    *   (P0) **Implement Layer 5 - Presentation, Watchlist & Simulation:** Audit and refactor UI-facing endpoints to be read-only consumers of the processed data.
-    *   (P0) **Automate Snapshot Ingestion:** Convert the manual ingestion API calls into a recurring background job using .
+    *   (P0) **Fix Manual Filters:** Investigate and fix the filter application logic in . Ensure filters are applied correctly to the final, EOD-contract-sourced dataset.
+    *   (P0) **Implement Layer 4 - Scoring & Ranking:** After Layer 3 is fully stable (filters fixed), refactor the scoring logic in  to be pillar-based.
+    *   (P0) **Implement Layer 5 - Presentation, Watchlist & Simulation:** Audit and refactor UI-facing endpoints to be read-only consumers of the processed data from Layers 3 & 4.
 *   **Future Tasks:**
     *   (P1) **PayPal Re-integration:** Re-integrate PayPal as the payment provider.
     *   (P2) **Fix Inbound Email:** Resolve the persistent issue where inbound email replies do not appear in the support dashboard.
-    *   (P2) **Expand Symbol Universe:** Ingest snapshots for a wider range of symbols, including more ETFs.
+    -   (P2) **Expand Symbol Universe:** Ingest snapshots for a wider range of symbols, including more ETFs.
     *   (P3) **Frontend Refactor:** Break down large components like , , and .
+    *   (P4) **Deprecate Legacy Snapshots**: Plan the removal of the old  and  collections and the associated  code.
 
 **Completed work in this session**
--   **Layer 3 Data Contract Enforcement:**
-    -   Restructured CC and PMCC API responses into the mandated nested objects (, , , ).
-    -   Fixed data mappings across , , and  to use the new contract.
-    -   Added deduplication logic to CC and PMCC screeners to show only the highest-scoring option per symbol.
--   **Data Consistency Fixes:**
-    -   **Simulator IV Fix:** Corrected a critical calculation error that displayed IV as  instead of .
-    -   **Watchlist Refactor:** Modified the Watchlist backend to use the central snapshot pipeline instead of fetching its own live data, eliminating a major source of inconsistency.
--   **ETF Support:**
-    -   Added ETF symbols to the scan universe.
-    -   Modified eligibility logic to accommodate ETF price ranges (e.g., removing the 0 price cap).
-    -   Added  to the data contract.
--   **Testing:**
-    -   Created  for unit tests.
-    -   Created , a mandatory integration test suite to assert end-to-end data consistency.
-    -   Added a specific integration test for the ETF data flow.
+-   **EOD Price Contract Implementation (ADR-001):**
+    -   Created new MongoDB collections (, ) with a strict, immutable schema.
+    -   Developed a new, idempotent ingestion service ().
+    -   Refactored  and  to exclusively use the EOD contract, removing all live data fallbacks and enforcing a fail fast policy.
+    -   Created a migration script () and successfully migrated legacy data.
+    -   Ran a fresh data ingestion for  and provided detailed evidence of end-to-end data consistency.
+-   **Automated Snapshot Ingestion:**
+    -   Implemented a recurring daily job using  in  to trigger the EOD ingestion at 4:05 PM ET, making the process automated.
 
 **Earlier issues found/mentioned but not fixed**
 -   **Issue 1: Manual filters are not working correctly**
     -   **Debug checklist:**
-        -   Trace the execution flow in  to confirm when manual filter query parameters are applied relative to the Layer 2/3 processing.
-        -   Verify that manual filters operate on the final, enriched data structure, not on raw or intermediate data.
-        -   Test various filter combinations (e.g., , ) to see if they conflict or produce empty sets incorrectly.
+        -   Trace the execution flow in  to confirm when manual filter query parameters are applied.
+        -   Verify that manual filters operate on the final, EOD-contract-sourced data structure.
+        -   Test various filter combinations (e.g., , ) to reproduce the bug.
     -   **Why to solve this issue and what will be achieved with this?** To restore critical user functionality for exploring and narrowing down investment opportunities.
     -   **Should Test frontend/backend/both after fix:** backend
     -   **Is recurring issue?** N
@@ -93,60 +80,62 @@ The application has a FastAPI backend and a React frontend. The agent has perfor
 
 
 **Key Technical Concepts**
--   **Authoritative Data Contract:** The core principle driving recent work. Backend API responses for CC and PMCC are now structured into non-negotiable nested objects (, , , etc.). This contract is enforced to prevent data inconsistencies.
--   **Single Source of Truth (SSoT) Pipeline:** The  endpoint was refactored to consume data from the main snapshot-based screener pipeline, rather than fetching its own live data. This was a critical step towards data consistency.
--   **End-to-End Testing:** The user mandated, and the agent created, a Golden Payload integration test () that verifies data integrity from the backend database all the way to the API response, ensuring consistency across modules.
+-   **EOD Price Contract (ADR-001):** The new architectural cornerstone. It establishes a single, immutable source of truth for end-of-day stock and options data, fetched once daily at a canonical time (4:05 PM ET).
+-   **Idempotent Ingestion:** The  is designed to be idempotent, ensuring that re-running the ingestion for the same day does not corrupt or alter the canonical data. An  flag prevents overwrites.
+-   **Service Boundary Enforcement & Fail-Fast:** Snapshot-based modules () now exclusively use the EOD service. If EOD data is not present, the request fails with an error instead of falling back to a live API, guaranteeing deterministic results.
+-   **Scheduled Jobs ():** The EOD ingestion process is now fully automated and scheduled to run daily via a job configured in .
 
 **key DB schema**
--   No direct changes to the database schema. However, the application-level data models used in API responses have been significantly restructured into nested objects to enforce the data contract.
+-   **eod_market_close**: 
+-   **eod_options_chain**: 
+
+**changes in tech stack**
+-   No change in the core technologies, but a significant architectural shift to a data contract-based system.
 
 **All files of reference**
-*    (Heavily modified for data contract, ETF support, and deduplication)
-*    (Modified to use the central snapshot pipeline)
-*    (Modified to handle new data contract and simulator payload)
-*    (Modified for data contract and simulator payload)
-*    (Modified for new data contract)
-*    (Modified to fix IV calculation bug)
-*    (New file for critical integration testing)
-*    (New file for unit testing)
-*    (New file for integration testing)
+*    (NEW - The why behind the changes)
+*    (NEW - The core EOD logic)
+*    (NEW - The EOD data API)
+*    (NEW - The migration script)
+*    (NEW - The test suite)
+*    (Modified for )
+*    (Heavily modified to adopt the EOD contract)
+*    (Modified to isolate EOD and live data paths)
 
 **Areas that need refactoring**:
--   The manual filter logic in  needs to be reviewed and fixed to ensure it correctly narrows the post-processed opportunity set.
--   The snapshot ingestion process is still manual and needs to be automated via .
+-   The manual filter logic in  is the next priority for fixing, not refactoring.
+-   The legacy  and its associated DB collections (, ) are now technical debt and should be marked for deprecation and eventual removal.
 
 **key api endpoints**
-*   : Runs the CC screener. Response is now a nested JSON object.
-*   : Runs the PMCC screener. Response is now a nested JSON object.
-*   : Provides Top 5 Weekly + Top 5 Monthly opportunities for the main dashboard.
-*   : Returns watchlist items. Now uses snapshot data for consistency.
+*   : Checks the health of the EOD data store.
+*   : Gets the latest canonical EOD price for a symbol.
+*   : Gets the latest canonical EOD options chain.
+*   : Manually triggers a batch EOD ingestion run.
+*   : (Updated) Now runs exclusively on EOD data.
+*   : (Updated) Now runs exclusively on EOD data.
+*   : (Updated) Now has an explicit mode to fetch EOD or live data, without fallbacks.
 
 **Critical Info for New Agent**
-*   **The User's Last Request is Active:** You must first complete the documentation task outlined by the user. Do not modify code or propose fixes until that is done.
-*   **Data Contract is King:** The user is extremely strict about the nested data structures for CC and PMCC opportunities. Do not flatten them or alter the contract. All fixes must preserve this structure.
-*   **Test Thoroughly:** Backend-only tests are considered insufficient by the user. Any change must be verified end-to-end. The  suite is the source of truth for regression testing.
-*   **Additive Changes Only:** The user has requested that new fixes (like for manual filters) be additive and not disrupt the now-stable data contract baseline.
-*   **Simulator Pages:** The user thinks the blank Simulator sub-pages are a bug. Your predecessor concluded it's expected behavior (no closed trades/triggered rules). You will need to explain this to the user as part of the documentation task.
+*   **EOD Contract is Law:** The user's highest priority was implementing ADR-001. All subsequent work on snapshot-based features must respect this contract. Do not re-introduce live fallbacks or modify the EOD collections.
+*   **Next Task is Manual Filters:** With the data foundation now stable, the immediate next task is to fix the broken manual filters on the screener pages.
+*   **Verification is Key:** The user demands concrete, evidence-based proof of work. When fixing the filters, be prepared to show  outputs or test results that demonstrate the fix.
 
 **documents and test reports created in this job**
 *   
 *   
 *   
-*   
-*   
-*   
 
 **Last 10 User Messages and any pending HUMAN messages**
-1.  **User:** Layer 3 is still incomplete. Provided an extremely detailed, non-negotiable set of instructions to enforce a strict data contract for CC/PMCC objects, fix data inconsistencies across all pages, and create a Golden Payload integration test. (COMPLETED)
-2.  **Agent:** Acknowledged the issue was data contract violations, not just backend logic, and began implementing the user's strict instructions. (COMPLETED)
-3.  **Agent:** Refactored backend and frontend to enforce the new data contract, fixed inconsistencies, and created the required integration tests. (COMPLETED)
-4.  **Agent:** Finished the data contract enforcement task. (COMPLETED)
-5.  **User:** Pointed out remaining issues: Simulator sub-pages are blank, Simulator IV calculation is wrong, manual filters don't work, and ETFs are missing. Provided an additive instruction to fix these without regressing the data contract. (PARTIALLY COMPLETED)
-6.  **Agent:** Investigated and fixed the Simulator IV calculation bug and the missing ETF issue. (COMPLETED)
-7.  **Agent:** Concluded the blank Simulator sub-pages are expected behavior due to a lack of data (no closed trades). (COMPLETED)
-8.  **Agent:** Added ETFs to the scan and fixed eligibility rules. (COMPLETED)
-9.  **Agent:** Finished the ETF and IV fix task. (COMPLETED)
-10. **User:** Requested a pure documentation-style explanation of the current data ingestion and usage logic across the entire platform, with no code changes. (PENDING)
+1.  **User:** Defined the Market Close Price contract, a non-negotiable architectural mandate. (PENDING IMPLEMENTATION)
+2.  **Agent:** Assessed the current system against the contract, identifying numerous violations and proposing a detailed architectural plan for compliance. (COMPLETED)
+3.  **User:** Approved the full architectural plan, prioritized it over the manual filter fix, and instructed the agent to proceed. (COMPLETED)
+4.  **Agent:** Began implementation, creating the ADR, new services, routes, and modifying  with the scheduler. (COMPLETED)
+5.  **Agent:** Created and ran a migration script to move data to the new EOD collections. (COMPLETED)
+6.  **Agent:** Refactored the CC screener, PMCC screener, and Watchlist routes to use the new EOD contract. (COMPLETED)
+7.  **Agent:** Created a new test suite for the EOD contract. (COMPLETED)
+8.  **User:** Demanded concrete evidence of compliance for a single symbol (UBER), including raw DB records, API outputs, and screener data. (PENDING)
+9.  **User:** Instructed the agent to run a fresh data ingestion for  to provide up-to-date evidence. (COMPLETED)
+10. **Agent:** Ran the fresh ingestion and provided a complete, evidence-backed summary showing perfect data consistency from DB to API to Screener, fulfilling the user's request. (COMPLETED)
 
 **Project Health Check:**
 *   **Broken:**
@@ -154,25 +143,24 @@ The application has a FastAPI backend and a React frontend. The agent has perfor
     *   Inbound email reply system for the support dashboard.
 *   **Mocked:** None.
 *   **Technical Debt:**
-    *   The snapshot ingestion process is still triggered by a manual API call.
+    *   Legacy  and its corresponding DB collections (, ) are now obsolete.
+    *   Large frontend components (, ) still require refactoring.
 
 **3rd Party Integrations**
 *   **Yahoo Finance ():** Primary data source for stock and options data.
 *   **:** Used for NYSE trading day calculations.
-*   **:** Installed for automating the ingestion job (not yet implemented).
+*   **:** Used for the automated daily ingestion job.
 
 **Testing status**
--   **Testing agent used after significant changes:** YES
+-   **Testing agent used after significant changes:** NO (Agent performed extensive manual verification via CLI tools).
 -   **Troubleshoot agent used after agent stuck in loop:** NO
 -   **Test files created:**
     -   
-    -   
-    -   
--   **Known regressions:** None from the latest work. The agent successfully fixed several major data integrity regressions.
+-   **Known regressions:** None. The latest work fixed major architectural flaws related to data consistency.
 
 **Credentials to test flow:**
 *   Admin user: 
 *   Password: 
 
 **What agent forgot to execute**
--   The agent has not yet fully addressed the user's concern about the **manual filters** not working. This was part of the user's last set of bug reports but was not completed before the user shifted focus to the documentation task.</analysis>
+-   Nothing was forgotten. The agent correctly re-prioritized the work based on the user's explicit architectural mandate, pushing the manual filter fix to become the next task after the EOD contract was fully implemented and verified.</analysis>
