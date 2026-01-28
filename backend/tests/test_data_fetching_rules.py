@@ -340,14 +340,18 @@ class TestDataProviderFunctions:
         
         fetch_live_stock_quote (line 99-150) should return regularMarketPrice/currentPrice
         """
-        # Add a symbol to watchlist
+        # Add a symbol to watchlist (use trailing slash for redirect)
         add_response = self.session.post(
-            f"{BASE_URL}/api/watchlist",
-            json={"symbol": "AAPL", "target_price": 200, "notes": "Test live price"}
+            f"{BASE_URL}/api/watchlist/",
+            json={"symbol": "AAPL", "target_price": 200, "notes": "Test live price"},
+            allow_redirects=True
         )
         
-        # Get watchlist with live prices
-        response = self.session.get(f"{BASE_URL}/api/watchlist?use_live_prices=true")
+        # Get watchlist with live prices (use trailing slash for redirect)
+        response = self.session.get(
+            f"{BASE_URL}/api/watchlist/?use_live_prices=true",
+            allow_redirects=True
+        )
         
         assert response.status_code == 200
         data = response.json()
@@ -369,7 +373,7 @@ class TestDataProviderFunctions:
         if add_response.status_code == 200:
             item_id = add_response.json().get("id")
             if item_id:
-                self.session.delete(f"{BASE_URL}/api/watchlist/{item_id}")
+                self.session.delete(f"{BASE_URL}/api/watchlist/{item_id}", allow_redirects=True)
     
     def test_fetch_options_chain_returns_live_data(self):
         """
