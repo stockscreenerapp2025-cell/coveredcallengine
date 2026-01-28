@@ -468,16 +468,17 @@ async def _get_best_opportunity_live(symbol: str, api_key: str, underlying_price
 
 @watchlist_router.get("/")
 async def get_watchlist(
-    use_eod_contract: bool = Query(True, description="ADR-001: Use EOD contract for opportunities"),
-    use_live_prices: bool = Query(True, description="Use live prices for current price display"),
+    use_live_prices: bool = Query(True, description="Use LIVE intraday prices (Rule #2)"),
     user: dict = Depends(get_current_user)
 ):
     """
     Get user's watchlist with current prices and opportunities.
     
-    ADR-001 COMPLIANT:
-    - use_eod_contract=True: Opportunities use canonical EOD data (recommended)
-    - use_live_prices=True: Current prices use live data (explicitly labeled as LIVE)
+    DATA FETCHING RULES:
+    - Stock prices: LIVE intraday prices (regularMarketPrice) - Rule #2
+    - Options: LIVE from Yahoo Finance - Rule #3
+    
+    This is different from Screener which uses previous close for stock prices.
     """
     get_massive_api_key, _ = _get_server_functions()
     
@@ -492,12 +493,11 @@ async def get_watchlist(
     # Get API key
     api_key = await get_massive_api_key()
     
-    # ADR-001: Conditionally fetch live prices
+    # Fetch LIVE stock prices (Rule #2: Watchlist uses live prices)
     if use_live_prices:
-        # Fetch stock quotes in batch (Yahoo primary) - LIVE data
-        stock_data = await fetch_stock_quotes_batch(symbols, api_key)
+        stock_data = await fetch_live_stock_quotes_batch(symbols, api_key)
     else:
-        stock_data = {}
+        stock_data = await fetch_stock_quotes_batch(symbols, api_key)
     
     # ADR-001: Get EOD prices if EOD contract is enabled
     eod_prices = {}
