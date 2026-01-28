@@ -855,10 +855,14 @@ async def screen_covered_calls(
             oi = opt.get("open_interest", 0)
             volume = opt.get("volume", 0)
             
-            # Use BID as premium (SELL leg)
-            premium = bid if bid > 0 else opt.get("close", 0)
-            if premium <= 0:
-                continue
+            # PRICING RULES - SELL leg (short call):
+            # - Use BID only
+            # - If BID is None, 0, or missing → reject the contract
+            # - Never use: lastPrice, mid, ASK, theoretical price
+            if not bid or bid <= 0:
+                continue  # Reject - no valid BID for SELL leg
+            
+            premium = bid  # SELL leg uses BID only
             
             # Calculate metrics
             premium_yield = (premium / stock_price) * 100 if stock_price > 0 else 0
