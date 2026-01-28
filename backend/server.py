@@ -1232,7 +1232,7 @@ app.include_router(api_router)
 app.add_middleware(
     CORSMiddleware,
     allow_credentials=True,
-    allow_origins=os.environ.get('CORS_ORIGINS', '*').split(','),
+    allow_origins=[origin.strip() for origin in os.environ.get('CORS_ORIGINS', 'http://localhost:3000').split(',')],
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -1246,6 +1246,13 @@ logger = logging.getLogger(__name__)
 
 @app.on_event("startup")
 async def startup():
+    # Check database connection first - fail fast if database is unavailable
+    from database import check_db_connection
+    db_ok, db_error = await check_db_connection()
+    if not db_ok:
+        logger.critical(f"Database connection failed on startup: {db_error}")
+        raise RuntimeError(f"Cannot start application - database connection failed: {db_error}")
+    
     # Create indexes
     await db.users.create_index("email", unique=True)
     await db.users.create_index("id", unique=True)
@@ -1432,4 +1439,10 @@ async def shutdown_db_client():
     if scheduler.running:
         scheduler.shutdown()
         logger.info("Simulator scheduler shut down")
+    
+    # Shutdown Yahoo Finance executor to prevent thread leaks
+    from services.data_provider import shutdown_executor
+    shutdown_executor()
+    
+    # Close MongoDB client
     client.close()
