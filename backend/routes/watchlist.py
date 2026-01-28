@@ -368,7 +368,7 @@ async def _get_best_opportunity(symbol: str, api_key: str, underlying_price: flo
         return await _get_best_opportunity_live(symbol, api_key, underlying_price)
 
 
-async def _get_best_opportunity_live(symbol: str, api_key: str, underlying_price: float) -> dict:
+async def _get_best_opportunity_live_fallback(symbol: str, api_key: str, underlying_price: float) -> dict:
     """
     FALLBACK: Get opportunity from live data when snapshot unavailable.
     Used only when Layer 3 snapshot data is not available.
