@@ -1080,7 +1080,7 @@ async def screen_covered_calls(
 
 
 # ============================================================
-# PMCC SCREENER (Phase 2 - READ-ONLY FROM SNAPSHOTS)
+# PMCC SCREENER - LIVE OPTIONS FETCH
 # ============================================================
 
 @screener_router.get("/pmcc")
@@ -1092,31 +1092,57 @@ async def screen_pmcc(
     min_short_dte: int = Query(21, ge=7),
     max_short_dte: int = Query(60, le=90),
     min_delta: float = Query(0.70, ge=0.5, le=0.95),
-    use_eod_contract: bool = Query(True, description="ADR-001: Use EOD contract"),
+    use_eod_contract: bool = Query(True, description="Use EOD contract for stock prices"),
     user: dict = Depends(get_current_user)
 ):
     """
     Screen for Poor Man's Covered Call (PMCC) opportunities.
     
-    ADR-001 COMPLIANT: Uses canonical EOD Market Close Price Contract.
-    
-    ARCHITECTURE:
-    - Reads ONLY from canonical eod_market_close and eod_options_chain
-    - NO live data fetching. NO market open/closed logic.
-    
-    FAIL CLOSED: Returns HTTP 409 if EOD data validation fails.
+    DATA FETCHING RULES:
+    1. STOCK PRICES: Previous US market close (from EOD contract or previousClose)
+    2. OPTIONS CHAINS: Fetched LIVE from Yahoo Finance at scan time
     """
     eod_contract = get_eod_contract()
-    snapshot_service = get_snapshot_service()  # Fallback for metadata
+    snapshot_service = get_snapshot_service()
     
-    # Step 1: Validate ALL EOD data (FAIL CLOSED) - ADR-001 COMPLIANT
-    try:
-        if use_eod_contract:
-            validation = await validate_eod_data(SCAN_SYMBOLS)
-        else:
-            validation = await validate_all_snapshots(SCAN_SYMBOLS)
-    except SnapshotValidationError:
-        raise
+    # Step 1: Get stock prices (previous close) for all symbols
+    stock_data = {}
+    symbols_with_stock_data = []
+    
+    for symbol in SCAN_SYMBOLS:
+        try:
+            if use_eod_contract:
+                try:
+                    price, stock_doc = await eod_contract.get_market_close_price(symbol)
+                    stock_data[symbol] = {
+                        "stock_price": price,
+                        "trade_date": stock_doc.get("trade_date"),
+                        "market_cap": stock_doc.get("metadata", {}).get("market_cap"),
+                        "source": "eod_contract"
+                    }
+                    symbols_with_stock_data.append(symbol)
+                except EODPriceNotFoundError:
+                    quote = await fetch_stock_quote(symbol)
+                    if quote and quote.get("price"):
+                        stock_data[symbol] = {
+                            "stock_price": quote["price"],
+                            "trade_date": None,
+                            "market_cap": None,
+                            "source": "yahoo_previous_close"
+                        }
+                        symbols_with_stock_data.append(symbol)
+            else:
+                quote = await fetch_stock_quote(symbol)
+                if quote and quote.get("price"):
+                    stock_data[symbol] = {
+                        "stock_price": quote["price"],
+                        "trade_date": None,
+                        "market_cap": None,
+                        "source": "yahoo_previous_close"
+                    }
+                    symbols_with_stock_data.append(symbol)
+        except Exception as e:
+            logging.debug(f"Could not get stock price for {symbol}: {e}")
     
     # Step 2: Get market sentiment for scoring
     try:
@@ -1127,73 +1153,121 @@ async def screen_pmcc(
         market_bias = "neutral"
         bias_weight = 1.0
     
-    # Step 3: Scan each symbol for PMCC opportunities using EOD data
+    # Step 3: Scan each symbol for PMCC opportunities - LIVE options fetch
     opportunities = []
     symbols_scanned = 0
     
-    for sym_data in validation["valid_symbols"]:
-        symbol = sym_data["symbol"]
-        stock_price = sym_data["stock_price"]  # ADR-001: market_close_price
-        trade_date = sym_data.get("stock_price_trade_date")
+    for symbol in symbols_with_stock_data:
+        sym_data = stock_data[symbol]
+        stock_price = sym_data["stock_price"]
         symbols_scanned += 1
         
-        # ADR-001: Get LEAPS from EOD contract (BUY leg - uses ASK)
+        # ============================================================
+        # LIVE LEAPS FETCH - Per user requirement #3
+        # ============================================================
         try:
-            if use_eod_contract:
-                leaps = await eod_contract.get_valid_leaps_for_pmcc(
-                    symbol=symbol,
-                    trade_date=trade_date,
-                    min_dte=min_leap_dte,
-                    max_dte=max_leap_dte,
-                    min_delta=min_delta
-                )
-            else:
-                leaps, leap_error = await snapshot_service.get_valid_leaps_for_pmcc(
-                    symbol=symbol,
-                    min_dte=min_leap_dte,
-                    max_dte=max_leap_dte,
-                    min_delta=min_delta
-                )
-                if leap_error:
-                    leaps = []
-        except (EODOptionsNotFoundError, Exception) as e:
-            logging.debug(f"No LEAPs for {symbol}: {e}")
+            live_leaps = await fetch_options_chain(
+                symbol=symbol,
+                api_key=None,
+                option_type="call",
+                max_dte=max_leap_dte,
+                min_dte=min_leap_dte,
+                current_price=stock_price
+            )
+        except Exception as e:
+            logging.debug(f"Could not fetch live LEAPs for {symbol}: {e}")
             continue
+        
+        if not live_leaps:
+            continue
+        
+        # Filter LEAPs for PMCC (deep ITM, high delta)
+        leaps = []
+        for opt in live_leaps:
+            strike = opt.get("strike", 0)
+            ask = opt.get("ask", 0)
+            bid = opt.get("bid", 0)
+            
+            # Use ASK for BUY leg (LEAP)
+            premium = ask if ask > 0 else bid
+            if premium <= 0:
+                continue
+            
+            # Calculate delta estimate if not provided
+            moneyness = stock_price / strike if strike > 0 else 0
+            # Deep ITM calls have delta close to 1
+            if moneyness > 1.2:  # 20% ITM
+                estimated_delta = min(0.95, 0.5 + (moneyness - 1) * 0.5)
+            else:
+                estimated_delta = opt.get("implied_volatility", 0.5)  # Rough estimate
+            
+            delta = opt.get("delta", estimated_delta)
+            if delta < min_delta:
+                continue
+            
+            leaps.append({
+                "strike": strike,
+                "expiry": opt.get("expiry", ""),
+                "dte": opt.get("dte", 0),
+                "premium": premium,
+                "ask": ask,
+                "bid": bid,
+                "delta": delta,
+                "implied_volatility": opt.get("implied_volatility", 0),
+                "open_interest": opt.get("open_interest", 0)
+            })
         
         if not leaps:
             continue
         
-        # ADR-001: Get short calls from EOD contract (SELL leg - uses BID)
+        # ============================================================
+        # LIVE SHORT CALLS FETCH - Per user requirement #3
+        # ============================================================
         try:
-            if use_eod_contract:
-                shorts = await eod_contract.get_valid_calls_for_scan(
-                    symbol=symbol,
-                    trade_date=trade_date,
-                    min_dte=min_short_dte,
-                    max_dte=max_short_dte,
-                    min_strike_pct=1.02,  # 2% OTM minimum
-                    max_strike_pct=1.15,  # 15% OTM maximum
-                    min_bid=0.10
-                )
-            else:
-                shorts, short_error = await snapshot_service.get_valid_calls_for_scan(
-                    symbol=symbol,
-                    min_dte=min_short_dte,
-                    max_dte=max_short_dte,
-                    min_strike_pct=1.02,
-                    max_strike_pct=1.15,
-                    min_bid=0.10
-                )
-                if short_error:
-                    shorts = []
-        except (EODOptionsNotFoundError, Exception) as e:
-            logging.debug(f"No short calls for {symbol}: {e}")
+            live_shorts = await fetch_options_chain(
+                symbol=symbol,
+                api_key=None,
+                option_type="call",
+                max_dte=max_short_dte,
+                min_dte=min_short_dte,
+                current_price=stock_price
+            )
+        except Exception as e:
+            logging.debug(f"Could not fetch live short calls for {symbol}: {e}")
             continue
+        
+        if not live_shorts:
+            continue
+        
+        # Filter short calls for PMCC (OTM, use BID)
+        shorts = []
+        for opt in live_shorts:
+            strike = opt.get("strike", 0)
+            bid = opt.get("bid", 0)
+            
+            # Use BID for SELL leg
+            if bid <= 0.10:  # Minimum $0.10 premium
+                continue
+            
+            # Must be OTM (strike > stock price)
+            if strike <= stock_price * 1.02:  # At least 2% OTM
+                continue
+            if strike > stock_price * 1.15:  # Max 15% OTM
+                continue
+            
+            shorts.append({
+                "strike": strike,
+                "expiry": opt.get("expiry", ""),
+                "dte": opt.get("dte", 0),
+                "premium": bid,  # BID only for SELL leg
+                "ask": opt.get("ask", 0),
+                "implied_volatility": opt.get("implied_volatility", 0),
+                "open_interest": opt.get("open_interest", 0)
+            })
         
         if not shorts:
             continue
         
-        # Get metadata
         market_cap = sym_data.get("market_cap")
         
         # Build PMCC combinations
@@ -1227,7 +1301,7 @@ async def screen_pmcc(
                     continue  # Invalid structure
                 
                 roi_per_cycle = (short_premium / leap_cost) * 100
-                cycles_per_year = 365 / short_dte
+                cycles_per_year = 365 / short_dte if short_dte > 0 else 12
                 annualized_roi = roi_per_cycle * cycles_per_year
                 
                 # Validate PMCC trade structure
