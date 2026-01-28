@@ -1059,12 +1059,15 @@ class SnapshotService:
         stock_count = await self.db.stock_snapshots.count_documents({})
         chain_count = await self.db.option_chain_snapshots.count_documents({})
         
+        # Get current max data age (market-calendar aware)
+        max_age = get_max_data_age_hours()
+        
         # Get stale snapshots
         stale_stocks = await self.db.stock_snapshots.count_documents({
-            "data_age_hours": {"$gt": MAX_DATA_AGE_HOURS}
+            "data_age_hours": {"$gt": max_age}
         })
         stale_chains = await self.db.option_chain_snapshots.count_documents({
-            "data_age_hours": {"$gt": MAX_DATA_AGE_HOURS}
+            "data_age_hours": {"$gt": max_age}
         })
         
         # Get incomplete snapshots
@@ -1101,7 +1104,7 @@ class SnapshotService:
                 "valid": max(0, chain_count - stale_chains - incomplete_chains - date_mismatch_chains)
             },
             "layer1_compliance": {
-                "max_data_age_hours": MAX_DATA_AGE_HOURS,
+                "max_data_age_hours": max_age,
                 "price_source": "previousClose ONLY",
                 "date_validation": "stock_trade_date must equal options_data_trade_day"
             },
