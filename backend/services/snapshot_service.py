@@ -48,7 +48,6 @@ logger = logging.getLogger(__name__)
 # ==================== LAYER 1 CONSTANTS ====================
 HTTP_TIMEOUT = httpx.Timeout(30.0, connect=10.0)
 POLYGON_BASE_URL = "https://api.polygon.io"
-MAX_DATA_AGE_HOURS = 48  # Reject snapshots older than this
 
 # CRITICAL: These are the ONLY valid price sources
 # ✅ previousClose - Last NYSE market close
@@ -56,6 +55,31 @@ MAX_DATA_AGE_HOURS = 48  # Reject snapshots older than this
 # ❌ currentPrice - FORBIDDEN (intraday)
 # ❌ preMarketPrice - FORBIDDEN
 # ❌ postMarketPrice - FORBIDDEN
+
+
+def get_max_data_age_hours(reference_date: datetime = None) -> float:
+    """
+    Calculate maximum acceptable data age based on market calendar.
+    
+    - Weekday: Max 24 hours
+    - Weekend/Monday morning: Max 72 hours (allows Friday close data)
+    
+    This is market-calendar-aware and prevents stale data issues
+    like allowing Friday data on Tuesday (which would be > 72 hours).
+    """
+    if reference_date is None:
+        reference_date = datetime.now(timezone.utc)
+    
+    # If it's Monday before market close (4 PM ET), allow up to 72 hours (Friday close)
+    if reference_date.weekday() == 0 and reference_date.hour < 16:
+        return 72.0
+    
+    # If it's Saturday or Sunday, allow 72 hours
+    if reference_date.weekday() >= 5:
+        return 72.0
+    
+    # Regular trading days: 24 hours max
+    return 24.0
 
 
 class SnapshotService:
@@ -671,11 +695,11 @@ class SnapshotService:
             contract["rejection_reason"] = "ASK is zero or missing"
             return contract
         
-        # VALIDATION: Bid-Ask spread sanity check (reject if spread > 50% at ingestion)
-        # NOTE: Layer 2 will apply stricter 10% threshold during validation
+        # VALIDATION: Bid-Ask spread sanity check (10% max - consistent with Layer 2)
+        # 10% threshold applied at both ingestion and validation
         if contract["ask"] > 0 and contract["bid"] > 0:
             spread_pct = (contract["ask"] - contract["bid"]) / contract["ask"] * 100
-            if spread_pct > 50:
+            if spread_pct > 10:
                 contract["rejection_reason"] = f"Bid-Ask spread too wide: {spread_pct:.1f}%"
                 return contract
         
@@ -744,8 +768,9 @@ class SnapshotService:
         if not snapshot.get("completeness_flag"):
             return None, f"Snapshot incomplete for {symbol}"
         
-        if snapshot.get("data_age_hours", 999) > MAX_DATA_AGE_HOURS:
-            return None, f"Snapshot stale for {symbol}: {snapshot.get('data_age_hours')}h old (max {MAX_DATA_AGE_HOURS}h)"
+        max_age = get_max_data_age_hours()
+        if snapshot.get("data_age_hours", 999) > max_age:
+            return None, f"Snapshot stale for {symbol}: {snapshot.get('data_age_hours')}h old (max {max_age}h)"
         
         # LAYER 1 COMPLIANT: Verify stock_close_price exists
         if not snapshot.get("stock_close_price"):
@@ -780,8 +805,9 @@ class SnapshotService:
         if not snapshot.get("completeness_flag"):
             return None, f"Option chain incomplete for {symbol}: {snapshot.get('rejection_reasons', [])[:3]}"
         
-        if snapshot.get("data_age_hours", 999) > MAX_DATA_AGE_HOURS:
-            return None, f"Option chain stale for {symbol}: {snapshot.get('data_age_hours')}h old (max {MAX_DATA_AGE_HOURS}h)"
+        max_age = get_max_data_age_hours()
+        if snapshot.get("data_age_hours", 999) > max_age:
+            return None, f"Option chain stale for {symbol}: {snapshot.get('data_age_hours')}h old (max {max_age}h)"
         
         # LAYER 1 COMPLIANT: Check date validation passed
         if snapshot.get("date_validation_passed") is False:
