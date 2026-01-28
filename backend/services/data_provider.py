@@ -100,19 +100,24 @@ def calculate_dte(expiry_date: str) -> int:
 def _fetch_stock_quote_yahoo_sync(symbol: str) -> Dict[str, Any]:
     """
     Fetch stock quote from Yahoo Finance (blocking call).
-    Returns previous close data when market is closed.
+    
+    CCE MASTER ARCHITECTURE - LAYER 1 COMPLIANT:
+    Returns ONLY the PREVIOUS NYSE MARKET CLOSE price.
+    
+    ❌ FORBIDDEN: regularMarketPrice, currentPrice (intraday prices)
+    ✅ CORRECT: previousClose ONLY - ensures consistency with snapshot_service.py
     """
     try:
         import yfinance as yf
         ticker = yf.Ticker(symbol)
         info = ticker.info
         
-        # Get current or last available price
-        current_price = info.get("regularMarketPrice") or info.get("currentPrice") or info.get("previousClose", 0)
-        previous_close = info.get("previousClose", current_price)
+        # LAYER 1 COMPLIANT: Use ONLY previousClose - never intraday prices
+        previous_close = info.get("previousClose", 0)
         
-        change = current_price - previous_close if previous_close else 0
-        change_pct = (change / previous_close * 100) if previous_close else 0
+        if not previous_close or previous_close <= 0:
+            logging.warning(f"Yahoo stock quote: No previousClose for {symbol}")
+            return None
         
         # Get analyst rating
         recommendation = info.get("recommendationKey", "")
@@ -127,10 +132,8 @@ def _fetch_stock_quote_yahoo_sync(symbol: str) -> Dict[str, Any]:
         
         return {
             "symbol": symbol,
-            "price": round(current_price, 2) if current_price else 0,
-            "previous_close": round(previous_close, 2) if previous_close else 0,
-            "change": round(change, 2),
-            "change_pct": round(change_pct, 2),
+            "price": round(previous_close, 2),  # LAYER 1: previousClose ONLY
+            "previous_close": round(previous_close, 2),
             "analyst_rating": analyst_rating,
             "source": "yahoo"
         }
@@ -233,14 +236,13 @@ def _fetch_options_chain_yahoo_sync(
                     if last_price and isinstance(last_price, float) and math.isnan(last_price):
                         last_price = 0
                     
-                    # Primary premium is BID (for covered call sell legs)
-                    # If BID missing, fall back to last price
+                    # LAYER 2 PRICING RULES: SELL legs must use BID only, never lastPrice or ASK
+                    # Reject contract if no valid BID - lastPrice fallback removed to prevent
+                    # overstating premium (lastPrice could be from a BUY transaction at ASK)
                     if bid and bid > 0:
                         premium = bid
-                    elif last_price and last_price > 0:
-                        premium = last_price
                     else:
-                        continue
+                        continue  # Reject contract if no valid BID
                     
                     if premium <= 0:
                         continue
