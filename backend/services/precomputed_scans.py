@@ -669,6 +669,10 @@ class PrecomputedScanService:
                                     if close_price <= 0:
                                         return None
                                     
+                                    # WARNING: Polygon aggregates API returns OHLCV close price, not BID/ASK
+                                    # This is a BACKUP ONLY - Yahoo with BID/ASK is preferred
+                                    # Mark as low confidence since we can't verify BID/ASK
+                                    
                                     max_reasonable_premium = current_price * 0.20
                                     if close_price > max_reasonable_premium:
                                         return None
