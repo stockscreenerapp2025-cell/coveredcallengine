@@ -1342,21 +1342,17 @@ class PrecomputedScanService:
                             if est_delta < delta_min or est_delta > delta_max:
                                 continue
                             
-                            # Get premium - PHASE 1 FIX: Use ASK for BUY legs (PMCC LEAP)
-                            last_price = row.get('lastPrice', 0)
+                            # PRICING RULES - BUY leg (PMCC LEAP):
+                            # - Use ASK only
+                            # - If ASK is None, 0, or missing → reject the contract
+                            # - Never use: BID, lastPrice, mid
                             bid = row.get('bid', 0)
                             ask = row.get('ask', 0)
                             
-                            # ASK ONLY for LEAPS (BUY leg)
-                            if ask and ask > 0:
-                                premium = ask
-                            elif last_price and last_price > 0:
-                                premium = last_price  # Fallback only
-                            else:
-                                continue
+                            if not ask or ask <= 0:
+                                continue  # Reject - no valid ASK for BUY leg
                             
-                            if premium <= 0:
-                                continue
+                            premium = ask  # ASK only for BUY leg
                             
                             # Calculate intrinsic and extrinsic value
                             intrinsic = max(0, current_price - strike)
