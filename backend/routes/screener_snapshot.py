@@ -694,18 +694,15 @@ async def screen_covered_calls(
     max_premium_yield: float = Query(20.0, le=50),
     min_otm_pct: float = Query(0.0, ge=0),
     max_otm_pct: float = Query(20.0, le=50),
-    use_eod_contract: bool = Query(True, description="ADR-001: Use EOD contract (recommended)"),
+    use_eod_contract: bool = Query(True, description="ADR-001: Use EOD contract for stock prices"),
     user: dict = Depends(get_current_user)
 ):
     """
     Screen for Covered Call opportunities.
     
-    ADR-001 COMPLIANT: Uses canonical EOD Market Close Price Contract.
-    
-    ARCHITECTURE:
-    - Reads ONLY from canonical eod_market_close and eod_options_chain
-    - NO live data fetching. NO market open/closed logic.
-    - Uses market_close_price captured at 04:05 PM ET
+    DATA FETCHING RULES:
+    1. STOCK PRICES: Previous US market close (from EOD contract or previousClose)
+    2. OPTIONS CHAINS: Fetched LIVE from Yahoo Finance at scan time
     
     LAYER 3 FEATURES:
     - CC eligibility filters (price $30-$90, volume ≥1M, market cap ≥$5B)
@@ -716,12 +713,10 @@ async def screen_covered_calls(
     Args:
         dte_mode: "weekly" (7-14), "monthly" (21-45), or "all" (7-45)
         scan_mode: "system" (strict filters), "custom", or "manual" (relaxed price)
-        use_eod_contract: If True (default), uses ADR-001 EOD contract. If False, uses legacy snapshots.
-    
-    FAIL CLOSED: Returns HTTP 409 if EOD data validation fails.
+        use_eod_contract: If True, uses EOD contract for stock prices.
     """
     eod_contract = get_eod_contract()
-    snapshot_service = get_snapshot_service()  # Fallback for metadata
+    snapshot_service = get_snapshot_service()
     
     # LAYER 3: Determine DTE range based on mode
     if min_dte is None or max_dte is None:
@@ -729,16 +724,55 @@ async def screen_covered_calls(
         min_dte = min_dte if min_dte is not None else auto_min_dte
         max_dte = max_dte if max_dte is not None else auto_max_dte
     
-    # Step 1: Validate ALL EOD data (FAIL CLOSED) - ADR-001 COMPLIANT
-    try:
-        if use_eod_contract:
-            validation = await validate_eod_data(SCAN_SYMBOLS)
-        else:
-            validation = await validate_all_snapshots(SCAN_SYMBOLS)
-    except SnapshotValidationError:
-        raise  # Re-raise to return 409
+    # Step 1: Get stock prices (previous close) for all symbols
+    stock_data = {}
+    symbols_with_stock_data = []
     
-    # Step 2: Get market sentiment for scoring (not for eligibility)
+    for symbol in SCAN_SYMBOLS:
+        try:
+            # Try EOD contract first for stock price (previous close)
+            if use_eod_contract:
+                try:
+                    price, stock_doc = await eod_contract.get_market_close_price(symbol)
+                    stock_data[symbol] = {
+                        "stock_price": price,
+                        "trade_date": stock_doc.get("trade_date"),
+                        "market_cap": stock_doc.get("metadata", {}).get("market_cap"),
+                        "avg_volume": stock_doc.get("metadata", {}).get("avg_volume"),
+                        "earnings_date": stock_doc.get("metadata", {}).get("earnings_date"),
+                        "source": "eod_contract"
+                    }
+                    symbols_with_stock_data.append(symbol)
+                except EODPriceNotFoundError:
+                    # Fallback to Yahoo previousClose
+                    quote = await fetch_stock_quote(symbol)
+                    if quote and quote.get("price"):
+                        stock_data[symbol] = {
+                            "stock_price": quote["price"],  # previousClose
+                            "trade_date": None,
+                            "market_cap": None,
+                            "avg_volume": None,
+                            "earnings_date": None,
+                            "source": "yahoo_previous_close"
+                        }
+                        symbols_with_stock_data.append(symbol)
+            else:
+                # Use Yahoo previousClose
+                quote = await fetch_stock_quote(symbol)
+                if quote and quote.get("price"):
+                    stock_data[symbol] = {
+                        "stock_price": quote["price"],
+                        "trade_date": None,
+                        "market_cap": None,
+                        "avg_volume": None,
+                        "earnings_date": None,
+                        "source": "yahoo_previous_close"
+                    }
+                    symbols_with_stock_data.append(symbol)
+        except Exception as e:
+            logging.debug(f"Could not get stock price for {symbol}: {e}")
+    
+    # Step 2: Get market sentiment for scoring
     try:
         sentiment = await fetch_market_sentiment()
         market_bias = sentiment.get("bias", "neutral")
@@ -748,15 +782,15 @@ async def screen_covered_calls(
         market_bias = "neutral"
         bias_weight = 1.0
     
-    # Step 3: Scan each symbol using EOD DATA ONLY (ADR-001)
+    # Step 3: Scan each symbol - fetch LIVE options at scan time
     opportunities = []
     symbols_scanned = 0
     symbols_with_results = 0
-    symbols_filtered = []  # Track filtered symbols for debugging
+    symbols_filtered = []
     
-    for sym_data in validation["valid_symbols"]:
-        symbol = sym_data["symbol"]
-        stock_price = sym_data["stock_price"]  # ADR-001: market_close_price
+    for symbol in symbols_with_stock_data:
+        sym_data = stock_data[symbol]
+        stock_price = sym_data["stock_price"]
         symbols_scanned += 1
         
         # Get metadata for eligibility check
@@ -764,7 +798,7 @@ async def screen_covered_calls(
         avg_volume = sym_data.get("avg_volume")
         earnings_date = sym_data.get("earnings_date")
         
-        # If metadata missing from EOD, try legacy snapshot
+        # If metadata missing, try legacy snapshot
         if market_cap is None or avg_volume is None:
             try:
                 stock_snapshot, _ = await snapshot_service.get_stock_snapshot(symbol)
@@ -775,7 +809,7 @@ async def screen_covered_calls(
             except Exception:
                 pass
         
-        # LAYER 3: Check CC eligibility (price, volume, market cap, earnings)
+        # LAYER 3: Check CC eligibility
         is_eligible, eligibility_reason = check_cc_eligibility(
             symbol=symbol,
             stock_price=stock_price,
@@ -783,56 +817,52 @@ async def screen_covered_calls(
             avg_volume=avg_volume,
             earnings_date=earnings_date,
             scan_mode=scan_mode,
-            scan_date=sym_data.get("stock_price_trade_date")
+            scan_date=sym_data.get("trade_date")
         )
         
         if not is_eligible:
             symbols_filtered.append({"symbol": symbol, "reason": eligibility_reason})
             continue
         
-        # Get valid calls from snapshot (Phase 2: READ-ONLY)
-        # ADR-001: Get valid calls from EOD contract
+        # ============================================================
+        # LIVE OPTIONS FETCH - Per user requirement #3
+        # Options chain data MUST be fetched live, per symbol, per expiry
+        # ============================================================
         try:
-            if use_eod_contract:
-                calls = await eod_contract.get_valid_calls_for_scan(
-                    symbol=symbol,
-                    trade_date=sym_data.get("stock_price_trade_date"),
-                    min_dte=min_dte,
-                    max_dte=max_dte,
-                    min_strike_pct=1.0 + (min_otm_pct / 100),
-                    max_strike_pct=1.0 + (max_otm_pct / 100),
-                    min_bid=0.05
-                )
-            else:
-                calls, error = await snapshot_service.get_valid_calls_for_scan(
-                    symbol=symbol,
-                    min_dte=min_dte,
-                    max_dte=max_dte,
-                    min_strike_pct=1.0 + (min_otm_pct / 100),
-                    max_strike_pct=1.0 + (max_otm_pct / 100),
-                    min_bid=0.05
-                )
-                if error:
-                    calls = []
-        except (EODOptionsNotFoundError, Exception) as e:
-            logging.debug(f"No calls for {symbol}: {e}")
+            live_options = await fetch_options_chain(
+                symbol=symbol,
+                api_key=None,  # Yahoo doesn't need API key
+                option_type="call",
+                max_dte=max_dte,
+                min_dte=min_dte,
+                current_price=stock_price
+            )
+        except Exception as e:
+            logging.debug(f"Could not fetch live options for {symbol}: {e}")
             continue
         
-        if not calls:
+        if not live_options:
             continue
         
-        for call in calls:
-            strike = call["strike"]
-            premium = call["premium"]  # BID price (already validated)
-            dte = call["dte"]
-            expiry = call["expiry"]
-            iv = call.get("implied_volatility", 0)
-            oi = call.get("open_interest", 0)
-            ask = call.get("ask", 0)
+        # Process each live option
+        for opt in live_options:
+            strike = opt.get("strike", 0)
+            bid = opt.get("bid", 0)
+            ask = opt.get("ask", 0)
+            dte = opt.get("dte", 0)
+            expiry = opt.get("expiry", "")
+            iv = opt.get("implied_volatility", 0)
+            oi = opt.get("open_interest", 0)
+            volume = opt.get("volume", 0)
+            
+            # Use BID as premium (SELL leg)
+            premium = bid if bid > 0 else opt.get("close", 0)
+            if premium <= 0:
+                continue
             
             # Calculate metrics
-            premium_yield = (premium / stock_price) * 100
-            otm_pct = ((strike - stock_price) / stock_price) * 100
+            premium_yield = (premium / stock_price) * 100 if stock_price > 0 else 0
+            otm_pct = ((strike - stock_price) / stock_price) * 100 if stock_price > 0 else 0
             
             # Apply filters
             if premium_yield < min_premium_yield or premium_yield > max_premium_yield:
@@ -840,7 +870,7 @@ async def screen_covered_calls(
             if otm_pct < min_otm_pct or otm_pct > max_otm_pct:
                 continue
             
-            # Validate trade structure (includes Layer 2 spread check)
+            # Validate trade structure
             is_valid, rejection = validate_cc_trade(
                 symbol=symbol,
                 stock_price=stock_price,
@@ -848,6 +878,12 @@ async def screen_covered_calls(
                 expiry=expiry,
                 bid=premium,
                 dte=dte,
+                open_interest=oi,
+                ask=ask
+            )
+            
+            if not is_valid:
+                continue
                 open_interest=oi,
                 ask=ask  # Pass ASK for spread validation
             )
