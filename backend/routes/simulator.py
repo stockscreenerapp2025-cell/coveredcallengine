@@ -621,9 +621,12 @@ async def close_simulator_trade(
 
 @simulator_router.post("/update-prices")
 async def update_simulator_prices(user: dict = Depends(get_current_user)):
-    """Manually trigger price update for user's active trades"""
-    funcs = _get_server_functions()
+    """
+    Manually trigger LIVE price update for user's active trades.
     
+    DATA RULE #2: Simulator uses LIVE intraday prices (regularMarketPrice)
+    for accurate P&L tracking during market hours.
+    """
     active_trades = await db.simulator_trades.find(
         {"user_id": user["id"], "status": "active"},
         {"_id": 0}
@@ -635,15 +638,16 @@ async def update_simulator_prices(user: dict = Depends(get_current_user)):
     # Get unique symbols
     symbols = list(set(t["symbol"] for t in active_trades))
     
-    # Fetch current prices
+    # Fetch LIVE intraday prices (Rule #2)
     price_cache = {}
     for symbol in symbols:
         try:
-            quote = await funcs['fetch_stock_quote'](symbol)
+            # Use LIVE stock quote (regularMarketPrice)
+            quote = await fetch_live_stock_quote(symbol)
             if quote and quote.get("price"):
                 price_cache[symbol] = quote["price"]
         except Exception as e:
-            logging.warning(f"Could not fetch price for {symbol}: {e}")
+            logging.warning(f"Could not fetch live price for {symbol}: {e}")
     
     now = datetime.now(timezone.utc)
     risk_free_rate = 0.05  # 5% risk-free rate
