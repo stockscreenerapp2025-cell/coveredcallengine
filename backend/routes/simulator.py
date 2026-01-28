@@ -1,6 +1,10 @@
 """
 Simulator Routes - Trade simulation and management endpoints
 Designed for forward-running simulation of covered call and PMCC strategies
+
+DATA FETCHING RULES:
+- Rule #2: Simulator and Watchlist use LIVE intraday prices (regularMarketPrice)
+- This ensures accurate P&L tracking during market hours
 """
 from fastapi import APIRouter, Depends, Query, HTTPException
 from pydantic import BaseModel
@@ -16,6 +20,9 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from database import db
 from utils.auth import get_current_user
+
+# Import LIVE price function for simulator (Rule #2)
+from services.data_provider import fetch_live_stock_quote
 
 simulator_router = APIRouter(tags=["Simulator"])
 
