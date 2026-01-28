@@ -1436,13 +1436,13 @@ async def screen_pmcc(
                     # METADATA object
                     "metadata": {
                         "leaps_buy_eligible": pmcc_metrics.get("leaps_buy_eligible", False),
-                        "analyst_rating": None,  # ADR-001: Not in EOD contract
+                        "analyst_rating": None,
                         "validation_flags": {
                             "leap_delta_ok": leap_delta >= 0.70,
                             "leap_dte_ok": leap_dte >= 365,
                             "short_otm_ok": short_strike > stock_price
                         },
-                        "data_source": "eod_contract" if use_eod_contract else "legacy_snapshot"  # ADR-001
+                        "data_source": "live_options"  # Now fetched LIVE
                     },
                     
                     # SCORING object
@@ -1489,10 +1489,10 @@ async def screen_pmcc(
                         "pillars": {k: {"score": round(v.actual_score, 1), "max": v.max_score} 
                                    for k, v in quality_result.pillars.items()} if quality_result.pillars else {}
                     },
-                    "analyst_rating": None,  # Not in EOD contract
+                    "analyst_rating": None,
                     "market_cap": market_cap,
-                    "snapshot_date": sym_data.get("stock_price_trade_date"),
-                    "data_source": "eod_contract" if use_eod_contract else "legacy_snapshot"  # ADR-001
+                    "snapshot_date": sym_data.get("trade_date"),
+                    "data_source": "live_options"  # Now fetched LIVE
                 })
     
     # Sort by annualized ROI
@@ -1514,19 +1514,11 @@ async def screen_pmcc(
         "opportunities": opportunities[:limit],
         "symbols_scanned": symbols_scanned,
         "market_bias": market_bias,
-        "snapshot_validation": {
-            "total": validation["symbols_total"],
-            "valid": validation["symbols_valid"],
-            "data_source": validation.get("data_source", "legacy")  # ADR-001
-        },
-        # ADR-001: EOD Contract metadata
-        "eod_contract": {
-            "enabled": use_eod_contract,
-            "version": "ADR-001"
-        },
-        "phase": 7,
-        "architecture": "ADR-001_EOD_CONTRACT" if use_eod_contract else "TWO_PHASE_SNAPSHOT_ONLY",
-        "live_data_used": False
+        "stock_price_source": "previous_close",  # Rule #1
+        "options_chain_source": "yahoo_live",    # Rule #3
+        "layer": 3,
+        "architecture": "LIVE_OPTIONS_PREVIOUS_CLOSE_STOCK",
+        "live_data_used": True
     }
 
 
