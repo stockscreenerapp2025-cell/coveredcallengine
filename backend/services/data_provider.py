@@ -346,13 +346,22 @@ def _fetch_options_chain_yahoo_sync(
                     if ask and isinstance(ask, float) and math.isnan(ask):
                         ask = 0
                     
-                    # Validate based on option_type context:
-                    # For "call" type used in CC screener (SELL leg) - require valid BID
-                    # For "call" type used in PMCC LEAPS (BUY leg) - require valid ASK
-                    # The consuming code will apply the correct validation
-                    # Here we just ensure at least one price exists
-                    if bid <= 0 and ask <= 0:
-                        continue  # No valid pricing at all
+                    # Build contract symbol for caching
+                    contract_symbol = row.get('contractSymbol', '')
+                    
+                    # Determine quote source and validity
+                    # During market hours: require live BID/ASK
+                    # After hours: accept any non-zero BID/ASK (will be marked as last session)
+                    quote_source = "LIVE"
+                    quote_timestamp = datetime.now(timezone.utc).isoformat()
+                    
+                    # Check if we have valid quotes
+                    has_valid_bid = bid and bid > 0
+                    has_valid_ask = ask and ask > 0
+                    
+                    # Skip if no pricing at all
+                    if not has_valid_bid and not has_valid_ask:
+                        continue
                     
                     # Get IV and OI
                     iv = row.get('impliedVolatility', 0)
@@ -364,7 +373,7 @@ def _fetch_options_chain_yahoo_sync(
                         iv = 0
                     
                     options.append({
-                        "contract_ticker": row.get('contractSymbol', ''),
+                        "contract_ticker": contract_symbol,
                         "underlying": symbol,
                         "strike": float(strike),
                         "expiry": expiry,
@@ -375,6 +384,8 @@ def _fetch_options_chain_yahoo_sync(
                         "volume": int(volume) if volume else 0,
                         "open_interest": int(oi) if oi else 0,
                         "implied_volatility": float(iv) if iv else 0,
+                        "quote_source": quote_source,
+                        "quote_timestamp": quote_timestamp,
                         "source": "yahoo"
                     })
                     
