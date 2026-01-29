@@ -39,7 +39,10 @@ from database import db
 from utils.auth import get_current_user
 
 # Import data_provider for LIVE options fetching
-from services.data_provider import fetch_options_chain, fetch_stock_quote
+from services.data_provider import fetch_options_chain, fetch_stock_quote, fetch_options_with_cache
+
+# Import quote cache for after-hours support
+from services.quote_cache_service import get_quote_cache
 
 # Import SnapshotService for stock metadata (not for options)
 from services.snapshot_service import SnapshotService
