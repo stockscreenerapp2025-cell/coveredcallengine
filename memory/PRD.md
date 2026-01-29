@@ -6,10 +6,11 @@ Build a web-based application named "Covered Call Engine" for options traders. T
 ## Core Data Fetching Rules (NON-NEGOTIABLE)
 
 ### Rule 1: Screener Stock Prices
-- **Source**: Previous US market close (`previousClose`)
+- **Source**: LAST US market close (most recent trading day's close price)
+- **Method**: Uses `ticker.history(period='5d')` to get actual last market close
+- **NOT**: Yahoo's `previousClose` which is the PRIOR day's close
 - **Pages**: CC Screener, PMCC Screener, Dashboard Opportunities
-- **Implementation**: `fetch_stock_quote()` returns `previousClose` only
-- **Verification**: API returns `stock_price_source: "previous_close"`
+- **Verification**: API returns `stock_price_source: "previous_close"` with `close_date`
 
 ### Rule 2: Watchlist/Simulator Stock Prices
 - **Source**: LIVE intraday prices (`regularMarketPrice`)
@@ -19,10 +20,11 @@ Build a web-based application named "Covered Call Engine" for options traders. T
 
 ### Rule 3: Options Chain Data
 - **Source**: Latest available BID/ASK from Yahoo Finance
-- **Market state**: Irrelevant - use whatever BID/ASK is available
+- **After-Hours Logic**: 
+  - During market hours: Use live BID/ASK, cache valid quotes
+  - After hours: Use cached quotes from last market session
+  - All quotes marked with `quote_source`, `quote_timestamp`, `quote_age_hours`
 - **NEVER**: Cached, stored, reconstructed, or inferred from derived data
-- **Implementation**: `fetch_options_chain()` called on every scan request
-- **Verification**: API returns `options_chain_source: "yahoo_live"`, `live_data_used: true`
 
 ### Pricing Rules (SELL vs BUY legs)
 
@@ -36,7 +38,18 @@ Build a web-based application named "Covered Call Engine" for options traders. T
 - **Reject if**: ASK is None, 0, or missing
 - **NEVER use**: BID, lastPrice, mid
 
-**Note:** During market closed hours, Yahoo Finance may return BID=0 and ASK=0 for most options. In this case, contracts are correctly rejected per the pricing rules. This is expected behavior.
+### After-Hours Quote Handling
+- **Quote Source Labels**:
+  - `"LIVE"` - During market hours, fresh quote
+  - `"LAST_MARKET_SESSION"` - After hours, cached from last session
+- **Quote Info Object**:
+  ```json
+  {
+    "quote_source": "LAST_MARKET_SESSION",
+    "quote_timestamp": "2026-01-29T05:06:19.967128+00:00",
+    "quote_age_hours": 8.1
+  }
+  ```
 
 ## Tech Stack
 - **Frontend**: React with Shadcn/UI components
