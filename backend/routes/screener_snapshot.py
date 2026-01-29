@@ -828,26 +828,28 @@ async def screen_covered_calls(
             continue
         
         # ============================================================
-        # LIVE OPTIONS FETCH - Per user requirement #3
-        # Options chain data MUST be fetched live, per symbol, per expiry
+        # OPTIONS FETCH WITH QUOTE CACHING
+        # - During market hours: Fetch live, cache valid quotes
+        # - After hours: Use last market session quotes
+        # - All quotes marked with source and timestamp
         # ============================================================
         try:
-            live_options = await fetch_options_chain(
+            live_options = await fetch_options_with_cache(
                 symbol=symbol,
-                api_key=None,  # Yahoo doesn't need API key
+                db=db,
                 option_type="call",
                 max_dte=max_dte,
                 min_dte=min_dte,
                 current_price=stock_price
             )
         except Exception as e:
-            logging.debug(f"Could not fetch live options for {symbol}: {e}")
+            logging.debug(f"Could not fetch options for {symbol}: {e}")
             continue
         
         if not live_options:
             continue
         
-        # Process each live option
+        # Process each option
         for opt in live_options:
             strike = opt.get("strike", 0)
             bid = opt.get("bid", 0)
@@ -857,6 +859,9 @@ async def screen_covered_calls(
             iv = opt.get("implied_volatility", 0)
             oi = opt.get("open_interest", 0)
             volume = opt.get("volume", 0)
+            quote_source = opt.get("quote_source", "LIVE")
+            quote_timestamp = opt.get("quote_timestamp", "")
+            quote_age_hours = opt.get("quote_age_hours", 0)
             
             # PRICING RULES - SELL leg (short call):
             # - Use BID only
