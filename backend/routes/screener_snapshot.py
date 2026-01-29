@@ -995,7 +995,14 @@ async def screen_covered_calls(
                         "liquidity_ok": oi >= 100,
                         "delta_ok": 0.20 <= enriched_call.get("delta", 0) <= 0.50
                     },
-                    "data_source": "eod_contract" if use_eod_contract else "legacy_snapshot"  # ADR-001
+                    "data_source": "live_options"
+                },
+                
+                # QUOTE SOURCE object - Per after-hours requirement
+                "quote_info": {
+                    "quote_source": quote_source,  # "LIVE" or "LAST_MARKET_SESSION"
+                    "quote_timestamp": quote_timestamp,
+                    "quote_age_hours": quote_age_hours if quote_source == "LAST_MARKET_SESSION" else 0
                 },
                 
                 # SCORING object
@@ -1044,7 +1051,9 @@ async def screen_covered_calls(
                 "analyst_rating": None,
                 "earnings_date": earnings_date,
                 "snapshot_date": sym_data.get("trade_date"),
-                "data_source": "live_options"  # Now fetched LIVE
+                "quote_source": quote_source,  # LIVE or LAST_MARKET_SESSION
+                "quote_timestamp": quote_timestamp,
+                "data_source": "live_options"
             })
         
         if live_options:
