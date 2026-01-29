@@ -200,24 +200,35 @@ def _fetch_stock_quote_yahoo_sync(symbol: str) -> Dict[str, Any]:
     Fetch stock quote from Yahoo Finance (blocking call).
     
     CCE MASTER ARCHITECTURE - LAYER 1 COMPLIANT:
-    Returns ONLY the PREVIOUS NYSE MARKET CLOSE price.
+    Returns the LAST NYSE MARKET CLOSE price (most recent trading day's close).
+    
+    IMPORTANT: Yahoo's "previousClose" is the PRIOR day's close, NOT today's close.
+    We must use historical data to get the actual last market close.
     
     ❌ FORBIDDEN: regularMarketPrice, currentPrice (intraday prices)
-    ✅ CORRECT: previousClose ONLY - ensures consistency with snapshot_service.py
+    ✅ CORRECT: Most recent historical close price
     """
     try:
         import yfinance as yf
         ticker = yf.Ticker(symbol)
-        info = ticker.info
         
-        # LAYER 1 COMPLIANT: Use ONLY previousClose - never intraday prices
-        previous_close = info.get("previousClose", 0)
+        # Get last 5 days of history to find most recent close
+        hist = ticker.history(period='5d')
         
-        if not previous_close or previous_close <= 0:
-            logging.warning(f"Yahoo stock quote: No previousClose for {symbol}")
+        if hist.empty:
+            logging.warning(f"Yahoo stock quote: No history for {symbol}")
             return None
         
-        # Get analyst rating
+        # Get the most recent close price (last row)
+        last_close = hist['Close'].iloc[-1]
+        last_close_date = hist.index[-1].strftime('%Y-%m-%d')
+        
+        if not last_close or last_close <= 0:
+            logging.warning(f"Yahoo stock quote: No valid close price for {symbol}")
+            return None
+        
+        # Get analyst rating from info
+        info = ticker.info
         recommendation = info.get("recommendationKey", "")
         rating_map = {
             "strong_buy": "Strong Buy",
@@ -230,8 +241,9 @@ def _fetch_stock_quote_yahoo_sync(symbol: str) -> Dict[str, Any]:
         
         return {
             "symbol": symbol,
-            "price": round(previous_close, 2),  # LAYER 1: previousClose ONLY
-            "previous_close": round(previous_close, 2),
+            "price": round(float(last_close), 2),  # Most recent market close
+            "previous_close": round(float(last_close), 2),
+            "close_date": last_close_date,  # Date of the close price
             "analyst_rating": analyst_rating,
             "source": "yahoo"
         }
