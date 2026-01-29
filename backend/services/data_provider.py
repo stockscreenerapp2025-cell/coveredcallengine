@@ -407,6 +407,99 @@ def _fetch_options_chain_yahoo_sync(
         return []
 
 
+async def fetch_options_with_cache(
+    symbol: str,
+    db,
+    option_type: str = "call",
+    max_dte: int = 45,
+    min_dte: int = 1,
+    current_price: float = None
+) -> List[Dict[str, Any]]:
+    """
+    Fetch options chain with quote caching for after-hours support.
+    
+    AFTER-HOURS LOGIC:
+    1. During market hours: Cache valid BID/ASK quotes
+    2. After hours: Use cached quotes from last market session
+    3. All quotes marked with source and timestamp
+    
+    Returns options with:
+    - quote_source: "LIVE" or "LAST_MARKET_SESSION"
+    - quote_timestamp: When the quote was captured
+    - quote_age_hours: How old the quote is (after hours only)
+    """
+    from services.quote_cache_service import get_quote_cache
+    
+    quote_cache = get_quote_cache(db)
+    market_info = quote_cache.get_market_session_info()
+    is_market_open = market_info["is_open"]
+    
+    # Fetch live options
+    live_options = await fetch_options_chain(
+        symbol=symbol,
+        api_key=None,
+        option_type=option_type,
+        max_dte=max_dte,
+        min_dte=min_dte,
+        current_price=current_price
+    )
+    
+    enriched_options = []
+    
+    for opt in live_options:
+        contract = opt.get("contract_ticker", "")
+        bid = opt.get("bid", 0)
+        ask = opt.get("ask", 0)
+        
+        # Cache valid quotes during market hours
+        if is_market_open and (bid > 0 or ask > 0):
+            await quote_cache.cache_valid_quote(
+                contract_symbol=contract,
+                symbol=symbol,
+                strike=opt.get("strike", 0),
+                expiry=opt.get("expiry", ""),
+                bid=bid,
+                ask=ask,
+                dte=opt.get("dte", 0)
+            )
+        
+        # Determine final quote source
+        if is_market_open:
+            # During market hours, use live data
+            opt["quote_source"] = "LIVE"
+            opt["quote_timestamp"] = datetime.now(timezone.utc).isoformat()
+        else:
+            # After hours, mark as last market session
+            opt["quote_source"] = "LAST_MARKET_SESSION"
+            opt["quote_age_hours"] = market_info.get("hours_since_close", 0)
+        
+        enriched_options.append(opt)
+    
+    # If after hours and no live options, try cache
+    if not is_market_open and not enriched_options:
+        # Attempt to get cached quotes
+        cached_quotes = await db.option_quote_cache.find({
+            "symbol": symbol,
+            "dte": {"$gte": min_dte, "$lte": max_dte}
+        }, {"_id": 0}).to_list(200)
+        
+        for cached in cached_quotes:
+            if option_type == "call":
+                # For calls, we need at least one valid quote
+                if cached.get("bid", 0) <= 0 and cached.get("ask", 0) <= 0:
+                    continue
+            
+            cached["quote_source"] = "LAST_MARKET_SESSION"
+            cached["quote_age_hours"] = market_info.get("hours_since_close", 0)
+            if cached.get("quote_timestamp"):
+                cached["quote_timestamp"] = cached["quote_timestamp"].isoformat()
+            
+            enriched_options.append(cached)
+    
+    logging.info(f"Options with cache: {len(enriched_options)} {option_type} options for {symbol} (market_open={is_market_open})")
+    return enriched_options
+
+
 async def fetch_stock_quote(symbol: str, api_key: str = None) -> Dict[str, Any]:
     """
     Fetch stock quote - Yahoo primary, Polygon backup.
