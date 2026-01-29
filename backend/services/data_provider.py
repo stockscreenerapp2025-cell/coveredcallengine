@@ -15,13 +15,19 @@ Polygon provides:
 
 This is the SINGLE SOURCE OF TRUTH for data sourcing logic.
 All screeners and pages should use these functions for consistency.
+
+PRICING RULES:
+- SELL legs: Use BID only, reject if BID is None/0/missing
+- BUY legs: Use ASK only, reject if ASK is None/0/missing
+- NEVER use: lastPrice, mid, theoretical price
+- After hours: Use last market session quotes with timestamp
 """
 
 import os
 import logging
 import asyncio
 import httpx
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional, List, Dict, Any
 from concurrent.futures import ThreadPoolExecutor
 import pytz
