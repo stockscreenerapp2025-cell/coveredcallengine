@@ -1,0 +1,97 @@
+{
+  "summary": "Stock Price (Last Market Close) and Quote Cache Service verification completed. All 12 backend tests passed. The two fixes are working correctly: 1) fetch_stock_quote() now uses history() to get actual last market close (OXY returns $44.83 on 2026-01-28), 2) Options quotes include quote_info object with quote_source (LIVE/LAST_MARKET_SESSION), quote_timestamp, and quote_age_hours.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {
+        "endpoint": "/api/screener/covered-calls",
+        "issue": "When use_eod_contract=true (default), stock prices come from EOD contract database which may have stale data. When use_eod_contract=false, Yahoo fetch_stock_quote correctly returns last market close.",
+        "priority": "LOW",
+        "note": "This is expected behavior - EOD contract uses pre-ingested data. The fix ensures Yahoo fallback returns correct prices."
+      }
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_stock_price_and_quote_cache.py",
+    "/app/test_reports/pytest/pytest_stock_price_quote_cache.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "✓ Fix 1: _fetch_stock_quote_yahoo_sync() uses history() to get last market close (line 218-229 in data_provider.py)",
+    "✓ Fix 1: Returns close_date field showing when price was captured",
+    "✓ Fix 2: fetch_options_with_cache() adds quote_info to all options (line 410-500 in data_provider.py)",
+    "✓ Fix 2: quote_source is 'LIVE' during market hours, 'LAST_MARKET_SESSION' after hours",
+    "✓ Fix 2: quote_timestamp shows when quote was captured",
+    "✓ Fix 2: quote_age_hours shows hours since market close (after hours only)",
+    "✓ Pricing Rules: SELL legs use BID only (short_call.premium = short_call.bid)",
+    "✓ Pricing Rules: BUY legs use ASK only (long_call.premium = long_call.ask)",
+    "✓ Screener response includes quote_info object in each result"
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_stock_price_and_quote_cache.py"
+  ],
+  "success_rate": {
+    "backend": "100% (12/12 tests passed)"
+  },
+  "test_credentials": {
+    "email": "admin@premiumhunter.com",
+    "password": "admin123"
+  },
+  "seed_data_creation": "None - used live API data",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Stock price and quote cache fixes verified. Key findings: 1) fetch_stock_quote() correctly uses history() to get last market close (OXY=$44.83 on 2026-01-28), 2) Options quotes include quote_info with quote_source, quote_timestamp, quote_age_hours, 3) Market is closed so quote_source='LAST_MARKET_SESSION' with ~8 hours age, 4) Pricing rules enforced: SELL=BID, BUY=ASK.",
+  "fix_verification": {
+    "fix_1_stock_price_last_close": {
+      "status": "VERIFIED",
+      "method": "fetch_stock_quote() uses ticker.history(period='5d') to get most recent close",
+      "example": "OXY returns $44.83 (2026-01-28 close) instead of $44.55 (previousClose)",
+      "code_location": "/app/backend/services/data_provider.py lines 218-229"
+    },
+    "fix_2_quote_cache_service": {
+      "status": "VERIFIED",
+      "features": {
+        "quote_source": "LIVE or LAST_MARKET_SESSION",
+        "quote_timestamp": "ISO timestamp when quote was captured",
+        "quote_age_hours": "Hours since market close (after hours only)"
+      },
+      "code_location": "/app/backend/services/quote_cache_service.py"
+    }
+  },
+  "api_verification": {
+    "covered_calls_endpoint": {
+      "stock_price_source": "previous_close",
+      "options_chain_source": "yahoo_live",
+      "architecture": "LIVE_OPTIONS_PREVIOUS_CLOSE_STOCK",
+      "live_data_used": true,
+      "quote_info_present": true,
+      "sample_quote_info": {
+        "quote_source": "LAST_MARKET_SESSION",
+        "quote_age_hours": 8.19
+      }
+    },
+    "pmcc_endpoint": {
+      "stock_price_source": "previous_close",
+      "options_chain_source": "yahoo_live",
+      "architecture": "LIVE_OPTIONS_PREVIOUS_CLOSE_STOCK",
+      "live_data_used": true,
+      "long_call_uses_ask": true,
+      "short_call_uses_bid": true
+    }
+  },
+  "pricing_rules_verification": {
+    "sell_leg_bid_only": "VERIFIED - short_call.premium equals short_call.bid",
+    "buy_leg_ask_only": "VERIFIED - long_call.premium equals long_call.ask",
+    "reject_zero_bid": "VERIFIED - contracts with BID=0 are rejected",
+    "reject_zero_ask": "VERIFIED - contracts with ASK=0 are rejected"
+  },
+  "mocked_apis": {
+    "has_mocked_apis": false,
+    "note": "All data from real Yahoo Finance API"
+  }
+}
