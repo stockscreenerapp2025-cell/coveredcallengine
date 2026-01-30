@@ -1439,8 +1439,8 @@ async def screen_pmcc(
                         "expiry": short_expiry,
                         "dte": short_dte,
                         "contract_symbol": short_contract_symbol,
-                        "premium": round(short_premium, 2),  # BID ONLY
-                        "bid": round(short_premium, 2),
+                        "premium": round(short_bid, 2),  # BID ONLY
+                        "bid": round(short_bid, 2),
                         "ask": round(short_ask, 2) if short_ask else None,
                         "spread_pct": round(short_spread_pct, 2),
                         "delta": round(short_delta, 4),
