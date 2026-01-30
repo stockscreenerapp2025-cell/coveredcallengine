@@ -1338,11 +1338,9 @@ async def screen_pmcc(
                     roi_per_cycle = (short_bid / net_debit) * 100
                     cycles_per_year = 365 / short_dte if short_dte > 0 else 12
                     roi_annualized = roi_per_cycle * cycles_per_year
-                    breakeven = leap_strike + net_debit
                 else:
                     roi_per_cycle = 0
                     roi_annualized = 0
-                    breakeven = 0
                 
                 # Calculate spreads
                 leap_spread_pct = ((leap_ask - leap_bid) / leap_ask * 100) if leap_ask > 0 else 0
