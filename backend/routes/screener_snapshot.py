@@ -1048,8 +1048,8 @@ async def screen_covered_calls(
         "filter_reasons": symbols_filtered[:10],
         "market_bias": market_bias,
         "bias_weight": bias_weight,
-        "stock_price_source": "previous_close",  # Rule #1
-        "options_chain_source": "yahoo_live",    # Rule #3
+        "stock_price_source": "yahoo_last_close",  # SINGLE SOURCE OF TRUTH
+        "options_chain_source": "yahoo_live",
         "layer": 3,
         "scan_mode": scan_mode,
         "dte_mode": dte_mode,
@@ -1061,7 +1061,7 @@ async def screen_covered_calls(
             "earnings_exclusion": f"±{EARNINGS_EXCLUSION_DAYS} days"
         },
         "spread_threshold": f"{MAX_SPREAD_PCT}%",
-        "architecture": "LIVE_OPTIONS_PREVIOUS_CLOSE_STOCK",
+        "architecture": "YAHOO_SINGLE_SOURCE_OF_TRUTH",
         "live_data_used": True
     }
 
