@@ -1367,54 +1367,57 @@ async def screen_pmcc(
                 if not is_valid:
                     continue
                 
-                # LAYER 3: Compute PMCC-specific metrics
-                pmcc_metrics = enrich_pmcc_metrics(leap, short, stock_price)
-                
-                # Calculate quality score
+                # Calculate PMCC quality score
                 pmcc_trade_data = {
                     "leap_delta": leap_delta,
+                    "leap_iv": leap_iv,
                     "leap_dte": leap_dte,
+                    "leap_oi": leap_oi,
+                    "leap_spread_pct": leap_spread_pct,
+                    "short_iv": short_iv,
                     "short_dte": short_dte,
-                    "short_otm_pct": ((short_strike - stock_price) / stock_price) * 100,
-                    "roi_pct": roi_per_cycle,
-                    "is_etf": symbol in ETF_SYMBOLS
+                    "short_oi": short_oi,
+                    "short_spread_pct": short_spread_pct,
+                    "roi_annualized": roi_annualized,
+                    "net_debit": net_debit,
+                    "width": width,
+                    "max_profit": max_profit / 100,
+                    "is_etf": is_etf
                 }
                 quality_result = calculate_pmcc_quality_score(pmcc_trade_data)
-                
                 final_score = apply_bias_to_score(quality_result.total_score, bias_weight)
                 
-                # Width calculation
-                width = short_strike - leap_strike
+                # Enrich with PMCC metrics
+                pmcc_metrics = enrich_pmcc_metrics(
+                    symbol=symbol,
+                    stock_price=stock_price,
+                    leap_strike=leap_strike,
+                    leap_ask=leap_ask,
+                    leap_delta=leap_delta,
+                    leap_dte=leap_dte,
+                    leap_expiry=leap_expiry,
+                    short_strike=short_strike,
+                    short_bid=short_bid,
+                    short_dte=short_dte,
+                    short_expiry=short_expiry
+                )
                 
-                # LAYER 3: Compute short call delta (if not from snapshot)
-                # Estimate based on moneyness for OTM calls
-                short_delta = short.get("delta", 0)
-                if short_delta == 0 and stock_price > 0 and short_strike > 0:
-                    moneyness = (stock_price - short_strike) / stock_price
-                    # OTM call delta estimation
-                    if moneyness < 0:  # OTM
-                        short_delta = max(0.05, 0.50 + moneyness * 2)
-                    else:  # ITM
-                        short_delta = min(0.95, 0.50 + moneyness * 2)
+                # Calculate contract symbols
+                try:
+                    leap_exp_fmt = datetime.strptime(leap_expiry, "%Y-%m-%d").strftime("%y%m%d")
+                    leap_contract_symbol = f"{symbol}{leap_exp_fmt}C{int(leap_strike * 1000):08d}"
+                    short_exp_fmt = datetime.strptime(short_expiry, "%Y-%m-%d").strftime("%y%m%d")
+                    short_contract_symbol = f"{symbol}{short_exp_fmt}C{int(short_strike * 1000):08d}"
+                except:
+                    leap_contract_symbol = leap.get("contract_symbol", "")
+                    short_contract_symbol = short.get("contract_symbol", "")
                 
-                # Calculate short call Greeks
-                short_gamma = short.get("gamma", 0)
-                short_theta = short.get("theta", 0)
-                short_vega = short.get("vega", 0)
-                
-                # Estimate if not provided
-                if short_theta == 0 and short_premium > 0 and short_dte > 0:
-                    short_theta = -round(short_premium / short_dte, 4)
-                
-                # Calculate spread percentages
-                short_spread_pct = ((short_ask - short_premium) / short_premium * 100) if short_premium > 0 and short_ask else 0
-                leap_spread_pct = ((leap_ask - leap.get("bid", leap_ask)) / leap_ask * 100) if leap_ask > 0 else 0
-                
-                # Build contract symbols
-                short_exp_fmt = datetime.strptime(short_expiry, "%Y-%m-%d").strftime("%y%m%d")
-                leap_exp_fmt = datetime.strptime(leap_expiry, "%Y-%m-%d").strftime("%y%m%d")
-                short_contract_symbol = f"{symbol}{short_exp_fmt}C{int(short_strike * 1000):08d}"
-                leap_contract_symbol = f"{symbol}{leap_exp_fmt}C{int(leap_strike * 1000):08d}"
+                # Delta estimates for short leg
+                short_moneyness = stock_price / short_strike if short_strike > 0 else 0
+                short_delta = max(0.1, min(0.5, 1 - (short_strike - stock_price) / stock_price)) if short_strike > stock_price else 0.5
+                short_gamma = 0.05
+                short_theta = -0.02
+                short_vega = 0.10
                 
                 # ==============================================================
                 # AUTHORITATIVE PMCC CONTRACT - YAHOO SINGLE SOURCE OF TRUTH
