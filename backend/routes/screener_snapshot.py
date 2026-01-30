@@ -1476,7 +1476,7 @@ async def screen_pmcc(
                         "max_profit": round(pmcc_metrics.get("max_profit_total", max_profit), 2),
                         "breakeven": round(pmcc_metrics.get("breakeven", leap_strike + net_debit), 2),
                         "roi_pct": round(roi_per_cycle, 2),
-                        "annualized_roi_pct": round(annualized_roi, 1)
+                        "annualized_roi_pct": round(roi_annualized, 1)
                     },
                     
                     # METADATA object
