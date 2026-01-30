@@ -1517,7 +1517,7 @@ async def screen_pmcc(
                     "short_strike": short_strike,
                     "short_expiry": short_expiry,
                     "short_dte": short_dte,
-                    "short_premium": round(short_premium, 2),
+                    "short_premium": round(short_bid, 2),
                     "short_ask": round(short_ask, 2) if short_ask else None,
                     "short_iv": round(short_iv * 100 if short_iv < 1 else short_iv, 1),
                     "short_delta": round(short_delta, 4),  # NEW: Short call delta
