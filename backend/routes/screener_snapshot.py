@@ -1067,19 +1067,36 @@ async def screen_covered_calls(
 
 
 # ============================================================
-# PMCC SCREENER - LIVE OPTIONS FETCH
+# PMCC SCREENER - COMPLETELY ISOLATED FROM CC LOGIC
 # ============================================================
+# PMCC (Poor Man's Covered Call) has DIFFERENT rules than CC:
+# - Long leg (LEAPS): ≥6 months, ITM (strike < stock price), use ASK
+# - Short leg: ≤60 days, strike > long-leg strike, use BID
+# - Net debit = Long-leg ASK - Short-leg BID
+# - NEVER shares filters, expiry rules, or pricing with CC
+# ============================================================
+
+# PMCC-specific constants (ISOLATED from CC)
+PMCC_MIN_LEAP_DTE = 180  # ≥6 months (not same as CC)
+PMCC_MAX_LEAP_DTE = 730  # ~2 years
+PMCC_MIN_SHORT_DTE = 7
+PMCC_MAX_SHORT_DTE = 60  # ≤60 days
+PMCC_MIN_DELTA = 0.70  # Deep ITM for LEAPS
+
+# PMCC Price filters (different from CC)
+PMCC_STOCK_MIN_PRICE = 30.0
+PMCC_STOCK_MAX_PRICE = 90.0
+# ETFs have NO price limits in PMCC
 
 @screener_router.get("/pmcc")
 async def screen_pmcc(
     limit: int = Query(50, ge=1, le=200),
     risk_profile: str = Query("moderate", regex="^(conservative|moderate|aggressive)$"),
-    min_leap_dte: int = Query(365, ge=180),
-    max_leap_dte: int = Query(730, le=1095),
-    min_short_dte: int = Query(21, ge=7),
-    max_short_dte: int = Query(60, le=90),
-    min_delta: float = Query(0.70, ge=0.5, le=0.95),
-    use_eod_contract: bool = Query(True, description="Use EOD contract for stock prices"),
+    min_leap_dte: int = Query(PMCC_MIN_LEAP_DTE, ge=180),
+    max_leap_dte: int = Query(PMCC_MAX_LEAP_DTE, le=1095),
+    min_short_dte: int = Query(PMCC_MIN_SHORT_DTE, ge=1),
+    max_short_dte: int = Query(PMCC_MAX_SHORT_DTE, le=60),
+    min_delta: float = Query(PMCC_MIN_DELTA, ge=0.5, le=0.95),
     user: dict = Depends(get_current_user)
 ):
     """
