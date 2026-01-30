@@ -1210,7 +1210,7 @@ async def screen_pmcc(
             if not bid or bid <= 0 or not ask or ask <= 0:
                 continue
             
-            # PMCC RULE: Expiry must be ≥ 6 months
+            # PMCC RULE: Expiry must be 12-24 months (365-730 days)
             if dte < min_leap_dte:
                 continue
             
@@ -1484,7 +1484,7 @@ async def screen_pmcc(
                         "validation_flags": {
                             "leap_itm": leap_strike < stock_price,  # PMCC rule: LEAP must be ITM
                             "leap_delta_ok": leap_delta >= min_delta,
-                            "leap_dte_ok": leap_dte >= PMCC_MIN_LEAP_DTE,  # ≥6 months
+                            "leap_dte_ok": leap_dte >= PMCC_MIN_LEAP_DTE,  # 12-24 months
                             "short_above_leap": short_strike > leap_strike,
                             "short_dte_ok": short_dte <= PMCC_MAX_SHORT_DTE,  # ≤60 days
                             "both_bid_ask_valid": True  # Already validated
@@ -1560,7 +1560,8 @@ async def screen_pmcc(
         "market_bias": market_bias,
         # PMCC-specific metadata
         "pmcc_rules": {
-            "long_leg_min_dte": PMCC_MIN_LEAP_DTE,  # ≥6 months
+            "long_leg_min_dte": PMCC_MIN_LEAP_DTE,  # 12-24 months
+            "long_leg_max_dte": PMCC_MAX_LEAP_DTE,
             "long_leg_must_be_itm": True,
             "long_leg_pricing": "ASK",
             "short_leg_max_dte": PMCC_MAX_SHORT_DTE,  # ≤60 days
