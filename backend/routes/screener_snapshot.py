@@ -1388,19 +1388,19 @@ async def screen_pmcc(
                 final_score = apply_bias_to_score(quality_result.total_score, bias_weight)
                 
                 # Enrich with PMCC metrics
-                pmcc_metrics = enrich_pmcc_metrics(
-                    symbol=symbol,
-                    stock_price=stock_price,
-                    leap_strike=leap_strike,
-                    leap_ask=leap_ask,
-                    leap_delta=leap_delta,
-                    leap_dte=leap_dte,
-                    leap_expiry=leap_expiry,
-                    short_strike=short_strike,
-                    short_bid=short_bid,
-                    short_dte=short_dte,
-                    short_expiry=short_expiry
-                )
+                leap_contract = {
+                    "strike": leap_strike,
+                    "ask": leap_ask,
+                    "dte": leap_dte,
+                    "delta": leap_delta,
+                    "open_interest": leap_oi
+                }
+                short_contract = {
+                    "strike": short_strike,
+                    "bid": short_bid,
+                    "dte": short_dte
+                }
+                pmcc_metrics = enrich_pmcc_metrics(leap_contract, short_contract, stock_price)
                 
                 # Calculate contract symbols
                 try:
