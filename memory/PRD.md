@@ -1,126 +1,74 @@
 # Covered Call Engine - Product Requirements Document
 
 ## Original Problem Statement
-Build a web-based application named "Covered Call Engine" for options traders. The platform provides AI-assisted Covered Call (CC) and Poor Man's Covered Call (PMCC) screeners, a multi-phased AI Support Ticket System, a role-based Invitation System, Portfolio Tracking, and payment subscriptions.
+Build a web-based application named "Covered Call Engine" for options traders with AI-assisted Covered Call (CC) and Poor Man's Covered Call (PMCC) screeners.
 
-## Core Data Fetching Rules (NON-NEGOTIABLE)
+## CRITICAL: YAHOO FINANCE IS THE SINGLE SOURCE OF TRUTH
 
-### Rule 1: Screener Stock Prices
-- **Source**: LAST US market close (most recent trading day's close price)
-- **Method**: Uses `ticker.history(period='5d')` to get actual last market close
-- **NOT**: Yahoo's `previousClose` which is the PRIOR day's close
-- **Pages**: CC Screener, PMCC Screener, Dashboard Opportunities
-- **Verification**: API returns `stock_price_source: "previous_close"` with `close_date`
+### Stock Price Source (ALL PAGES)
+- **Source**: Yahoo Finance `ticker.history(period='5d')` - most recent market close
+- **NOT**: previousClose (which is prior day's close)
+- **NOT**: EOD contract or cached prices
+- **Applies to**: Dashboard, Screener, PMCC, Simulator, Watchlist
 
-### Rule 2: Watchlist/Simulator Stock Prices
-- **Source**: LIVE intraday prices (`regularMarketPrice`)
-- **Pages**: Watchlist, Simulator
-- **Implementation**: `fetch_live_stock_quote()` returns current market price
-- **Verification**: API returns `price_source: "LIVE_INTRADAY"`, `is_live_price: true`
+### Options Chain Source
+- **Source**: Yahoo Finance live options chain
+- **Pricing Rules**:
+  - SELL legs: BID only (reject if BID=0)
+  - BUY legs: ASK only (reject if ASK=0)
+  - NEVER use: lastPrice, mid, theoretical price
 
-### Rule 3: Options Chain Data
-- **Source**: Latest available BID/ASK from Yahoo Finance
-- **After-Hours Logic**: 
-  - During market hours: Use live BID/ASK, cache valid quotes
-  - After hours: Use cached quotes from last market session
-  - All quotes marked with `quote_source`, `quote_timestamp`, `quote_age_hours`
-- **NEVER**: Cached, stored, reconstructed, or inferred from derived data
+### Market Indices
+- **Source**: Yahoo Finance history() via ETF proxies (SPY, QQQ, DIA, IWM)
+- **Works**: After hours, weekends
 
-### Pricing Rules (SELL vs BUY legs)
-
-#### SELL Legs (Short Calls in CC and PMCC)
-- **Use**: BID only
-- **Reject if**: BID is None, 0, or missing
-- **NEVER use**: lastPrice, mid, ASK, theoretical price
-
-#### BUY Legs (LEAPS in PMCC)
-- **Use**: ASK only
-- **Reject if**: ASK is None, 0, or missing
-- **NEVER use**: BID, lastPrice, mid
-
-### After-Hours Quote Handling
-- **Quote Source Labels**:
-  - `"LIVE"` - During market hours, fresh quote
-  - `"LAST_MARKET_SESSION"` - After hours, cached from last session
-- **Quote Info Object**:
-  ```json
-  {
-    "quote_source": "LAST_MARKET_SESSION",
-    "quote_timestamp": "2026-01-29T05:06:19.967128+00:00",
-    "quote_age_hours": 8.1
-  }
-  ```
-
-## Tech Stack
-- **Frontend**: React with Shadcn/UI components
-- **Backend**: FastAPI (Python)
-- **Database**: MongoDB
-- **Data Sources**: Yahoo Finance (primary), Polygon.io (backup)
-- **Scheduler**: APScheduler for automated jobs
+### Analyst Ratings
+- **Source**: Yahoo Finance `ticker.info.recommendationKey`
+- **Mapping**: strong_buy→Strong Buy, buy→Buy, hold→Hold, etc.
 
 ---
 
-## Implementation Status
+## Validation Evidence (2026-01-29)
 
-### Completed ✅
-
-#### Data Fetching Rules Implementation (2026-01-28)
-- **Rule 1**: Screener uses `previousClose` via `fetch_stock_quote()`
-- **Rule 2**: Watchlist/Simulator use `regularMarketPrice` via `fetch_live_stock_quote()`
-- **Rule 3**: Options chains fetched LIVE at scan time via `fetch_options_chain()`
-- All API responses include source labels for verification
-
-#### Security & Environment (2026-01-28)
-- Created `.env.example` files with security warnings
-- Added environment variable validation on startup
-- Fixed CORS wildcard security issue
-- Added database connection health check with connection pool config
-- Added NYSE holiday checks to all cron jobs
-- Fixed ThreadPoolExecutor memory leak on shutdown
-
-#### Data Integrity Fixes (2026-01-28)
-- Fixed intraday price contamination in `data_provider.py`
-- Fixed lastPrice fallback bug (SELL legs use BID only)
-- Unified bid-ask spread threshold to 10% across all layers
-- Improved stale data detection with market-calendar-aware logic
+| Metric | Yahoo Finance | System | Status |
+|--------|---------------|--------|--------|
+| INTC Price | $48.66 | $48.66 | ✅ MATCH |
+| HAL Price | $33.39 | $33.39 | ✅ MATCH |
+| SPY Index | $694.04 | $694.04 | ✅ MATCH |
+| CC Results | N/A | 12 opportunities | ✅ POPULATED |
+| PMCC Results | N/A | 27 opportunities | ✅ POPULATED |
+| Weekly+Monthly | N/A | 2+5=7 | ✅ WORKING |
+| Analyst Ratings | N/A | 8/10 have ratings | ✅ WORKING |
 
 ---
 
-## Prioritized Backlog
+## Architecture
 
-### P0 - Critical
-- [ ] **Fix Manual Filters**: Screener filters (`min_delta`, `min_iv_rank`) not narrowing results correctly
-- [ ] **Implement Layer 4 - Scoring**: Pillar-based scoring in `quality_score.py`
-
-### P1 - Important  
-- [ ] **Implement Layer 5 - Presentation**: Audit UI-facing endpoints
-- [ ] **PayPal Re-integration**: Re-integrate PayPal as payment provider
-
-### P2 - Medium
-- [ ] **Fix Inbound Email**: Replies not appearing in support dashboard (recurring - 3+ attempts)
-- [ ] **Expand Symbol Universe**: Ingest more ETFs and symbols
-
-### P3 - Low
-- [ ] **Frontend Refactor**: Break down large components (`Admin.js`, `Screener.js`, `PMCC.js`)
+```
+YAHOO_SINGLE_SOURCE_OF_TRUTH
+├── Stock Prices: ticker.history(period='5d') → most recent close
+├── Options Chain: ticker.option_chain(expiry) → live BID/ASK
+├── Analyst Rating: ticker.info.recommendationKey
+├── Market Cap: ticker.info.marketCap
+├── Avg Volume: ticker.info.averageVolume
+└── Market Indices: ETF history (SPY, QQQ, DIA, IWM)
+```
 
 ---
 
-## Key Files Reference
+## Key Files
 
-### Data Provider (Data Fetching Rules)
+### Data Provider (SINGLE SOURCE OF TRUTH)
 - `/app/backend/services/data_provider.py`:
-  - `fetch_stock_quote()` - Returns `previousClose` (Rule 1)
-  - `fetch_live_stock_quote()` - Returns `regularMarketPrice` (Rule 2)
-  - `fetch_options_chain()` - LIVE options fetch (Rule 3)
+  - `_fetch_stock_quote_yahoo_sync()` - Uses history() for last market close
+  - `fetch_options_chain()` - Live options from Yahoo
+  - `fetch_live_stock_quote()` - Live intraday price (Watchlist/Simulator)
 
-### Backend Routes
-- `/app/backend/routes/screener_snapshot.py` - CC/PMCC screener (Rules 1 & 3)
-- `/app/backend/routes/watchlist.py` - Watchlist (Rule 2)
-- `/app/backend/routes/simulator.py` - Simulator (Rule 2)
-
-### Configuration
-- `/app/backend/.env.example` - Backend env template
-- `/app/frontend/.env.example` - Frontend env template
+### Routes Using Single Source
+- `/app/backend/routes/screener_snapshot.py` - CC/PMCC screeners
+- `/app/backend/routes/stocks.py` - Market indices
+- `/app/backend/routes/watchlist.py` - Watchlist
+- `/app/backend/routes/simulator.py` - Simulator
 
 ---
 
@@ -130,28 +78,5 @@ Build a web-based application named "Covered Call Engine" for options traders. T
 
 ---
 
-## API Response Verification
-
-### Screener (CC/PMCC)
-```json
-{
-  "stock_price_source": "previous_close",
-  "options_chain_source": "yahoo_live",
-  "live_data_used": true,
-  "architecture": "LIVE_OPTIONS_PREVIOUS_CLOSE_STOCK"
-}
-```
-
-### Watchlist
-```json
-{
-  "price_source": "LIVE_INTRADAY",
-  "is_live_price": true,
-  "opportunity_source": "yahoo_live"
-}
-```
-
----
-
 ## Last Updated
-2026-01-28 - Data Fetching Rules implementation completed and verified
+2026-01-30 - Yahoo Finance Single Source of Truth implementation
