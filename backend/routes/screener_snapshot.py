@@ -741,9 +741,9 @@ async def screen_covered_calls(
                 stock_data[symbol] = {
                     "stock_price": quote["price"],
                     "trade_date": quote.get("close_date"),  # Date of the close price
-                    "market_cap": None,  # Will be fetched from metadata
-                    "avg_volume": None,
-                    "earnings_date": None,
+                    "market_cap": quote.get("market_cap"),
+                    "avg_volume": quote.get("avg_volume"),
+                    "earnings_date": quote.get("earnings_date"),
                     "analyst_rating": quote.get("analyst_rating"),
                     "source": "yahoo_last_close"
                 }
