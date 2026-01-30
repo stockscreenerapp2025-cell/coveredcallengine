@@ -1,166 +1,221 @@
-<analysis>**original_problem_statement:**
+<analysis>
+**original_problem_statement:**
 The user wants to build a web-based application named Covered Call Engine. The primary features include AI-assisted Covered Call (CC) and Poor Man's Covered Call (PMCC) screeners, a multi-phased AI Support Ticket System, a role-based Invitation System, Portfolio Tracking, and payment subscriptions.
 
-The project is undergoing a major architectural refactor to enforce a user-provided MASTER ARCHITECTURE SPEC. The most recent user mandate was to implement a strict, non-negotiable **EOD (End-of-Day) Price Contract** to serve as the single source of truth for all stock and options data, ensuring data consistency and determinism across the platform.
+The most recent user requests focus on correcting data integrity issues and refactoring the PMCC screener logic to be completely isolated from the Covered Call (CC) logic, with strict, non-negotiable rules for data sourcing, options chain selection, and pricing.
 
 **PRODUCT REQUIREMENTS (Current Mandate):**
-1.  **Implement Full EOD Price Contract:** Enforce an architectural contract (ADR-001) where all snapshot-based modules (Dashboard, Screeners) use an immutable, once-daily EOD price and options chain snapshot taken at 4:05 PM ET. These modules must fail fast if data is unavailable and never fall back to live APIs.
-2.  **Isolate Live Data:** Modules like Watchlist and Simulator that use live data must be explicitly isolated and never pollute or be used as a fallback for the EOD data pipeline.
-3.  **Automate Ingestion:** The EOD snapshot ingestion must be automated via a scheduler.
-4.  **Fix Manual Filters:** After the EOD contract is stable, fix the manual filters on the CC/PMCC screener pages, which are not narrowing results correctly.
-5.  **Stabilize Layer 3:** All of the above must be completed and verified before any work on Layer 4 (Scoring) can begin.
+1.  **Lock Down Scope (P0):** Confirm and enforce that PMCC logic is fully isolated from CC logic (no shared filters, expiry rules, or strike selection).
+2.  Long leg (LEAPS call):
+
+Expiry must be between 12 and 24 months from the current date
+
+Strike must be below the current stock price (ITM)
+
+Option price must be taken strictly from the ASK
+
+Short leg (call):
+
+Expiry must be ≤ 60 days
+
+Strike must be above the long-leg strike
+
+Option price must be taken strictly from the BID
+
+Net Debit Calculation (Non-negotiable):
+
+PMCC net debit must be calculated as:
+Long-leg ASK – Short-leg BID
+
+LAST price must never be used for PMCC leg pricing.
+
+Bid/Ask Validation Rules:
+
+Both Bid and Ask must be greater than zero
+
+If either Bid or Ask is missing or invalid:
+
+Reject the PMCC combination
+
+Do not substitute LAST or MID price
+
+Architecture Validation (Critical):
+
+Confirm whether PMCC logic is currently:
+
+Reusing CC single-leg chain filtering
+
+Sharing CC pricing logic
+
+If so, PMCC logic must be fully separated before proceeding with any other fixes.
+
+Please confirm:
+
+PMCC chain selection logic is independent of CC
+
+12–24 month LEAPS window is enforced
+
+Bid/Ask rules are applied exactly as described
+
+PMCC results are reproducible after market close using last valid Bid/Ask data
+3.  **Fix PMCC Custom Scan Price Rules (P1):** Apply instrument-aware price rules on the custom scan page: Stocks 0-0, ETFs no price limits. This logic must NOT affect CC scans.
+4.  **Restore PMCC Pre-computed Scan (P1):** The Aggressive pre-computed scan must use end-of-day cached options chains and work after-hours/weekends/holidays. It must NOT rely on live Yahoo fetches.
+5.  **Decouple Manual Filters (P2):** Manual filters for both CC and PMCC must pull from a universal list of all US stocks/ETFs with options, ignoring other restricted universes. All manual filter fields must be blank by default.
+6.  **Fix Stock Price Integrity (COMPLETED):** Ensure stock prices across all pages (Screener, Watchlist, Simulator, etc.) use the most recent Yahoo Finance market close as the single source of truth.
+7.  **Restore Analyst Ratings (COMPLETED):** Fix the missing analyst ratings across the application.
+8.  **Fix Dashboard Index Data (COMPLETED):** Ensure market indices on the dashboard show the latest data from Yahoo Finance.
 
 **User's preferred language**: English
 
 **what currently exists?**
-The application has a FastAPI backend and a React frontend. A foundational EOD Price Contract (ADR-001) has been implemented to establish a single source of truth for market data.
-
--   **Backend**:
-    -   **New EOD Collections**:  and  collections in MongoDB store immutable, daily snapshots.
-    -   **New EOD Service**:  provides timed, idempotent data ingestion.
-    -   **New EOD Routes**:  exposes EOD data.
-    -   **Automated Ingestion**:  now uses  to trigger a daily ingestion job at 4:05 PM ET.
-    -   **Refactored Routes**:  (CC/PMCC) and  have been refactored to use the new EOD contract, removing all live data fallbacks for snapshot-based operations.
--   **Data Migration**: A migration script was created and executed to populate the new EOD collections from the old snapshot data.
--   **Testing**: A new test suite () was created to validate the contract. The agent performed extensive verification to prove data consistency from the database to the API and finally to the screener output.
+The application has a FastAPI backend and a React frontend. The backend was significantly refactored to enforce a Single Source of Truth for stock prices, using the most recent historical close from Yahoo Finance. This resolved a major data discrepancy issue (e.g., INTC price showing 5.07 instead of 8.66). The system now also correctly handles after-hours options data by caching the last valid quote from the regular market session and marking it appropriately. Analyst ratings and live market index data on the dashboard have also been restored. The agent started refactoring the PMCC screener logic to isolate it from the CC screener as per the latest user request, but the implementation is incomplete and has left the PMCC route in a broken state.
 
 **Last working item**:
--   **Last item agent was working:** The agent completed the full implementation and verification of the user-mandated **EOD Price Contract (ADR-001)**. This included creating new database schemas, a new ingestion service, automating the ingestion process, refactoring all relevant backend routes (Screener, Watchlist), migrating old data, and running a fresh ingestion for the date . The agent provided a detailed, evidence-backed report confirming that data for the symbol UBER was consistent across the database, API, and screener, fulfilling the user's strict verification requirements.
--   **Status:** USER VERIFICATION PENDING
--   **Agent Testing Done:** Y
+-   **Last item agent was working:** The agent was rewriting the PMCC screener logic in  to align with the user's strict new requirements for chain selection and pricing (Step 2 of the latest request). It attempted to create a fully isolated function  and update the corresponding API endpoint.
+-   **Status:** IN PROGRESS
+-   **Agent Testing Done:** N
 -   **Which testing method agent to use?** both
 -   **User Testing Done:** N
 
 **All Pending/In progress Issue list**:
--   **Issue 1: Manual filters are not working correctly (P0)**
-    -   **Description:** The user reported that manual filters for CC and PMCC screeners (e.g., , ) produce incorrect results. Now that the underlying data source is stable and deterministic via the EOD contract, this bug is the top priority.
-    -   **Status:** NOT STARTED
+-   **Issue 1: PMCC screener is broken and incomplete (P0)**
+    -   **Description:** The agent's last action was an attempt to rewrite the PMCC screener. It left the code in  in a non-functional state with duplicated logic, incorrect function calls, and conflicting code from the old implementation. The screener does not currently adhere to the new, strict PMCC rules for LEAPS selection (DTE, ITM, ASK price) and short call selection (DTE, strike, BID price).
+    -   **Status:** IN PROGRESS
+    -   **Is recurring issue?** N
+
+**Issues Detail:**
+-   **Issue 1: PMCC screener is broken and incomplete (P0)**
+    -   **Attempted fixes:** The agent started rewriting the  endpoint in  and creating a new helper function . However, the old logic was not fully removed, leading to a mix of old and new code, duplicated response structures, and incorrect references.
+    -   **Next debug checklist:**
+        1.  Open .
+        2.  Completely remove or refactor the existing  endpoint logic (approx. lines 1070 onwards).
+        3.  Implement a clean, isolated  function that strictly follows the user's rules: LEAPS (≥6 mo DTE, ITM, ASK price) and Short Calls (≤60 DTE, OTM, BID price).
+        4.  Ensure the net debit is calculated as .
+        5.  Ensure contracts are rejected if BID/ASK is missing/zero.
+        6.  Wire the new  function to the  endpoint.
+        7.  Verify the response structure is correct and contains no legacy fields.
+    -   **Why fix this issue and what will be achieved with the fix?** This is the user's top priority. Fixing it will provide a functional PMCC screener that adheres to a sound financial strategy, separating it from the incorrect CC logic it was previously using.
+    -   **Should Test frontend/backend/both after fix?** backend
+    -   **Blocked on other issue:** None
 
 **In progress Task List**:
--   None.
+-   **Task 1: Complete the PMCC Screener Logic Refactor (P0)**
+    -   **Where to resume:** Resume work in  to fix the broken PMCC screener implementation.
+    -   **What will be achieved with this?** A fully functional and logically correct PMCC screener that is isolated from the CC screener.
+    -   **Status:** IN PROGRESS
+    -   **Should Test frontend/backend/both after fix?** backend
+    -   **Blocked on something:** None
 
 **Upcoming and Future Tasks**
 *   **Upcoming Tasks:**
-    *   (P0) **Fix Manual Filters:** Investigate and fix the filter application logic in . Ensure filters are applied correctly to the final, EOD-contract-sourced dataset.
-    *   (P0) **Implement Layer 4 - Scoring & Ranking:** After Layer 3 is fully stable (filters fixed), refactor the scoring logic in  to be pillar-based.
-    *   (P0) **Implement Layer 5 - Presentation, Watchlist & Simulation:** Audit and refactor UI-facing endpoints to be read-only consumers of the processed data from Layers 3 & 4.
+    *   (P1) **Fix PMCC Custom Scan Price Rules:** Implement stock vs. ETF price limits (0-0 for stocks, no limit for ETFs) in the PMCC custom scan logic. This logic must be separate from CC.
+    *   (P1) **Restore PMCC Pre-computed Aggressive Scan:** Modify this scan to use end-of-day cached options chains instead of live fetches, ensuring it works after hours and on holidays.
+    *   (P2) **Decouple Manual Filters:** Rework manual filters for CC and PMCC to query an unrestricted universe of all US stocks/ETFs and set all filter fields to be blank by default.
+    *   (P2) **Validation Checklist:** Perform the user's non-negotiable validation checklist, providing logs/screenshots for each item after all fixes are in place.
 *   **Future Tasks:**
-    *   (P1) **PayPal Re-integration:** Re-integrate PayPal as the payment provider.
     *   (P2) **Fix Inbound Email:** Resolve the persistent issue where inbound email replies do not appear in the support dashboard.
-    -   (P2) **Expand Symbol Universe:** Ingest snapshots for a wider range of symbols, including more ETFs.
+    *   (P2) **Expand Symbol Universe:** Ingest snapshots for a wider range of symbols, including more ETFs.
     *   (P3) **Frontend Refactor:** Break down large components like , , and .
-    *   (P4) **Deprecate Legacy Snapshots**: Plan the removal of the old  and  collections and the associated  code.
+    *   (P4) **Deprecate Legacy Snapshots & EOD Contract:** The EOD contract is now superseded by the Yahoo Single Source of Truth for stock prices. Plan the removal of , EOD collections (, ), and related legacy code.
 
 **Completed work in this session**
--   **EOD Price Contract Implementation (ADR-001):**
-    -   Created new MongoDB collections (, ) with a strict, immutable schema.
-    -   Developed a new, idempotent ingestion service ().
-    -   Refactored  and  to exclusively use the EOD contract, removing all live data fallbacks and enforcing a fail fast policy.
-    -   Created a migration script () and successfully migrated legacy data.
-    -   Ran a fresh data ingestion for  and provided detailed evidence of end-to-end data consistency.
--   **Automated Snapshot Ingestion:**
-    -   Implemented a recurring daily job using  in  to trigger the EOD ingestion at 4:05 PM ET, making the process automated.
+-   **P0 Security Fixes:** Created  files, added environment variable validation on startup, and fixed CORS wildcard vulnerability.
+-   **P1 Data Integrity Fixes:** Fixed intraday price contamination bug (now uses ), fixed  fallback bug (now requires BID for SELL legs), and added DB connection health checks.
+-   **P2 Cleanup:** Unified bid-ask spread to 10%, fixed  leak, and improved stale data detection logic.
+-   **Single Source of Truth for Stock Price:** Refactored all data fetching to use the latest historical market close from Yahoo Finance as the single, authoritative source for stock prices, fixing major data inconsistencies.
+-   **Analyst Ratings Restored:** Fixed the logic to correctly fetch and display analyst ratings across the application.
+-   **Live Dashboard Index Data:** Replaced mocked market index data with a live fetch from Yahoo Finance.
+-   **After-Hours Options Pricing:** Implemented a quote caching system () that stores the last valid BID/ASK during market hours and uses this cached data for after-hours screening, with clear labeling of quote source and age.
+-   **Strict Pricing Rule Enforcement:** Refactored all option-consuming services (, , ) to enforce strict pricing rules: BID for SELL legs, ASK for BUY legs, and rejecting contracts with missing/zero prices without fallbacks.
 
 **Earlier issues found/mentioned but not fixed**
 -   **Issue 1: Manual filters are not working correctly**
-    -   **Debug checklist:**
-        -   Trace the execution flow in  to confirm when manual filter query parameters are applied.
-        -   Verify that manual filters operate on the final, EOD-contract-sourced data structure.
-        -   Test various filter combinations (e.g., , ) to reproduce the bug.
-    -   **Why to solve this issue and what will be achieved with this?** To restore critical user functionality for exploring and narrowing down investment opportunities.
+    -   **Debug checklist:** The user's latest request (Step 5) provides new requirements for this. The filters must query an unrestricted universe of stocks/ETFs, not the pre-computed/custom scan universe.
+    -   **Why to solve this issue and what will be achieved with this?** This is a specific design correction requested by the user to make manual filtering more powerful and intuitive.
     -   **Should Test frontend/backend/both after fix:** backend
-    -   **Is recurring issue?** N
+    -   **Is recurring issue?** Y
 
 **Known issue recurrence from previous fork**
 -   **Issue recurrence in previous fork:** Inbound email replies not reaching the support dashboard.
--   **Recurrence count:** 3+
+-   **Recurrence count:** 4+
 -   **Status:** NOT STARTED
 
 **Code Architecture**
 
 
 **Key Technical Concepts**
--   **EOD Price Contract (ADR-001):** The new architectural cornerstone. It establishes a single, immutable source of truth for end-of-day stock and options data, fetched once daily at a canonical time (4:05 PM ET).
--   **Idempotent Ingestion:** The  is designed to be idempotent, ensuring that re-running the ingestion for the same day does not corrupt or alter the canonical data. An  flag prevents overwrites.
--   **Service Boundary Enforcement & Fail-Fast:** Snapshot-based modules () now exclusively use the EOD service. If EOD data is not present, the request fails with an error instead of falling back to a live API, guaranteeing deterministic results.
--   **Scheduled Jobs ():** The EOD ingestion process is now fully automated and scheduled to run daily via a job configured in .
+-   **Single Source of Truth (Stock Price):** All stock prices are now derived from a single function in  that fetches the most recent historical market close from Yahoo Finance. This eliminates data drift between pages.
+-   **Strict Options Pricing (BID/ASK):** All options trading logic is now mandated to use  for SELL legs (e.g., short calls) and  for BUY legs (e.g., LEAPS). Contracts with missing or zero prices are rejected. Fallbacks to  or  have been removed.
+-   **After-Hours Quote Caching:** A new service () persists the last valid non-zero BID/ASK quotes during market hours. When the market is closed, screeners use this cached data, clearly marking it with  and its age.
+-   **Logic Isolation:** The user mandates complete logical separation between CC and PMCC strategies. The current task is to enforce this for the PMCC screener.
 
 **key DB schema**
--   **eod_market_close**: 
--   **eod_options_chain**: 
+-   **options_quote_cache**: 
 
 **changes in tech stack**
--   No change in the core technologies, but a significant architectural shift to a data contract-based system.
+-   None.
 
 **All files of reference**
-*    (NEW - The why behind the changes)
-*    (NEW - The core EOD logic)
-*    (NEW - The EOD data API)
-*    (NEW - The migration script)
-*    (NEW - The test suite)
-*    (Modified for )
-*    (Heavily modified to adopt the EOD contract)
-*    (Modified to isolate EOD and live data paths)
+*    (Main file for CC/PMCC logic, currently needs fixing)
+*    (Core data fetching logic)
+*    (New service for after-hours quotes)
+*    (For market indices)
+*   
+*   
 
 **Areas that need refactoring**:
--   The manual filter logic in  is the next priority for fixing, not refactoring.
--   The legacy  and its associated DB collections (, ) are now technical debt and should be marked for deprecation and eventual removal.
+-    is critically bloated and in a broken state. The PMCC logic needs to be cleanly rewritten and isolated. The file contains endpoints for CC screener, PMCC screener, and dashboard opportunities, and should ideally be broken up.
 
 **key api endpoints**
-*   : Checks the health of the EOD data store.
-*   : Gets the latest canonical EOD price for a symbol.
-*   : Gets the latest canonical EOD options chain.
-*   : Manually triggers a batch EOD ingestion run.
-*   : (Updated) Now runs exclusively on EOD data.
-*   : (Updated) Now runs exclusively on EOD data.
-*   : (Updated) Now has an explicit mode to fetch EOD or live data, without fallbacks.
+*   : Fetches Covered Call opportunities.
+*   : Fetches Poor Man's Covered Call opportunities (currently broken).
+*   : Fetches live market index data.
+*   : Fetches user's watchlist with live prices.
 
 **Critical Info for New Agent**
-*   **EOD Contract is Law:** The user's highest priority was implementing ADR-001. All subsequent work on snapshot-based features must respect this contract. Do not re-introduce live fallbacks or modify the EOD collections.
-*   **Next Task is Manual Filters:** With the data foundation now stable, the immediate next task is to fix the broken manual filters on the screener pages.
-*   **Verification is Key:** The user demands concrete, evidence-based proof of work. When fixing the filters, be prepared to show  outputs or test results that demonstrate the fix.
+*   **Fix PMCC First:** Your absolute first priority is to fix the broken PMCC screener in . Do not proceed to other tasks until this is complete. The user has provided very specific, non-negotiable rules for this.
+*   **Respect the Single Source of Truth:** The stock price fetching logic in  is now correct and must be used as the single source of truth. Do not re-introduce EOD contract prices or other sources for stock data.
+*   **Follow PMCC Rules Exactly:** Refer to the user's latest prompt (Chat Message 411) for the exact rules for PMCC LEAPS (BUY leg) and short calls (SELL leg). Pay close attention to DTE, moneyness, and the strict use of ASK for buys and BID for sells.
+*   **Validate Before Finishing:** The user requires explicit validation against Yahoo Finance data before any task is considered complete. Be prepared to show  outputs or log proof for each fixed item.
 
 **documents and test reports created in this job**
 *   
 *   
-*   
+*    (updated multiple times)
 
 **Last 10 User Messages and any pending HUMAN messages**
-1.  **User:** Defined the Market Close Price contract, a non-negotiable architectural mandate. (PENDING IMPLEMENTATION)
-2.  **Agent:** Assessed the current system against the contract, identifying numerous violations and proposing a detailed architectural plan for compliance. (COMPLETED)
-3.  **User:** Approved the full architectural plan, prioritized it over the manual filter fix, and instructed the agent to proceed. (COMPLETED)
-4.  **Agent:** Began implementation, creating the ADR, new services, routes, and modifying  with the scheduler. (COMPLETED)
-5.  **Agent:** Created and ran a migration script to move data to the new EOD collections. (COMPLETED)
-6.  **Agent:** Refactored the CC screener, PMCC screener, and Watchlist routes to use the new EOD contract. (COMPLETED)
-7.  **Agent:** Created a new test suite for the EOD contract. (COMPLETED)
-8.  **User:** Demanded concrete evidence of compliance for a single symbol (UBER), including raw DB records, API outputs, and screener data. (PENDING)
-9.  **User:** Instructed the agent to run a fresh data ingestion for  to provide up-to-date evidence. (COMPLETED)
-10. **Agent:** Ran the fresh ingestion and provided a complete, evidence-backed summary showing perfect data consistency from DB to API to Screener, fulfilling the user's request. (COMPLETED)
+1.  **User:** Provided detailed, multi-step instructions to fix PMCC logic, custom scans, pre-computed scans, and manual filters. Stressed the need for logical isolation between CC and PMCC. (PENDING)
+2.  **Agent:** Began working on the PMCC refactor.
+3.  **User:** Reported that the stock price and options data integrity issues were not fixed, providing screenshots (e.g., INTC price discrepancy). Gave a 7-step mandate to fix all data sourcing issues permanently. (PARTIALLY ADDRESSED)
+4.  **Agent:** Investigated and confirmed the root cause of the stock price issue (stale EOD data) and began implementing fixes. (COMPLETED)
+5.  **User:** Provided strict, clarified rules for options pricing: SELL legs must use BID, BUY legs must use ASK.  is forbidden. (COMPLETED)
+6.  **Agent:** Implemented the strict BID/ASK pricing rules across all services. (COMPLETED)
+7.  **User:** Provided new data fetching rules: Screener must use previous day close, Watchlist/Simulator must use live prices, and Options must be fetched live. (COMPLETED)
+8.  **Agent:** Implemented the new data fetching architecture, separating live vs. previous-close logic. (COMPLETED)
+9.  **User:** Provided a large list of P0, P1, and P2 priority tasks focusing on security, data integrity, and code cleanup. (COMPLETED)
+10. **Agent:** Started work on the P0 tasks from the user's list. (COMPLETED)
 
 **Project Health Check:**
 *   **Broken:**
-    *   Manual filter functionality on screener pages.
-    *   Inbound email reply system for the support dashboard.
+    *   **PMCC Screener Logic:** The primary PMCC screener is non-functional due to an incomplete and messy refactoring attempt.
+    *   **PMCC Pre-computed Scan:** Relies on live data and fails after hours.
 *   **Mocked:** None.
-*   **Technical Debt:**
-    *   Legacy  and its corresponding DB collections (, ) are now obsolete.
-    *   Large frontend components (, ) still require refactoring.
 
 **3rd Party Integrations**
-*   **Yahoo Finance ():** Primary data source for stock and options data.
-*   **:** Used for NYSE trading day calculations.
-*   **:** Used for the automated daily ingestion job.
+*   **:** Primary data source for all stock and options data.
+*   **:** Used for scheduled jobs (currently not the main source of ingestion).
+*   **:** Used for NYSE trading day and holiday calculations.
 
 **Testing status**
--   **Testing agent used after significant changes:** NO (Agent performed extensive manual verification via CLI tools).
+-   **Testing agent used after significant changes:** YES (To validate data fetching rules and after-hours logic).
 -   **Troubleshoot agent used after agent stuck in loop:** NO
--   **Test files created:**
-    -   
--   **Known regressions:** None. The latest work fixed major architectural flaws related to data consistency.
+-   **Test files created:** None in this session, but previous test files were used for context.
+-   **Known regressions:** The PMCC screener is now broken, which is a regression from a previously (though incorrectly) working state.
 
 **Credentials to test flow:**
 *   Admin user: 
 *   Password: 
 
 **What agent forgot to execute**
--   Nothing was forgotten. The agent correctly re-prioritized the work based on the user's explicit architectural mandate, pushing the manual filter fix to become the next task after the EOD contract was fully implemented and verified.</analysis>
+The agent was in the middle of implementing the user's latest and most critical request (the full PMCC refactor from Chat Message 411) and left the  file in a broken, half-finished state. All other steps from that user request (Custom Scan Price Rules, Pre-computed Scans, Manual Filters, Validation) are also pending.
+</analysis>
