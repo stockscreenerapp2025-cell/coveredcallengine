@@ -1413,7 +1413,6 @@ async def screen_pmcc(
                     short_contract_symbol = short.get("contract_symbol", "")
                 
                 # Delta estimates for short leg
-                short_moneyness = stock_price / short_strike if short_strike > 0 else 0
                 short_delta = max(0.1, min(0.5, 1 - (short_strike - stock_price) / stock_price)) if short_strike > stock_price else 0.5
                 short_gamma = 0.05
                 short_theta = -0.02
