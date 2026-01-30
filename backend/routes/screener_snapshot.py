@@ -1354,18 +1354,17 @@ async def screen_pmcc(
                 leap_contract_symbol = f"{symbol}{leap_exp_fmt}C{int(leap_strike * 1000):08d}"
                 
                 # ==============================================================
-                # AUTHORITATIVE PMCC CONTRACT - ADR-001 COMPLIANT
+                # AUTHORITATIVE PMCC CONTRACT - YAHOO SINGLE SOURCE OF TRUTH
                 # ==============================================================
                 opportunities.append({
-                    # UNDERLYING object - ADR-001: Uses market_close_price
+                    # UNDERLYING object
                     "underlying": {
                         "symbol": symbol,
                         "last_price": round(stock_price, 2),
-                        "price_source": "EOD_CONTRACT" if use_eod_contract else "BID",  # ADR-001
-                        "snapshot_date": sym_data.get("stock_price_trade_date"),
-                        "market_close_timestamp": sym_data.get("market_close_timestamp"),  # ADR-001
+                        "price_source": "yahoo_last_close",  # SINGLE SOURCE OF TRUTH
+                        "snapshot_date": sym_data.get("trade_date"),
                         "market_cap": market_cap,
-                        "analyst_rating": None  # Not in EOD contract
+                        "analyst_rating": analyst_rating  # From Yahoo Finance
                     },
                     
                     # SHORT_CALL object - SELL leg
