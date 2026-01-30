@@ -772,21 +772,11 @@ async def screen_covered_calls(
         stock_price = sym_data["stock_price"]
         symbols_scanned += 1
         
-        # Get metadata for eligibility check
+        # Get metadata from Yahoo (already fetched in Step 1)
         market_cap = sym_data.get("market_cap")
         avg_volume = sym_data.get("avg_volume")
         earnings_date = sym_data.get("earnings_date")
-        
-        # If metadata missing, try legacy snapshot
-        if market_cap is None or avg_volume is None:
-            try:
-                stock_snapshot, _ = await snapshot_service.get_stock_snapshot(symbol)
-                if stock_snapshot:
-                    market_cap = market_cap or stock_snapshot.get("market_cap")
-                    avg_volume = avg_volume or stock_snapshot.get("avg_volume")
-                    earnings_date = earnings_date or stock_snapshot.get("earnings_date")
-            except Exception:
-                pass
+        analyst_rating = sym_data.get("analyst_rating")
         
         # LAYER 3: Check CC eligibility
         is_eligible, eligibility_reason = check_cc_eligibility(
