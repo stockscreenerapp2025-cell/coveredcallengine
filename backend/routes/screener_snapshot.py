@@ -1527,7 +1527,7 @@ async def screen_pmcc(
                     "max_profit": round(pmcc_metrics.get("max_profit_total", max_profit), 2),
                     "breakeven": pmcc_metrics.get("breakeven", 0),
                     "roi_per_cycle": round(roi_per_cycle, 2),
-                    "annualized_roi": round(annualized_roi, 1),
+                    "annualized_roi": round(roi_annualized, 1),
                     "base_score": round(quality_result.total_score, 1),
                     "score": round(final_score, 1),
                     "score_breakdown": {
