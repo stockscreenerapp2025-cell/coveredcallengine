@@ -1297,41 +1297,56 @@ async def screen_pmcc(
         if not valid_shorts:
             continue
         
-        market_cap = sym_data.get("market_cap")
-        
-        # Build PMCC combinations
-        for leap in leaps:
-            leap_cost = leap["premium"]  # ASK price
+        # ============================================================
+        # BUILD PMCC COMBINATIONS
+        # Rule: Short strike > Long strike, Net Debit = Long ASK - Short BID
+        # ============================================================
+        for leap in valid_leaps:
             leap_strike = leap["strike"]
-            leap_delta = leap["delta"]
+            leap_ask = leap["ask"]  # Long leg uses ASK
             leap_dte = leap["dte"]
             leap_expiry = leap["expiry"]
-            leap_ask = leap.get("ask", leap_cost)
-            leap_oi = leap.get("open_interest", 0)
-            leap_iv = leap.get("implied_volatility", 0)
+            leap_delta = leap["delta"]
+            leap_bid = leap["bid"]
+            leap_iv = leap["iv"]
+            leap_oi = leap["oi"]
             
-            for short in shorts:
+            for short in valid_shorts:
                 short_strike = short["strike"]
-                short_premium = short["premium"]  # BID price
+                short_bid = short["bid"]  # Short leg uses BID
+                short_ask = short["ask"]
                 short_dte = short["dte"]
                 short_expiry = short["expiry"]
-                short_ask = short.get("ask", 0)
-                short_iv = short.get("implied_volatility", 0)
+                short_iv = short["iv"]
+                short_oi = short["oi"]
                 
-                # PMCC structure validation
+                # PMCC RULE: Short strike must be ABOVE long-leg strike
                 if short_strike <= leap_strike:
-                    continue  # Short must be above LEAP strike
+                    continue
                 
-                # Calculate metrics
-                max_profit = (short_strike - leap_strike) * 100 + (short_premium * 100)
-                net_debit = leap_cost - short_premium
+                # PMCC NET DEBIT: Long-leg ASK - Short-leg BID
+                net_debit = leap_ask - short_bid
                 
                 if net_debit <= 0:
-                    continue  # Invalid structure
+                    continue  # Invalid - should be a debit strategy
                 
-                roi_per_cycle = (short_premium / leap_cost) * 100
-                cycles_per_year = 365 / short_dte if short_dte > 0 else 12
-                annualized_roi = roi_per_cycle * cycles_per_year
+                # Calculate PMCC metrics
+                width = short_strike - leap_strike
+                max_profit = (width * 100) + (short_bid * 100) - (leap_ask * 100)
+                
+                if net_debit > 0:
+                    roi_per_cycle = (short_bid / net_debit) * 100
+                    cycles_per_year = 365 / short_dte if short_dte > 0 else 12
+                    roi_annualized = roi_per_cycle * cycles_per_year
+                    breakeven = leap_strike + net_debit
+                else:
+                    roi_per_cycle = 0
+                    roi_annualized = 0
+                    breakeven = 0
+                
+                # Calculate spreads
+                leap_spread_pct = ((leap_ask - leap_bid) / leap_ask * 100) if leap_ask > 0 else 0
+                short_spread_pct = ((short_ask - short_bid) / short_bid * 100) if short_bid > 0 else 0
                 
                 # Validate PMCC trade structure
                 is_valid, rejection = validate_pmcc_trade(
@@ -1339,13 +1354,13 @@ async def screen_pmcc(
                     stock_price=stock_price,
                     leap_strike=leap_strike,
                     leap_expiry=leap_expiry,
-                    leap_ask=leap_cost,
+                    leap_ask=leap_ask,
                     leap_dte=leap_dte,
                     leap_delta=leap_delta,
-                    leap_oi=leap.get("open_interest", 0),
+                    leap_oi=leap_oi,
                     short_strike=short_strike,
                     short_expiry=short_expiry,
-                    short_bid=short_premium,
+                    short_bid=short_bid,
                     short_dte=short_dte
                 )
                 
