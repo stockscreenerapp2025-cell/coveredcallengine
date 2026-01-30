@@ -1508,7 +1508,7 @@ async def screen_pmcc(
                     "leap_strike": leap_strike,
                     "leap_expiry": leap_expiry,
                     "leap_dte": leap_dte,
-                    "leap_cost": round(leap_cost, 2),
+                    "leap_cost": round(leap_ask, 2),
                     "leap_delta": round(leap_delta, 3),
                     "leap_ask": round(leap_ask, 2),
                     "leap_open_interest": leap_oi,
