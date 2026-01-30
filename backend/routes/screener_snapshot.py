@@ -1244,59 +1244,57 @@ async def screen_pmcc(
             continue
         
         # ============================================================
-        # LIVE SHORT CALLS FETCH - Per user requirement #3
+        # PMCC SHORT LEG FETCH
+        # Rule: Expiry ≤ 60 days, Strike > Long-leg Strike, Use BID
         # ============================================================
         try:
             live_shorts = await fetch_options_chain(
                 symbol=symbol,
                 api_key=None,
                 option_type="call",
-                max_dte=max_short_dte,
+                max_dte=max_short_dte,  # ≤60 days
                 min_dte=min_short_dte,
                 current_price=stock_price
             )
         except Exception as e:
-            logging.debug(f"Could not fetch live short calls for {symbol}: {e}")
+            logging.debug(f"PMCC: Could not fetch short calls for {symbol}: {e}")
             continue
         
         if not live_shorts:
             continue
         
-        # Filter short calls for PMCC (OTM, use BID)
-        shorts = []
+        # Filter short calls - PMCC specific rules
+        valid_shorts = []
         for opt in live_shorts:
             strike = opt.get("strike", 0)
             bid = opt.get("bid", 0)
             ask = opt.get("ask", 0)
+            dte = opt.get("dte", 0)
             
-            # PRICING RULES - SELL leg (short call):
-            # - Use BID only
-            # - If BID is None, 0, or missing → reject the contract
-            # - Never use: lastPrice, mid, ASK, theoretical price
-            if not bid or bid <= 0:
-                continue  # Reject - no valid BID for SELL leg
+            # PMCC RULE: Both BID and ASK must be > 0
+            if not bid or bid <= 0 or not ask or ask <= 0:
+                continue
             
-            # Minimum $0.10 premium for short call
+            # PMCC RULE: Expiry must be ≤ 60 days
+            if dte > max_short_dte:
+                continue
+            
+            # Minimum premium threshold
             if bid < 0.10:
                 continue
             
-            # Must be OTM (strike > stock price)
-            if strike <= stock_price * 1.02:  # At least 2% OTM
-                continue
-            if strike > stock_price * 1.15:  # Max 15% OTM
-                continue
-            
-            shorts.append({
+            valid_shorts.append({
                 "strike": strike,
                 "expiry": opt.get("expiry", ""),
-                "dte": opt.get("dte", 0),
-                "premium": bid,  # BID only for SELL leg
+                "dte": dte,
+                "bid": bid,  # PMCC uses BID for short leg
                 "ask": ask,
-                "implied_volatility": opt.get("implied_volatility", 0),
-                "open_interest": opt.get("open_interest", 0)
+                "iv": opt.get("implied_volatility", 0),
+                "oi": opt.get("open_interest", 0),
+                "contract_symbol": opt.get("contract_ticker", "")
             })
         
-        if not shorts:
+        if not valid_shorts:
             continue
         
         market_cap = sym_data.get("market_cap")
