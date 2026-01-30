@@ -205,14 +205,16 @@ def _fetch_stock_quote_yahoo_sync(symbol: str) -> Dict[str, Any]:
     """
     Fetch stock quote from Yahoo Finance (blocking call).
     
-    CCE MASTER ARCHITECTURE - LAYER 1 COMPLIANT:
+    THIS IS THE SINGLE SOURCE OF TRUTH FOR STOCK PRICES.
+    
     Returns the LAST NYSE MARKET CLOSE price (most recent trading day's close).
+    Also includes metadata: analyst_rating, market_cap, avg_volume, earnings_date
     
     IMPORTANT: Yahoo's "previousClose" is the PRIOR day's close, NOT today's close.
     We must use historical data to get the actual last market close.
     
     ❌ FORBIDDEN: regularMarketPrice, currentPrice (intraday prices)
-    ✅ CORRECT: Most recent historical close price
+    ✅ CORRECT: Most recent historical close price from history()
     """
     try:
         import yfinance as yf
@@ -233,8 +235,10 @@ def _fetch_stock_quote_yahoo_sync(symbol: str) -> Dict[str, Any]:
             logging.warning(f"Yahoo stock quote: No valid close price for {symbol}")
             return None
         
-        # Get analyst rating from info
+        # Get additional metadata from info
         info = ticker.info
+        
+        # Analyst rating
         recommendation = info.get("recommendationKey", "")
         rating_map = {
             "strong_buy": "Strong Buy",
@@ -245,12 +249,31 @@ def _fetch_stock_quote_yahoo_sync(symbol: str) -> Dict[str, Any]:
         }
         analyst_rating = rating_map.get(recommendation, recommendation.replace("_", " ").title() if recommendation else None)
         
+        # Market cap
+        market_cap = info.get("marketCap", 0)
+        
+        # Average volume
+        avg_volume = info.get("averageVolume", 0) or info.get("averageDailyVolume10Day", 0)
+        
+        # Earnings date
+        earnings_timestamp = info.get("earningsTimestamp") or info.get("earningsTimestampStart")
+        earnings_date = None
+        if earnings_timestamp:
+            try:
+                from datetime import datetime
+                earnings_date = datetime.fromtimestamp(earnings_timestamp).strftime('%Y-%m-%d')
+            except:
+                pass
+        
         return {
             "symbol": symbol,
             "price": round(float(last_close), 2),  # Most recent market close
             "previous_close": round(float(last_close), 2),
             "close_date": last_close_date,  # Date of the close price
             "analyst_rating": analyst_rating,
+            "market_cap": market_cap,
+            "avg_volume": avg_volume,
+            "earnings_date": earnings_date,
             "source": "yahoo"
         }
     except Exception as e:
