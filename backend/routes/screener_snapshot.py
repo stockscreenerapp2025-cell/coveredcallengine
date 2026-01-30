@@ -727,51 +727,27 @@ async def screen_covered_calls(
         min_dte = min_dte if min_dte is not None else auto_min_dte
         max_dte = max_dte if max_dte is not None else auto_max_dte
     
-    # Step 1: Get stock prices (previous close) for all symbols
+    # Step 1: Get stock prices - YAHOO FINANCE IS THE SINGLE SOURCE OF TRUTH
+    # The most recent market close from Yahoo Finance history() is the only valid price
+    # DO NOT use EOD contract, cached prices, or stale fallbacks
     stock_data = {}
     symbols_with_stock_data = []
     
     for symbol in SCAN_SYMBOLS:
         try:
-            # Try EOD contract first for stock price (previous close)
-            if use_eod_contract:
-                try:
-                    price, stock_doc = await eod_contract.get_market_close_price(symbol)
-                    stock_data[symbol] = {
-                        "stock_price": price,
-                        "trade_date": stock_doc.get("trade_date"),
-                        "market_cap": stock_doc.get("metadata", {}).get("market_cap"),
-                        "avg_volume": stock_doc.get("metadata", {}).get("avg_volume"),
-                        "earnings_date": stock_doc.get("metadata", {}).get("earnings_date"),
-                        "source": "eod_contract"
-                    }
-                    symbols_with_stock_data.append(symbol)
-                except EODPriceNotFoundError:
-                    # Fallback to Yahoo previousClose
-                    quote = await fetch_stock_quote(symbol)
-                    if quote and quote.get("price"):
-                        stock_data[symbol] = {
-                            "stock_price": quote["price"],  # previousClose
-                            "trade_date": None,
-                            "market_cap": None,
-                            "avg_volume": None,
-                            "earnings_date": None,
-                            "source": "yahoo_previous_close"
-                        }
-                        symbols_with_stock_data.append(symbol)
-            else:
-                # Use Yahoo previousClose
-                quote = await fetch_stock_quote(symbol)
-                if quote and quote.get("price"):
-                    stock_data[symbol] = {
-                        "stock_price": quote["price"],
-                        "trade_date": None,
-                        "market_cap": None,
-                        "avg_volume": None,
-                        "earnings_date": None,
-                        "source": "yahoo_previous_close"
-                    }
-                    symbols_with_stock_data.append(symbol)
+            # ALWAYS use Yahoo Finance for stock price (SINGLE SOURCE OF TRUTH)
+            quote = await fetch_stock_quote(symbol)
+            if quote and quote.get("price") and quote.get("price") > 0:
+                stock_data[symbol] = {
+                    "stock_price": quote["price"],
+                    "trade_date": quote.get("close_date"),  # Date of the close price
+                    "market_cap": None,  # Will be fetched from metadata
+                    "avg_volume": None,
+                    "earnings_date": None,
+                    "analyst_rating": quote.get("analyst_rating"),
+                    "source": "yahoo_last_close"
+                }
+                symbols_with_stock_data.append(symbol)
         except Exception as e:
             logging.debug(f"Could not get stock price for {symbol}: {e}")
     
