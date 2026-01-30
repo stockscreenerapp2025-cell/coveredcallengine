@@ -1156,7 +1156,7 @@ async def screen_pmcc(
         except Exception as e:
             logging.debug(f"Could not get stock price for {symbol}: {e}")
     
-    # Step 2: Get market sentiment for scoring
+    # Step 2: Get market sentiment
     try:
         sentiment = await fetch_market_sentiment()
         market_bias = sentiment.get("bias", "neutral")
@@ -1165,7 +1165,7 @@ async def screen_pmcc(
         market_bias = "neutral"
         bias_weight = 1.0
     
-    # Step 3: Scan each symbol for PMCC opportunities - LIVE options fetch
+    # Step 3: Scan each symbol for PMCC opportunities
     opportunities = []
     symbols_scanned = 0
     
@@ -1174,10 +1174,12 @@ async def screen_pmcc(
         stock_price = sym_data["stock_price"]
         market_cap = sym_data.get("market_cap")
         analyst_rating = sym_data.get("analyst_rating")
+        is_etf = sym_data.get("is_etf", False)
         symbols_scanned += 1
         
         # ============================================================
-        # LIVE LEAPS FETCH - Per user requirement #3
+        # PMCC LONG LEG (LEAPS) FETCH
+        # Rule: Expiry ≥ 6 months, Strike < Stock Price (ITM), Use ASK
         # ============================================================
         try:
             live_leaps = await fetch_options_chain(
@@ -1185,57 +1187,60 @@ async def screen_pmcc(
                 api_key=None,
                 option_type="call",
                 max_dte=max_leap_dte,
-                min_dte=min_leap_dte,
+                min_dte=min_leap_dte,  # ≥6 months
                 current_price=stock_price
             )
         except Exception as e:
-            logging.debug(f"Could not fetch live LEAPs for {symbol}: {e}")
+            logging.debug(f"PMCC: Could not fetch LEAPS for {symbol}: {e}")
             continue
         
         if not live_leaps:
             continue
         
-        # Filter LEAPs for PMCC (deep ITM, high delta)
-        leaps = []
+        # Filter LEAPS - PMCC specific rules (NOT shared with CC)
+        valid_leaps = []
         for opt in live_leaps:
             strike = opt.get("strike", 0)
             ask = opt.get("ask", 0)
             bid = opt.get("bid", 0)
+            dte = opt.get("dte", 0)
             
-            # PRICING RULES - BUY leg (LEAP):
-            # - Use ASK only
-            # - If ASK is None, 0, or missing → reject the contract
-            # - Never use: BID, lastPrice, mid
-            if not ask or ask <= 0:
-                continue  # Reject - no valid ASK for BUY leg
+            # PMCC RULE: Both BID and ASK must be > 0
+            if not bid or bid <= 0 or not ask or ask <= 0:
+                continue
             
-            premium = ask  # BUY leg uses ASK only
+            # PMCC RULE: Expiry must be ≥ 6 months
+            if dte < min_leap_dte:
+                continue
             
-            # Calculate delta estimate if not provided
+            # PMCC RULE: Strike must be BELOW stock price (ITM)
+            if strike >= stock_price:
+                continue  # Reject - must be ITM
+            
+            # Calculate delta estimate for deep ITM
             moneyness = stock_price / strike if strike > 0 else 0
-            # Deep ITM calls have delta close to 1
-            if moneyness > 1.2:  # 20% ITM
+            if moneyness > 1.0:  # ITM
                 estimated_delta = min(0.95, 0.5 + (moneyness - 1) * 0.5)
             else:
-                estimated_delta = opt.get("implied_volatility", 0.5)  # Rough estimate
+                estimated_delta = 0.5
             
-            delta = opt.get("delta", estimated_delta)
+            delta = opt.get("delta") or estimated_delta
             if delta < min_delta:
                 continue
             
-            leaps.append({
+            valid_leaps.append({
                 "strike": strike,
                 "expiry": opt.get("expiry", ""),
-                "dte": opt.get("dte", 0),
-                "premium": premium,  # ASK only for BUY leg
-                "ask": ask,
+                "dte": dte,
+                "ask": ask,  # PMCC uses ASK for long leg
                 "bid": bid,
                 "delta": delta,
-                "implied_volatility": opt.get("implied_volatility", 0),
-                "open_interest": opt.get("open_interest", 0)
+                "iv": opt.get("implied_volatility", 0),
+                "oi": opt.get("open_interest", 0),
+                "contract_symbol": opt.get("contract_ticker", "")
             })
         
-        if not leaps:
+        if not valid_leaps:
             continue
         
         # ============================================================
