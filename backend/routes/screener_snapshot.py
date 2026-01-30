@@ -1095,38 +1095,19 @@ async def screen_pmcc(
     stock_data = {}
     symbols_with_stock_data = []
     
+    # YAHOO FINANCE IS THE SINGLE SOURCE OF TRUTH FOR STOCK PRICES
     for symbol in SCAN_SYMBOLS:
         try:
-            if use_eod_contract:
-                try:
-                    price, stock_doc = await eod_contract.get_market_close_price(symbol)
-                    stock_data[symbol] = {
-                        "stock_price": price,
-                        "trade_date": stock_doc.get("trade_date"),
-                        "market_cap": stock_doc.get("metadata", {}).get("market_cap"),
-                        "source": "eod_contract"
-                    }
-                    symbols_with_stock_data.append(symbol)
-                except EODPriceNotFoundError:
-                    quote = await fetch_stock_quote(symbol)
-                    if quote and quote.get("price"):
-                        stock_data[symbol] = {
-                            "stock_price": quote["price"],
-                            "trade_date": None,
-                            "market_cap": None,
-                            "source": "yahoo_previous_close"
-                        }
-                        symbols_with_stock_data.append(symbol)
-            else:
-                quote = await fetch_stock_quote(symbol)
-                if quote and quote.get("price"):
-                    stock_data[symbol] = {
-                        "stock_price": quote["price"],
-                        "trade_date": None,
-                        "market_cap": None,
-                        "source": "yahoo_previous_close"
-                    }
-                    symbols_with_stock_data.append(symbol)
+            quote = await fetch_stock_quote(symbol)
+            if quote and quote.get("price") and quote.get("price") > 0:
+                stock_data[symbol] = {
+                    "stock_price": quote["price"],
+                    "trade_date": quote.get("close_date"),
+                    "market_cap": quote.get("market_cap"),
+                    "analyst_rating": quote.get("analyst_rating"),
+                    "source": "yahoo_last_close"
+                }
+                symbols_with_stock_data.append(symbol)
         except Exception as e:
             logging.debug(f"Could not get stock price for {symbol}: {e}")
     
@@ -1146,6 +1127,8 @@ async def screen_pmcc(
     for symbol in symbols_with_stock_data:
         sym_data = stock_data[symbol]
         stock_price = sym_data["stock_price"]
+        market_cap = sym_data.get("market_cap")
+        analyst_rating = sym_data.get("analyst_rating")
         symbols_scanned += 1
         
         # ============================================================
