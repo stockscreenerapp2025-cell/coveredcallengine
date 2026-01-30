@@ -1580,10 +1580,11 @@ async def get_dashboard_opportunities(
         "data_note": f"Weekly: {weekly_count}/5 available, Monthly: {monthly_count}/5 available" if weekly_count < 5 else None,
         # Preserve metadata from original response
         "market_bias": all_opportunities.get("market_bias"),
-        "snapshot_validation": all_opportunities.get("snapshot_validation"),
+        "stock_price_source": "yahoo_last_close",  # SINGLE SOURCE OF TRUTH
+        "options_chain_source": "yahoo_live",
         "layer": 3,
-        "architecture": "TOP5_WEEKLY_TOP5_MONTHLY",
-        "live_data_used": False
+        "architecture": "TOP5_WEEKLY_TOP5_MONTHLY_YAHOO_SINGLE_SOURCE",
+        "live_data_used": True
     }
 
 
