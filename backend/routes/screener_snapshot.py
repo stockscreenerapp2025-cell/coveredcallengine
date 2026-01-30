@@ -1478,14 +1478,17 @@ async def screen_pmcc(
                     
                     # METADATA object
                     "metadata": {
-                        "leaps_buy_eligible": pmcc_metrics.get("leaps_buy_eligible", False),
-                        "analyst_rating": None,
+                        "leaps_buy_eligible": True,  # Already validated
+                        "is_etf": is_etf,
                         "validation_flags": {
-                            "leap_delta_ok": leap_delta >= 0.70,
-                            "leap_dte_ok": leap_dte >= 365,
-                            "short_otm_ok": short_strike > stock_price
+                            "leap_itm": leap_strike < stock_price,  # PMCC rule: LEAP must be ITM
+                            "leap_delta_ok": leap_delta >= min_delta,
+                            "leap_dte_ok": leap_dte >= PMCC_MIN_LEAP_DTE,  # ≥6 months
+                            "short_above_leap": short_strike > leap_strike,
+                            "short_dte_ok": short_dte <= PMCC_MAX_SHORT_DTE,  # ≤60 days
+                            "both_bid_ask_valid": True  # Already validated
                         },
-                        "data_source": "live_options"  # Now fetched LIVE
+                        "data_source": "yahoo_live_pmcc"  # PMCC-isolated data source
                     },
                     
                     # SCORING object
@@ -1497,49 +1500,46 @@ async def screen_pmcc(
                     },
                     
                     # ==============================================================
-                    # LEGACY FLAT FIELDS - For backwards compatibility during transition
-                    # These will be REMOVED once frontend is updated
+                    # LEGACY FLAT FIELDS - For backwards compatibility
                     # ==============================================================
                     "symbol": symbol,
                     "stock_price": round(stock_price, 2),
+                    "is_etf": is_etf,
                     "leap_strike": leap_strike,
                     "leap_expiry": leap_expiry,
                     "leap_dte": leap_dte,
                     "leap_cost": round(leap_ask, 2),
                     "leap_delta": round(leap_delta, 3),
                     "leap_ask": round(leap_ask, 2),
+                    "leap_bid": round(leap_bid, 2),
                     "leap_open_interest": leap_oi,
                     "leap_iv": round(leap_iv * 100 if leap_iv < 1 else leap_iv, 1),
-                    "leaps_buy_eligible": pmcc_metrics.get("leaps_buy_eligible", False),
+                    "leaps_buy_eligible": True,
                     "short_strike": short_strike,
                     "short_expiry": short_expiry,
                     "short_dte": short_dte,
                     "short_premium": round(short_bid, 2),
-                    "short_ask": round(short_ask, 2) if short_ask else None,
+                    "short_bid": round(short_bid, 2),
+                    "short_ask": round(short_ask, 2),
                     "short_iv": round(short_iv * 100 if short_iv < 1 else short_iv, 1),
-                    "short_delta": round(short_delta, 4),  # NEW: Short call delta
+                    "short_delta": round(short_delta, 4),
                     "width": round(width, 2),
                     "net_debit": round(net_debit, 2),
                     "net_debit_total": round(net_debit * 100, 2),
-                    "max_profit": round(pmcc_metrics.get("max_profit_total", max_profit), 2),
-                    "breakeven": pmcc_metrics.get("breakeven", 0),
+                    "max_profit": round(max_profit, 2),
+                    "breakeven": round(breakeven, 2),
                     "roi_per_cycle": round(roi_per_cycle, 2),
                     "annualized_roi": round(roi_annualized, 1),
                     "base_score": round(quality_result.total_score, 1),
                     "score": round(final_score, 1),
-                    "score_breakdown": {
-                        "total": round(quality_result.total_score, 1),
-                        "pillars": {k: {"score": round(v.actual_score, 1), "max": v.max_score} 
-                                   for k, v in quality_result.pillars.items()} if quality_result.pillars else {}
-                    },
-                    "analyst_rating": None,
+                    "analyst_rating": analyst_rating,
                     "market_cap": market_cap,
                     "snapshot_date": sym_data.get("trade_date"),
-                    "data_source": "live_options"  # Now fetched LIVE
+                    "data_source": "yahoo_live_pmcc"
                 })
     
     # Sort by annualized ROI
-    opportunities.sort(key=lambda x: x["annualized_roi"], reverse=True)
+    opportunities.sort(key=lambda x: x.get("annualized_roi", 0), reverse=True)
     
     # DEDUPLICATION: Keep only the best PMCC opportunity per symbol
     seen_symbols = set()
@@ -1557,10 +1557,23 @@ async def screen_pmcc(
         "opportunities": opportunities[:limit],
         "symbols_scanned": symbols_scanned,
         "market_bias": market_bias,
-        "stock_price_source": "previous_close",  # Rule #1
-        "options_chain_source": "yahoo_live",    # Rule #3
+        # PMCC-specific metadata
+        "pmcc_rules": {
+            "long_leg_min_dte": PMCC_MIN_LEAP_DTE,  # ≥6 months
+            "long_leg_must_be_itm": True,
+            "long_leg_pricing": "ASK",
+            "short_leg_max_dte": PMCC_MAX_SHORT_DTE,  # ≤60 days
+            "short_leg_pricing": "BID",
+            "net_debit_formula": "Long-leg ASK - Short-leg BID"
+        },
+        "price_filters": {
+            "stocks": f"${PMCC_STOCK_MIN_PRICE}-${PMCC_STOCK_MAX_PRICE}",
+            "etfs": "No price limits"
+        },
+        "stock_price_source": "yahoo_last_close",
+        "options_chain_source": "yahoo_live",
         "layer": 3,
-        "architecture": "LIVE_OPTIONS_PREVIOUS_CLOSE_STOCK",
+        "architecture": "PMCC_ISOLATED_FROM_CC",
         "live_data_used": True
     }
 
