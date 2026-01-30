@@ -1014,12 +1014,12 @@ async def screen_covered_calls(
                 },
                 "market_cap": market_cap,
                 "avg_volume": avg_volume,
-                "analyst_rating": None,
+                "analyst_rating": analyst_rating,  # From Yahoo Finance
                 "earnings_date": earnings_date,
                 "snapshot_date": sym_data.get("trade_date"),
                 "quote_source": quote_source,  # LIVE or LAST_MARKET_SESSION
                 "quote_timestamp": quote_timestamp,
-                "data_source": "live_options"
+                "data_source": "yahoo_single_source"
             })
         
         if live_options:
