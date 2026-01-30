@@ -1077,8 +1077,9 @@ async def screen_covered_calls(
 # ============================================================
 
 # PMCC-specific constants (ISOLATED from CC)
-PMCC_MIN_LEAP_DTE = 180  # ≥6 months (not same as CC)
-PMCC_MAX_LEAP_DTE = 730  # ~2 years
+# USER REQUIREMENT: LEAPS must be 12-24 months (365-730 days)
+PMCC_MIN_LEAP_DTE = 365  # 12 months minimum
+PMCC_MAX_LEAP_DTE = 730  # 24 months maximum (~2 years)
 PMCC_MIN_SHORT_DTE = 7
 PMCC_MAX_SHORT_DTE = 60  # ≤60 days
 PMCC_MIN_DELTA = 0.70  # Deep ITM for LEAPS
@@ -1092,7 +1093,7 @@ PMCC_STOCK_MAX_PRICE = 90.0
 async def screen_pmcc(
     limit: int = Query(50, ge=1, le=200),
     risk_profile: str = Query("moderate", regex="^(conservative|moderate|aggressive)$"),
-    min_leap_dte: int = Query(PMCC_MIN_LEAP_DTE, ge=180),
+    min_leap_dte: int = Query(PMCC_MIN_LEAP_DTE, ge=365),
     max_leap_dte: int = Query(PMCC_MAX_LEAP_DTE, le=1095),
     min_short_dte: int = Query(PMCC_MIN_SHORT_DTE, ge=1),
     max_short_dte: int = Query(PMCC_MAX_SHORT_DTE, le=60),
@@ -1107,7 +1108,7 @@ async def screen_pmcc(
     =====================================================
     
     LONG LEG (LEAPS CALL):
-    - Expiry must be ≥ 6 months (180 days) from current date
+    - Expiry must be 12-24 months (365-730 days) from current date
     - Strike must be BELOW the current stock price (ITM)
     - Option price = ASK only
     - Both BID and ASK must be > 0
@@ -1527,7 +1528,7 @@ async def screen_pmcc(
                     "net_debit": round(net_debit, 2),
                     "net_debit_total": round(net_debit * 100, 2),
                     "max_profit": round(max_profit, 2),
-                    "breakeven": round(breakeven, 2),
+                    "breakeven": round(pmcc_metrics.get("breakeven", leap_strike + net_debit), 2),
                     "roi_per_cycle": round(roi_per_cycle, 2),
                     "annualized_roi": round(roi_annualized, 1),
                     "base_score": round(quality_result.total_score, 1),
