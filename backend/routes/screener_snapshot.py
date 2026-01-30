@@ -1102,26 +1102,54 @@ async def screen_pmcc(
     """
     Screen for Poor Man's Covered Call (PMCC) opportunities.
     
-    DATA FETCHING RULES:
-    1. STOCK PRICES: Previous US market close (from EOD contract or previousClose)
-    2. OPTIONS CHAINS: Fetched LIVE from Yahoo Finance at scan time
-    """
-    eod_contract = get_eod_contract()
+    =====================================================
+    PMCC CHAIN SELECTION RULES (COMPLETELY ISOLATED FROM CC):
+    =====================================================
     
-    # Step 1: Get stock prices (previous close) for all symbols
+    LONG LEG (LEAPS CALL):
+    - Expiry must be ≥ 6 months (180 days) from current date
+    - Strike must be BELOW the current stock price (ITM)
+    - Option price = ASK only
+    - Both BID and ASK must be > 0
+    
+    SHORT LEG (CALL):
+    - Expiry must be ≤ 60 days
+    - Strike must be ABOVE the long-leg strike
+    - Option price = BID only
+    - Both BID and ASK must be > 0
+    
+    NET DEBIT CALCULATION:
+    - Net debit = Long-leg ASK - Short-leg BID
+    - LAST price is NEVER used
+    
+    PRICE FILTERS (PMCC-specific):
+    - Stocks: $30-$90
+    - ETFs: No price limits
+    """
+    # Step 1: Get stock prices - YAHOO FINANCE SINGLE SOURCE
     stock_data = {}
     symbols_with_stock_data = []
     
-    # YAHOO FINANCE IS THE SINGLE SOURCE OF TRUTH FOR STOCK PRICES
     for symbol in SCAN_SYMBOLS:
         try:
             quote = await fetch_stock_quote(symbol)
             if quote and quote.get("price") and quote.get("price") > 0:
+                stock_price = quote["price"]
+                is_etf = symbol in ETF_SYMBOLS
+                
+                # PMCC-specific price filter (different from CC)
+                if not is_etf:
+                    # Stocks: $30-$90
+                    if stock_price < PMCC_STOCK_MIN_PRICE or stock_price > PMCC_STOCK_MAX_PRICE:
+                        continue
+                # ETFs: No price limits
+                
                 stock_data[symbol] = {
-                    "stock_price": quote["price"],
+                    "stock_price": stock_price,
                     "trade_date": quote.get("close_date"),
                     "market_cap": quote.get("market_cap"),
                     "analyst_rating": quote.get("analyst_rating"),
+                    "is_etf": is_etf,
                     "source": "yahoo_last_close"
                 }
                 symbols_with_stock_data.append(symbol)
