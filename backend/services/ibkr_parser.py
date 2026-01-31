@@ -210,29 +210,65 @@ class IBKRParser:
             return None
     
     def _parse_option_symbol(self, symbol: str) -> Optional[Dict]:
-        """Parse option symbol to extract details"""
+        """Parse option symbol to extract details.
+        
+        Handles multiple IBKR formats:
+        1. Standard: "IONQ 260123P48500" -> YYMMDD[C/P]STRIKE
+        2. Human readable: "IONQ 23JAN26 48.5 P" -> DDMMMYY STRIKE [C/P]
+        """
         try:
             symbol = symbol.strip()
             parts = symbol.split()
-            if len(parts) >= 2:
-                underlying = parts[0]
-                option_code = ''.join(parts[1:])
+            if len(parts) < 2:
+                return None
+            
+            underlying = parts[0]
+            option_code = ''.join(parts[1:])
+            
+            # Format 1: Standard IBKR format YYMMDD[C/P]STRIKE (e.g., "260123P48500")
+            match = re.match(r'^(\d{6})([CP])(\d+)$', option_code)
+            if match:
+                date_part, option_type, strike_part = match.groups()
+                try:
+                    expiry = datetime.strptime(date_part, '%y%m%d')
+                    strike = float(strike_part) / 1000
+                    return {
+                        'underlying': underlying,
+                        'expiry': expiry.strftime('%Y-%m-%d'),
+                        'option_type': 'Call' if option_type == 'C' else 'Put',
+                        'strike': strike
+                    }
+                except Exception:
+                    pass
+            
+            # Format 2: Human readable format (e.g., "IONQ 23JAN26 48.5 P" or "IONQ 30JAN26 49 C")
+            # Pattern: UNDERLYING DDMMMYY STRIKE C/P
+            if len(parts) >= 4:
+                date_str = parts[1]  # e.g., "23JAN26"
+                strike_str = parts[2]  # e.g., "48.5" or "49"
+                option_char = parts[3].upper()  # e.g., "P" or "C"
                 
-                # Match pattern: YYMMDD[C/P]STRIKE
-                match = re.match(r'^(\d{6})([CP])(\d+)$', option_code)
-                if match:
-                    date_part, option_type, strike_part = match.groups()
+                # Try to parse the date
+                expiry = None
+                for fmt in ['%d%b%y', '%d%B%y']:  # 23JAN26 or 23January26
                     try:
-                        expiry = datetime.strptime(date_part, '%y%m%d')
-                        strike = float(strike_part) / 1000
+                        expiry = datetime.strptime(date_str.upper(), fmt)
+                        break
+                    except ValueError:
+                        continue
+                
+                if expiry and option_char in ['C', 'P']:
+                    try:
+                        strike = float(strike_str)
                         return {
                             'underlying': underlying,
                             'expiry': expiry.strftime('%Y-%m-%d'),
-                            'option_type': 'Call' if option_type == 'C' else 'Put',
+                            'option_type': 'Call' if option_char == 'C' else 'Put',
                             'strike': strike
                         }
-                    except:
+                    except ValueError:
                         pass
+            
         except Exception as e:
             logger.debug(f"Could not parse option symbol {symbol}: {e}")
         return None
