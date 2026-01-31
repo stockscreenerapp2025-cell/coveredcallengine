@@ -518,12 +518,13 @@ class IBKRParser:
             'status': status,
             'shares': int(total_shares),
             'contracts': int(total_contracts),
-            'entry_price': round(entry_price, 4) if entry_price else None,
+            'entry_price': round(entry_price, 2) if entry_price else None,  # Round to 2 decimals for display
             'premium_received': round(premium_received, 2),
             'total_fees': round(total_fees, 2),
-            'break_even': round(break_even, 4) if break_even else None,
+            'break_even': round(break_even, 2) if break_even else None,  # Round to 2 decimals for display
             'option_strike': option_strike,
             'option_expiry': option_expiry,
+            'csp_put_strike': csp_put_strike,  # For CSP/Wheel tracking
             'total_proceeds': round(total_proceeds, 2),
             'total_cost': round(total_cost, 2),
             'realized_pnl': round(realized_pnl, 2) if realized_pnl is not None else None,
