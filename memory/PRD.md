@@ -53,52 +53,38 @@ The PMCC screener is **completely isolated** from CC logic with its own constant
 - Stocks: $30-$90
 - ETFs: No price limits
 
-### Validation Evidence (2026-01-30)
-| Rule | Expected | Actual | Status |
-|------|----------|--------|--------|
-| LEAPS DTE | 365-730 days | 412-720 days | ✅ PASS |
-| LEAPS ITM | Strike < Stock Price | All results ITM | ✅ PASS |
-| LEAPS Pricing | ASK only | Uses ASK | ✅ PASS |
-| Short DTE | ≤60 days | 20-27 days | ✅ PASS |
-| Short Strike | > LEAP Strike | All valid | ✅ PASS |
-| Short Pricing | BID only | Uses BID | ✅ PASS |
-| Net Debit | ASK - BID | Calculated correctly | ✅ PASS |
-| BID/ASK Valid | Both > 0 | All validated | ✅ PASS |
-
 ---
 
-## CC Screener (Separate from PMCC)
+## Portfolio Tracker - IBKR Parser Fix - COMPLETED 2026-01-31
 
-### CC Chain Selection Rules
-- DTE: 7-45 days (weekly 7-14, monthly 21-45)
-- Strike: OTM (above stock price)
-- Pricing: BID only for SELL legs
-- Price filters: $30-$90 for stocks, no limit for ETFs
+### Entry Price Calculation (Critical Fix)
+Fixed the entry price calculation to use **actual transaction prices** instead of `net_amount / quantity`:
 
----
+**For BUY Transactions:**
+- Entry price = The `price` field from the transaction (actual buy price)
+- NOT `net_amount / quantity` (which includes fees)
 
-## Architecture
+**For PUT ASSIGNMENT (CSP → Wheel):**
+- Entry price = The PUT STRIKE price (the price you're obligated to buy at)
+- NOT `net_amount / quantity` (which includes fees and adjustments)
 
-```
-YAHOO_SINGLE_SOURCE_OF_TRUTH
-├── Stock Prices: ticker.history(period='5d') → most recent close
-├── Options Chain: ticker.option_chain(expiry) → live BID/ASK
-├── Analyst Rating: ticker.info.recommendationKey
-├── Market Cap: ticker.info.marketCap
-├── Avg Volume: ticker.info.averageVolume
-└── Market Indices: ETF history (SPY, QQQ, DIA, IWM)
+**Example Fixes:**
+| Symbol | Old Entry | New Entry | Why |
+|--------|-----------|-----------|-----|
+| IONQ | $70.33 | $48.50 | Uses PUT strike for assignment |
+| APLD | $35.45 | $35.42 | Uses actual transaction price |
 
-CC_PMCC_ISOLATION
-├── CC Screener: /api/screener/covered-calls
-│   ├── DTE: 7-45 days
-│   ├── Strike: OTM
-│   └── Uses: BID for premium
-└── PMCC Screener: /api/screener/pmcc
-    ├── LEAPS DTE: 365-730 days (12-24 months)
-    ├── LEAPS Strike: ITM
-    ├── Short DTE: ≤60 days
-    └── Uses: ASK for LEAPS, BID for short
-```
+### Break-Even Calculation
+- BE = Entry Price - (Premium Received / Shares) + (Fees / Shares)
+- For CSP: BE = Put Strike - Put Premium per share
+
+### Option Symbol Parsing (Enhanced)
+Now handles both IBKR formats:
+1. **Standard**: `IONQ 260123P48500` → YYMMDD[C/P]STRIKE
+2. **Human readable**: `IONQ 23JAN26 48.5 P` → DDMMMYY STRIKE [C/P]
+
+### IMPORTANT: Users must RE-UPLOAD their CSV
+Since the data is parsed and stored in the database, existing users must **re-upload their IBKR CSV file** to see the corrected calculations.
 
 ---
 
@@ -110,34 +96,32 @@ CC_PMCC_ISOLATION
   - `fetch_options_chain()` - Live options from Yahoo
   - `fetch_live_stock_quote()` - Live intraday price (Watchlist/Simulator)
 
-### Routes Using Single Source
-- `/app/backend/routes/screener_snapshot.py` - CC/PMCC screeners (PMCC fixed 2026-01-30)
-- `/app/backend/routes/stocks.py` - Market indices
-- `/app/backend/routes/watchlist.py` - Watchlist
-- `/app/backend/routes/simulator.py` - Simulator
+### IBKR Parser (FIXED 2026-01-31)
+- `/app/backend/services/ibkr_parser.py`:
+  - `_parse_option_symbol()` - Now handles both human-readable and standard formats
+  - `_create_trade_from_transactions()` - Lot-aware entry price calculation
 
-### PMCC Constants (lines 1079-1090 in screener_snapshot.py)
-```python
-PMCC_MIN_LEAP_DTE = 365  # 12 months minimum
-PMCC_MAX_LEAP_DTE = 730  # 24 months maximum
-PMCC_MIN_SHORT_DTE = 7
-PMCC_MAX_SHORT_DTE = 60
-PMCC_MIN_DELTA = 0.70
-PMCC_STOCK_MIN_PRICE = 30.0
-PMCC_STOCK_MAX_PRICE = 90.0
-```
+### Routes
+- `/app/backend/routes/screener_snapshot.py` - CC/PMCC screeners
+- `/app/backend/routes/portfolio.py` - Portfolio Tracker API
+- `/app/backend/routes/stocks.py` - Market indices
 
 ---
 
-## Completed Tasks (2026-01-30)
+## Completed Tasks
 
-### P0 - Critical
+### 2026-01-31
+- [x] Fixed Portfolio Tracker Entry Price calculation
+- [x] Fixed IBKR parser to use transaction price (not net_amount/qty)
+- [x] Fixed PUT assignment entry price to use PUT strike
+- [x] Enhanced option symbol parsing for both IBKR formats
+- [x] Fixed Break-Even calculation with proper lot-awareness
+- [x] Fixed IBKR Fees calculation to use commission field
+
+### 2026-01-30
 - [x] Fixed PMCC Screener - Completely isolated from CC logic
 - [x] Updated LEAPS DTE from 180 days to 365-730 days (12-24 months)
 - [x] Fixed undefined `breakeven` variable in PMCC response
-- [x] All PMCC rules verified via testing agent (14/14 tests passed)
-
-### Previous Session Completions
 - [x] Single Source of Truth for Stock Price (Yahoo Finance history)
 - [x] Analyst Ratings Restored
 - [x] Live Dashboard Index Data
@@ -149,11 +133,11 @@ PMCC_STOCK_MAX_PRICE = 90.0
 ## Pending Tasks
 
 ### P1 - High Priority
-- [ ] Fix PMCC Custom Scan Price Rules - Stocks $30-$90, ETFs no limit (separate from CC)
-- [ ] Restore PMCC Pre-computed Aggressive Scan - Use end-of-day cached chains for after-hours
+- [ ] Fix PMCC Custom Scan Price Rules - Stocks $30-$90, ETFs no limit
+- [ ] Restore PMCC Pre-computed Aggressive Scan - Use cached EOD chains
 
 ### P2 - Medium Priority
-- [ ] Decouple Manual Filters - Pull from universal US stocks/ETFs list, blank defaults
+- [ ] Decouple Manual Filters - Pull from universal US stocks/ETFs list
 - [ ] Validation Checklist - Provide logs/screenshots for all fixes
 
 ### Future/Backlog
@@ -171,4 +155,4 @@ PMCC_STOCK_MAX_PRICE = 90.0
 ---
 
 ## Last Updated
-2026-01-30 - PMCC Screener Logic Fixed and Isolated from CC
+2026-01-31 - Portfolio Tracker Entry Price Fix (IBKR Parser)
