@@ -452,14 +452,35 @@ class IBKRParser:
             except:
                 pass
         
-        # Calculate break-even (for positions with stock)
+        # =====================================================
+        # BREAK-EVEN CALCULATION (STRATEGY-AWARE)
+        # =====================================================
+        # BE depends on strategy type:
+        # - CSP: "Effective Entry" = Put Strike - Put Premium
+        # - CC: Lot BE = Entry Price - (Call Premiums / shares)
+        # - Stock only: Entry Price + Fees per share
         break_even = None
+        
         if total_shares > 0 and entry_price and entry_price > 0:
+            # Premium per share (premiums collected reduce break-even)
             premium_per_share = premium_received / total_shares if total_shares > 0 else 0
+            # Fees per share (fees increase break-even)
             fees_per_share = total_fees / total_shares if total_shares > 0 else 0
+            
+            # Break-even = Entry Price - Premium received per share + Fees per share
             break_even = entry_price - premium_per_share + fees_per_share
         
-        # Calculate realized P/L for closed positions
+        # For CSP (NAKED_PUT), break-even is Strike - Premium
+        if strategy == 'NAKED_PUT' and put_strike_for_assignment and premium_received > 0:
+            # CSP BE = Put Strike - Put Premium per share
+            # Premium is total, so divide by (strike * contracts) to get per-share equivalent
+            if total_contracts > 0:
+                premium_per_share = premium_received / (total_contracts * 100)
+                break_even = put_strike_for_assignment - premium_per_share
+        
+        # =====================================================
+        # ROI CALCULATION
+        # =====================================================
         realized_pnl = None
         roi = None
         
@@ -471,7 +492,12 @@ class IBKRParser:
             # Pure option play (e.g., naked put that expired worthless)
             realized_pnl = premium_received - total_fees
             # ROI on naked put is based on capital at risk (strike * 100 * contracts)
-            # For simplicity, just show P/L without ROI
+            if put_strike_for_assignment and total_contracts > 0:
+                capital_at_risk = put_strike_for_assignment * total_contracts * 100
+                roi = (realized_pnl / capital_at_risk) * 100
+        
+        # Store put strike for reference (for CSP → CC transitions)
+        csp_put_strike = put_strike_for_assignment
         
         # Create deterministic trade ID
         trade_unique_key = f"{account}-{symbol}"
