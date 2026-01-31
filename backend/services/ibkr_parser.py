@@ -293,55 +293,86 @@ class IBKRParser:
         # Determine strategy type
         strategy = self._determine_strategy(stock_txs, option_txs)
         
-        # Calculate stock positions correctly
-        # Positive quantity = adding to position (buy, put assignment)
-        # Negative quantity = reducing position (sell, call assignment)
+        # =====================================================
+        # ENTRY PRICE CALCULATION (CRITICAL - LOT-AWARE)
+        # =====================================================
+        # Entry price must reflect the ACTUAL price paid per share:
+        # - For BUY transactions: Use the transaction 'price' field directly
+        # - For PUT ASSIGNMENT: Use the put strike price (this is the exercise price)
+        # The 'net_amount' includes fees and is NOT the same as entry price * quantity
+        
+        # Track each lot separately for accurate entry price calculation
+        lots = []  # List of (shares, price_per_share) tuples
         total_shares = 0
-        total_cost = 0  # Track cost basis for buys and put assignments
         total_proceeds = 0  # Track proceeds from sells and call assignments
+        
+        # First, find put strike if there's a put assignment (for CSP/Wheel)
+        put_strike_for_assignment = None
+        put_sells = [t for t in option_txs 
+                    if t.get('transaction_type') == 'Sell' and 
+                    t.get('option_details', {}).get('option_type') == 'Put']
+        if put_sells:
+            # Get the put strike from the most recent put sell
+            put_strike_for_assignment = put_sells[-1].get('option_details', {}).get('strike')
         
         for tx in stock_txs:
             qty = tx.get('quantity', 0)
-            net_amount = tx.get('net_amount', 0)
             tx_type = tx.get('transaction_type', '')
+            tx_price = tx.get('price', 0)  # Use the actual transaction price
             
             if tx_type == 'Buy':
                 total_shares += qty
-                total_cost += abs(net_amount)
+                # Use the ACTUAL price from the transaction, NOT net_amount/qty
+                if tx_price and tx_price > 0:
+                    lots.append((qty, tx_price))
+                    
             elif tx_type == 'Sell':
                 total_shares += qty  # qty is negative for sells
-                total_proceeds += abs(net_amount)
+                total_proceeds += abs(tx.get('net_amount', 0))
+                
             elif tx_type == 'Assignment':
                 # Assignment qty: positive = put assigned (you buy), negative = call assigned (you sell)
                 total_shares += qty
                 if qty > 0:
-                    # Put assignment - you bought stock
-                    total_cost += abs(net_amount)
+                    # PUT ASSIGNMENT - use the PUT STRIKE as entry price (this is the exercise price)
+                    # The put strike is the price at which you're obligated to buy the shares
+                    if put_strike_for_assignment:
+                        lots.append((qty, put_strike_for_assignment))
+                    elif tx_price and tx_price > 0:
+                        # Fallback to transaction price if put strike not found
+                        lots.append((qty, tx_price))
                 else:
                     # Call assignment - your stock was called away
-                    total_proceeds += abs(net_amount)
+                    total_proceeds += abs(tx.get('net_amount', 0))
         
         total_contracts = sum(abs(t.get('quantity', 0)) for t in option_txs)
         
-        # Calculate entry price (average cost basis per share)
+        # Calculate weighted average entry price from lots
         entry_price = None
-        if total_shares > 0 and total_cost > 0:
-            # Count shares that contributed to cost (buys + put assignments)
-            cost_shares = sum(t.get('quantity', 0) for t in stock_txs 
-                            if t.get('transaction_type') == 'Buy' or 
-                            (t.get('transaction_type') == 'Assignment' and t.get('quantity', 0) > 0))
-            if cost_shares > 0:
-                entry_price = total_cost / cost_shares
+        total_cost = 0  # Track cost basis for buys and put assignments
+        
+        if lots:
+            total_lot_shares = sum(lot[0] for lot in lots)
+            if total_lot_shares > 0:
+                # Weighted average: sum(shares * price) / total_shares
+                weighted_sum = sum(lot[0] * lot[1] for lot in lots)
+                entry_price = weighted_sum / total_lot_shares
+                total_cost = weighted_sum
         
         # Premium calculation - net premium (received - paid)
+        # For SELL options: premium received (positive)
+        # For BUY options: premium paid (negative from our perspective)
         option_premium_received = sum(abs(t.get('net_amount', 0)) for t in option_txs 
                                      if t.get('transaction_type') == 'Sell')
         option_premium_paid = sum(abs(t.get('net_amount', 0)) for t in option_txs 
                                  if t.get('transaction_type') == 'Buy')
         premium_received = option_premium_received - option_premium_paid
         
-        # Total fees
-        total_fees = sum(t.get('commission', 0) for t in transactions)
+        # =====================================================
+        # IBKR FEES CALCULATION (from commission field)
+        # =====================================================
+        # Commission is ALWAYS positive in IBKR CSV, represents fees paid
+        total_fees = sum(abs(t.get('commission', 0)) for t in transactions)
         
         # Dates
         first_date = transactions[0].get('date')
