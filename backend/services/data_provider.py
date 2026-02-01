@@ -282,7 +282,6 @@ def _fetch_stock_quote_yahoo_sync(symbol: str) -> Dict[str, Any]:
         earnings_date = None
         if earnings_timestamp:
             try:
-                from datetime import datetime
                 earnings_date = datetime.fromtimestamp(earnings_timestamp).strftime('%Y-%m-%d')
             except:
                 pass
