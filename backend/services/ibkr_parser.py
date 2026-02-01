@@ -294,9 +294,31 @@ class IBKRParser:
                         self.fx_rates['AUD_USD'] = price
     
     def _group_transactions(self, transactions: List[Dict]) -> List[Dict]:
-        """Group related transactions into trades"""
+        """
+        Group related transactions into trades with LIFECYCLE AWARENESS.
+        
+        =====================================================
+        POSITION LIFECYCLE RULES (NON-NEGOTIABLE):
+        =====================================================
+        
+        1. A stock lifecycle STARTS when shares are bought (BUY or PUT ASSIGNMENT)
+        2. A stock lifecycle ENDS when ALL shares are sold or call-assigned
+        3. Assignment of shares CLOSES the lifecycle
+        4. Any subsequent purchase of the same ticker starts a NEW lifecycle
+        5. Lifecycles must NOT be merged, even for the same ticker
+        6. Each lifecycle gets a unique Position Instance ID
+        
+        ENTRY PRICE RULE:
+        - Entry Price = execution price of the BUY/ASSIGNMENT in THIS lifecycle
+        - Do NOT average across historical closed positions
+        
+        PREMIUM TRACKING:
+        - Premiums from previous lifecycles belong to closed positions
+        - New lifecycle starts fresh with $0 premium
+        """
         trade_types = {'Buy', 'Sell', 'Assignment', 'Exercise', 'Dividend'}
         
+        # First, group all transactions by account and underlying symbol
         symbol_groups = {}
         for tx in transactions:
             if tx.get('transaction_type') not in trade_types:
@@ -308,6 +330,109 @@ class IBKRParser:
         
         trades = []
         for (account, symbol), txs in symbol_groups.items():
+            if not symbol or symbol == '-':
+                continue
+            
+            # Sort by datetime to process chronologically
+            txs.sort(key=lambda x: x.get('datetime', ''))
+            
+            # Split into lifecycles
+            lifecycles = self._split_into_lifecycles(txs)
+            
+            # Create a trade for each lifecycle
+            for lifecycle_idx, lifecycle_txs in enumerate(lifecycles):
+                trade = self._create_trade_from_lifecycle(account, symbol, lifecycle_txs, lifecycle_idx)
+                if trade:
+                    trades.append(trade)
+        
+        return trades
+    
+    def _split_into_lifecycles(self, transactions: List[Dict]) -> List[List[Dict]]:
+        """
+        Split transactions into separate lifecycles based on position changes.
+        
+        A lifecycle ends when:
+        1. Call assignment sells away all shares (negative qty assignment for stocks)
+        2. Stock is sold and position goes to 0
+        
+        A new lifecycle starts when:
+        1. Stock is bought again after the position was closed
+        2. Put is assigned after the position was closed
+        """
+        if not transactions:
+            return []
+        
+        lifecycles = []
+        current_lifecycle = []
+        current_shares = 0
+        
+        for tx in transactions:
+            is_option = tx.get('is_option', False)
+            tx_type = tx.get('transaction_type', '')
+            qty = tx.get('quantity', 0)
+            
+            if is_option:
+                # Options belong to the current lifecycle
+                if current_lifecycle or current_shares != 0:
+                    current_lifecycle.append(tx)
+                else:
+                    # Option transaction before any stock position - start new lifecycle
+                    current_lifecycle.append(tx)
+            else:
+                # Stock transaction
+                if tx_type == 'Buy':
+                    # Check if this is a new lifecycle (buying after position was closed)
+                    if current_shares == 0 and current_lifecycle:
+                        # Position was closed, this is a new lifecycle
+                        if current_lifecycle:
+                            lifecycles.append(current_lifecycle)
+                        current_lifecycle = []
+                    
+                    current_lifecycle.append(tx)
+                    current_shares += qty
+                    
+                elif tx_type == 'Sell':
+                    current_lifecycle.append(tx)
+                    current_shares += qty  # qty is negative for sells
+                    
+                    # Check if position is now closed
+                    if current_shares <= 0:
+                        if current_lifecycle:
+                            lifecycles.append(current_lifecycle)
+                        current_lifecycle = []
+                        current_shares = 0
+                        
+                elif tx_type == 'Assignment':
+                    # Assignment qty: positive = put assigned (you buy), negative = call assigned (you sell)
+                    if qty > 0:
+                        # Put assignment - buying stock
+                        if current_shares == 0 and current_lifecycle:
+                            # This is a new lifecycle starting with put assignment
+                            lifecycles.append(current_lifecycle)
+                            current_lifecycle = []
+                        
+                        current_lifecycle.append(tx)
+                        current_shares += qty
+                        
+                    else:
+                        # Call assignment - shares being sold/assigned away
+                        current_lifecycle.append(tx)
+                        current_shares += qty  # qty is negative
+                        
+                        # Check if position is now closed
+                        if current_shares <= 0:
+                            if current_lifecycle:
+                                lifecycles.append(current_lifecycle)
+                            current_lifecycle = []
+                            current_shares = 0
+        
+        # Add any remaining transactions as the final lifecycle
+        if current_lifecycle:
+            lifecycles.append(current_lifecycle)
+        
+        return lifecycles
+    
+    def _create_trade_from_lifecycle(self, account: str, symbol: str, transactions: List[Dict], lifecycle_idx: int = 0) -> Optional[Dict]:
             if not symbol or symbol == '-':
                 continue
             trade = self._create_trade_from_transactions(account, symbol, txs)
