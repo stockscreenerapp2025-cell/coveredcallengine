@@ -13,6 +13,10 @@ Build a web-based application named "Covered Call Engine" for options traders wi
 - **NOT**: regularMarketPrice, currentPrice (intraday prices)
 - **NOT**: EOD contract or cached prices
 - **Applies to**: Dashboard, Screener, PMCC, Pre-Computed Scans, Customised Scans, Simulator, Watchlist, Admin
+- **Centralized Functions**:
+  - `data_provider._fetch_stock_quote_yahoo_sync()` - Primary source for all pages
+  - `precomputed_scans.fetch_technical_data()` - Uses same logic for scan computations
+- **Pre-computed Scan Note**: Cached results reflect prices from when the scan was run. Trigger a new scan (Admin → Trigger All Scans) to refresh prices.
 
 ### Options Chain Source
 - **Source**: Yahoo Finance live options chain
