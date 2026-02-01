@@ -433,16 +433,14 @@ class IBKRParser:
         return lifecycles
     
     def _create_trade_from_lifecycle(self, account: str, symbol: str, transactions: List[Dict], lifecycle_idx: int = 0) -> Optional[Dict]:
-            if not symbol or symbol == '-':
-                continue
-            trade = self._create_trade_from_transactions(account, symbol, txs)
-            if trade:
-                trades.append(trade)
+        """
+        Create a trade record from a single lifecycle's transactions.
         
-        return trades
-    
-    def _create_trade_from_transactions(self, account: str, symbol: str, transactions: List[Dict]) -> Optional[Dict]:
-        """Create a trade record from related transactions"""
+        Each lifecycle is isolated:
+        - Entry price is based ONLY on buys/assignments in THIS lifecycle
+        - Premium is based ONLY on options in THIS lifecycle
+        - Metrics are calculated for THIS lifecycle only
+        """
         if not transactions:
             return None
         
