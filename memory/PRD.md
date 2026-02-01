@@ -5,11 +5,14 @@ Build a web-based application named "Covered Call Engine" for options traders wi
 
 ## CRITICAL: YAHOO FINANCE IS THE SINGLE SOURCE OF TRUTH
 
-### Stock Price Source (ALL PAGES)
-- **Source**: Yahoo Finance `ticker.history(period='5d')` - most recent market close
-- **NOT**: previousClose (which is prior day's close)
+### Stock Price Source (ALL PAGES) - UPDATED 2026-02-01
+- **Source**: Yahoo Finance `ticker.history(period='5d')` - **PREVIOUS MARKET CLOSE**
+- **Market-Aware Selection**: 
+  - If market is OPEN and last history date == today: Use index `-2` (previous close)
+  - If market is CLOSED or last history date < today: Use index `-1` (last available)
+- **NOT**: regularMarketPrice, currentPrice (intraday prices)
 - **NOT**: EOD contract or cached prices
-- **Applies to**: Dashboard, Screener, PMCC, Simulator, Watchlist
+- **Applies to**: Dashboard, Screener, PMCC, Pre-Computed Scans, Customised Scans, Simulator, Watchlist, Admin
 
 ### Options Chain Source
 - **Source**: Yahoo Finance live options chain
