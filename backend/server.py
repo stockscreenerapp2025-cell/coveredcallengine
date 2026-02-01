@@ -1320,10 +1320,10 @@ async def startup():
         logger.warning("SECURITY: Change the admin password immediately after first login!")
     
     # Start the scheduler for automated price updates
-    # Run at 4:30 PM ET (after market close) on weekdays
+    # Run at 4:05 PM ET (after market close) on weekdays - consistent with EOD and Pre-computed scans
     scheduler.add_job(
         scheduled_price_update,
-        CronTrigger(hour=16, minute=30, day_of_week='mon-fri', timezone='America/New_York'),
+        CronTrigger(hour=16, minute=5, day_of_week='mon-fri', timezone='America/New_York'),
         id='simulator_price_update',
         replace_existing=True
     )
