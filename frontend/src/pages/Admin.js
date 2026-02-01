@@ -910,6 +910,29 @@ const Admin = () => {
                       <p className="text-xs text-zinc-500">Last Full Run</p>
                       <p className="text-sm text-zinc-300">{new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })} – {new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })} UTC</p>
                       <p className="text-xs text-emerald-400 mt-1">✅ Real-time Data</p>
+                      <Button 
+                        onClick={triggerAllScans} 
+                        disabled={triggeringScan}
+                        className="mt-3 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700"
+                        size="sm"
+                      >
+                        {triggeringScan ? (
+                          <>
+                            <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                            Running Scans...
+                          </>
+                        ) : (
+                          <>
+                            <Zap className="w-4 h-4 mr-2" />
+                            Trigger All Scans
+                          </>
+                        )}
+                      </Button>
+                      {lastScanResult && (
+                        <p className="text-xs text-emerald-400 mt-2">
+                          ✅ Last scan: {Object.entries(lastScanResult.results || {}).map(([k, v]) => `${k}: ${v}`).join(' | ')}
+                        </p>
+                      )}
                     </div>
                   </div>
                 </CardContent>
