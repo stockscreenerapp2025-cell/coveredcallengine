@@ -55,6 +55,55 @@ The PMCC screener is **completely isolated** from CC logic with its own constant
 
 ---
 
+## Portfolio Tracker - Position Lifecycle System - COMPLETED 2026-02-01
+
+### Position Lifecycle Rules (Non-Negotiable)
+Each stock position is tracked as a separate **lifecycle**, even for the same ticker:
+
+1. **Lifecycle STARTS**: When shares are bought (BUY or PUT ASSIGNMENT)
+2. **Lifecycle ENDS**: When ALL shares are sold or call-assigned
+3. **Assignment closes the lifecycle**: Position marked CLOSED, P/L locked
+4. **Re-buying same ticker starts NEW lifecycle**: Entry price = new buy price
+
+### Entry Price Rule
+- Entry Price = **execution price of BUY/ASSIGNMENT in THIS lifecycle**
+- Do NOT average across historical closed positions
+- Each lifecycle's metrics are completely isolated
+
+### Position Instance ID
+Each lifecycle gets a unique identifier:
+```
+{SYMBOL}-{YYYY-MM}-Entry-{NN}
+Examples:
+- IREN-2024-05-Entry-01 (closed via assignment)
+- IREN-2024-11-Entry-02 (current active position)
+```
+
+### Special Case: Wheel Strategy (CSP → Assignment → CC)
+- CSP (naked put) → Put Assignment → Covered Call = **ONE lifecycle**
+- The put sale, assignment, and subsequent CC are all part of the same lifecycle
+- Only when CALL assignment closes the position does the lifecycle end
+
+### Premium Tracking
+- Premiums from previous lifecycles belong to closed positions
+- New lifecycle starts with $0 premium
+- Portfolio-level premium aggregation is separate from lifecycle metrics
+
+### Validation Evidence (2026-02-01)
+| Scenario | Expected | Actual | Status |
+|----------|----------|--------|--------|
+| IREN Buy→CC→Assign→Buy | 2 lifecycles | 2 lifecycles | ✅ PASS |
+| IREN LC1 Entry | $75.18 | $75.18 | ✅ PASS |
+| IREN LC2 Entry | $55.78 (new buy) | $55.78 | ✅ PASS |
+| IONQ CSP→Assign→CC | 1 lifecycle (Wheel) | 1 lifecycle | ✅ PASS |
+| IONQ Entry | $48.50 (put strike) | $48.50 | ✅ PASS |
+| Premium Isolation | Per-lifecycle | Per-lifecycle | ✅ PASS |
+
+### IMPORTANT: Users must RE-UPLOAD their CSV
+Since existing data was parsed with old logic, users must **re-upload their IBKR CSV file** to see lifecycle-aware calculations.
+
+---
+
 ## Portfolio Tracker - IBKR Parser Fix - COMPLETED 2026-01-31
 
 ### Entry Price Calculation (Critical Fix)
