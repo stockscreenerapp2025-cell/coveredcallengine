@@ -207,14 +207,17 @@ def _fetch_stock_quote_yahoo_sync(symbol: str) -> Dict[str, Any]:
     
     THIS IS THE SINGLE SOURCE OF TRUTH FOR STOCK PRICES.
     
-    Returns the LAST NYSE MARKET CLOSE price (most recent trading day's close).
-    Also includes metadata: analyst_rating, market_cap, avg_volume, earnings_date
+    Returns the PREVIOUS MARKET CLOSE price (the last COMPLETED trading day),
+    even when the market is currently open. This ensures price consistency
+    across all pages: Dashboard, Screener, PMCC, Pre-Computed Scans, 
+    Customised Scans, Simulator, Watchlist and Admin.
     
-    IMPORTANT: Yahoo's "previousClose" is the PRIOR day's close, NOT today's close.
-    We must use historical data to get the actual last market close.
+    IMPORTANT: Yahoo's history() may include today's intraday data during
+    market hours. We must select the second-to-last row when market is open
+    and the last row in history matches today's date.
     
     ❌ FORBIDDEN: regularMarketPrice, currentPrice (intraday prices)
-    ✅ CORRECT: Most recent historical close price from history()
+    ✅ CORRECT: Previous market close from history() with market-aware selection
     """
     try:
         import yfinance as yf
@@ -227,9 +230,28 @@ def _fetch_stock_quote_yahoo_sync(symbol: str) -> Dict[str, Any]:
             logging.warning(f"Yahoo stock quote: No history for {symbol}")
             return None
         
-        # Get the most recent close price (last row)
-        last_close = hist['Close'].iloc[-1]
-        last_close_date = hist.index[-1].strftime('%Y-%m-%d')
+        # Determine the correct index based on market state
+        # We want the PREVIOUS market close, not today's intraday data
+        eastern = pytz.timezone('US/Eastern')
+        today = datetime.now(eastern).date()
+        last_date = hist.index[-1].date()
+        
+        # Default to the last available row
+        use_index = -1
+        
+        # If market is OPEN and the last row is from today, use second-to-last row
+        # This gives us the previous market close instead of today's intraday close
+        if not is_market_closed() and last_date == today:
+            use_index = -2
+        
+        # Safety check: ensure we have enough data for the selected index
+        if len(hist) >= abs(use_index):
+            last_close = hist['Close'].iloc[use_index]
+            last_close_date = hist.index[use_index].strftime('%Y-%m-%d')
+        else:
+            # Fallback to the last available row if not enough data
+            last_close = hist['Close'].iloc[-1]
+            last_close_date = hist.index[-1].strftime('%Y-%m-%d')
         
         if not last_close or last_close <= 0:
             logging.warning(f"Yahoo stock quote: No valid close price for {symbol}")
