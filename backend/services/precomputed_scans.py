@@ -24,12 +24,16 @@ import asyncio
 import logging
 import aiohttp
 import httpx
+import pytz
 from datetime import datetime, timezone, timedelta
 from typing import Dict, List, Any, Optional, Tuple
 import yfinance as yf
 import pandas as pd
 import numpy as np
 from concurrent.futures import ThreadPoolExecutor
+
+# Import centralized market status helper
+from services.data_provider import is_market_closed
 
 # Configure logging
 logger = logging.getLogger(__name__)
