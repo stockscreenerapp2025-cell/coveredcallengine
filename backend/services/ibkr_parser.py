@@ -301,22 +301,25 @@ class IBKRParser:
         POSITION LIFECYCLE RULES (NON-NEGOTIABLE):
         =====================================================
         
+        STOCK/CC/WHEEL LIFECYCLES:
         1. A stock lifecycle STARTS when shares are bought (BUY or PUT ASSIGNMENT)
         2. A stock lifecycle ENDS when ALL shares are sold or call-assigned
-        3. Assignment of shares CLOSES the lifecycle
-        4. Any subsequent purchase of the same ticker starts a NEW lifecycle
-        5. Lifecycles must NOT be merged, even for the same ticker
-        6. Each lifecycle gets a unique Position Instance ID
+        3. Each CSP assignment with DIFFERENT strike/expiry creates a DISTINCT lifecycle
+        4. CSPs should NOT be merged unless: Same ticker, Same strike, Same expiry
+        5. CCs attach only to the lifecycle they logically relate to
         
-        ENTRY PRICE RULE:
-        - Entry Price = execution price of the BUY/ASSIGNMENT in THIS lifecycle
-        - Do NOT average across historical closed positions
-        
-        PREMIUM TRACKING:
-        - Premiums from previous lifecycles belong to closed positions
-        - New lifecycle starts fresh with $0 premium
+        PMCC LIFECYCLES (SEPARATE FROM STOCK):
+        1. PMCC lifecycle is anchored to the LONG LEAPS call, not stock ticker
+        2. Each long LEAPS creates a new PMCC lifecycle
+        3. Short calls attach only if: Short strike > long strike, Short expiry < long expiry
+        4. Short-call assignment does NOT close PMCC lifecycle
+        5. PMCC lifecycle closes only when long LEAPS is sold or expires
         """
         trade_types = {'Buy', 'Sell', 'Assignment', 'Exercise', 'Dividend'}
+        
+        # Separate PMCC transactions from stock/CC/wheel transactions
+        pmcc_trades = []
+        stock_trades = []
         
         # First, group all transactions by account and underlying symbol
         symbol_groups = {}
@@ -328,7 +331,6 @@ class IBKRParser:
                 symbol_groups[key] = []
             symbol_groups[key].append(tx)
         
-        trades = []
         for (account, symbol), txs in symbol_groups.items():
             if not symbol or symbol == '-':
                 continue
@@ -336,16 +338,365 @@ class IBKRParser:
             # Sort by datetime to process chronologically
             txs.sort(key=lambda x: x.get('datetime', ''))
             
-            # Split into lifecycles
-            lifecycles = self._split_into_lifecycles(txs)
+            # Check if this is a PMCC strategy (long call buys + short call sells, no stock)
+            stock_txs = [t for t in txs if not t.get('is_option')]
+            option_txs = [t for t in txs if t.get('is_option')]
             
-            # Create a trade for each lifecycle
-            for lifecycle_idx, lifecycle_txs in enumerate(lifecycles):
-                trade = self._create_trade_from_lifecycle(account, symbol, lifecycle_txs, lifecycle_idx)
-                if trade:
-                    trades.append(trade)
+            call_buys = [t for t in option_txs 
+                        if t.get('transaction_type') == 'Buy' and 
+                        t.get('option_details', {}).get('option_type') == 'Call']
+            
+            # If there are long call buys (LEAPS) and no actual stock buys, process as PMCC
+            has_stock_position = any(
+                t.get('transaction_type') in ['Buy', 'Assignment'] and not t.get('is_option')
+                for t in txs
+            )
+            
+            if call_buys and not has_stock_position:
+                # Pure PMCC strategy - process separately
+                pmcc_lifecycles = self._split_pmcc_lifecycles(option_txs)
+                for idx, pmcc_txs in enumerate(pmcc_lifecycles):
+                    trade = self._create_pmcc_trade(account, symbol, pmcc_txs, idx)
+                    if trade:
+                        pmcc_trades.append(trade)
+            else:
+                # Stock/CC/Wheel strategy - use CSP-aware lifecycle splitting
+                lifecycles = self._split_into_lifecycles_csp_aware(txs)
+                for lifecycle_idx, lifecycle_txs in enumerate(lifecycles):
+                    trade = self._create_trade_from_lifecycle(account, symbol, lifecycle_txs, lifecycle_idx)
+                    if trade:
+                        stock_trades.append(trade)
         
-        return trades
+        return stock_trades + pmcc_trades
+    
+    def _split_pmcc_lifecycles(self, option_txs: List[Dict]) -> List[List[Dict]]:
+        """
+        Split PMCC transactions into lifecycles anchored by long LEAPS.
+        
+        PMCC LIFECYCLE RULES:
+        1. Each long LEAPS call creates a new PMCC lifecycle
+        2. Short calls attach only if:
+           - Same ticker
+           - Short strike > long strike
+           - Short expiry < long expiry
+           - Quantity <= long LEAPS contracts
+        3. Short-call assignment does NOT close the lifecycle
+        4. PMCC lifecycle closes only when long LEAPS is sold or expires
+        """
+        if not option_txs:
+            return []
+        
+        # Find all long call buys (LEAPS)
+        call_buys = [t for t in option_txs 
+                    if t.get('transaction_type') == 'Buy' and 
+                    t.get('option_details', {}).get('option_type') == 'Call']
+        
+        if not call_buys:
+            return []
+        
+        # Group LEAPS by unique key (strike + expiry)
+        leaps_groups = {}
+        for cb in call_buys:
+            opt = cb.get('option_details', {})
+            key = (opt.get('strike'), opt.get('expiry'))
+            if key not in leaps_groups:
+                leaps_groups[key] = {
+                    'long_calls': [],
+                    'short_calls': [],
+                    'strike': opt.get('strike'),
+                    'expiry': opt.get('expiry'),
+                    'contracts': 0
+                }
+            leaps_groups[key]['long_calls'].append(cb)
+            leaps_groups[key]['contracts'] += abs(cb.get('quantity', 0))
+        
+        # Find all short call sells and match to appropriate LEAPS
+        call_sells = [t for t in option_txs 
+                     if t.get('transaction_type') == 'Sell' and 
+                     t.get('option_details', {}).get('option_type') == 'Call']
+        
+        for cs in call_sells:
+            opt = cs.get('option_details', {})
+            short_strike = opt.get('strike', 0)
+            short_expiry = opt.get('expiry', '')
+            
+            # Find the best matching LEAPS for this short call
+            best_match = None
+            for key, group in leaps_groups.items():
+                long_strike = group['strike']
+                long_expiry = group['expiry']
+                
+                # Short call must have: strike > long strike, expiry < long expiry
+                if long_strike and short_strike > long_strike:
+                    if long_expiry and short_expiry < long_expiry:
+                        if best_match is None or group['contracts'] >= best_match['contracts']:
+                            best_match = group
+            
+            if best_match:
+                best_match['short_calls'].append(cs)
+        
+        # Create lifecycle transactions for each LEAPS group
+        lifecycles = []
+        for key, group in leaps_groups.items():
+            lifecycle_txs = group['long_calls'] + group['short_calls']
+            lifecycle_txs.sort(key=lambda x: x.get('datetime', ''))
+            if lifecycle_txs:
+                lifecycles.append(lifecycle_txs)
+        
+        return lifecycles
+    
+    def _create_pmcc_trade(self, account: str, symbol: str, transactions: List[Dict], lifecycle_idx: int = 0) -> Optional[Dict]:
+        """
+        Create a PMCC trade record anchored to the long LEAPS.
+        
+        PMCC lifecycle is tied to the LEAPS, not stock ownership.
+        Short-call assignments do NOT close the lifecycle.
+        """
+        if not transactions:
+            return None
+        
+        transactions.sort(key=lambda x: x.get('datetime', ''))
+        
+        call_buys = [t for t in transactions 
+                    if t.get('transaction_type') == 'Buy' and 
+                    t.get('option_details', {}).get('option_type') == 'Call']
+        call_sells = [t for t in transactions 
+                     if t.get('transaction_type') == 'Sell' and 
+                     t.get('option_details', {}).get('option_type') == 'Call']
+        
+        if not call_buys:
+            return None
+        
+        # LEAPS details (anchor for this lifecycle)
+        leaps_details = call_buys[0].get('option_details', {})
+        leaps_strike = leaps_details.get('strike')
+        leaps_expiry = leaps_details.get('expiry')
+        leaps_contracts = sum(abs(t.get('quantity', 0)) for t in call_buys)
+        
+        # Calculate premiums
+        # LEAPS cost (debit)
+        leaps_cost = sum(abs(t.get('net_amount', 0)) for t in call_buys)
+        # Short call premium received (credit)
+        short_premium = sum(abs(t.get('net_amount', 0)) for t in call_sells)
+        
+        net_debit = leaps_cost - short_premium
+        
+        # Total fees
+        total_fees = sum(abs(t.get('commission', 0)) for t in transactions)
+        
+        # Dates
+        first_date = transactions[0].get('date')
+        
+        # Status - PMCC is open until LEAPS is sold or expires
+        status = 'Open'
+        date_closed = None
+        
+        # Check if LEAPS has expired
+        if leaps_expiry:
+            try:
+                exp_date = datetime.strptime(leaps_expiry, '%Y-%m-%d')
+                if exp_date < datetime.now():
+                    status = 'Closed'
+                    date_closed = leaps_expiry
+            except:
+                pass
+        
+        # DTE for LEAPS
+        dte = None
+        if leaps_expiry:
+            try:
+                exp_date = datetime.strptime(leaps_expiry, '%Y-%m-%d')
+                dte = max(0, (exp_date - datetime.now()).days)
+            except:
+                pass
+        
+        # Position Instance ID for PMCC
+        date_part = first_date[:7] if first_date else datetime.now().strftime('%Y-%m')
+        position_instance_id = f"{symbol}-PMCC-{date_part}-{leaps_strike}-Entry-{lifecycle_idx + 1:02d}"
+        
+        trade_unique_key = f"{account}-{symbol}-PMCC-{leaps_strike}-{leaps_expiry}-{lifecycle_idx}"
+        trade_id = hashlib.md5(trade_unique_key.encode()).hexdigest()[:16]
+        
+        return {
+            'id': trade_id,
+            'position_instance_id': position_instance_id,
+            'lifecycle_index': lifecycle_idx,
+            'trade_id': transactions[0].get('id'),
+            'account': account,
+            'symbol': symbol,
+            'strategy_type': 'PMCC',
+            'strategy_label': 'Poor Man\'s Covered Call',
+            'date_opened': first_date,
+            'date_closed': date_closed,
+            'close_reason': 'Expired' if status == 'Closed' else None,
+            'days_in_trade': 0,
+            'dte': dte,
+            'status': status,
+            'shares': 0,  # PMCC has no stock
+            'contracts': int(leaps_contracts),
+            'entry_price': None,  # No stock entry price
+            'leaps_strike': leaps_strike,
+            'leaps_expiry': leaps_expiry,
+            'leaps_cost': round(leaps_cost, 2),
+            'short_premium': round(short_premium, 2),
+            'net_debit': round(net_debit, 2),
+            'premium_received': round(short_premium, 2),
+            'total_fees': round(total_fees, 2),
+            'break_even': round(leaps_strike + (net_debit / (leaps_contracts * 100)), 2) if leaps_contracts > 0 else None,
+            'option_strike': leaps_strike,
+            'option_expiry': leaps_expiry,
+            'csp_put_strike': None,
+            'total_proceeds': 0,
+            'total_cost': round(leaps_cost, 2),
+            'realized_pnl': None,
+            'roi': None,
+            'transactions': transactions,
+            'current_price': None,
+            'unrealized_pnl': None,
+            'created_at': datetime.now(timezone.utc).isoformat()
+        }
+    
+    def _split_into_lifecycles_csp_aware(self, transactions: List[Dict]) -> List[List[Dict]]:
+        """
+        Split transactions into lifecycles with CSP-awareness.
+        
+        CSP LIFECYCLE RULES (NON-NEGOTIABLE):
+        1. Each CSP assignment creates a DISTINCT lifecycle using:
+           - Entry price = PUT strike
+           - Quantity = assigned shares
+           - Start date = assignment date
+        2. CSP assignments should NOT be merged unless:
+           - Same ticker (implied)
+           - Same assignment date
+           - Same strike
+           - Same option expiry
+        3. CCs sold after assignment attach ONLY to the lifecycle they logically relate to
+        4. The Wheel strategy rule applies within a SINGLE CSP → assignment → CC chain
+        """
+        if not transactions:
+            return []
+        
+        # Separate transactions by type
+        stock_txs = [t for t in transactions if not t.get('is_option')]
+        option_txs = [t for t in transactions if t.get('is_option')]
+        
+        # Build a map of CSP contracts (put sells) by unique key
+        csp_contracts = {}  # Key: (strike, expiry) -> List of put sell transactions
+        for opt in option_txs:
+            if opt.get('transaction_type') == 'Sell':
+                opt_details = opt.get('option_details', {})
+                if opt_details.get('option_type') == 'Put':
+                    key = (opt_details.get('strike'), opt_details.get('expiry'))
+                    if key not in csp_contracts:
+                        csp_contracts[key] = []
+                    csp_contracts[key].append(opt)
+        
+        # Build a map of put assignments by matching to CSP contracts
+        assignment_to_csp = {}  # Assignment tx id -> CSP key (strike, expiry)
+        put_assignments = [t for t in stock_txs 
+                         if t.get('transaction_type') == 'Assignment' and t.get('quantity', 0) > 0]
+        
+        for pa in put_assignments:
+            pa_date = pa.get('date', '')
+            pa_qty = pa.get('quantity', 0)
+            pa_price = pa.get('price', 0)  # This should match the put strike
+            
+            # Find matching CSP contract
+            best_match = None
+            for (strike, expiry), csps in csp_contracts.items():
+                # Match by strike (assignment price should equal put strike)
+                if strike and abs(strike - pa_price) < 0.01:
+                    # Also check expiry is close to assignment date
+                    if expiry and expiry <= pa_date:
+                        # This CSP was likely exercised
+                        if best_match is None or expiry > best_match[0][1]:  # Prefer most recent expiry
+                            best_match = ((strike, expiry), csps)
+            
+            if best_match:
+                assignment_to_csp[pa.get('id')] = best_match[0]
+        
+        # Now split into lifecycles
+        lifecycles = []
+        processed_csp_keys = set()
+        
+        # Process each unique CSP → Assignment chain as a separate lifecycle
+        for pa in put_assignments:
+            pa_id = pa.get('id')
+            csp_key = assignment_to_csp.get(pa_id)
+            
+            if csp_key and csp_key not in processed_csp_keys:
+                # Start a new lifecycle for this CSP chain
+                lifecycle_txs = []
+                
+                # Add the CSP transactions
+                if csp_key in csp_contracts:
+                    lifecycle_txs.extend(csp_contracts[csp_key])
+                
+                # Add the assignment
+                lifecycle_txs.append(pa)
+                
+                # Find CCs sold after this assignment that logically belong to it
+                pa_date = pa.get('date', '')
+                pa_qty = pa.get('quantity', 0)
+                pa_strike = csp_key[0]  # The put strike
+                
+                # Track shares for this lifecycle
+                lifecycle_shares = pa_qty
+                
+                for opt in option_txs:
+                    if opt.get('transaction_type') == 'Sell':
+                        opt_details = opt.get('option_details', {})
+                        if opt_details.get('option_type') == 'Call':
+                            opt_date = opt.get('date', '')
+                            # CC must be after assignment
+                            if opt_date >= pa_date:
+                                # Add to this lifecycle
+                                lifecycle_txs.append(opt)
+                
+                # Find call assignments that close this lifecycle
+                call_assignments = [t for t in stock_txs 
+                                   if t.get('transaction_type') == 'Assignment' and 
+                                   t.get('quantity', 0) < 0 and
+                                   t.get('date', '') >= pa_date]
+                
+                for ca in call_assignments:
+                    ca_qty = abs(ca.get('quantity', 0))
+                    if ca_qty <= lifecycle_shares:
+                        lifecycle_txs.append(ca)
+                        lifecycle_shares -= ca_qty
+                
+                lifecycle_txs.sort(key=lambda x: x.get('datetime', ''))
+                lifecycles.append(lifecycle_txs)
+                processed_csp_keys.add(csp_key)
+        
+        # Handle stock buys that are NOT from CSP assignments
+        regular_buys = [t for t in stock_txs 
+                       if t.get('transaction_type') == 'Buy']
+        
+        if regular_buys:
+            # Group remaining transactions into lifecycles
+            remaining_txs = []
+            for tx in transactions:
+                tx_id = tx.get('id')
+                # Skip transactions already assigned to CSP lifecycles
+                is_in_lifecycle = any(
+                    tx_id == lt.get('id') 
+                    for lifecycle in lifecycles 
+                    for lt in lifecycle
+                )
+                if not is_in_lifecycle:
+                    remaining_txs.append(tx)
+            
+            if remaining_txs:
+                # Use the original lifecycle splitting for remaining transactions
+                remaining_lifecycles = self._split_into_lifecycles(remaining_txs)
+                lifecycles.extend(remaining_lifecycles)
+        
+        # If no CSP lifecycles found, fall back to original logic
+        if not lifecycles:
+            return self._split_into_lifecycles(transactions)
+        
+        return lifecycles
     
     def _split_into_lifecycles(self, transactions: List[Dict]) -> List[List[Dict]]:
         """
