@@ -1580,8 +1580,9 @@ class PrecomputedScanService:
             "has_short_call": 0,
         }
         
-        # Process symbols in batches
-        batch_size = 15
+        # Process symbols in batches with rate limiting
+        # Yahoo Finance has ~2000 requests/hour limit
+        batch_size = 10  # Reduced from 15 to avoid rate limits
         for i in range(0, len(symbols), batch_size):
             batch = symbols[i:i + batch_size]
             
