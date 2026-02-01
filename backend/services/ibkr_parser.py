@@ -351,13 +351,14 @@ class IBKRParser:
         """
         Split transactions into separate lifecycles based on position changes.
         
-        A lifecycle ends when:
-        1. Call assignment sells away all shares (negative qty assignment for stocks)
-        2. Stock is sold and position goes to 0
+        LIFECYCLE RULES:
+        1. A lifecycle ends when all shares are sold or call-assigned (position = 0)
+        2. A new lifecycle starts when stock is bought AFTER a position was closed
         
-        A new lifecycle starts when:
-        1. Stock is bought again after the position was closed
-        2. Put is assigned after the position was closed
+        SPECIAL CASE - WHEEL STRATEGY:
+        - CSP (naked put) → Put Assignment → CC is ONE lifecycle
+        - The put sale and assignment are part of the same lifecycle
+        - Only when CALL assignment closes the position does the lifecycle end
         """
         if not transactions:
             return []
@@ -365,6 +366,7 @@ class IBKRParser:
         lifecycles = []
         current_lifecycle = []
         current_shares = 0
+        has_pending_options = False  # Track if we have options without stock yet (CSP)
         
         for tx in transactions:
             is_option = tx.get('is_option', False)
@@ -372,24 +374,29 @@ class IBKRParser:
             qty = tx.get('quantity', 0)
             
             if is_option:
-                # Options belong to the current lifecycle
-                if current_lifecycle or current_shares != 0:
-                    current_lifecycle.append(tx)
-                else:
-                    # Option transaction before any stock position - start new lifecycle
-                    current_lifecycle.append(tx)
+                # Options: Check if this is a PUT sell (CSP starting)
+                opt_details = tx.get('option_details', {})
+                is_put_sell = (tx_type == 'Sell' and opt_details.get('option_type') == 'Put')
+                
+                if is_put_sell and current_shares == 0 and not current_lifecycle:
+                    # Starting a new lifecycle with CSP
+                    has_pending_options = True
+                
+                current_lifecycle.append(tx)
+                
             else:
                 # Stock transaction
                 if tx_type == 'Buy':
-                    # Check if this is a new lifecycle (buying after position was closed)
-                    if current_shares == 0 and current_lifecycle:
-                        # Position was closed, this is a new lifecycle
-                        if current_lifecycle:
-                            lifecycles.append(current_lifecycle)
+                    # Check if this is a new lifecycle (buying after position was FULLY closed)
+                    # Key: We DON'T start new lifecycle if we have pending CSP options
+                    if current_shares == 0 and current_lifecycle and not has_pending_options:
+                        # Position was closed AND no pending CSP, this is a new lifecycle
+                        lifecycles.append(current_lifecycle)
                         current_lifecycle = []
                     
                     current_lifecycle.append(tx)
                     current_shares += qty
+                    has_pending_options = False  # Clear pending flag as we now have stock
                     
                 elif tx_type == 'Sell':
                     current_lifecycle.append(tx)
@@ -397,22 +404,20 @@ class IBKRParser:
                     
                     # Check if position is now closed
                     if current_shares <= 0:
-                        if current_lifecycle:
-                            lifecycles.append(current_lifecycle)
+                        # Position closed via sell
+                        lifecycles.append(current_lifecycle)
                         current_lifecycle = []
                         current_shares = 0
+                        has_pending_options = False
                         
                 elif tx_type == 'Assignment':
                     # Assignment qty: positive = put assigned (you buy), negative = call assigned (you sell)
                     if qty > 0:
-                        # Put assignment - buying stock
-                        if current_shares == 0 and current_lifecycle:
-                            # This is a new lifecycle starting with put assignment
-                            lifecycles.append(current_lifecycle)
-                            current_lifecycle = []
-                        
+                        # Put assignment - you're buying stock
+                        # This is PART OF the current lifecycle (CSP → Stock)
                         current_lifecycle.append(tx)
                         current_shares += qty
+                        has_pending_options = False  # Now we have actual stock
                         
                     else:
                         # Call assignment - shares being sold/assigned away
@@ -421,10 +426,11 @@ class IBKRParser:
                         
                         # Check if position is now closed
                         if current_shares <= 0:
-                            if current_lifecycle:
-                                lifecycles.append(current_lifecycle)
+                            # Position closed via call assignment
+                            lifecycles.append(current_lifecycle)
                             current_lifecycle = []
                             current_shares = 0
+                            has_pending_options = False
         
         # Add any remaining transactions as the final lifecycle
         if current_lifecycle:
