@@ -1373,7 +1373,9 @@ async def startup():
         replace_existing=True
     )
     
-    # Pre-computed scans - runs at 4:45 PM ET (after market close) on weekdays
+    # Pre-computed scans - runs at 4:05 PM ET (after market close) on weekdays
+    # UPDATED: Moved from 4:45 PM to 4:05 PM for price consistency across all pages
+    # Yahoo Finance provides market close data immediately after 4:00 PM
     async def run_precomputed_scans():
         """Run nightly pre-computed scans for covered calls and PMCC."""
         try:
@@ -1406,7 +1408,7 @@ async def startup():
     
     scheduler.add_job(
         run_precomputed_scans,
-        CronTrigger(hour=16, minute=45, day_of_week='mon-fri', timezone='America/New_York'),
+        CronTrigger(hour=16, minute=5, day_of_week='mon-fri', timezone='America/New_York'),
         id='precomputed_scans',
         replace_existing=True
     )
