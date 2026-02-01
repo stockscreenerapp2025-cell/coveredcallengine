@@ -55,6 +55,51 @@ The PMCC screener is **completely isolated** from CC logic with its own constant
 
 ---
 
+## Portfolio Tracker - CSP Lifecycle Isolation & PMCC Rules - COMPLETED 2026-02-01
+
+### Bug Fix: CSP Assignment Lifecycle Leakage
+
+**Problem:** CSP assignments were being merged into a single lifecycle under the Wheel rule, even when they originated from different CSP contracts with different strikes.
+
+**Fix:** Each CSP assignment now creates a distinct stock lifecycle:
+- Entry price = PUT strike
+- Quantity = assigned shares
+- Start date = assignment date
+
+**CSP Isolation Rules:**
+- CSP assignments are NOT merged unless: Same ticker, Same assignment date, Same strike, Same option expiry
+- CCs sold after assignment attach ONLY to the lifecycle they logically relate to
+- The Wheel strategy rule applies within a SINGLE CSP → assignment → CC chain, not across multiple CSP contracts
+
+### Bug Fix: PMCC Lifecycle Rules
+
+**Problem:** PMCC lifecycles were not properly anchored to the long LEAPS call.
+
+**Fix:** PMCC lifecycles are now anchored to the LONG LEAPS:
+- Each long LEAPS creates a new PMCC lifecycle
+- Short calls attach only if: Short strike > long strike, Short expiry < long expiry
+- Short-call assignment does NOT close the PMCC lifecycle
+- PMCC lifecycle closes only when the long LEAPS is sold or expires
+- Premiums and P&L remain isolated within each PMCC lifecycle
+
+### Position Instance ID Format
+- **Stock/CC/Wheel:** `{SYMBOL}-{YYYY-MM}-Entry-{NN}` (e.g., `IREN-2026-01-Entry-01`)
+- **PMCC:** `{SYMBOL}-PMCC-{YYYY-MM}-{LEAPS_STRIKE}-Entry-{NN}` (e.g., `AAPL-PMCC-2026-01-50.0-Entry-01`)
+
+### Validation Evidence (2026-02-01)
+| Scenario | Expected | Actual | Status |
+|----------|----------|--------|--------|
+| Multiple CSPs different strikes | Separate lifecycles | 2 lifecycles | ✅ PASS |
+| CSP $55 entry | $55.00 | $55.00 | ✅ PASS |
+| CSP $50 entry | $50.00 | $50.00 | ✅ PASS |
+| CSP→CC Wheel | 1 lifecycle | 1 lifecycle | ✅ PASS |
+| Multiple PMCC LEAPS | Separate lifecycles | 2 lifecycles | ✅ PASS |
+| PMCC anchored to LEAPS | Per-LEAPS | Per-LEAPS | ✅ PASS |
+| PMCC no stock shares | 0 shares | 0 shares | ✅ PASS |
+| PMCC status until LEAPS expires | Open | Open | ✅ PASS |
+
+---
+
 ## Portfolio Tracker - Position Lifecycle System - COMPLETED 2026-02-01
 
 ### Position Lifecycle Rules (Non-Negotiable)
