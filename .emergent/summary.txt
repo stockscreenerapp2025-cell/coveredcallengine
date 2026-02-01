@@ -1,136 +1,111 @@
-<analysis>
-**original_problem_statement:**
+<analysis>**original_problem_statement:**
 The user wants to build a web-based application named Covered Call Engine. The primary features include AI-assisted Covered Call (CC) and Poor Man's Covered Call (PMCC) screeners, a multi-phased AI Support Ticket System, a role-based Invitation System, Portfolio Tracking, and payment subscriptions.
 
-The most recent user requests focus on correcting data integrity issues and refactoring the PMCC screener logic to be completely isolated from the Covered Call (CC) logic, with strict, non-negotiable rules for data sourcing, options chain selection, and pricing.
+The most recent user requests have focused on correcting critical data integrity issues within the Portfolio Tracker, which processes uploaded Interactive Brokers (IBKR) transaction histories. The core requirements are to correctly calculate entry prices, P&L, and ROI by implementing a Position Lifecycle system. This system must treat stock positions that are bought, sold/assigned, and then re-bought as separate, isolated lifecycles. Specific, non-negotiable rules have also been provided for handling Cash-Secured Put (CSP) assignments and PMCC strategies, ensuring their financial metrics are calculated independently and accurately.
 
 **PRODUCT REQUIREMENTS (Current Mandate):**
-1.  **Lock Down Scope (P0):** Confirm and enforce that PMCC logic is fully isolated from CC logic (no shared filters, expiry rules, or strike selection).
-2.  Long leg (LEAPS call):
-
-Expiry must be between 12 and 24 months from the current date
-
-Strike must be below the current stock price (ITM)
-
-Option price must be taken strictly from the ASK
-
-Short leg (call):
-
-Expiry must be ≤ 60 days
-
-Strike must be above the long-leg strike
-
-Option price must be taken strictly from the BID
-
-Net Debit Calculation (Non-negotiable):
-
-PMCC net debit must be calculated as:
-Long-leg ASK – Short-leg BID
-
-LAST price must never be used for PMCC leg pricing.
-
-Bid/Ask Validation Rules:
-
-Both Bid and Ask must be greater than zero
-
-If either Bid or Ask is missing or invalid:
-
-Reject the PMCC combination
-
-Do not substitute LAST or MID price
-
-Architecture Validation (Critical):
-
-Confirm whether PMCC logic is currently:
-
-Reusing CC single-leg chain filtering
-
-Sharing CC pricing logic
-
-If so, PMCC logic must be fully separated before proceeding with any other fixes.
-
-Please confirm:
-
-PMCC chain selection logic is independent of CC
-
-12–24 month LEAPS window is enforced
-
-Bid/Ask rules are applied exactly as described
-
-PMCC results are reproducible after market close using last valid Bid/Ask data
-3.  **Fix PMCC Custom Scan Price Rules (P1):** Apply instrument-aware price rules on the custom scan page: Stocks 0-0, ETFs no price limits. This logic must NOT affect CC scans.
-4.  **Restore PMCC Pre-computed Scan (P1):** The Aggressive pre-computed scan must use end-of-day cached options chains and work after-hours/weekends/holidays. It must NOT rely on live Yahoo fetches.
-5.  **Decouple Manual Filters (P2):** Manual filters for both CC and PMCC must pull from a universal list of all US stocks/ETFs with options, ignoring other restricted universes. All manual filter fields must be blank by default.
-6.  **Fix Stock Price Integrity (COMPLETED):** Ensure stock prices across all pages (Screener, Watchlist, Simulator, etc.) use the most recent Yahoo Finance market close as the single source of truth.
-7.  **Restore Analyst Ratings (COMPLETED):** Fix the missing analyst ratings across the application.
-8.  **Fix Dashboard Index Data (COMPLETED):** Ensure market indices on the dashboard show the latest data from Yahoo Finance.
+1.  **Position Lifecycle Logic (P0 - Implemented, User Verification Pending):**
+    *   A stock lifecycle starts on a buy and ends when all shares are sold or assigned.
+    *   Any subsequent purchase of the same ticker starts a brand-new lifecycle, identified by a .
+    *   Entry price, cost basis, and premiums from a closed lifecycle must NOT affect a new one.
+2.  **CSP Assignment Lifecycle Fix (P0 - Implemented, User Verification Pending):**
+    *   Each CSP assignment must create a *distinct* stock lifecycle.
+    *   Assignments must NOT be merged unless they share the same ticker, assignment date, strike, and option expiry.
+    *   The entry price for an assigned lifecycle is strictly the .
+3.  **PMCC Lifecycle Rules (P0 - Implemented, User Verification Pending):**
+    *   Each PMCC lifecycle must be anchored to the purchase of a long LEAPS call, not the stock ticker.
+    *   Short calls can only attach to a LEAPS lifecycle with the same ticker, a higher strike, and an earlier expiry.
+    *   Assignment of a short call does NOT close the PMCC lifecycle; only selling or expiry of the LEAPS does.
+4.  **Fix PMCC Custom Scan Price Rules (P1):** Apply instrument-aware price rules on the custom scan page: Stocks 0-0, ETFs no price limits. This logic must NOT affect CC scans.
+5.  **Restore PMCC Pre-computed Scan (P1):** The Aggressive pre-computed scan must use end-of-day cached options chains and work after-hours/weekends/holidays. It must NOT rely on live fetches.
+6.  **Decouple Manual Filters (P2):** Manual filters for both CC and PMCC must pull from a universal list of all US stocks/ETFs with options, ignoring other restricted universes. All manual filter fields must be blank by default.
 
 **User's preferred language**: English
 
 **what currently exists?**
-The application has a FastAPI backend and a React frontend. The backend was significantly refactored to enforce a Single Source of Truth for stock prices, using the most recent historical close from Yahoo Finance. This resolved a major data discrepancy issue (e.g., INTC price showing 5.07 instead of 8.66). The system now also correctly handles after-hours options data by caching the last valid quote from the regular market session and marking it appropriately. Analyst ratings and live market index data on the dashboard have also been restored. The agent started refactoring the PMCC screener logic to isolate it from the CC screener as per the latest user request, but the implementation is incomplete and has left the PMCC route in a broken state.
+The application consists of a FastAPI backend and a React frontend. The agent has completed a series of critical fixes:
+1.  **PMCC Screener:** The previously broken PMCC screener () is now fully functional. It correctly applies the user's strict rules for LEAPS (12-24 month DTE, ITM, ASK price) and short calls (≤60 DTE, OTM, BID price), and its logic is now completely isolated from the Covered Call (CC) screener.
+2.  **Portfolio Data Integrity:** The IBKR CSV parser () has been significantly refactored to address major data integrity bugs.
+    *   **Entry Price:** Correctly calculated using the transaction  (not ) and the  for CSP assignments.
+    *   **Position Lifecycles:** A robust lifecycle management system has been implemented. It correctly separates trades into distinct lifecycles when a stock is sold/assigned and then re-bought, preventing P&L and cost basis contamination.
+    *   **CSP & PMCC Logic:** The lifecycle logic now correctly handles complex scenarios, creating separate lifecycles for CSP assignments from different contracts and anchoring PMCC strategies to their LEAPS calls.
 
 **Last working item**:
--   **Last item agent was working:** The agent was rewriting the PMCC screener logic in  to align with the user's strict new requirements for chain selection and pricing (Step 2 of the latest request). It attempted to create a fully isolated function  and update the corresponding API endpoint.
--   **Status:** IN PROGRESS
--   **Agent Testing Done:** N
--   **Which testing method agent to use?** both
+-   **Last item agent was working:** The agent performed a major refactor of the  service to fix two critical bugs related to the new lifecycle logic: 1) CSP Assignment Lifecycle Leakage, where different CSP assignments were incorrectly merged, and 2) PMCC Lifecycle Rules, where PMCCs were not anchored to their LEAPS calls. The agent rewrote the transaction grouping and lifecycle splitting logic to handle these cases correctly.
+-   **Status:** USER VERIFICATION PENDING
+-   **Agent Testing Done:** Y
+-   **Which testing method agent to use?** NA (User needs to verify by re-uploading their CSV files).
 -   **User Testing Done:** N
 
 **All Pending/In progress Issue list**:
--   **Issue 1: PMCC screener is broken and incomplete (P0)**
-    -   **Description:** The agent's last action was an attempt to rewrite the PMCC screener. It left the code in  in a non-functional state with duplicated logic, incorrect function calls, and conflicting code from the old implementation. The screener does not currently adhere to the new, strict PMCC rules for LEAPS selection (DTE, ITM, ASK price) and short call selection (DTE, strike, BID price).
-    -   **Status:** IN PROGRESS
-    -   **Is recurring issue?** N
+-   **Issue 1: User Verification for Portfolio Lifecycle Fixes (P0)**
+    -   **Description:** The agent has implemented extensive fixes to the portfolio parsing logic. However, these changes only affect newly parsed data. The user must be instructed to delete their existing portfolio data and re-upload their IBKR CSV files to see the corrections.
+    -   **Status:** USER VERIFICATION PENDING
+
+-   **Issue 2: Restore PMCC Pre-computed Aggressive Scan (P1)**
+    -   **Description:** This scan relies on live data fetches and fails after market hours, on weekends, and on holidays. It needs to be modified to use the end-of-day cached options chains from .
+    -   **Status:** NOT STARTED
+
+-   **Issue 3: Inbound email replies not appearing in the support dashboard (P2)**
+    -   **Description:** A persistent issue where email replies sent to the system do not get ingested and displayed in the support ticket dashboard.
+    -   **Status:** NOT STARTED
 
 **Issues Detail:**
--   **Issue 1: PMCC screener is broken and incomplete (P0)**
-    -   **Attempted fixes:** The agent started rewriting the  endpoint in  and creating a new helper function . However, the old logic was not fully removed, leading to a mix of old and new code, duplicated response structures, and incorrect references.
+-   **Issue 1: User Verification for Portfolio Lifecycle Fixes (P0)**
+    -   **Attempted fixes:** The agent has implemented all required code changes in  and validated them with a new suite of unit tests.
     -   **Next debug checklist:**
-        1.  Open .
-        2.  Completely remove or refactor the existing  endpoint logic (approx. lines 1070 onwards).
-        3.  Implement a clean, isolated  function that strictly follows the user's rules: LEAPS (≥6 mo DTE, ITM, ASK price) and Short Calls (≤60 DTE, OTM, BID price).
-        4.  Ensure the net debit is calculated as .
-        5.  Ensure contracts are rejected if BID/ASK is missing/zero.
-        6.  Wire the new  function to the  endpoint.
-        7.  Verify the response structure is correct and contains no legacy fields.
-    -   **Why fix this issue and what will be achieved with the fix?** This is the user's top priority. Fixing it will provide a functional PMCC screener that adheres to a sound financial strategy, separating it from the incorrect CC logic it was previously using.
+        1.  Clearly inform the user that their existing portfolio data is stale and was parsed with the old, buggy logic.
+        2.  Instruct the user to navigate to the Portfolio page, delete their existing data, and re-upload their IBKR CSV transaction files.
+        3.  Ask the user to verify that the Entry Prices, BE, ROI, and position lifecycles for symbols like IREN, APLD, and IONQ now match their expectations and the provided screenshots.
+    -   **Why fix this issue and what will be achieved with the fix?** This will confirm that the complex data integrity and lifecycle fixes are working correctly from the user's perspective, closing out a major source of bugs.
+    -   **Should Test frontend/backend/both after fix?** User verification.
+    -   **Blocked on other issue:** None
+
+-   **Issue 2: Restore PMCC Pre-computed Aggressive Scan (P1)**
+    -   **Attempted fixes:** None yet.
+    -   **Next debug checklist:**
+        1.  Examine .
+        2.  Locate the logic for the Aggressive PMCC scan.
+        3.  Modify the data-sourcing part of this function to use  instead of a direct live fetch.
+        4.  Ensure it correctly passes flags to prioritize cached data.
+        5.  Test the endpoint after market hours to confirm it returns results.
+    -   **Why fix this issue and what will be achieved with the fix?** It will make a key feature (pre-computed scans) reliable and available 24/7, as intended.
     -   **Should Test frontend/backend/both after fix?** backend
     -   **Blocked on other issue:** None
 
-**In progress Task List**:
--   **Task 1: Complete the PMCC Screener Logic Refactor (P0)**
-    -   **Where to resume:** Resume work in  to fix the broken PMCC screener implementation.
-    -   **What will be achieved with this?** A fully functional and logically correct PMCC screener that is isolated from the CC screener.
-    -   **Status:** IN PROGRESS
+-   **Issue 3: Inbound email replies not appearing in the support dashboard (P2)**
+    -   **Attempted fixes:** Multiple previous attempts failed.
+    -   **Next debug checklist:**
+        1.  Investigate the email ingestion service and related cron jobs.
+        2.  Check logs for the IMAP connection and parsing process.
+        3.  Verify the credentials and server settings are correct.
+        4.  Trace the data flow from email receipt to database insertion for support tickets.
+    -   **Why fix this issue and what will be achieved with the fix?** It will restore a core feature of the AI Support Ticket system.
     -   **Should Test frontend/backend/both after fix?** backend
-    -   **Blocked on something:** None
+    -   **Is recurring issue?** Y
+
+**In progress Task List**:
+-   None.
 
 **Upcoming and Future Tasks**
 *   **Upcoming Tasks:**
-    *   (P1) **Fix PMCC Custom Scan Price Rules:** Implement stock vs. ETF price limits (0-0 for stocks, no limit for ETFs) in the PMCC custom scan logic. This logic must be separate from CC.
-    *   (P1) **Restore PMCC Pre-computed Aggressive Scan:** Modify this scan to use end-of-day cached options chains instead of live fetches, ensuring it works after hours and on holidays.
-    *   (P2) **Decouple Manual Filters:** Rework manual filters for CC and PMCC to query an unrestricted universe of all US stocks/ETFs and set all filter fields to be blank by default.
+    *   (P1) **Fix PMCC Custom Scan Price Rules:** Implement stock (0-0) vs. ETF (no limit) price limits in the PMCC custom scan logic, separate from CC logic.
+    *   (P2) **Decouple Manual Filters:** Rework manual CC/PMCC filters to query an unrestricted universe of all US stocks/ETFs and default to blank filter fields.
     *   (P2) **Validation Checklist:** Perform the user's non-negotiable validation checklist, providing logs/screenshots for each item after all fixes are in place.
 *   **Future Tasks:**
-    *   (P2) **Fix Inbound Email:** Resolve the persistent issue where inbound email replies do not appear in the support dashboard.
-    *   (P2) **Expand Symbol Universe:** Ingest snapshots for a wider range of symbols, including more ETFs.
     *   (P3) **Frontend Refactor:** Break down large components like , , and .
-    *   (P4) **Deprecate Legacy Snapshots & EOD Contract:** The EOD contract is now superseded by the Yahoo Single Source of Truth for stock prices. Plan the removal of , EOD collections (, ), and related legacy code.
+    *   (P4) **Deprecate Legacy Snapshots & EOD Contract:** Plan the removal of  and related EOD collections, as they are now superseded by the Yahoo Finance Single Source of Truth.
 
 **Completed work in this session**
--   **P0 Security Fixes:** Created  files, added environment variable validation on startup, and fixed CORS wildcard vulnerability.
--   **P1 Data Integrity Fixes:** Fixed intraday price contamination bug (now uses ), fixed  fallback bug (now requires BID for SELL legs), and added DB connection health checks.
--   **P2 Cleanup:** Unified bid-ask spread to 10%, fixed  leak, and improved stale data detection logic.
--   **Single Source of Truth for Stock Price:** Refactored all data fetching to use the latest historical market close from Yahoo Finance as the single, authoritative source for stock prices, fixing major data inconsistencies.
--   **Analyst Ratings Restored:** Fixed the logic to correctly fetch and display analyst ratings across the application.
--   **Live Dashboard Index Data:** Replaced mocked market index data with a live fetch from Yahoo Finance.
--   **After-Hours Options Pricing:** Implemented a quote caching system () that stores the last valid BID/ASK during market hours and uses this cached data for after-hours screening, with clear labeling of quote source and age.
--   **Strict Pricing Rule Enforcement:** Refactored all option-consuming services (, , ) to enforce strict pricing rules: BID for SELL legs, ASK for BUY legs, and rejecting contracts with missing/zero prices without fallbacks.
+-   **P0 PMCC Screener Fix:** Fixed the broken PMCC screener in , correcting the  variable and updating the LEAPS DTE to the required 12-24 months. Validated with  and the testing agent.
+-   **P0 Portfolio Entry Price & BE/ROI Fix:** Corrected the entry price, break-even, and ROI calculations in  for both regular stock buys and CSP assignments, resolving major data discrepancies.
+-   **P0 Position Lifecycle Implementation:** Implemented a robust system in  to track distinct position lifecycles. This ensures that when a stock is sold/assigned and re-bought, the new position's metrics are not contaminated by the old one.
+-   **P0 CSP & PMCC Lifecycle Bug Fixes:** Refined the lifecycle logic to correctly create separate lifecycles for CSP assignments with different strikes and to anchor PMCC lifecycles to their long LEAPS calls.
+-   **Test Suite Expansion:** Created a new test file, , with 8 unit tests to validate the complex new CSP and PMCC lifecycle logic.
 
 **Earlier issues found/mentioned but not fixed**
 -   **Issue 1: Manual filters are not working correctly**
-    -   **Debug checklist:** The user's latest request (Step 5) provides new requirements for this. The filters must query an unrestricted universe of stocks/ETFs, not the pre-computed/custom scan universe.
+    -   **Debug checklist:** This is covered by the upcoming task Decouple Manual Filters. The filters must query an unrestricted universe of stocks/ETFs, not a pre-computed list.
     -   **Why to solve this issue and what will be achieved with this?** This is a specific design correction requested by the user to make manual filtering more powerful and intuitive.
     -   **Should Test frontend/backend/both after fix:** backend
     -   **Is recurring issue?** Y
@@ -144,78 +119,72 @@ The application has a FastAPI backend and a React frontend. The backend was sign
 
 
 **Key Technical Concepts**
--   **Single Source of Truth (Stock Price):** All stock prices are now derived from a single function in  that fetches the most recent historical market close from Yahoo Finance. This eliminates data drift between pages.
--   **Strict Options Pricing (BID/ASK):** All options trading logic is now mandated to use  for SELL legs (e.g., short calls) and  for BUY legs (e.g., LEAPS). Contracts with missing or zero prices are rejected. Fallbacks to  or  have been removed.
--   **After-Hours Quote Caching:** A new service () persists the last valid non-zero BID/ASK quotes during market hours. When the market is closed, screeners use this cached data, clearly marking it with  and its age.
--   **Logic Isolation:** The user mandates complete logical separation between CC and PMCC strategies. The current task is to enforce this for the PMCC screener.
+-   **Position Lifecycle Management:** A major piece of new business logic in . It uses a  to track and isolate financial metrics (entry price, P&L, premiums) for stock positions that are bought, closed (via sale or assignment), and then re-bought. This prevents data contamination between distinct trading periods.
+-   **Strategy-Aware Lifecycles:** The lifecycle logic is further refined to handle specific trading strategies. CSP assignments create new, distinct stock lifecycles, while PMCCs are treated as their own type of lifecycle anchored to the long LEAPS option.
+-   **Single Source of Truth (Stock Price):** All stock prices are derived from  which uses the most recent historical market close from Yahoo Finance.
+-   **Strict Options Pricing (BID/ASK):** All options trading logic is mandated to use  for SELL legs and  for BUY legs.
 
 **key DB schema**
--   **options_quote_cache**: 
+-   **portfolio_trades (collection in MongoDB):** While the schema is unchanged, the documents within it now contain new fields generated by the parser:
+    -   : An integer indicating the lifecycle number for a given symbol.
+    -   : A unique string identifier for the lifecycle (e.g., ).
+    -   Existing documents parsed before the fix will have  values for these fields.
 
 **changes in tech stack**
 -   None.
 
 **All files of reference**
-*    (Main file for CC/PMCC logic, currently needs fixing)
-*    (Core data fetching logic)
-*    (New service for after-hours quotes)
-*    (For market indices)
-*   
-*   
+*    (Primary file for all recent portfolio logic changes)
+*    (Unit tests for the new lifecycle logic)
+*    (File containing the fixed PMCC screener logic)
+*    (Frontend component that displays the results)
 
 **Areas that need refactoring**:
--    is critically bloated and in a broken state. The PMCC logic needs to be cleanly rewritten and isolated. The file contains endpoints for CC screener, PMCC screener, and dashboard opportunities, and should ideally be broken up.
+-    has become very complex due to the new lifecycle rules. It may benefit from being broken down into smaller, more specialized classes or functions in the future.
+-    remains bloated with logic for CC, PMCC, and dashboard opportunities, and should ideally be split into separate route files.
 
 **key api endpoints**
-*   : Fetches Covered Call opportunities.
-*   : Fetches Poor Man's Covered Call opportunities (currently broken).
-*   : Fetches live market index data.
-*   : Fetches user's watchlist with live prices.
+*   : Endpoint for the user to upload their IBKR CSV file. This is the primary endpoint for the user to trigger the new parsing logic.
+*   : Fetches the parsed portfolio trades for display.
+*   : Fetches Poor Man's Covered Call opportunities (now fixed).
 
 **Critical Info for New Agent**
-*   **Fix PMCC First:** Your absolute first priority is to fix the broken PMCC screener in . Do not proceed to other tasks until this is complete. The user has provided very specific, non-negotiable rules for this.
-*   **Respect the Single Source of Truth:** The stock price fetching logic in  is now correct and must be used as the single source of truth. Do not re-introduce EOD contract prices or other sources for stock data.
-*   **Follow PMCC Rules Exactly:** Refer to the user's latest prompt (Chat Message 411) for the exact rules for PMCC LEAPS (BUY leg) and short calls (SELL leg). Pay close attention to DTE, moneyness, and the strict use of ASK for buys and BID for sells.
-*   **Validate Before Finishing:** The user requires explicit validation against Yahoo Finance data before any task is considered complete. Be prepared to show  outputs or log proof for each fixed item.
+*   **USER MUST RE-UPLOAD CSV:** This is the most critical point. The database contains stale data parsed by the old, buggy logic. You MUST instruct the user to delete their current portfolio and re-upload their IBKR CSV file(s) to see the effect of all the recent fixes.
+*   **Lifecycle Logic is Central:** The new logic in  is complex but foundational to the user's requirements. The tests in  are the best reference for its intended behavior.
+*   **Resume with P1 Tasks:** After user verification is complete, the next priorities are the P1 tasks: fixing the PMCC pre-computed scan and implementing custom scan price rules.
 
 **documents and test reports created in this job**
 *   
 *   
-*    (updated multiple times)
+*   
 
 **Last 10 User Messages and any pending HUMAN messages**
-1.  **User:** Provided detailed, multi-step instructions to fix PMCC logic, custom scans, pre-computed scans, and manual filters. Stressed the need for logical isolation between CC and PMCC. (PENDING)
-2.  **Agent:** Began working on the PMCC refactor.
-3.  **User:** Reported that the stock price and options data integrity issues were not fixed, providing screenshots (e.g., INTC price discrepancy). Gave a 7-step mandate to fix all data sourcing issues permanently. (PARTIALLY ADDRESSED)
-4.  **Agent:** Investigated and confirmed the root cause of the stock price issue (stale EOD data) and began implementing fixes. (COMPLETED)
-5.  **User:** Provided strict, clarified rules for options pricing: SELL legs must use BID, BUY legs must use ASK.  is forbidden. (COMPLETED)
-6.  **Agent:** Implemented the strict BID/ASK pricing rules across all services. (COMPLETED)
-7.  **User:** Provided new data fetching rules: Screener must use previous day close, Watchlist/Simulator must use live prices, and Options must be fetched live. (COMPLETED)
-8.  **Agent:** Implemented the new data fetching architecture, separating live vs. previous-close logic. (COMPLETED)
-9.  **User:** Provided a large list of P0, P1, and P2 priority tasks focusing on security, data integrity, and code cleanup. (COMPLETED)
-10. **Agent:** Started work on the P0 tasks from the user's list. (COMPLETED)
+1.  **User:** Requested fixes for two new bugs: 1) CSP assignments with different strikes being merged into one lifecycle, and 2) PMCC lifecycles not being anchored to the LEAPS call. (COMPLETED)
+2.  **User:** Provided new IBKR transaction history CSVs and a detailed, non-negotiable set of rules for handling stock positions that are sold/assigned and then re-bought, demanding the implementation of a Position Lifecycle system. (COMPLETED)
+3.  **User:** Reported that the Portfolio Tracker entry price, BE, and ROI calculations were wrong, providing screenshots of APLD and IONQ as examples. Provided a detailed PRD for an AI Suggestions Engine for the portfolio, which contained the correct calculation rules. (COMPLETED)
+4.  **Agent:** Fixed the broken PMCC screener and verified it with the testing agent. (COMPLETED)
+5.  **User (from previous session):** Provided detailed, multi-step instructions to fix PMCC logic, custom scans, pre-computed scans, and manual filters. (PARTIALLY COMPLETED - PMCC screener is fixed, other items are pending).
 
 **Project Health Check:**
 *   **Broken:**
-    *   **PMCC Screener Logic:** The primary PMCC screener is non-functional due to an incomplete and messy refactoring attempt.
-    *   **PMCC Pre-computed Scan:** Relies on live data and fails after hours.
+    *   **PMCC Pre-computed Scan:** Still relies on live data and fails after hours.
 *   **Mocked:** None.
 
 **3rd Party Integrations**
 *   **:** Primary data source for all stock and options data.
-*   **:** Used for scheduled jobs (currently not the main source of ingestion).
+*   **:** Used for scheduled jobs.
 *   **:** Used for NYSE trading day and holiday calculations.
 
 **Testing status**
--   **Testing agent used after significant changes:** YES (To validate data fetching rules and after-hours logic).
+-   **Testing agent used after significant changes:** YES
 -   **Troubleshoot agent used after agent stuck in loop:** NO
--   **Test files created:** None in this session, but previous test files were used for context.
--   **Known regressions:** The PMCC screener is now broken, which is a regression from a previously (though incorrectly) working state.
+-   **Test files created:**
+    -   
+-   **Known regressions:** None. The fixes addressed existing bugs without introducing new ones, according to the test suite.
 
 **Credentials to test flow:**
 *   Admin user: 
 *   Password: 
 
 **What agent forgot to execute**
-The agent was in the middle of implementing the user's latest and most critical request (the full PMCC refactor from Chat Message 411) and left the  file in a broken, half-finished state. All other steps from that user request (Custom Scan Price Rules, Pre-computed Scans, Manual Filters, Validation) are also pending.
-</analysis>
+The agent has been systematically working through the user's high-priority requests. The remaining tasks (PMCC Custom Scan, PMCC Pre-computed Scan, Manual Filters) are tracked in the Upcoming Tasks and are the logical next steps, not forgotten items.</analysis>
