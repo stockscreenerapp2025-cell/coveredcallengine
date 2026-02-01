@@ -191,7 +191,7 @@ const Admin = () => {
   const fetchScreenerStatus = async () => {
     setScreenerStatusLoading(true);
     try {
-      const response = await api.get('/screener/admin/status');
+      const response = await api.get('/screener/admin-status');
       setScreenerStatus(response.data);
     } catch (error) {
       console.error('Screener status error:', error);
