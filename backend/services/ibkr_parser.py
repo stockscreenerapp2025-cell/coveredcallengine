@@ -658,12 +658,29 @@ class IBKRParser:
         # Store put strike for reference (for CSP → CC transitions)
         csp_put_strike = put_strike_for_assignment
         
-        # Create deterministic trade ID
-        trade_unique_key = f"{account}-{symbol}"
+        # =====================================================
+        # POSITION INSTANCE ID (Lifecycle Tracking)
+        # =====================================================
+        # Each lifecycle gets a unique ID, even for the same ticker
+        # Format: {SYMBOL}-{YYYY-MM}-Entry-{NN}
+        # Example: IREN-2024-05-Entry-01
+        
+        # Create Position Instance ID based on the lifecycle's first transaction date
+        if first_date:
+            date_part = first_date[:7]  # YYYY-MM
+        else:
+            date_part = datetime.now().strftime('%Y-%m')
+        
+        position_instance_id = f"{symbol}-{date_part}-Entry-{lifecycle_idx + 1:02d}"
+        
+        # Create deterministic trade ID that includes lifecycle index
+        trade_unique_key = f"{account}-{symbol}-{first_date or 'unknown'}-lifecycle{lifecycle_idx}"
         trade_id = hashlib.md5(trade_unique_key.encode()).hexdigest()[:16]
         
         return {
             'id': trade_id,
+            'position_instance_id': position_instance_id,  # New: Unique lifecycle identifier
+            'lifecycle_index': lifecycle_idx,  # New: Index of this lifecycle for the symbol
             'trade_id': transactions[0].get('id'),
             'account': account,
             'symbol': symbol,
@@ -677,13 +694,13 @@ class IBKRParser:
             'status': status,
             'shares': int(total_shares),
             'contracts': int(total_contracts),
-            'entry_price': round(entry_price, 2) if entry_price else None,  # Round to 2 decimals for display
+            'entry_price': round(entry_price, 2) if entry_price else None,
             'premium_received': round(premium_received, 2),
             'total_fees': round(total_fees, 2),
-            'break_even': round(break_even, 2) if break_even else None,  # Round to 2 decimals for display
+            'break_even': round(break_even, 2) if break_even else None,
             'option_strike': option_strike,
             'option_expiry': option_expiry,
-            'csp_put_strike': csp_put_strike,  # For CSP/Wheel tracking
+            'csp_put_strike': csp_put_strike,
             'total_proceeds': round(total_proceeds, 2),
             'total_cost': round(total_cost, 2),
             'realized_pnl': round(realized_pnl, 2) if realized_pnl is not None else None,
