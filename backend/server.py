@@ -1454,7 +1454,7 @@ async def startup():
     )
     
     scheduler.start()
-    logger.info("Schedulers started - EOD: 4:05 PM ET, Pre-computed scans: 4:05 PM ET, Simulator: 4:30 PM ET, Support: every 5 min, IMAP: every 6 hours")
+    logger.info("Schedulers started - EOD: 4:05 PM ET, Pre-computed scans: 4:05 PM ET, Simulator: 4:05 PM ET, Support: every 5 min, IMAP: every 6 hours")
 
 @app.on_event("shutdown")
 async def shutdown_db_client():
