@@ -19,7 +19,9 @@ Build a web-based application named "Covered Call Engine" for options traders wi
 - **Scheduled Jobs (4:05 PM ET daily on trading days)**:
   - EOD Ingestion: Market close price capture
   - Pre-computed Scans: CC and PMCC scan computation
-- **Manual Refresh**: Admin panel → Trigger All Scans
+  - Simulator Price Update: Update simulator positions
+- **Manual Refresh**: Admin panel → Data Quality → "Trigger All Scans" button
+- **Rate Limiting**: Batch size reduced to 10 symbols, 2-second delay between batches to avoid Yahoo Finance rate limits
 
 ### Options Chain Source
 - **Source**: Yahoo Finance live options chain
