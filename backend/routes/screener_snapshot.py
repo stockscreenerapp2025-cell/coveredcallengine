@@ -912,7 +912,7 @@ async def screen_covered_calls(
                     "symbol": symbol,
                     "instrument_type": "ETF" if is_etf else "STOCK",
                     "last_price": round(stock_price, 2),
-                    "price_source": "EOD_CONTRACT" if use_eod_contract else "BID",  # ADR-001 marker
+                    "price_source": "YAHOO_PREVIOUS_CLOSE",  # Single source of truth
                     "snapshot_date": sym_data.get("stock_price_trade_date"),
                     "market_close_timestamp": sym_data.get("market_close_timestamp"),  # ADR-001
                     "market_cap": market_cap,
