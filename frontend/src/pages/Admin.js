@@ -151,6 +151,10 @@ const Admin = () => {
   const [imapSaving, setImapSaving] = useState(false);
   const [imapSyncing, setImapSyncing] = useState(false);
   const [showImapPassword, setShowImapPassword] = useState(false);
+  
+  // Pre-computed Scans Trigger
+  const [triggeringScan, setTriggeringScan] = useState(false);
+  const [lastScanResult, setLastScanResult] = useState(null);
 
   useEffect(() => {
     fetchSettings();
