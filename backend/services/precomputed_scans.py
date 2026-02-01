@@ -261,6 +261,9 @@ class PrecomputedScanService:
         """
         Fetch technical indicators for a symbol using Yahoo Finance.
         Returns SMA50, SMA200, RSI14, ATR14, volume data.
+        
+        IMPORTANT: Uses PREVIOUS MARKET CLOSE for price consistency.
+        If market is open and last history date is today, use second-to-last row.
         """
         try:
             def _fetch_yahoo():
@@ -292,8 +295,26 @@ class PrecomputedScanService:
                 # Calculate daily change % for gap detection
                 hist['daily_change_pct'] = hist['Close'].pct_change().abs()
                 
-                # Get latest values
-                latest = hist.iloc[-1]
+                # PRICE CONSISTENCY FIX: Use PREVIOUS MARKET CLOSE
+                # If market is open and last history date is today, use second-to-last row
+                eastern = pytz.timezone('US/Eastern')
+                today = datetime.now(eastern).date()
+                last_date = hist.index[-1].date()
+                
+                # Default to the last available row
+                use_index = -1
+                
+                # If market is OPEN and the last row is from today, use second-to-last row
+                # This gives us the previous market close instead of today's intraday close
+                if not is_market_closed() and last_date == today:
+                    use_index = -2
+                
+                # Safety check: ensure we have enough data for the selected index
+                if len(hist) >= abs(use_index):
+                    latest = hist.iloc[use_index]
+                else:
+                    latest = hist.iloc[-1]
+                
                 close = latest['Close']
                 
                 # Calculate 20-day average volume
