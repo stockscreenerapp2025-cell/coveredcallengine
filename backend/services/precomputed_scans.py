@@ -861,8 +861,10 @@ class PrecomputedScanService:
             "failed_options": []
         }
         
-        # Process symbols in batches to manage memory
-        batch_size = 20
+        # Process symbols in batches to manage memory and rate limiting
+        # Yahoo Finance has ~2000 requests/hour limit, so ~33/min
+        # We process in smaller batches with delays to avoid rate limits
+        batch_size = 10  # Reduced from 20 to avoid rate limits
         for i in range(0, len(symbols), batch_size):
             batch = symbols[i:i + batch_size]
             
