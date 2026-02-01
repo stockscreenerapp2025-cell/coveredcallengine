@@ -1715,7 +1715,8 @@ class PrecomputedScanService:
                     "target_price": fund_data.get("target_price"),
                 })
             
-            await asyncio.sleep(0.5)
+            # Longer delay between batches to avoid Yahoo Finance rate limits
+            await asyncio.sleep(2.0)
         
         # Deduplicate by symbol (keep best)
         symbol_best = {}
