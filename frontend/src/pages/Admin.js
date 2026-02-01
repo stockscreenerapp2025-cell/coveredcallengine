@@ -200,6 +200,22 @@ const Admin = () => {
     }
   };
   
+  const triggerAllScans = async () => {
+    setTriggeringScan(true);
+    setLastScanResult(null);
+    try {
+      toast.info('Starting pre-computed scans... This may take several minutes.');
+      const response = await api.post('/scans/trigger-all');
+      setLastScanResult(response.data);
+      toast.success(`Scans complete! CC: ${response.data.results?.cc_conservative || 0} + ${response.data.results?.cc_balanced || 0} + ${response.data.results?.cc_aggressive || 0} | PMCC: ${response.data.results?.pmcc_conservative || 0} + ${response.data.results?.pmcc_balanced || 0} + ${response.data.results?.pmcc_aggressive || 0}`);
+    } catch (error) {
+      console.error('Trigger scans error:', error);
+      toast.error(error.response?.data?.detail || 'Failed to trigger scans');
+    } finally {
+      setTriggeringScan(false);
+    }
+  };
+  
   const fetchSubscriptionSettings = async () => {
     try {
       const response = await api.get('/subscription/admin/settings');
