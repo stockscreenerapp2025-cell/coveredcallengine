@@ -973,8 +973,10 @@ class PrecomputedScanService:
                         "iv_rank": round(min(100, opt.get("iv", 0) * 100 * 1.5), 0) if opt.get("iv") else None,
                     })
             
-            # Small delay between batches
-            await asyncio.sleep(0.5)
+            # Longer delay between batches to avoid Yahoo Finance rate limits
+            # Yahoo allows ~2000 requests/hour, we need ~3 requests per symbol (tech, fund, options)
+            # With 10 symbols per batch = 30 requests, we wait 2 seconds between batches
+            await asyncio.sleep(2.0)
         
         # Deduplicate: Keep best Weekly + Monthly per symbol
         opportunities = self._dedupe_by_symbol_timeframe(opportunities)
