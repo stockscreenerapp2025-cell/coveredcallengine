@@ -260,6 +260,54 @@ Since the data is parsed and stored in the database, existing users must **re-up
 
 ---
 
+## Simulator Trade Management Rules - Income Strategy Redesign - COMPLETED 2026-02-02
+
+### Core Principle
+For CC and PMCC, **loss is NOT managed via stop-loss**. Loss is managed via:
+- Time
+- Premium decay
+- Rolling
+- Assignment logic
+
+**Key Changes:**
+- ❌ Stop-loss rules removed as defaults (moved to Optional/Advanced)
+- ✅ Rolling becomes the primary management mechanic
+- ✅ Assignment treated as valid income outcome for CC
+- ✅ PMCC assignment should be avoided (roll first)
+- ✅ Brokerage-aware controls added
+
+### Rule Categories (Income Strategy)
+
+| Category | Description | Default Rules |
+|----------|-------------|---------------|
+| **Premium Harvesting** | No Early Close | Hold to Expiry |
+| **Expiry Decisions** | Primary Controls | OTM Expiry, ITM Assignment |
+| **Assignment Awareness** | Alerts Only | Risk Alert, Imminent Alert |
+| **Rolling Rules** | Core Income Logic | ITM Roll, Delta-Based Roll, Market-Aware Suggestions |
+| **PMCC-Specific** | Short Leg Focused | Manage Short Only, Assignment Handling, Roll Before Assignment |
+| **Brokerage-Aware** | Cost Controls | Avoid Early Close |
+| **Informational** | Non-Action | Income Strategy Reminder |
+| **Optional/Advanced** | NOT Recommended | 75% Profit Target, 200% Stop Loss |
+
+### PMCC Assignment Philosophy
+**In PMCC, short call assignment should be AVOIDED:**
+- Assignment destroys the PMCC structure
+- Roll the short call before it goes ITM
+- If assigned, prompt user to exercise or close LEAPS
+
+### Rolling Rules
+**Roll ITM Near Expiry:**
+- Trigger: ITM + DTE ≤ 7
+- Action: Roll out in time
+- Preference: Same or higher strike, net credit ≥ $0
+
+**Roll Delta-Based:**
+- Trigger: Delta ≥ 0.75 + DTE > 7
+- Action: Roll up and out
+- Target: Delta 0.25-0.35, net credit preferred
+
+---
+
 ## Key Files
 
 ### Data Provider (SINGLE SOURCE OF TRUTH)
