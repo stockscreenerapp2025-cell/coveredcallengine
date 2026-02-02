@@ -1405,8 +1405,10 @@ async def get_pmcc_summary(user: dict = Depends(get_current_user)):
             "overall": {
                 "total_leaps_investment": 0,
                 "total_premium_income": 0,
-                "avg_income_ratio": 0,
-                "total_unrealized_pnl": 0
+                "overall_income_ratio": 0,
+                "total_unrealized_pnl": 0,
+                "total_pmcc_positions": 0,
+                "active_positions": 0
             },
             "summary": []
         }
@@ -1427,14 +1429,36 @@ async def get_pmcc_summary(user: dict = Depends(get_current_user)):
     # Build per-position summary array for the frontend
     # This should show OPEN, ROLLED, and ASSIGNED trades (per spec)
     summary = []
+    now = datetime.now()
+    
     for trade in pmcc_trades:
         if trade.get("status") in ["open", "rolled", "active", "assigned"]:  # Show all except closed/expired
             leaps_cost = (trade.get("leaps_premium", 0) * 100 * trade.get("contracts", 1))
             premium_collected = trade.get("premium_received", 0) or 0
             income_ratio = (premium_collected / leaps_cost * 100) if leaps_cost > 0 else 0
             
+            # Calculate days to LEAPS expiry
+            days_to_leaps_expiry = 0
+            try:
+                leaps_expiry_dt = datetime.strptime(trade.get("leaps_expiry", ""), "%Y-%m-%d")
+                days_to_leaps_expiry = (leaps_expiry_dt - now).days
+            except:
+                days_to_leaps_expiry = 365
+            
+            # Determine health status
+            current_delta = trade.get("current_delta", 0.3)
+            dte_remaining = trade.get("dte_remaining", 30)
+            
+            health = "good"
+            if trade.get("status") == "assigned":
+                health = "critical"
+            elif current_delta >= 0.70 or dte_remaining <= 3:
+                health = "critical"
+            elif current_delta >= 0.50 or dte_remaining <= 7:
+                health = "warning"
+            
             summary.append({
-                "id": trade.get("id"),
+                "original_trade_id": trade.get("id"),
                 "symbol": trade.get("symbol"),
                 "status": trade.get("status"),
                 "leaps_strike": trade.get("leaps_strike", 0),
@@ -1444,23 +1468,27 @@ async def get_pmcc_summary(user: dict = Depends(get_current_user)):
                 "short_call_strike": trade.get("short_call_strike", 0),
                 "short_call_expiry": trade.get("short_call_expiry", ""),
                 "contracts": trade.get("contracts", 1),
-                "premium_collected": round(premium_collected, 2),
+                "total_premium_received": round(premium_collected, 2),
                 "income_ratio": round(income_ratio, 1),
                 "roll_count": trade.get("roll_count", 0),
+                "total_realized_pnl": round(trade.get("realized_pnl") or trade.get("final_pnl") or 0, 2),
                 "unrealized_pnl": round(trade.get("unrealized_pnl") or 0, 2),
-                "dte_remaining": trade.get("dte_remaining", 0),
+                "dte_remaining": dte_remaining,
+                "days_to_leaps_expiry": days_to_leaps_expiry,
                 "entry_date": trade.get("entry_date", ""),
+                "health": health,
                 # Assignment warning per spec
-                "assignment_risk": "HIGH" if trade.get("status") == "assigned" or (trade.get("current_delta", 0) >= 0.70) else "NORMAL"
+                "assignment_risk": "HIGH" if trade.get("status") == "assigned" or current_delta >= 0.70 else "NORMAL"
             })
     
     return {
         "overall": {
             "total_leaps_investment": round(total_leaps_cost, 2),
             "total_premium_income": round(total_premium, 2),
-            "avg_income_ratio": round(premium_ratio, 1),
+            "overall_income_ratio": round(premium_ratio, 1),
             "total_unrealized_pnl": round(unrealized_pnl, 2),
             "total_realized_pnl": round(realized_pnl, 2),
+            "total_pmcc_positions": len(pmcc_trades),
             "active_positions": len(active),
             "completed_positions": len(completed)
         },
