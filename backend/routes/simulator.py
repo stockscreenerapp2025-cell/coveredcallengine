@@ -1573,11 +1573,11 @@ async def get_performance_analytics(
             by_symbol[symbol] = {"trades": 0, "wins": 0, "total_pnl": 0, "open": 0}
         by_symbol[symbol]["trades"] += 1
         
-        if t.get("status") in ["open", "rolled"]:
+        if t.get("status") in ["open", "rolled", "active"]:
             by_symbol[symbol]["open"] += 1
-            by_symbol[symbol]["total_pnl"] += t.get("unrealized_pnl", 0)
+            by_symbol[symbol]["total_pnl"] += (t.get("unrealized_pnl") or 0)
         else:
-            pnl = t.get("realized_pnl", 0) or t.get("final_pnl", 0)
+            pnl = (t.get("realized_pnl") or t.get("final_pnl") or 0)
             by_symbol[symbol]["total_pnl"] += pnl
             if pnl > 0 or t.get("status") in ["assigned", "expired"]:
                 by_symbol[symbol]["wins"] += 1
