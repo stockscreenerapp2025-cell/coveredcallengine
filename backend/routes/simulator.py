@@ -1596,9 +1596,9 @@ async def get_performance_analytics(
         strategy_open = [t for t in strategy_trades if t.get("status") in ["open", "rolled"]]
         
         if strategy_trades:
-            strategy_pnl = sum(t.get("realized_pnl", 0) or t.get("final_pnl", 0) for t in strategy_completed)
-            strategy_unrealized = sum(t.get("unrealized_pnl", 0) for t in strategy_open)
-            strategy_wins = len([t for t in strategy_completed if (t.get("realized_pnl", 0) or t.get("final_pnl", 0)) > 0 or t.get("status") in ["assigned", "expired"]])
+            strategy_pnl = sum((t.get("realized_pnl") or t.get("final_pnl") or 0) for t in strategy_completed)
+            strategy_unrealized = sum((t.get("unrealized_pnl") or 0) for t in strategy_open)
+            strategy_wins = len([t for t in strategy_completed if (t.get("realized_pnl") or t.get("final_pnl") or 0) > 0 or t.get("status") in ["assigned", "expired"]])
             
             by_strategy[strategy] = {
                 "total": len(strategy_trades),
