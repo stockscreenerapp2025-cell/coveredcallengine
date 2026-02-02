@@ -46,6 +46,7 @@ import {
   PlayCircle,
   History,
   ShieldCheck,
+  ShieldAlert,
   AlertTriangle,
   CheckCircle2,
   LineChart,
