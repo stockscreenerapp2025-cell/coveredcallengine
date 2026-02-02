@@ -164,9 +164,9 @@ const PMCC = () => {
       long_call: longCall,  // Preserve nested object
       leaps_dte: leapsDte,
       leaps_strike: leapsStrike,
-      leaps_premium: leapsAsk,
-      leaps_ask: leapsAsk,
-      leaps_cost: leapsCost,
+      leaps_premium: leapsPremium,  // Per-share price for display
+      leaps_ask: leapsPremium,      // Same as leaps_premium (per-share)
+      leaps_cost: leapsCost,        // Total cost (per-share × 100)
       leaps_delta: leapsDelta,
       leaps_expiry: leapsExpiry,
       leaps_oi: leapsOi,
