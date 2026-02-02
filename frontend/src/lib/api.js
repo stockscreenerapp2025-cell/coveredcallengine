@@ -194,6 +194,16 @@ export const simulatorApi = {
     if (params.timeframe) queryParams.append('timeframe', params.timeframe);
     return api.get(`/simulator/analytics/performance?${queryParams.toString()}`);
   },
+  
+  // Analyzer (3-Row Structure)
+  getAnalyzerMetrics: (params = {}) => {
+    const queryParams = new URLSearchParams();
+    if (params.strategy) queryParams.append('strategy', params.strategy);
+    if (params.symbol) queryParams.append('symbol', params.symbol);
+    if (params.time_period) queryParams.append('time_period', params.time_period);
+    return api.get(`/simulator/analyzer?${queryParams.toString()}`);
+  },
+  
   getScannerComparison: () => api.get('/simulator/analytics/scanner-comparison'),
   getOptimalSettings: (strategy = 'covered_call') => 
     api.get(`/simulator/analytics/optimal-settings?strategy=${strategy}`),
