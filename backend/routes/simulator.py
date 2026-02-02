@@ -5,6 +5,21 @@ Designed for forward-running simulation of covered call and PMCC strategies
 DATA FETCHING RULES:
 - Rule #2: Simulator and Watchlist use LIVE intraday prices (regularMarketPrice)
 - This ensures accurate P&L tracking during market hours
+
+TRADE LIFECYCLE MODEL:
+Covered Call (CC):
+  - OPEN: Call sold, position active
+  - EXPIRED: Call expires OTM (win)
+  - ASSIGNED: Shares called away (win for CC, loss risk for PMCC)
+  - CLOSED: Manually closed or finalized
+
+PMCC:
+  - OPEN: Long LEAPS + short call active
+  - ROLLED: Short call closed and replaced with new short call
+  - ASSIGNED: Short call assigned (BAD - avoid this!)
+  - CLOSED: PMCC fully exited
+
+CRITICAL RULE: ASSIGNED = CLOSED for analytics/reporting purposes
 """
 from fastapi import APIRouter, Depends, Query, HTTPException
 from pydantic import BaseModel
@@ -25,6 +40,12 @@ from utils.auth import get_current_user
 from services.data_provider import fetch_live_stock_quote
 
 simulator_router = APIRouter(tags=["Simulator"])
+
+# Valid lifecycle statuses
+CC_STATUSES = ["open", "expired", "assigned", "closed"]
+PMCC_STATUSES = ["open", "rolled", "assigned", "closed"]
+ALL_STATUSES = ["open", "rolled", "expired", "assigned", "closed"]
+COMPLETED_STATUSES = ["expired", "assigned", "closed"]  # For analytics - ASSIGNED = CLOSED
 
 
 # ==================== BLACK-SCHOLES CALCULATIONS ====================
