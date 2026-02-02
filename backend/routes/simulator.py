@@ -1404,7 +1404,7 @@ async def get_pmcc_summary(user: dict = Depends(get_current_user)):
             "unrealized_pnl": 0
         }
     
-    active = [t for t in pmcc_trades if t.get("status") in ["open", "rolled"]]
+    active = [t for t in pmcc_trades if t.get("status") in ["open", "rolled", "active"]]
     completed = [t for t in pmcc_trades if t.get("status") in ["closed", "expired", "assigned"]]
     
     total_leaps_cost = sum((t.get("leaps_premium", 0) * 100 * t.get("contracts", 1)) for t in pmcc_trades)
