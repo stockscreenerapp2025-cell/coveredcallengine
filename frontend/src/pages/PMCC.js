@@ -902,9 +902,6 @@ const PMCC = () => {
                         // Normalize data from both custom API and pre-computed API
                         const norm = normalizeOpp(opp);
                         
-                        // Calculate premium per share for display
-                        const leapsPremiumPerShare = norm.leaps_cost ? (norm.leaps_cost / 100).toFixed(2) : norm.leaps_premium?.toFixed(2) || '-';
-                        
                         return (
                           <tr 
                             key={index} 
@@ -925,7 +922,7 @@ const PMCC = () => {
                                 <span className="text-sm text-zinc-300 font-medium">δ{norm.leaps_delta?.toFixed(2) || '-'} <span className="text-zinc-500">|</span> {norm.leaps_dte}d</span>
                               </div>
                             </td>
-                            <td className="text-cyan-400 font-mono">${leapsPremiumPerShare}</td>
+                            <td className="text-cyan-400 font-mono">${norm.leaps_premium?.toFixed(2) || '-'}</td>
                             <td className="text-red-400 font-mono">${norm.leaps_cost?.toLocaleString()}</td>
                             <td>
                               <div className="flex flex-col">
