@@ -1664,27 +1664,53 @@ async def get_performance_analytics(
                 "win_rate": round(stats["wins"] / stats["trades"] * 100, 1)
             })
     
+    # Convert by_symbol dict to list format for frontend charts
+    by_symbol_list = [
+        {
+            "symbol": symbol,
+            "trades": data["trades"],
+            "wins": data["wins"],
+            "total_pnl": data["total_pnl"],
+            "open": data["open"],
+            "win_rate": data["win_rate"]
+        }
+        for symbol, data in sorted(by_symbol.items(), key=lambda x: x[1]["total_pnl"], reverse=True)[:10]
+    ]
+    
+    # Return in format expected by frontend
     return {
-        "total_trades": len(all_trades),
-        "open_trades": len(open_trades),
-        "completed_trades": len(completed_trades),
-        "win_rate": round(win_rate, 1),
-        "assignment_rate": round(assignment_rate, 1),
-        "avg_roi": round(avg_roi, 2),
-        "total_pnl": round(total_pnl, 2),
-        "realized_pnl": round(total_realized_pnl, 2),
-        "unrealized_pnl": round(total_unrealized_pnl, 2),
-        "avg_pnl": round(avg_pnl, 2),
-        "max_win": round(max(completed_pnls), 2) if completed_pnls else 0,
-        "max_loss": round(min(completed_pnls), 2) if completed_pnls else 0,
-        "avg_holding_days": round(avg_holding, 1),
-        "capital_efficiency": round(capital_efficiency, 2),
-        "profit_factor": round(abs(sum(winners)) / abs(sum(losers)), 2) if losers and sum(losers) != 0 else 0,
-        "by_close_reason": by_reason,
-        "by_symbol": dict(sorted(by_symbol.items(), key=lambda x: x[1]["total_pnl"], reverse=True)[:10]),
-        "by_strategy": by_strategy,
-        "monthly_breakdown": monthly_list,
-        "scan_parameter_analysis": sorted(param_analysis, key=lambda x: x["avg_pnl"], reverse=True)
+        "analytics": {
+            "overall": {
+                "total_trades": len(all_trades),
+                "open_trades": len(open_trades),
+                "completed_trades": len(completed_trades),
+                "win_rate": round(win_rate, 1),
+                "assignment_rate": round(assignment_rate, 1),
+                "roi": round(avg_roi, 2),
+                "total_pnl": round(total_pnl, 2),
+                "realized_pnl": round(total_realized_pnl, 2),
+                "unrealized_pnl": round(total_unrealized_pnl, 2),
+                "avg_pnl": round(avg_pnl, 2),
+                "avg_win": round(max(completed_pnls), 2) if completed_pnls else 0,
+                "avg_loss": round(min(completed_pnls), 2) if completed_pnls else 0,
+                "avg_holding_days": round(avg_holding, 1),
+                "capital_efficiency": round(capital_efficiency, 2),
+                "profit_factor": round(abs(sum(winners)) / abs(sum(losers)), 2) if losers and sum(losers) != 0 else 0,
+            },
+            "by_close_reason": by_reason,
+            "by_symbol": by_symbol_list,
+            "by_strategy": by_strategy,
+            "by_delta": [],  # Placeholder for future delta bucketing
+            "by_dte": [],    # Placeholder for future DTE bucketing  
+            "by_outcome": [
+                {"name": "Expired", "count": len([t for t in completed_trades if t.get("status") == "expired"]), "pnl": sum((t.get("realized_pnl") or t.get("final_pnl") or 0) for t in completed_trades if t.get("status") == "expired")},
+                {"name": "Assigned", "count": len([t for t in completed_trades if t.get("status") == "assigned"]), "pnl": sum((t.get("realized_pnl") or t.get("final_pnl") or 0) for t in completed_trades if t.get("status") == "assigned")},
+                {"name": "Closed", "count": len([t for t in completed_trades if t.get("status") == "closed"]), "pnl": sum((t.get("realized_pnl") or t.get("final_pnl") or 0) for t in completed_trades if t.get("status") == "closed")},
+            ],
+            "monthly_breakdown": monthly_list,
+            "scan_parameter_analysis": sorted(param_analysis, key=lambda x: x["avg_pnl"], reverse=True)
+        },
+        "recommendations": []  # Placeholder for AI recommendations
     }
 
 
