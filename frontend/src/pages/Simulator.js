@@ -195,6 +195,7 @@ const Simulator = () => {
       fetchPMCCSummary();
     } else if (activeTab === 'analytics') {
       fetchAnalytics();
+      fetchAnalyzerData();
       fetchOptimalSettings();
       fetchProfiles();
     }
