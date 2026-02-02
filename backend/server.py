@@ -1005,7 +1005,7 @@ async def scheduled_price_update():
     
     try:
         # Get all active trades across all users
-        active_trades = await db.simulator_trades.find({"status": "active"}).to_list(10000)
+        active_trades = await db.simulator_trades.find({"status": {"$in": ["open", "rolled"]}}).to_list(10000)
         
         if not active_trades:
             logging.info("No active simulator trades to update")
