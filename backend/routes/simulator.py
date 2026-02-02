@@ -1593,7 +1593,7 @@ async def get_performance_analytics(
     for strategy in ["covered_call", "pmcc"]:
         strategy_trades = [t for t in all_trades if t.get("strategy_type") == strategy]
         strategy_completed = [t for t in strategy_trades if t.get("status") in ["closed", "expired", "assigned"]]
-        strategy_open = [t for t in strategy_trades if t.get("status") in ["open", "rolled"]]
+        strategy_open = [t for t in strategy_trades if t.get("status") in ["open", "rolled", "active"]]
         
         if strategy_trades:
             strategy_pnl = sum((t.get("realized_pnl") or t.get("final_pnl") or 0) for t in strategy_completed)
