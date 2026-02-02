@@ -148,6 +148,11 @@ const Simulator = () => {
   const [newProfileName, setNewProfileName] = useState('');
   const [savingProfile, setSavingProfile] = useState(false);
   
+  // Analyzer state (3-Row Structure)
+  const [analyzerData, setAnalyzerData] = useState(null);
+  const [analyzerLoading, setAnalyzerLoading] = useState(false);
+  const [analyzerSymbol, setAnalyzerSymbol] = useState('');
+  
   // Filters
   const [statusFilter, setStatusFilter] = useState('');
   const [strategyFilter, setStrategyFilter] = useState('');
