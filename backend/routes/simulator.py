@@ -1995,6 +1995,312 @@ async def get_performance_analytics(
     }
 
 
+# ==================== ANALYZER ENDPOINT (3-Row Structure) ====================
+
+@simulator_router.get("/analyzer")
+async def get_analyzer_metrics(
+    strategy: Optional[str] = Query(None, description="Filter by strategy: covered_call, pmcc"),
+    symbol: Optional[str] = Query(None, description="Filter by symbol"),
+    time_period: str = Query("all", description="all, 30d, 90d, 1y"),
+    user: dict = Depends(get_current_user)
+):
+    """
+    Analyzer Page - Fixed 3-Row Structure with Scope-Aware Metrics
+    
+    CORE DESIGN PRINCIPLE:
+    The Analyzer always renders three rows in the same order:
+    - Row 1: Outcome (What did I make?)
+    - Row 2: Risk & Capital (How much pain did I take?)
+    - Row 3: Strategy Health (Is the logic working?)
+    
+    SCOPE MODEL:
+    - Portfolio Scope: All symbols + all strategies (default)
+    - Strategy Scope: All symbols + single strategy (CC or PMCC)
+    - Symbol Scope: Single symbol + single strategy
+    """
+    
+    # Build query based on scope
+    query = {"user_id": user["id"]}
+    
+    if strategy:
+        query["strategy_type"] = strategy
+    if symbol:
+        query["symbol"] = symbol.upper()
+    
+    all_trades = await db.simulator_trades.find(query, {"_id": 0}).to_list(10000)
+    
+    if not all_trades:
+        return {
+            "scope": {
+                "type": "portfolio" if not strategy and not symbol else "strategy" if not symbol else "symbol",
+                "strategy": strategy,
+                "symbol": symbol
+            },
+            "row1_outcome": {
+                "total_pnl": 0,
+                "win_rate": 0,
+                "roi": 0,
+                "avg_win": 0,
+                "avg_loss": 0,
+                "expectancy": 0,
+                "max_drawdown": 0,
+                "time_weighted_return": 0
+            },
+            "row2_risk_capital": {
+                "peak_capital_at_risk": 0,
+                "avg_capital_per_trade": 0,
+                "worst_case_loss": 0,
+                "assignment_exposure_cc": 0,
+                "assignment_exposure_pmcc": 0
+            },
+            "row3_strategy_health": {
+                "strategies": [],
+                "strategy_distribution": [],
+                "pnl_by_strategy": []
+            }
+        }
+    
+    # Apply time filter
+    if time_period != "all":
+        days_map = {"30d": 30, "90d": 90, "1y": 365}
+        days = days_map.get(time_period, 365)
+        cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).strftime("%Y-%m-%d")
+        all_trades = [t for t in all_trades if t.get("entry_date", "") >= cutoff]
+    
+    if not all_trades:
+        return {"scope": {"type": "portfolio"}, "row1_outcome": {}, "row2_risk_capital": {}, "row3_strategy_health": {}}
+    
+    # Separate open vs completed trades
+    open_trades = [t for t in all_trades if t.get("status") in ["open", "rolled", "active"]]
+    completed_trades = [t for t in all_trades if t.get("status") in ["closed", "expired", "assigned"]]
+    
+    # ==================== ROW 1: OUTCOME ====================
+    # Question: What did I make?
+    
+    completed_pnls = [(t.get("realized_pnl") or t.get("final_pnl") or 0) for t in completed_trades]
+    total_pnl = sum(completed_pnls)
+    
+    # Win rate calculation
+    winners = []
+    losers = []
+    for t in completed_trades:
+        pnl = (t.get("realized_pnl") or t.get("final_pnl") or 0)
+        if pnl > 0 or t.get("status") in ["assigned", "expired"]:
+            winners.append(pnl)
+        elif pnl < 0:
+            losers.append(pnl)
+    
+    win_rate = (len(winners) / len(completed_trades) * 100) if completed_trades else 0
+    avg_win = (sum(w for w in winners if w > 0) / len([w for w in winners if w > 0])) if [w for w in winners if w > 0] else 0
+    avg_loss = (sum(losers) / len(losers)) if losers else 0
+    
+    # ROI calculation
+    total_capital = sum(t.get("capital_deployed", 0) for t in completed_trades)
+    roi = (total_pnl / total_capital * 100) if total_capital > 0 else 0
+    
+    # NEW: Expectancy = (Win% × Avg Win) – (Loss% × Avg Loss)
+    win_pct = len(winners) / len(completed_trades) if completed_trades else 0
+    loss_pct = len(losers) / len(completed_trades) if completed_trades else 0
+    expectancy = (win_pct * abs(avg_win)) - (loss_pct * abs(avg_loss)) if completed_trades else 0
+    
+    # NEW: Maximum Drawdown (peak-to-trough)
+    cumulative_pnl = []
+    running_total = 0
+    for t in sorted(completed_trades, key=lambda x: x.get("close_date", "")):
+        running_total += (t.get("realized_pnl") or t.get("final_pnl") or 0)
+        cumulative_pnl.append(running_total)
+    
+    max_drawdown = 0
+    peak = 0
+    for pnl in cumulative_pnl:
+        if pnl > peak:
+            peak = pnl
+        drawdown = peak - pnl
+        if drawdown > max_drawdown:
+            max_drawdown = drawdown
+    
+    # NEW: Time-Weighted Return (simple approximation)
+    total_holding_days = 0
+    weighted_returns = 0
+    for t in completed_trades:
+        if t.get("entry_date") and t.get("close_date"):
+            try:
+                entry = datetime.strptime(t["entry_date"], "%Y-%m-%d")
+                close = datetime.strptime(t["close_date"], "%Y-%m-%d")
+                days = max((close - entry).days, 1)
+                pnl = (t.get("realized_pnl") or t.get("final_pnl") or 0)
+                capital = t.get("capital_deployed", 1)
+                if capital > 0:
+                    weighted_returns += (pnl / capital) * days
+                    total_holding_days += days
+            except:
+                pass
+    
+    twr = (weighted_returns / total_holding_days * 365 * 100) if total_holding_days > 0 else 0  # Annualized
+    
+    row1_outcome = {
+        "total_pnl": round(total_pnl, 2),
+        "win_rate": round(win_rate, 1),
+        "roi": round(roi, 2),
+        "avg_win": round(avg_win, 2),
+        "avg_loss": round(avg_loss, 2),
+        "expectancy": round(expectancy, 2),
+        "expectancy_tooltip": "Expected profit per trade if conditions repeat",
+        "max_drawdown": round(max_drawdown, 2),
+        "time_weighted_return": round(twr, 2),
+        "twr_tooltip": "Annualized return adjusted for time in market",
+        "total_trades": len(all_trades),
+        "open_trades": len(open_trades),
+        "completed_trades": len(completed_trades)
+    }
+    
+    # ==================== ROW 2: RISK & CAPITAL ====================
+    # Question: How much pain did I take to earn it?
+    
+    # Peak Capital at Risk (maximum simultaneous capital deployed)
+    # For simplicity, we'll use max capital from any single trade or sum of open positions
+    max_single_capital = max((t.get("capital_deployed", 0) for t in all_trades), default=0)
+    total_open_capital = sum(t.get("capital_deployed", 0) for t in open_trades)
+    peak_capital = max(max_single_capital, total_open_capital)
+    
+    # Average Capital per Trade
+    avg_capital = sum(t.get("capital_deployed", 0) for t in all_trades) / len(all_trades) if all_trades else 0
+    
+    # Worst-Case Loss (Theoretical) - Strategy specific
+    worst_case_cc = 0
+    worst_case_pmcc = 0
+    
+    for t in open_trades:
+        if t.get("strategy_type") == "covered_call":
+            # CC worst case: Stock to zero minus premium received
+            stock_value = t.get("entry_underlying_price", 0) * t.get("shares", 100)
+            premium = t.get("premium_received", 0)
+            worst_case_cc += stock_value - premium
+        elif t.get("strategy_type") == "pmcc":
+            # PMCC worst case: Long LEAPS premium minus short call premium
+            leaps_cost = t.get("leaps_premium", 0) * 100 * t.get("contracts", 1)
+            short_premium = t.get("premium_received", 0)
+            worst_case_pmcc += leaps_cost - short_premium
+    
+    # Use the appropriate worst case based on scope
+    if strategy == "covered_call":
+        worst_case_loss = worst_case_cc
+    elif strategy == "pmcc":
+        worst_case_loss = worst_case_pmcc
+    else:
+        worst_case_loss = worst_case_cc + worst_case_pmcc
+    
+    # Assignment Exposure % (separate for CC and PMCC)
+    cc_trades = [t for t in open_trades if t.get("strategy_type") == "covered_call"]
+    pmcc_trades = [t for t in open_trades if t.get("strategy_type") == "pmcc"]
+    
+    # Calculate assignment risk based on delta
+    cc_at_risk = len([t for t in cc_trades if t.get("current_delta", 0) >= 0.50])
+    pmcc_at_risk = len([t for t in pmcc_trades if t.get("current_delta", 0) >= 0.50])
+    
+    assignment_exposure_cc = (cc_at_risk / len(cc_trades) * 100) if cc_trades else 0
+    assignment_exposure_pmcc = (pmcc_at_risk / len(pmcc_trades) * 100) if pmcc_trades else 0
+    
+    row2_risk_capital = {
+        "peak_capital_at_risk": round(peak_capital, 2),
+        "avg_capital_per_trade": round(avg_capital, 2),
+        "worst_case_loss": round(worst_case_loss, 2),
+        "worst_case_loss_tooltip": "Theoretical max loss if stock goes to zero (CC) or LEAPS expires worthless (PMCC)",
+        "assignment_exposure_cc": round(assignment_exposure_cc, 1),
+        "assignment_exposure_pmcc": round(assignment_exposure_pmcc, 1),
+        "cc_positions_at_risk": cc_at_risk,
+        "pmcc_positions_at_risk": pmcc_at_risk,
+        "total_open_positions": len(open_trades)
+    }
+    
+    # ==================== ROW 3: STRATEGY HEALTH ====================
+    # Question: Is the logic actually working?
+    
+    strategies_health = []
+    for strat in ["covered_call", "pmcc"]:
+        strat_trades = [t for t in all_trades if t.get("strategy_type") == strat]
+        strat_completed = [t for t in strat_trades if t.get("status") in ["closed", "expired", "assigned"]]
+        strat_open = [t for t in strat_trades if t.get("status") in ["open", "rolled", "active"]]
+        
+        if not strat_trades:
+            continue
+        
+        # Win Rate by Strategy
+        strat_winners = [t for t in strat_completed if (t.get("realized_pnl") or t.get("final_pnl") or 0) > 0 or t.get("status") in ["assigned", "expired"]]
+        strat_win_rate = (len(strat_winners) / len(strat_completed) * 100) if strat_completed else 0
+        
+        # Average Hold Time
+        hold_times = []
+        for t in strat_completed:
+            if t.get("entry_date") and t.get("close_date"):
+                try:
+                    entry = datetime.strptime(t["entry_date"], "%Y-%m-%d")
+                    close = datetime.strptime(t["close_date"], "%Y-%m-%d")
+                    hold_times.append((close - entry).days)
+                except:
+                    pass
+        avg_hold = sum(hold_times) / len(hold_times) if hold_times else 0
+        
+        # Profit Factor = Gross Winning P/L / Gross Losing P/L
+        gross_wins = sum((t.get("realized_pnl") or t.get("final_pnl") or 0) for t in strat_completed if (t.get("realized_pnl") or t.get("final_pnl") or 0) > 0)
+        gross_losses = abs(sum((t.get("realized_pnl") or t.get("final_pnl") or 0) for t in strat_completed if (t.get("realized_pnl") or t.get("final_pnl") or 0) < 0))
+        profit_factor = (gross_wins / gross_losses) if gross_losses > 0 else (99.99 if gross_wins > 0 else 0)
+        
+        # Total P/L for strategy
+        strat_pnl = sum((t.get("realized_pnl") or t.get("final_pnl") or 0) for t in strat_completed)
+        strat_unrealized = sum((t.get("unrealized_pnl") or 0) for t in strat_open)
+        
+        strategies_health.append({
+            "strategy": strat,
+            "strategy_label": "Covered Call" if strat == "covered_call" else "PMCC",
+            "total_trades": len(strat_trades),
+            "open_trades": len(strat_open),
+            "completed_trades": len(strat_completed),
+            "win_rate": round(strat_win_rate, 1),
+            "avg_hold_days": round(avg_hold, 1),
+            "profit_factor": round(profit_factor, 2),
+            "profit_factor_status": "good" if profit_factor >= 1.5 else "neutral" if profit_factor >= 1 else "caution",
+            "realized_pnl": round(strat_pnl, 2),
+            "unrealized_pnl": round(strat_unrealized, 2)
+        })
+    
+    # Strategy Distribution for charts
+    strategy_distribution = [
+        {"name": s["strategy_label"], "value": s["total_trades"]}
+        for s in strategies_health
+    ]
+    
+    pnl_by_strategy = [
+        {"name": s["strategy_label"], "realized": s["realized_pnl"], "unrealized": s["unrealized_pnl"]}
+        for s in strategies_health
+    ]
+    
+    row3_strategy_health = {
+        "strategies": strategies_health,
+        "strategy_distribution": strategy_distribution,
+        "pnl_by_strategy": pnl_by_strategy
+    }
+    
+    # Determine scope type
+    scope_type = "portfolio"
+    if symbol:
+        scope_type = "symbol"
+    elif strategy:
+        scope_type = "strategy"
+    
+    return {
+        "scope": {
+            "type": scope_type,
+            "strategy": strategy,
+            "symbol": symbol,
+            "time_period": time_period
+        },
+        "row1_outcome": row1_outcome,
+        "row2_risk_capital": row2_risk_capital,
+        "row3_strategy_health": row3_strategy_health
+    }
+
+
 @simulator_router.get("/analytics/scanner-comparison")
 async def get_scanner_comparison(user: dict = Depends(get_current_user)):
     """Compare performance across different scanner parameter sets"""
