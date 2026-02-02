@@ -1457,6 +1457,17 @@ async def get_pmcc_summary(user: dict = Depends(get_current_user)):
             elif current_delta >= 0.50 or dte_remaining <= 7:
                 health = "warning"
             
+            # Estimate LEAPS decay - rough approximation based on time decay
+            # Typically options lose ~1/3 of their time value in the last 30 days
+            if days_to_leaps_expiry > 0:
+                days_elapsed = (now - datetime.strptime(trade.get("entry_date", now.strftime("%Y-%m-%d")), "%Y-%m-%d")).days
+                total_days = days_elapsed + days_to_leaps_expiry
+                # Rough estimate: decay accelerates toward expiry
+                decay_factor = days_elapsed / total_days if total_days > 0 else 0
+                estimated_leaps_decay_pct = decay_factor * 100 * 0.5  # Assume 50% max time decay over life
+            else:
+                estimated_leaps_decay_pct = 50  # Expired
+            
             summary.append({
                 "original_trade_id": trade.get("id"),
                 "symbol": trade.get("symbol"),
@@ -1470,6 +1481,8 @@ async def get_pmcc_summary(user: dict = Depends(get_current_user)):
                 "contracts": trade.get("contracts", 1),
                 "total_premium_received": round(premium_collected, 2),
                 "income_ratio": round(income_ratio, 1),
+                "income_to_cost_ratio": round(income_ratio, 1),  # Alias for frontend
+                "estimated_leaps_decay_pct": round(estimated_leaps_decay_pct, 1),
                 "roll_count": trade.get("roll_count", 0),
                 "total_realized_pnl": round(trade.get("realized_pnl") or trade.get("final_pnl") or 0, 2),
                 "unrealized_pnl": round(trade.get("unrealized_pnl") or 0, 2),
