@@ -1481,7 +1481,8 @@ async def get_performance_analytics(
         }
     
     # Separate open vs completed trades
-    open_trades = [t for t in all_trades if t.get("status") in ["open", "rolled"]]
+    # Include "active" for backward compatibility with existing data
+    open_trades = [t for t in all_trades if t.get("status") in ["open", "rolled", "active"]]
     # CRITICAL: "assigned" counts as CLOSED for analytics (per spec)
     completed_trades = [t for t in all_trades if t.get("status") in ["closed", "expired", "assigned"]]
     
