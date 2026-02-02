@@ -1384,7 +1384,16 @@ async def get_action_logs(
 
 @simulator_router.get("/pmcc-summary")
 async def get_pmcc_summary(user: dict = Depends(get_current_user)):
-    """Get PMCC-specific summary statistics"""
+    """
+    Get PMCC-specific summary statistics.
+    
+    PMCC Tracker Purpose (per spec):
+    - Track cumulative premium income vs LEAPS decay
+    - Show PMCC trades in OPEN, ROLLED, ASSIGNED status
+    - Monitor downside protection status
+    
+    Response format matches frontend expectations.
+    """
     
     pmcc_trades = await db.simulator_trades.find(
         {"user_id": user["id"], "strategy_type": "pmcc"},
@@ -1393,38 +1402,69 @@ async def get_pmcc_summary(user: dict = Depends(get_current_user)):
     
     if not pmcc_trades:
         return {
-            "total_pmcc_trades": 0,
-            "active_trades": 0,
-            "completed_trades": 0,
-            "total_leaps_cost": 0,
-            "total_premium_collected": 0,
-            "premium_to_cost_ratio": 0,
-            "avg_rolls_per_position": 0,
-            "realized_pnl": 0,
-            "unrealized_pnl": 0
+            "overall": {
+                "total_leaps_investment": 0,
+                "total_premium_income": 0,
+                "avg_income_ratio": 0,
+                "total_unrealized_pnl": 0
+            },
+            "summary": []
         }
     
+    # Active includes OPEN, ROLLED, and legacy ACTIVE status (per spec visibility rules)
     active = [t for t in pmcc_trades if t.get("status") in ["open", "rolled", "active"]]
     completed = [t for t in pmcc_trades if t.get("status") in ["closed", "expired", "assigned"]]
     
+    # Overall stats
     total_leaps_cost = sum((t.get("leaps_premium", 0) * 100 * t.get("contracts", 1)) for t in pmcc_trades)
-    total_premium = sum(t.get("premium_received", 0) for t in pmcc_trades)
+    total_premium = sum((t.get("premium_received") or 0) for t in pmcc_trades)
     
     premium_ratio = (total_premium / total_leaps_cost * 100) if total_leaps_cost > 0 else 0
     
     realized_pnl = sum((t.get("realized_pnl") or t.get("final_pnl") or 0) for t in completed)
     unrealized_pnl = sum((t.get("unrealized_pnl") or 0) for t in active)
     
+    # Build per-position summary array for the frontend
+    # This should show OPEN, ROLLED, and ASSIGNED trades (per spec)
+    summary = []
+    for trade in pmcc_trades:
+        if trade.get("status") in ["open", "rolled", "active", "assigned"]:  # Show all except closed/expired
+            leaps_cost = (trade.get("leaps_premium", 0) * 100 * trade.get("contracts", 1))
+            premium_collected = trade.get("premium_received", 0) or 0
+            income_ratio = (premium_collected / leaps_cost * 100) if leaps_cost > 0 else 0
+            
+            summary.append({
+                "id": trade.get("id"),
+                "symbol": trade.get("symbol"),
+                "status": trade.get("status"),
+                "leaps_strike": trade.get("leaps_strike", 0),
+                "leaps_expiry": trade.get("leaps_expiry", ""),
+                "leaps_cost": round(leaps_cost, 2),
+                "leaps_current_value": trade.get("current_leaps_value", leaps_cost),
+                "short_call_strike": trade.get("short_call_strike", 0),
+                "short_call_expiry": trade.get("short_call_expiry", ""),
+                "contracts": trade.get("contracts", 1),
+                "premium_collected": round(premium_collected, 2),
+                "income_ratio": round(income_ratio, 1),
+                "roll_count": trade.get("roll_count", 0),
+                "unrealized_pnl": round(trade.get("unrealized_pnl") or 0, 2),
+                "dte_remaining": trade.get("dte_remaining", 0),
+                "entry_date": trade.get("entry_date", ""),
+                # Assignment warning per spec
+                "assignment_risk": "HIGH" if trade.get("status") == "assigned" or (trade.get("current_delta", 0) >= 0.70) else "NORMAL"
+            })
+    
     return {
-        "total_pmcc_trades": len(pmcc_trades),
-        "active_trades": len(active),
-        "completed_trades": len(completed),
-        "total_leaps_cost": round(total_leaps_cost, 2),
-        "total_premium_collected": round(total_premium, 2),
-        "premium_to_cost_ratio": round(premium_ratio, 1),
-        "avg_rolls_per_position": 0,  # Would need roll tracking
-        "realized_pnl": round(realized_pnl, 2),
-        "unrealized_pnl": round(unrealized_pnl, 2)
+        "overall": {
+            "total_leaps_investment": round(total_leaps_cost, 2),
+            "total_premium_income": round(total_premium, 2),
+            "avg_income_ratio": round(premium_ratio, 1),
+            "total_unrealized_pnl": round(unrealized_pnl, 2),
+            "total_realized_pnl": round(realized_pnl, 2),
+            "active_positions": len(active),
+            "completed_positions": len(completed)
+        },
+        "summary": summary
     }
 
 
