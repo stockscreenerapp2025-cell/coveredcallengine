@@ -1707,9 +1707,9 @@ async def get_performance_analytics(
             "by_delta": [],  # Placeholder for future delta bucketing
             "by_dte": [],    # Placeholder for future DTE bucketing  
             "by_outcome": [
-                {"name": "Expired", "count": len([t for t in completed_trades if t.get("status") == "expired"]), "pnl": sum((t.get("realized_pnl") or t.get("final_pnl") or 0) for t in completed_trades if t.get("status") == "expired")},
-                {"name": "Assigned", "count": len([t for t in completed_trades if t.get("status") == "assigned"]), "pnl": sum((t.get("realized_pnl") or t.get("final_pnl") or 0) for t in completed_trades if t.get("status") == "assigned")},
-                {"name": "Closed", "count": len([t for t in completed_trades if t.get("status") == "closed"]), "pnl": sum((t.get("realized_pnl") or t.get("final_pnl") or 0) for t in completed_trades if t.get("status") == "closed")},
+                {"outcome": "expired", "count": len([t for t in completed_trades if t.get("status") == "expired"]), "total_pnl": sum((t.get("realized_pnl") or t.get("final_pnl") or 0) for t in completed_trades if t.get("status") == "expired")},
+                {"outcome": "assigned", "count": len([t for t in completed_trades if t.get("status") == "assigned"]), "total_pnl": sum((t.get("realized_pnl") or t.get("final_pnl") or 0) for t in completed_trades if t.get("status") == "assigned")},
+                {"outcome": "early_close", "count": len([t for t in completed_trades if t.get("status") == "closed"]), "total_pnl": sum((t.get("realized_pnl") or t.get("final_pnl") or 0) for t in completed_trades if t.get("status") == "closed")},
             ],
             "monthly_breakdown": monthly_list,
             "scan_parameter_analysis": sorted(param_analysis, key=lambda x: x["avg_pnl"], reverse=True)
