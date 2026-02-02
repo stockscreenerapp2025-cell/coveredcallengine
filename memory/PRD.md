@@ -194,6 +194,72 @@ Since the data is parsed and stored in the database, existing users must **re-up
 
 ---
 
+## Simulator Page - Trade Lifecycle Model - COMPLETED 2026-02-02
+
+### Trade Lifecycle States (Foundational Fix)
+
+**Problem:** Analytics and PMCC Tracker pages were blank because:
+1. Analytics only queried CLOSED trades, ignoring OPEN/ASSIGNED/EXPIRED
+2. PMCC Tracker incorrectly depended on "closed only" trades
+3. Status values were inconsistent
+
+**Fix:** Explicit lifecycle states now drive visibility, analytics, and strategy logic.
+
+**Covered Call (CC) Lifecycle:**
+| Status | Description |
+|--------|-------------|
+| `open` | Call sold, position active |
+| `expired` | Call expires OTM (WIN) |
+| `assigned` | Shares called away (WIN for CC) |
+| `closed` | Manually closed |
+
+**PMCC Lifecycle:**
+| Status | Description |
+|--------|-------------|
+| `open` | Long LEAPS + short call active |
+| `rolled` | Short call closed and replaced |
+| `assigned` | Short call assigned (BAD - avoid!) |
+| `closed` | PMCC fully exited |
+
+**Critical Rule: ASSIGNED = CLOSED for analytics**
+
+### Analytics Engine Fix
+- Analytics now includes: OPEN + EXPIRED + ASSIGNED trades (not just closed)
+- Win Rate calculation: Assignment = WIN, Expired OTM = WIN, Profitable close = WIN
+- New metrics: assignment_rate, capital_efficiency, profit_factor
+- Performance by Outcome section shows Expired/Assigned/Closed counts
+
+### PMCC Tracker Fix
+- Now displays: OPEN, ROLLED, ASSIGNED trades (not just closed)
+- Health status indicators: good/warning/critical
+- Income vs LEAPS Decay tracking with progress bars
+- Fields: income_to_cost_ratio, estimated_leaps_decay_pct
+
+### PMCC Roll Functionality (NEW)
+- `/api/simulator/trades/{trade_id}/roll` - Roll short call to new strike/expiry
+- `/api/simulator/trades/{trade_id}/roll-suggestions` - Get roll recommendations
+- Tracks roll_count, last_roll_date, total_premium_captured
+- Warning: "In PMCC, short call assignment should be AVOIDED"
+
+### Backward Compatibility
+- Existing trades with `active` status are handled alongside `open`
+- All filters include both: `["open", "rolled", "active"]`
+
+### Validation Evidence (2026-02-02)
+| Feature | Expected | Actual | Status |
+|---------|----------|--------|--------|
+| Trades Tab | 24 trades | 24 trades | ✅ PASS |
+| Analytics Tab | NOT blank | Shows data | ✅ PASS |
+| Total P/L | Shows value | $116,205 | ✅ PASS |
+| Win Rate | Includes assigned | 100% | ✅ PASS |
+| PMCC Tracker | NOT blank | 4/6 positions | ✅ PASS |
+| Health Status | Shows indicators | good/critical | ✅ PASS |
+| Test DAL | Expired | Expired | ✅ PASS |
+| Test INTC | Assigned | Assigned | ✅ PASS |
+| Test COP | Active | Active | ✅ PASS |
+
+---
+
 ## Key Files
 
 ### Data Provider (SINGLE SOURCE OF TRUTH)
