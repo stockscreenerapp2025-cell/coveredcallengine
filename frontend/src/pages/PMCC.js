@@ -105,9 +105,25 @@ const PMCC = () => {
     const leapsOi = longCall.open_interest || opp.leap_open_interest || opp.leaps_open_interest || 0;
     const leapsIv = longCall.implied_volatility || opp.leap_iv || opp.leaps_iv || 0;
     
-    // Cost: backend sends per-share, we need total (×100)
-    const rawLeapCost = opp.leap_cost || opp.leaps_cost || leapsAsk;
-    const leapsCost = rawLeapCost < 50 ? rawLeapCost * 100 : rawLeapCost; // Normalize to total
+    // Premium normalization:
+    // Pre-computed scans store long_premium as PER-SHARE (e.g., $86)
+    // Live scans may store leap_cost as TOTAL (e.g., $8600)
+    // We need both: leaps_premium (per-share for display) and leaps_cost (total for calculations)
+    const rawLeapCost = opp.leap_cost || opp.leaps_cost;
+    let leapsCost, leapsPremium;
+    
+    if (rawLeapCost && rawLeapCost >= 100) {
+      // If leap_cost exists and is >= 100, assume it's total cost
+      leapsCost = rawLeapCost;
+      leapsPremium = rawLeapCost / 100;
+    } else if (leapsAsk) {
+      // leapsAsk is always per-share from the backend
+      leapsPremium = leapsAsk;
+      leapsCost = leapsAsk * 100;
+    } else {
+      leapsPremium = 0;
+      leapsCost = 0;
+    }
     
     // Short call data - use nested object first, then flat fields
     const shortDelta = shortCall.delta || opp.short_delta || 0;
