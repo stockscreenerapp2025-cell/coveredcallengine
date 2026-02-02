@@ -1146,100 +1146,296 @@ async def get_trade_rules(
 
 @simulator_router.get("/rules/templates")
 async def get_rule_templates(user: dict = Depends(get_current_user)):
-    """Get pre-built rule templates"""
+    """
+    Get pre-built rule templates for Income Strategy Trade Management.
+    
+    CORE PRINCIPLE:
+    For CC and PMCC, loss is NOT managed via stop-loss.
+    Loss is managed via time, premium decay, rolling, and assignment logic.
+    
+    Categories:
+    - Premium Harvesting: Hold to expiry for max premium capture
+    - Expiry Management: OTM/ITM expiry handling
+    - Assignment Awareness: Alerts only (no forced actions)
+    - Rolling Rules: Core income logic (roll instead of close)
+    - PMCC-Specific: Short leg management
+    """
     
     templates = [
+        # ============ PREMIUM HARVESTING (No Early Close) ============
         {
-            "id": "profit_50",
-            "name": "50% Profit Target",
-            "description": "Close trade when 50% of max premium is captured",
-            "rule_type": "profit_target",
-            "conditions": [{"field": "premium_capture_pct", "operator": ">=", "value": 50}],
-            "action": "close",
-            "action_params": {"reason": "profit_target_50pct"},
-            "priority": 10
+            "id": "hold_to_expiry",
+            "name": "Hold to Expiry – Premium Capture",
+            "description": "Hold option until expiry to maximise premium capture and avoid brokerage costs",
+            "category": "premium_harvesting",
+            "rule_type": "income_strategy",
+            "conditions": [
+                {"field": "option_moneyness", "operator": "==", "value": "OTM"},
+                {"field": "dte_remaining", "operator": ">", "value": 0}
+            ],
+            "action": {"action_type": "hold", "reason": "premium_capture"},
+            "action_params": {"message": "Income strategy prefers expiry over early exit"},
+            "priority": 1,
+            "is_default": True,
+            "ui_hint": "Brokerage-aware strategy"
+        },
+        
+        # ============ EXPIRY-BASED DECISIONS (Primary Controls) ============
+        {
+            "id": "expiry_otm",
+            "name": "Expiry Management – OTM",
+            "description": "Allow option to expire worthless when out-of-the-money. Full premium realised.",
+            "category": "expiry_management",
+            "rule_type": "expiry",
+            "conditions": [
+                {"field": "dte_remaining", "operator": "==", "value": 0},
+                {"field": "option_moneyness", "operator": "==", "value": "OTM"}
+            ],
+            "action": {"action_type": "expire", "reason": "otm_expiry"},
+            "action_params": {"outcome": "expired", "message": "Option expired worthless - Full premium captured"},
+            "priority": 100,
+            "is_default": True
         },
         {
-            "id": "profit_75",
-            "name": "75% Profit Target",
-            "description": "Close trade when 75% of max premium is captured",
+            "id": "expiry_itm_assignment",
+            "name": "Expiry Management – ITM (Assignment Expected)",
+            "description": "Prepare for assignment when option finishes in-the-money. Assignment is a valid income outcome.",
+            "category": "expiry_management",
+            "rule_type": "expiry",
+            "conditions": [
+                {"field": "dte_remaining", "operator": "==", "value": 0},
+                {"field": "option_moneyness", "operator": "==", "value": "ITM"}
+            ],
+            "action": {"action_type": "assignment", "reason": "itm_assignment"},
+            "action_params": {"outcome": "assigned", "message": "Option assigned - executing assignment logic"},
+            "priority": 100,
+            "is_default": True,
+            "ui_hint": "Assignment is a valid income outcome"
+        },
+        
+        # ============ ASSIGNMENT AWARENESS (Alerts Only) ============
+        {
+            "id": "assignment_risk_alert",
+            "name": "Assignment Risk Alert",
+            "description": "Alert when short call is likely to be assigned. Consider rolling to avoid assignment.",
+            "category": "assignment_awareness",
+            "rule_type": "alert",
+            "conditions": [
+                {"field": "current_delta", "operator": ">=", "value": 0.70},
+                {"field": "dte_remaining", "operator": "<=", "value": 7}
+            ],
+            "action": {"action_type": "alert", "reason": "high_assignment_risk"},
+            "action_params": {"message": "High assignment probability detected. Consider rolling to avoid assignment.", "severity": "warning"},
+            "priority": 90,
+            "is_default": True,
+            "ui_hint": "Alert only - no forced action"
+        },
+        {
+            "id": "assignment_imminent_alert",
+            "name": "Assignment Imminent Alert",
+            "description": "Critical alert when assignment is very likely (deep ITM near expiry).",
+            "category": "assignment_awareness",
+            "rule_type": "alert",
+            "conditions": [
+                {"field": "current_delta", "operator": ">=", "value": 0.85},
+                {"field": "dte_remaining", "operator": "<=", "value": 3}
+            ],
+            "action": {"action_type": "alert", "reason": "assignment_imminent"},
+            "action_params": {"message": "CRITICAL: Assignment highly likely. Roll immediately or accept assignment.", "severity": "critical"},
+            "priority": 95,
+            "is_default": True
+        },
+        
+        # ============ ROLLING RULES (Core Income Logic) ============
+        {
+            "id": "roll_itm_near_expiry",
+            "name": "Roll Short Call – ITM Near Expiry",
+            "description": "Roll the short call forward to avoid assignment and continue income generation. Prefer same or higher strike with net credit.",
+            "category": "rolling",
+            "rule_type": "roll",
+            "conditions": [
+                {"field": "option_moneyness", "operator": "==", "value": "ITM"},
+                {"field": "dte_remaining", "operator": "<=", "value": 7}
+            ],
+            "action": {"action_type": "roll", "reason": "itm_near_expiry"},
+            "action_params": {
+                "roll_strategy": "roll_out",
+                "target_dte": 30,
+                "strike_preference": "same_or_higher",
+                "credit_required": True,
+                "message": "Roll short call out in time. Prefer same strike or higher with net credit ≥ $0"
+            },
+            "priority": 80,
+            "is_default": True
+        },
+        {
+            "id": "roll_delta_based",
+            "name": "Roll Short Call – Delta Based",
+            "description": "Roll when delta suggests rising assignment risk. Target lower delta (0.25-0.35) with later expiry.",
+            "category": "rolling",
+            "rule_type": "roll",
+            "conditions": [
+                {"field": "current_delta", "operator": ">=", "value": 0.75},
+                {"field": "dte_remaining", "operator": ">", "value": 7}
+            ],
+            "action": {"action_type": "roll", "reason": "high_delta"},
+            "action_params": {
+                "roll_strategy": "roll_up_and_out",
+                "target_delta_min": 0.25,
+                "target_delta_max": 0.35,
+                "credit_preferred": True,
+                "message": "Roll to lower delta (0.25-0.35) with later expiry. Net credit preferred."
+            },
+            "priority": 75,
+            "is_default": True
+        },
+        {
+            "id": "roll_suggestion_market_aware",
+            "name": "Suggested Roll – Market-Aware",
+            "description": "System provides recommended strike prices when rolling, based on current market conditions.",
+            "category": "rolling",
+            "rule_type": "suggestion",
+            "conditions": [
+                {"field": "roll_triggered", "operator": "==", "value": True}
+            ],
+            "action": {"action_type": "suggest", "reason": "market_aware_roll"},
+            "action_params": {
+                "new_expiry_range_days": [14, 30],
+                "strike_selection": "above_current_price",
+                "target_delta": [0.25, 0.35],
+                "prefer": ["net_credit", "iv_rank_improvement"],
+                "message": "Suggestion only — user confirms execution"
+            },
+            "priority": 70,
+            "is_default": False,
+            "ui_hint": "System-guided suggestion"
+        },
+        
+        # ============ PMCC-SPECIFIC RULES (Short Leg Focused) ============
+        {
+            "id": "pmcc_manage_short_only",
+            "name": "PMCC – Manage Short Call Only",
+            "description": "Long LEAPS are not closed unless exercised or explicitly exited. All rolling applies only to short call.",
+            "category": "pmcc_specific",
+            "rule_type": "pmcc",
+            "strategy_type": "pmcc",
+            "conditions": [
+                {"field": "strategy_type", "operator": "==", "value": "pmcc"}
+            ],
+            "action": {"action_type": "manage_short", "reason": "pmcc_structure"},
+            "action_params": {
+                "manage": "short_call_only",
+                "long_leaps": "hold",
+                "message": "Long LEAPS remain open across cycles. Rolling applies to short call only."
+            },
+            "priority": 85,
+            "is_default": True,
+            "strategy_type": "pmcc"
+        },
+        {
+            "id": "pmcc_assignment_handling",
+            "name": "PMCC Assignment Handling",
+            "description": "Handle short call assignment using the long LEAPS efficiently. Choose to exercise or close LEAPS.",
+            "category": "pmcc_specific",
+            "rule_type": "pmcc",
+            "strategy_type": "pmcc",
+            "conditions": [
+                {"field": "strategy_type", "operator": "==", "value": "pmcc"},
+                {"field": "status", "operator": "==", "value": "assigned"}
+            ],
+            "action": {"action_type": "prompt", "reason": "pmcc_assignment"},
+            "action_params": {
+                "options": [
+                    {"id": "exercise_leaps", "label": "Exercise LEAPS (if ITM and profitable)"},
+                    {"id": "close_leaps", "label": "Close LEAPS at market"}
+                ],
+                "message": "Short call assigned. Long LEAPS available to cover. Select preferred action."
+            },
+            "priority": 95,
+            "is_default": True,
+            "strategy_type": "pmcc"
+        },
+        {
+            "id": "pmcc_roll_before_assignment",
+            "name": "PMCC – Roll Before Assignment",
+            "description": "For PMCC, always prefer rolling the short call over accepting assignment. Assignment should be avoided.",
+            "category": "pmcc_specific",
+            "rule_type": "pmcc",
+            "strategy_type": "pmcc",
+            "conditions": [
+                {"field": "strategy_type", "operator": "==", "value": "pmcc"},
+                {"field": "current_delta", "operator": ">=", "value": 0.65},
+                {"field": "dte_remaining", "operator": "<=", "value": 14}
+            ],
+            "action": {"action_type": "roll", "reason": "pmcc_avoid_assignment"},
+            "action_params": {
+                "roll_strategy": "roll_up_and_out",
+                "urgency": "high",
+                "message": "PMCC: Roll short call to avoid assignment and preserve LEAPS structure"
+            },
+            "priority": 88,
+            "is_default": True,
+            "strategy_type": "pmcc"
+        },
+        
+        # ============ BROKERAGE-AWARE CONTROLS ============
+        {
+            "id": "avoid_early_close",
+            "name": "Avoid Early Close",
+            "description": "Avoid closing positions early to reduce brokerage impact. Income strategy prefers holding to expiry.",
+            "category": "brokerage_aware",
+            "rule_type": "guidance",
+            "conditions": [],
+            "action": {"action_type": "guidance", "reason": "brokerage_awareness"},
+            "action_params": {"message": "Brokerage-aware strategy - early close not recommended"},
+            "priority": 1,
+            "is_default": True,
+            "ui_hint": "Brokerage-aware strategy"
+        },
+        
+        # ============ INFORMATIONAL (Non-Action) ============
+        {
+            "id": "income_strategy_reminder",
+            "name": "Income Strategy Reminder",
+            "description": "This strategy prioritises time decay, assignment management, and capital efficiency. Unrealised losses do not imply trade failure.",
+            "category": "informational",
+            "rule_type": "info",
+            "conditions": [],
+            "action": {"action_type": "info", "reason": "strategy_philosophy"},
+            "action_params": {"message": "Unrealised losses do not imply trade failure. Manage via time and rolling."},
+            "priority": 0,
+            "is_default": False,
+            "ui_hint": "Non-action guidance"
+        },
+        
+        # ============ OPTIONAL/ADVANCED (De-emphasized) ============
+        {
+            "id": "profit_75_optional",
+            "name": "[Optional] 75% Profit Target",
+            "description": "Close trade when 75% of max premium is captured. Use sparingly - increases brokerage costs.",
+            "category": "optional_advanced",
             "rule_type": "profit_target",
             "conditions": [{"field": "premium_capture_pct", "operator": ">=", "value": 75}],
-            "action": "close",
-            "action_params": {"reason": "profit_target_75pct"},
-            "priority": 10
+            "action": {"action_type": "close", "reason": "profit_target_75pct"},
+            "action_params": {"message": "Optional: Early profit taking (increases brokerage)"},
+            "priority": 10,
+            "is_default": False,
+            "is_advanced": True,
+            "ui_hint": "Advanced - increases brokerage"
         },
         {
-            "id": "stop_loss_100",
-            "name": "100% Stop Loss",
-            "description": "Close trade when loss equals initial premium received",
-            "rule_type": "stop_loss",
-            "conditions": [{"field": "premium_capture_pct", "operator": "<=", "value": -100}],
-            "action": "close",
-            "action_params": {"reason": "stop_loss_100pct"},
-            "priority": 20
-        },
-        {
-            "id": "stop_loss_200",
-            "name": "200% Stop Loss",
-            "description": "Close trade when loss is 2x initial premium",
+            "id": "stop_loss_200_optional",
+            "name": "[Advanced] 200% Stop Loss",
+            "description": "Close trade when loss is 2x initial premium. NOT recommended for income strategies.",
+            "category": "optional_advanced",
             "rule_type": "stop_loss",
             "conditions": [{"field": "premium_capture_pct", "operator": "<=", "value": -200}],
-            "action": "close",
-            "action_params": {"reason": "stop_loss_200pct"},
-            "priority": 20
-        },
-        {
-            "id": "dte_7_close",
-            "name": "Close at 7 DTE",
-            "description": "Close trade when 7 days or less remain",
-            "rule_type": "time_based",
-            "conditions": [{"field": "dte_remaining", "operator": "<=", "value": 7}],
-            "action": "close",
-            "action_params": {"reason": "dte_close_7days"},
-            "priority": 5
-        },
-        {
-            "id": "dte_14_close",
-            "name": "Close at 14 DTE",
-            "description": "Close trade when 14 days or less remain",
-            "rule_type": "time_based",
-            "conditions": [{"field": "dte_remaining", "operator": "<=", "value": 14}],
-            "action": "close",
-            "action_params": {"reason": "dte_close_14days"},
-            "priority": 5
-        },
-        {
-            "id": "delta_high_alert",
-            "name": "High Delta Alert",
-            "description": "Alert when delta exceeds 0.70 (getting ITM)",
-            "rule_type": "delta_target",
-            "conditions": [{"field": "current_delta", "operator": ">=", "value": 0.70}],
-            "action": "alert",
-            "action_params": {"message": "Warning: Option delta above 0.70 - consider rolling"},
-            "priority": 15
-        },
-        {
-            "id": "combined_profit_dte",
-            "name": "Take Profit or Close at DTE",
-            "description": "Close at 50% profit OR when DTE reaches 21",
-            "rule_type": "custom",
-            "conditions": [
-                {"field": "premium_capture_pct", "operator": ">=", "value": 50}
-            ],
-            "action": "close",
-            "action_params": {"reason": "combined_exit"},
-            "priority": 10
-        },
-        {
-            "id": "theta_decay_target",
-            "name": "Theta Decay Target",
-            "description": "Alert when daily theta decay exceeds $5",
-            "rule_type": "custom",
-            "conditions": [{"field": "current_theta", "operator": "<=", "value": -5}],
-            "action": "alert",
-            "action_params": {"message": "High theta decay - good time to hold for premium capture"},
-            "priority": 3
+            "action": {"action_type": "close", "reason": "stop_loss_200pct"},
+            "action_params": {"message": "Advanced: Stop-loss exit (not typical for income strategy)"},
+            "priority": 20,
+            "is_default": False,
+            "is_advanced": True,
+            "ui_hint": "Advanced - not recommended"
         }
     ]
     
