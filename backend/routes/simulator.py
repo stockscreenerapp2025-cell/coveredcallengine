@@ -640,7 +640,196 @@ async def close_simulator_trade(
     }
 
 
-@simulator_router.post("/update-prices")
+class PMCCRollRequest(BaseModel):
+    """Request model for rolling a PMCC short call"""
+    new_strike: float
+    new_expiry: str  # YYYY-MM-DD
+    new_premium: float
+    new_delta: Optional[float] = None
+    new_iv: Optional[float] = None
+
+
+@simulator_router.post("/trades/{trade_id}/roll")
+async def roll_pmcc_short_call(
+    trade_id: str,
+    roll_request: PMCCRollRequest,
+    user: dict = Depends(get_current_user)
+):
+    """
+    Roll a PMCC short call to a new expiration/strike.
+    
+    PMCC ROLL RULES (per spec):
+    - Short call is closed (premium captured)
+    - New short call is opened with new strike/expiry
+    - Trade status changes to "rolled"
+    - This prevents assignment by moving the short call up/out
+    
+    CRITICAL: In PMCC, you do NOT want the short call to be assigned.
+    Roll before that happens!
+    """
+    
+    trade = await db.simulator_trades.find_one({"id": trade_id, "user_id": user["id"]})
+    if not trade:
+        raise HTTPException(status_code=404, detail="Trade not found")
+    
+    if trade.get("strategy_type") != "pmcc":
+        raise HTTPException(status_code=400, detail="Roll is only available for PMCC trades")
+    
+    if trade.get("status") not in ["open", "rolled"]:
+        raise HTTPException(status_code=400, detail="Trade must be open or previously rolled to roll again")
+    
+    now = datetime.now(timezone.utc)
+    
+    # Calculate premium captured from old short call
+    old_premium = trade.get("short_call_premium", 0)
+    old_option_value = trade.get("current_option_value", 0)
+    premium_captured = (old_premium - old_option_value) * 100 * trade["contracts"]
+    
+    # Get roll count
+    roll_count = trade.get("roll_count", 0) + 1
+    
+    # Calculate new DTE
+    try:
+        new_expiry_dt = datetime.strptime(roll_request.new_expiry, "%Y-%m-%d")
+        new_dte = (new_expiry_dt - datetime.now()).days
+    except:
+        new_dte = 30
+    
+    # Update trade document
+    update_doc = {
+        "status": "rolled",  # Mark as rolled
+        "short_call_strike": roll_request.new_strike,
+        "short_call_expiry": roll_request.new_expiry,
+        "short_call_premium": roll_request.new_premium,
+        "short_call_delta": roll_request.new_delta or 0.30,
+        "short_call_iv": roll_request.new_iv or trade.get("short_call_iv", 0.30),
+        "dte_remaining": new_dte,
+        "roll_count": roll_count,
+        "last_roll_date": now.strftime("%Y-%m-%d"),
+        "premium_received": trade.get("premium_received", 0) + (roll_request.new_premium * 100 * trade["contracts"]),
+        "total_premium_captured": trade.get("total_premium_captured", 0) + premium_captured,
+        "updated_at": now.isoformat()
+    }
+    
+    # Update breakeven
+    leaps_premium = trade.get("leaps_premium", 0)
+    total_short_premium = (trade.get("total_premium_captured", 0) + premium_captured + roll_request.new_premium * 100 * trade["contracts"]) / (100 * trade["contracts"])
+    update_doc["breakeven"] = trade.get("leaps_strike", 0) + (leaps_premium - total_short_premium)
+    
+    await db.simulator_trades.update_one(
+        {"id": trade_id},
+        {
+            "$set": update_doc,
+            "$push": {"action_log": {
+                "action": "rolled",
+                "timestamp": now.isoformat(),
+                "details": f"Rolled short call #{roll_count}: Old ${trade['short_call_strike']} → New ${roll_request.new_strike} exp {roll_request.new_expiry}. Premium captured: ${premium_captured:.2f}. New premium: ${roll_request.new_premium * 100:.2f}"
+            }}
+        }
+    )
+    
+    return {
+        "message": f"PMCC short call rolled successfully (roll #{roll_count})",
+        "premium_captured": round(premium_captured, 2),
+        "new_strike": roll_request.new_strike,
+        "new_expiry": roll_request.new_expiry,
+        "new_premium": roll_request.new_premium,
+        "total_premium_received": round(update_doc["premium_received"], 2),
+        "roll_count": roll_count
+    }
+
+
+@simulator_router.get("/trades/{trade_id}/roll-suggestions")
+async def get_roll_suggestions(
+    trade_id: str,
+    user: dict = Depends(get_current_user)
+):
+    """
+    Get suggestions for rolling a PMCC short call.
+    
+    PMCC DOWNSIDE PROTECTION RULE:
+    - Short call strike must be above LEAPS breakeven
+    - Premium should offset LEAPS theta decay
+    - Never increase downside risk
+    """
+    
+    trade = await db.simulator_trades.find_one({"id": trade_id, "user_id": user["id"]}, {"_id": 0})
+    if not trade:
+        raise HTTPException(status_code=404, detail="Trade not found")
+    
+    if trade.get("strategy_type") != "pmcc":
+        raise HTTPException(status_code=400, detail="Roll suggestions only available for PMCC trades")
+    
+    current_price = trade.get("current_underlying_price", trade.get("entry_underlying_price"))
+    leaps_strike = trade.get("leaps_strike", 0)
+    current_short_strike = trade.get("short_call_strike", 0)
+    current_dte = trade.get("dte_remaining", 0)
+    
+    # Calculate risk metrics
+    short_to_stock_ratio = (current_short_strike / current_price * 100) if current_price > 0 else 0
+    
+    # Determine if roll is urgent
+    roll_urgency = "low"
+    roll_reason = []
+    
+    if current_dte <= 7:
+        roll_urgency = "high"
+        roll_reason.append(f"Only {current_dte} DTE remaining - roll soon to avoid assignment risk")
+    elif current_dte <= 14:
+        roll_urgency = "medium"
+        roll_reason.append(f"{current_dte} DTE - consider rolling to capture remaining theta")
+    
+    if current_price >= current_short_strike * 0.95:
+        roll_urgency = "high"
+        roll_reason.append(f"Stock price ${current_price:.2f} is within 5% of strike ${current_short_strike} - HIGH ASSIGNMENT RISK")
+    elif current_price >= current_short_strike * 0.90:
+        roll_urgency = "medium"
+        roll_reason.append(f"Stock price approaching strike - monitor closely")
+    
+    # Suggest new strikes (roll up and out)
+    suggestions = []
+    
+    # Roll out same strike (extend DTE)
+    suggestions.append({
+        "type": "roll_out",
+        "description": "Roll out (extend expiration, same strike)",
+        "suggested_strike": current_short_strike,
+        "suggested_dte": 30,
+        "rationale": "Capture more theta decay without changing strike"
+    })
+    
+    # Roll up and out (higher strike, extend DTE)
+    roll_up_strike = round(current_price * 1.05, 2)  # 5% above current price
+    suggestions.append({
+        "type": "roll_up_and_out",
+        "description": "Roll up and out (higher strike, extend expiration)",
+        "suggested_strike": roll_up_strike,
+        "suggested_dte": 45,
+        "rationale": f"Move strike above current price to reduce assignment risk"
+    })
+    
+    # Aggressive roll (higher strike, same DTE)
+    if current_dte > 14:
+        suggestions.append({
+            "type": "roll_up",
+            "description": "Roll up (higher strike, similar expiration)",
+            "suggested_strike": round(current_price * 1.03, 2),
+            "suggested_dte": current_dte,
+            "rationale": "Quick adjustment to reduce delta exposure"
+        })
+    
+    return {
+        "trade_id": trade_id,
+        "symbol": trade.get("symbol"),
+        "current_price": current_price,
+        "current_short_strike": current_short_strike,
+        "current_dte": current_dte,
+        "leaps_strike": leaps_strike,
+        "roll_urgency": roll_urgency,
+        "roll_reasons": roll_reason,
+        "suggestions": suggestions,
+        "warning": "In PMCC, short call assignment should be AVOIDED. Roll before the short call goes ITM!"
+    }
 async def update_simulator_prices(user: dict = Depends(get_current_user)):
     """
     Manually trigger LIVE price update for user's active trades.
