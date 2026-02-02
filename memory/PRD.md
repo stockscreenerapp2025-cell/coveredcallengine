@@ -277,10 +277,20 @@ Since the data is parsed and stored in the database, existing users must **re-up
 - `/app/backend/routes/screener_snapshot.py` - CC/PMCC screeners
 - `/app/backend/routes/portfolio.py` - Portfolio Tracker API
 - `/app/backend/routes/stocks.py` - Market indices
+- `/app/backend/routes/simulator.py` - Simulator with lifecycle management (FIXED 2026-02-02)
 
 ---
 
 ## Completed Tasks
+
+### 2026-02-02
+- [x] Fixed Simulator Analytics - Now includes OPEN + EXPIRED + ASSIGNED trades
+- [x] Fixed PMCC Tracker - Now displays OPEN, ROLLED, ASSIGNED positions
+- [x] Added PMCC Roll functionality with roll suggestions
+- [x] Added health status indicators for PMCC positions
+- [x] Implemented Trade Lifecycle Model (ASSIGNED = CLOSED for analytics)
+- [x] Added income_to_cost_ratio and estimated_leaps_decay_pct for PMCC
+- [x] Backward compatibility for legacy 'active' status
 
 ### 2026-01-31
 - [x] Fixed Portfolio Tracker Entry Price calculation
