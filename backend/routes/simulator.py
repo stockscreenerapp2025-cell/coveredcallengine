@@ -528,7 +528,7 @@ async def add_simulator_trade(trade: SimulatorTradeEntry, user: dict = Depends(g
 
 @simulator_router.get("/trades")
 async def get_simulator_trades(
-    status: Optional[str] = Query(None, description="Filter by status: active, closed, expired, assigned"),
+    status: Optional[str] = Query(None, description="Filter by status: open, rolled, expired, assigned, closed"),
     symbol: Optional[str] = Query(None),
     strategy_type: Optional[str] = Query(None),
     limit: int = Query(100, ge=1, le=1000),
