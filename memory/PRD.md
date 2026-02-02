@@ -345,6 +345,12 @@ For CC and PMCC, **loss is NOT managed via stop-loss**. Loss is managed via:
   - Added PMCC-specific rules (manage short only, roll before assignment)
   - Added Brokerage-Aware controls
   - De-emphasized early close and stop-loss (moved to Optional/Advanced)
+- [x] **Analyzer Page Enhancement - 3-Row Fixed Structure**
+  - Row 1: Outcome (Total P/L, Win Rate, ROI, Avg Win/Loss, Expectancy, Max Drawdown, TWR)
+  - Row 2: Risk & Capital (Peak Capital, Avg Capital, Worst Case Loss, Assignment Exposure CC/PMCC)
+  - Row 3: Strategy Health (Win Rate, Avg Hold, Profit Factor by Strategy + Charts)
+  - Scope-aware filtering: Portfolio/Strategy/Symbol
+  - All metrics recompute when scope changes
 
 ### 2026-01-31
 - [x] Fixed Portfolio Tracker Entry Price calculation
