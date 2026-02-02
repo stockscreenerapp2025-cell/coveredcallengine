@@ -1648,7 +1648,7 @@ async def get_performance_analytics(
             if key not in param_stats:
                 param_stats[key] = {"param": bucket, "type": bucket_type, "trades": 0, "total_pnl": 0, "wins": 0}
             param_stats[key]["trades"] += 1
-            pnl = t.get("realized_pnl", 0) or t.get("final_pnl", 0)
+            pnl = (t.get("realized_pnl") or t.get("final_pnl") or 0)
             param_stats[key]["total_pnl"] += pnl
             if pnl > 0 or t.get("status") in ["assigned", "expired"]:
                 param_stats[key]["wins"] += 1
