@@ -1412,8 +1412,8 @@ async def get_pmcc_summary(user: dict = Depends(get_current_user)):
     
     premium_ratio = (total_premium / total_leaps_cost * 100) if total_leaps_cost > 0 else 0
     
-    realized_pnl = sum(t.get("realized_pnl", 0) or t.get("final_pnl", 0) for t in completed)
-    unrealized_pnl = sum(t.get("unrealized_pnl", 0) for t in active)
+    realized_pnl = sum((t.get("realized_pnl") or t.get("final_pnl") or 0) for t in completed)
+    unrealized_pnl = sum((t.get("unrealized_pnl") or 0) for t in active)
     
     return {
         "total_pmcc_trades": len(pmcc_trades),
