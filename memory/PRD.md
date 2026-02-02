@@ -339,6 +339,12 @@ For CC and PMCC, **loss is NOT managed via stop-loss**. Loss is managed via:
 - [x] Implemented Trade Lifecycle Model (ASSIGNED = CLOSED for analytics)
 - [x] Added income_to_cost_ratio and estimated_leaps_decay_pct for PMCC
 - [x] Backward compatibility for legacy 'active' status
+- [x] **Redesigned Trade Management Rules for Income Strategy**
+  - Removed stop-loss rules as defaults
+  - Added Premium Harvesting, Expiry Management, Rolling Rules categories
+  - Added PMCC-specific rules (manage short only, roll before assignment)
+  - Added Brokerage-Aware controls
+  - De-emphasized early close and stop-loss (moved to Optional/Advanced)
 
 ### 2026-01-31
 - [x] Fixed Portfolio Tracker Entry Price calculation
