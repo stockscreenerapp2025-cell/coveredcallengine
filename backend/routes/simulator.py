@@ -832,7 +832,7 @@ async def get_simulator_summary(user: dict = Depends(get_current_user)):
     for strategy in ["covered_call", "pmcc"]:
         strategy_trades = [t for t in all_trades if t.get("strategy_type") == strategy]
         strategy_closed = [t for t in strategy_trades if t.get("status") in ["closed", "expired", "assigned"]]
-        strategy_active = [t for t in strategy_trades if t.get("status") == "active"]
+        strategy_active = [t for t in strategy_trades if t.get("status") in ["open", "rolled"]]
         
         by_strategy[strategy] = {
             "total": len(strategy_trades),
