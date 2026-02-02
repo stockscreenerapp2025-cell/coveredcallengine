@@ -872,17 +872,63 @@ const Simulator = () => {
     </>
   );
 
-  const renderRulesTab = () => (
+  const renderRulesTab = () => {
+    // Group templates by category
+    const categoryOrder = [
+      'premium_harvesting',
+      'expiry_management', 
+      'assignment_awareness',
+      'rolling',
+      'pmcc_specific',
+      'brokerage_aware',
+      'informational',
+      'optional_advanced'
+    ];
+    
+    const categoryLabels = {
+      'premium_harvesting': { label: 'Premium Harvesting', icon: '💰', description: 'No Early Close', color: 'emerald' },
+      'expiry_management': { label: 'Expiry Decisions', icon: '📅', description: 'Primary Controls', color: 'blue' },
+      'assignment_awareness': { label: 'Assignment Awareness', icon: '⚠️', description: 'Alerts Only', color: 'amber' },
+      'rolling': { label: 'Rolling Rules', icon: '🔄', description: 'Core Income Logic', color: 'violet' },
+      'pmcc_specific': { label: 'PMCC-Specific', icon: '📊', description: 'Short Leg Focused', color: 'cyan' },
+      'brokerage_aware': { label: 'Brokerage-Aware', icon: '💸', description: 'Cost Controls', color: 'zinc' },
+      'informational': { label: 'Informational', icon: 'ℹ️', description: 'Non-Action', color: 'zinc' },
+      'optional_advanced': { label: 'Optional/Advanced', icon: '⚙️', description: 'Not Recommended', color: 'red' }
+    };
+    
+    const groupedTemplates = {};
+    templates.forEach(t => {
+      const cat = t.category || 'other';
+      if (!groupedTemplates[cat]) groupedTemplates[cat] = [];
+      groupedTemplates[cat].push(t);
+    });
+    
+    const getActionColor = (action) => {
+      const actionType = action?.action_type || action;
+      switch(actionType) {
+        case 'roll': return 'bg-violet-500/20 text-violet-400 border-violet-500/30';
+        case 'alert': return 'bg-amber-500/20 text-amber-400 border-amber-500/30';
+        case 'hold': return 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30';
+        case 'expire': return 'bg-blue-500/20 text-blue-400 border-blue-500/30';
+        case 'assignment': return 'bg-cyan-500/20 text-cyan-400 border-cyan-500/30';
+        case 'close': return 'bg-red-500/20 text-red-400 border-red-500/30';
+        case 'suggest': return 'bg-indigo-500/20 text-indigo-400 border-indigo-500/30';
+        case 'prompt': return 'bg-pink-500/20 text-pink-400 border-pink-500/30';
+        default: return 'bg-zinc-500/20 text-zinc-400 border-zinc-500/30';
+      }
+    };
+
+    return (
     <div className="space-y-6">
-      {/* Rules Header */}
+      {/* Rules Header - Updated Philosophy */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h2 className="text-xl font-semibold text-white flex items-center gap-2">
             <Settings className="w-5 h-5 text-violet-400" />
-            Trade Management Rules
+            Income Strategy Trade Management
           </h2>
           <p className="text-zinc-400 text-sm mt-1">
-            Automate trade decisions based on conditions like premium capture, delta, or loss thresholds
+            Trades are managed, not closed. Rolling and assignment logic drive decisions—not stop-losses.
           </p>
         </div>
         <div className="flex gap-2">
@@ -908,57 +954,109 @@ const Simulator = () => {
         </div>
       </div>
 
-      {/* Templates Section */}
-      <Card className="glass-card">
-        <CardHeader className="pb-2">
-          <CardTitle className="text-sm flex items-center gap-2">
-            <Copy className="w-4 h-4 text-cyan-400" />
-            Quick Start Templates
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-3">
-            {templates.map(template => (
-              <div 
-                key={template.id}
-                className="p-3 bg-zinc-800/50 rounded-lg border border-zinc-700/50 hover:border-violet-500/50 transition-colors"
-              >
-                <div className="flex items-start justify-between">
-                  <div>
-                    <h4 className="font-medium text-white text-sm">{template.name}</h4>
-                    <p className="text-xs text-zinc-400 mt-1">{template.description}</p>
-                    <div className="flex items-center gap-2 mt-2">
-                      <Badge className={template.action.action_type === 'roll' ? 'bg-violet-500/20 text-violet-400' : template.action.action_type === 'close' ? 'bg-amber-500/20 text-amber-400' : 'bg-blue-500/20 text-blue-400'}>
-                        {template.action.action_type}
-                      </Badge>
-                      {template.strategy_type && (
-                        <Badge className={STRATEGY_COLORS[template.strategy_type]}>
-                          {template.strategy_type === 'covered_call' ? 'CC' : 'PMCC'}
-                        </Badge>
-                      )}
-                    </div>
-                  </div>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => handleCreateFromTemplate(template.id)}
-                    className="text-cyan-400 hover:text-cyan-300"
-                  >
-                    <Plus className="w-4 h-4" />
-                  </Button>
-                </div>
-              </div>
-            ))}
+      {/* Income Strategy Philosophy Banner */}
+      <Card className="glass-card border-violet-500/30 bg-violet-950/20">
+        <CardContent className="py-4">
+          <div className="flex items-start gap-3">
+            <div className="p-2 bg-violet-500/20 rounded-lg">
+              <TrendingUp className="w-5 h-5 text-violet-400" />
+            </div>
+            <div>
+              <h3 className="font-medium text-violet-300 mb-1">Income Strategy Philosophy</h3>
+              <p className="text-sm text-zinc-400">
+                For CC and PMCC, loss is managed via <span className="text-emerald-400">time</span>, <span className="text-blue-400">premium decay</span>, <span className="text-violet-400">rolling</span>, and <span className="text-cyan-400">assignment logic</span>—not stop-losses. 
+                Unrealised losses do not imply trade failure.
+              </p>
+            </div>
           </div>
         </CardContent>
       </Card>
+
+      {/* Templates by Category */}
+      <div className="space-y-4">
+        {categoryOrder.map(category => {
+          const categoryTemplates = groupedTemplates[category] || [];
+          if (categoryTemplates.length === 0) return null;
+          
+          const catInfo = categoryLabels[category] || { label: category, icon: '📋', description: '', color: 'zinc' };
+          const isAdvanced = category === 'optional_advanced';
+          
+          return (
+            <Card key={category} className={`glass-card ${isAdvanced ? 'opacity-60 border-red-500/20' : ''}`}>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="text-lg">{catInfo.icon}</span>
+                    <span className="text-white">{catInfo.label}</span>
+                    <span className="text-xs text-zinc-500">({catInfo.description})</span>
+                  </div>
+                  {isAdvanced && (
+                    <Badge className="bg-red-500/20 text-red-400 text-xs">
+                      Not Recommended for Income Strategy
+                    </Badge>
+                  )}
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-3">
+                  {categoryTemplates.map(template => (
+                    <div 
+                      key={template.id}
+                      className={`p-3 bg-zinc-800/50 rounded-lg border transition-colors ${
+                        template.is_default 
+                          ? 'border-emerald-500/30 hover:border-emerald-500/50' 
+                          : template.is_advanced 
+                          ? 'border-red-500/20 hover:border-red-500/40'
+                          : 'border-zinc-700/50 hover:border-violet-500/50'
+                      }`}
+                    >
+                      <div className="flex items-start justify-between">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <h4 className="font-medium text-white text-sm">{template.name}</h4>
+                            {template.is_default && (
+                              <Badge className="bg-emerald-500/20 text-emerald-400 text-xs">Default</Badge>
+                            )}
+                          </div>
+                          <p className="text-xs text-zinc-400 mt-1 line-clamp-2">{template.description}</p>
+                          <div className="flex items-center gap-2 mt-2 flex-wrap">
+                            <Badge className={getActionColor(template.action)}>
+                              {template.action?.action_type || template.action || 'rule'}
+                            </Badge>
+                            {template.strategy_type && (
+                              <Badge className={STRATEGY_COLORS[template.strategy_type]}>
+                                {template.strategy_type === 'covered_call' ? 'CC' : 'PMCC'}
+                              </Badge>
+                            )}
+                            {template.ui_hint && (
+                              <span className="text-xs text-zinc-500">{template.ui_hint}</span>
+                            )}
+                          </div>
+                        </div>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleCreateFromTemplate(template.id)}
+                          className="text-cyan-400 hover:text-cyan-300 ml-2"
+                        >
+                          <Plus className="w-4 h-4" />
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          );
+        })}
+      </div>
 
       {/* Active Rules */}
       <Card className="glass-card" data-testid="rules-list-card">
         <CardHeader className="pb-2">
           <CardTitle className="text-sm flex items-center gap-2">
             <ShieldCheck className="w-4 h-4 text-emerald-400" />
-            Your Rules ({rules.length})
+            Your Active Rules ({rules.length})
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -972,7 +1070,7 @@ const Simulator = () => {
             <div className="text-center py-8">
               <Settings className="w-10 h-10 text-zinc-600 mx-auto mb-3" />
               <p className="text-zinc-400 text-sm">No rules configured yet</p>
-              <p className="text-zinc-500 text-xs mt-1">Use templates above to get started</p>
+              <p className="text-zinc-500 text-xs mt-1">Add income strategy rules above to automate trade management</p>
             </div>
           ) : (
             <div className="space-y-3">
