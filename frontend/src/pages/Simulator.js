@@ -301,6 +301,23 @@ const Simulator = () => {
       setAnalyticsLoading(false);
     }
   };
+  
+  // Fetch Analyzer data (3-Row Structure)
+  const fetchAnalyzerData = async () => {
+    setAnalyzerLoading(true);
+    try {
+      const res = await simulatorApi.getAnalyzerMetrics({
+        strategy: analyticsStrategy || undefined,
+        symbol: analyzerSymbol || undefined,
+        time_period: analyticsTimeframe
+      });
+      setAnalyzerData(res.data);
+    } catch (err) {
+      console.error('Failed to fetch analyzer data:', err);
+    } finally {
+      setAnalyzerLoading(false);
+    }
+  };
 
   const fetchOptimalSettings = async () => {
     try {
