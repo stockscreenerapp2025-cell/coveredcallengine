@@ -1190,7 +1190,7 @@ async def scheduled_price_update():
                     continue
                 
                 user_active_trades = await db.simulator_trades.find(
-                    {"user_id": user_id, "status": "active"},
+                    {"user_id": user_id, "status": {"$in": ["open", "rolled"]}},
                     {"_id": 0}
                 ).to_list(1000)
                 
