@@ -1493,9 +1493,9 @@ async def get_performance_analytics(
         completed_trades = [t for t in completed_trades if t.get("close_date", "") >= cutoff]
     
     # Calculate P&L for completed trades
-    completed_pnls = [t.get("realized_pnl", 0) or t.get("final_pnl", 0) for t in completed_trades]
+    completed_pnls = [(t.get("realized_pnl") or t.get("final_pnl") or 0) for t in completed_trades]
     # Calculate unrealized P&L for open trades
-    open_pnls = [t.get("unrealized_pnl", 0) for t in open_trades]
+    open_pnls = [(t.get("unrealized_pnl") or 0) for t in open_trades]
     
     # WIN RATE CALCULATION (per spec):
     # - Assignment = WIN (shares called away at strike = profit)
