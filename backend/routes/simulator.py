@@ -1558,7 +1558,7 @@ async def get_performance_analytics(
         if reason not in by_reason:
             by_reason[reason] = {"count": 0, "total_pnl": 0, "avg_pnl": 0}
         by_reason[reason]["count"] += 1
-        by_reason[reason]["total_pnl"] += t.get("realized_pnl", 0) or t.get("final_pnl", 0)
+        by_reason[reason]["total_pnl"] += (t.get("realized_pnl") or t.get("final_pnl") or 0)
     
     for reason in by_reason:
         if by_reason[reason]["count"] > 0:
