@@ -592,7 +592,7 @@ async def close_simulator_trade(
         raise HTTPException(status_code=404, detail="Trade not found")
     
     if trade.get("status") not in ["open", "rolled"]:
-        raise HTTPException(status_code=400, detail="Trade is not active")
+        raise HTTPException(status_code=400, detail="Trade is not open or rolled")
     
     now = datetime.now(timezone.utc)
     
