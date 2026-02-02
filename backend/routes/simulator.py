@@ -455,7 +455,7 @@ async def add_simulator_trade(trade: SimulatorTradeEntry, user: dict = Depends(g
         "user_id": user["id"],
         "symbol": trade.symbol.upper(),
         "strategy_type": trade.strategy_type,
-        "status": "active",  # active, closed, expired, assigned
+        "status": "open",  # Lifecycle: open, rolled (PMCC), expired, assigned, closed
         
         # Entry snapshot (immutable)
         "entry_date": entry_date,
