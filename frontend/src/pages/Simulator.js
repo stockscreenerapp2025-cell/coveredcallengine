@@ -1428,33 +1428,10 @@ const Simulator = () => {
 
   const renderAnalyticsTab = () => {
     // This is now the ANALYZER page with fixed 3-row structure
-    const [analyzerData, setAnalyzerData] = useState(null);
-    const [analyzerLoading, setAnalyzerLoading] = useState(false);
-    const [analyzerSymbol, setAnalyzerSymbol] = useState('');
+    // State is managed at component level
     
     // Available symbols from trades
     const availableSymbols = [...new Set(trades.map(t => t.symbol))].sort();
-    
-    // Fetch analyzer data
-    const fetchAnalyzerData = async () => {
-      setAnalyzerLoading(true);
-      try {
-        const res = await simulatorApi.getAnalyzerMetrics({
-          strategy: analyticsStrategy || undefined,
-          symbol: analyzerSymbol || undefined,
-          time_period: analyticsTimeframe
-        });
-        setAnalyzerData(res.data);
-      } catch (err) {
-        console.error('Failed to fetch analyzer data:', err);
-      } finally {
-        setAnalyzerLoading(false);
-      }
-    };
-    
-    useEffect(() => {
-      fetchAnalyzerData();
-    }, [analyticsStrategy, analyzerSymbol, analyticsTimeframe]);
     
     // Format helpers
     const getProfitFactorColor = (pf) => {
