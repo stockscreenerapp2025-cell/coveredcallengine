@@ -812,7 +812,7 @@ async def get_simulator_summary(user: dict = Depends(get_current_user)):
             "by_status": {}
         }
     
-    active_trades = [t for t in all_trades if t.get("status") == "active"]
+    active_trades = [t for t in all_trades if t.get("status") in ["open", "rolled"]]
     closed_trades = [t for t in all_trades if t.get("status") in ["closed", "expired", "assigned"]]
     
     # Calculate P&L
