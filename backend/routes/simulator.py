@@ -784,7 +784,7 @@ async def get_roll_suggestions(
         roll_reason.append(f"Stock price ${current_price:.2f} is within 5% of strike ${current_short_strike} - HIGH ASSIGNMENT RISK")
     elif current_price >= current_short_strike * 0.90:
         roll_urgency = "medium"
-        roll_reason.append(f"Stock price approaching strike - monitor closely")
+        roll_reason.append("Stock price approaching strike - monitor closely")
     
     # Suggest new strikes (roll up and out)
     suggestions = []
@@ -805,7 +805,7 @@ async def get_roll_suggestions(
         "description": "Roll up and out (higher strike, extend expiration)",
         "suggested_strike": roll_up_strike,
         "suggested_dte": 45,
-        "rationale": f"Move strike above current price to reduce assignment risk"
+        "rationale": "Move strike above current price to reduce assignment risk"
     })
     
     # Aggressive roll (higher strike, same DTE)
