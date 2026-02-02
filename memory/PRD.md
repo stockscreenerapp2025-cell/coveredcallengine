@@ -337,4 +337,4 @@ Since the data is parsed and stored in the database, existing users must **re-up
 ---
 
 ## Last Updated
-2026-01-31 - Portfolio Tracker Entry Price Fix (IBKR Parser)
+2026-02-02 - Simulator Trade Lifecycle Model (Analytics + PMCC Tracker Fix)
