@@ -1245,54 +1245,110 @@ async def get_pmcc_summary(user: dict = Depends(get_current_user)):
 async def get_performance_analytics(
     time_period: str = Query("all", description="all, 30d, 90d, 1y"),
     strategy_type: Optional[str] = Query(None),
+    include_open: bool = Query(True, description="Include open trades in metrics"),
     user: dict = Depends(get_current_user)
 ):
-    """Get detailed performance analytics for closed trades"""
+    """
+    Get comprehensive performance analytics.
     
-    query = {"user_id": user["id"], "status": {"$in": ["closed", "expired", "assigned"]}}
+    CRITICAL: Analytics must NOT depend only on CLOSED trades.
+    It must include: OPEN, EXPIRED, ASSIGNED trades.
+    
+    Win Definition:
+    - Assignment = WIN (for CC)
+    - Worthless expiry = WIN
+    - Profitable close = WIN
+    
+    ASSIGNED = CLOSED for analytics purposes.
+    """
+    
+    # Get ALL trades - not just closed ones (per specification)
+    base_query = {"user_id": user["id"]}
     
     if strategy_type:
-        query["strategy_type"] = strategy_type
+        base_query["strategy_type"] = strategy_type
     
-    # Time filter
-    if time_period != "all":
-        days_map = {"30d": 30, "90d": 90, "1y": 365}
-        days = days_map.get(time_period, 365)
-        cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
-        query["close_date"] = {"$gte": cutoff[:10]}
+    all_trades = await db.simulator_trades.find(base_query, {"_id": 0}).to_list(10000)
     
-    trades = await db.simulator_trades.find(query, {"_id": 0}).to_list(10000)
-    
-    if not trades:
+    if not all_trades:
         return {
             "total_trades": 0,
+            "open_trades": 0,
+            "completed_trades": 0,
             "win_rate": 0,
+            "assignment_rate": 0,
             "avg_roi": 0,
             "total_pnl": 0,
             "avg_pnl": 0,
             "max_win": 0,
             "max_loss": 0,
             "avg_holding_days": 0,
+            "capital_efficiency": 0,
             "by_close_reason": {},
             "by_symbol": {},
+            "by_strategy": {},
             "monthly_breakdown": [],
             "scan_parameter_analysis": []
         }
     
-    # Basic stats
-    pnls = [t.get("realized_pnl", 0) or t.get("final_pnl", 0) for t in trades]
-    rois = [t.get("roi_percent", 0) for t in trades if t.get("roi_percent") is not None]
-    winners = [p for p in pnls if p > 0]
-    losers = [p for p in pnls if p < 0]
+    # Separate open vs completed trades
+    open_trades = [t for t in all_trades if t.get("status") in ["open", "rolled"]]
+    # CRITICAL: "assigned" counts as CLOSED for analytics (per spec)
+    completed_trades = [t for t in all_trades if t.get("status") in ["closed", "expired", "assigned"]]
     
-    total_pnl = sum(pnls)
-    avg_pnl = total_pnl / len(trades) if trades else 0
-    win_rate = (len(winners) / len(trades) * 100) if trades else 0
+    # Apply time filter only to completed trades
+    if time_period != "all":
+        days_map = {"30d": 30, "90d": 90, "1y": 365}
+        days = days_map.get(time_period, 365)
+        cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).strftime("%Y-%m-%d")
+        completed_trades = [t for t in completed_trades if t.get("close_date", "") >= cutoff]
+    
+    # Calculate P&L for completed trades
+    completed_pnls = [t.get("realized_pnl", 0) or t.get("final_pnl", 0) for t in completed_trades]
+    # Calculate unrealized P&L for open trades
+    open_pnls = [t.get("unrealized_pnl", 0) for t in open_trades]
+    
+    # WIN RATE CALCULATION (per spec):
+    # - Assignment = WIN (shares called away at strike = profit)
+    # - Worthless expiry = WIN (kept full premium)
+    # - Profitable close = WIN
+    winners = []
+    losers = []
+    
+    for t in completed_trades:
+        pnl = t.get("realized_pnl", 0) or t.get("final_pnl", 0)
+        status = t.get("status", "")
+        close_reason = t.get("close_reason", "")
+        
+        # Assignment is a WIN for covered calls (you got paid strike price)
+        # Expired OTM is a WIN (kept premium)
+        if status == "assigned" and t.get("strategy_type") == "covered_call":
+            winners.append(pnl)
+        elif status == "expired":
+            winners.append(pnl)
+        elif pnl > 0:
+            winners.append(pnl)
+        else:
+            losers.append(pnl)
+    
+    # Calculate assignment rate
+    assigned_trades = [t for t in completed_trades if t.get("status") == "assigned"]
+    assignment_rate = (len(assigned_trades) / len(completed_trades) * 100) if completed_trades else 0
+    
+    # ROI calculation
+    rois = [t.get("roi_percent", 0) for t in completed_trades if t.get("roi_percent") is not None]
+    
+    total_realized_pnl = sum(completed_pnls)
+    total_unrealized_pnl = sum(open_pnls)
+    total_pnl = total_realized_pnl + total_unrealized_pnl if include_open else total_realized_pnl
+    
+    avg_pnl = total_realized_pnl / len(completed_trades) if completed_trades else 0
+    win_rate = (len(winners) / len(completed_trades) * 100) if completed_trades else 0
     avg_roi = sum(rois) / len(rois) if rois else 0
     
-    # Holding period
+    # Holding period for completed trades
     holding_days = []
-    for t in trades:
+    for t in completed_trades:
         if t.get("entry_date") and t.get("close_date"):
             try:
                 entry = datetime.strptime(t["entry_date"], "%Y-%m-%d")
@@ -1302,9 +1358,13 @@ async def get_performance_analytics(
                 pass
     avg_holding = sum(holding_days) / len(holding_days) if holding_days else 0
     
+    # Capital efficiency (realized P&L / capital deployed)
+    total_capital = sum(t.get("capital_deployed", 0) for t in completed_trades)
+    capital_efficiency = (total_realized_pnl / total_capital * 100) if total_capital > 0 else 0
+    
     # By close reason
     by_reason = {}
-    for t in trades:
+    for t in completed_trades:
         reason = t.get("close_reason", "unknown")
         if reason not in by_reason:
             by_reason[reason] = {"count": 0, "total_pnl": 0, "avg_pnl": 0}
@@ -1316,25 +1376,52 @@ async def get_performance_analytics(
             by_reason[reason]["avg_pnl"] = round(by_reason[reason]["total_pnl"] / by_reason[reason]["count"], 2)
         by_reason[reason]["total_pnl"] = round(by_reason[reason]["total_pnl"], 2)
     
-    # By symbol
+    # By symbol (include both open and completed)
     by_symbol = {}
-    for t in trades:
+    for t in all_trades:
         symbol = t.get("symbol", "UNKNOWN")
         if symbol not in by_symbol:
-            by_symbol[symbol] = {"trades": 0, "wins": 0, "total_pnl": 0}
+            by_symbol[symbol] = {"trades": 0, "wins": 0, "total_pnl": 0, "open": 0}
         by_symbol[symbol]["trades"] += 1
-        pnl = t.get("realized_pnl", 0) or t.get("final_pnl", 0)
-        by_symbol[symbol]["total_pnl"] += pnl
-        if pnl > 0:
-            by_symbol[symbol]["wins"] += 1
+        
+        if t.get("status") in ["open", "rolled"]:
+            by_symbol[symbol]["open"] += 1
+            by_symbol[symbol]["total_pnl"] += t.get("unrealized_pnl", 0)
+        else:
+            pnl = t.get("realized_pnl", 0) or t.get("final_pnl", 0)
+            by_symbol[symbol]["total_pnl"] += pnl
+            if pnl > 0 or t.get("status") in ["assigned", "expired"]:
+                by_symbol[symbol]["wins"] += 1
     
     for symbol in by_symbol:
-        by_symbol[symbol]["win_rate"] = round(by_symbol[symbol]["wins"] / by_symbol[symbol]["trades"] * 100, 1)
+        completed_for_symbol = by_symbol[symbol]["trades"] - by_symbol[symbol]["open"]
+        by_symbol[symbol]["win_rate"] = round(by_symbol[symbol]["wins"] / completed_for_symbol * 100, 1) if completed_for_symbol > 0 else 0
         by_symbol[symbol]["total_pnl"] = round(by_symbol[symbol]["total_pnl"], 2)
     
-    # Monthly breakdown
+    # By strategy (CC vs PMCC)
+    by_strategy = {}
+    for strategy in ["covered_call", "pmcc"]:
+        strategy_trades = [t for t in all_trades if t.get("strategy_type") == strategy]
+        strategy_completed = [t for t in strategy_trades if t.get("status") in ["closed", "expired", "assigned"]]
+        strategy_open = [t for t in strategy_trades if t.get("status") in ["open", "rolled"]]
+        
+        if strategy_trades:
+            strategy_pnl = sum(t.get("realized_pnl", 0) or t.get("final_pnl", 0) for t in strategy_completed)
+            strategy_unrealized = sum(t.get("unrealized_pnl", 0) for t in strategy_open)
+            strategy_wins = len([t for t in strategy_completed if (t.get("realized_pnl", 0) or t.get("final_pnl", 0)) > 0 or t.get("status") in ["assigned", "expired"]])
+            
+            by_strategy[strategy] = {
+                "total": len(strategy_trades),
+                "open": len(strategy_open),
+                "completed": len(strategy_completed),
+                "realized_pnl": round(strategy_pnl, 2),
+                "unrealized_pnl": round(strategy_unrealized, 2),
+                "win_rate": round(strategy_wins / len(strategy_completed) * 100, 1) if strategy_completed else 0
+            }
+    
+    # Monthly breakdown (completed trades only)
     monthly = {}
-    for t in trades:
+    for t in completed_trades:
         if t.get("close_date"):
             month = t["close_date"][:7]  # YYYY-MM
             if month not in monthly:
@@ -1342,7 +1429,7 @@ async def get_performance_analytics(
             monthly[month]["trades"] += 1
             pnl = t.get("realized_pnl", 0) or t.get("final_pnl", 0)
             monthly[month]["pnl"] += pnl
-            if pnl > 0:
+            if pnl > 0 or t.get("status") in ["assigned", "expired"]:
                 monthly[month]["wins"] += 1
     
     monthly_list = [
@@ -1357,12 +1444,11 @@ async def get_performance_analytics(
     
     # Scan parameter analysis
     param_stats = {}
-    for t in trades:
+    for t in completed_trades:
         params = t.get("scan_parameters", {})
         if not params:
             continue
         
-        # Group by key parameters
         dte_bucket = f"DTE_{(params.get('max_dte', 45) // 15) * 15}"
         delta_bucket = f"Delta_{int(params.get('max_delta', 0.45) * 100)}"
         roi_bucket = f"ROI_{int(params.get('min_roi', 0.5))}"
@@ -1374,12 +1460,12 @@ async def get_performance_analytics(
             param_stats[key]["trades"] += 1
             pnl = t.get("realized_pnl", 0) or t.get("final_pnl", 0)
             param_stats[key]["total_pnl"] += pnl
-            if pnl > 0:
+            if pnl > 0 or t.get("status") in ["assigned", "expired"]:
                 param_stats[key]["wins"] += 1
     
     param_analysis = []
     for key, stats in param_stats.items():
-        if stats["trades"] >= 3:  # Minimum sample size
+        if stats["trades"] >= 3:
             param_analysis.append({
                 "parameter": stats["param"],
                 "type": stats["type"],
@@ -1389,17 +1475,24 @@ async def get_performance_analytics(
             })
     
     return {
-        "total_trades": len(trades),
+        "total_trades": len(all_trades),
+        "open_trades": len(open_trades),
+        "completed_trades": len(completed_trades),
         "win_rate": round(win_rate, 1),
+        "assignment_rate": round(assignment_rate, 1),
         "avg_roi": round(avg_roi, 2),
         "total_pnl": round(total_pnl, 2),
+        "realized_pnl": round(total_realized_pnl, 2),
+        "unrealized_pnl": round(total_unrealized_pnl, 2),
         "avg_pnl": round(avg_pnl, 2),
-        "max_win": round(max(pnls), 2) if pnls else 0,
-        "max_loss": round(min(pnls), 2) if pnls else 0,
+        "max_win": round(max(completed_pnls), 2) if completed_pnls else 0,
+        "max_loss": round(min(completed_pnls), 2) if completed_pnls else 0,
         "avg_holding_days": round(avg_holding, 1),
+        "capital_efficiency": round(capital_efficiency, 2),
         "profit_factor": round(abs(sum(winners)) / abs(sum(losers)), 2) if losers and sum(losers) != 0 else 0,
         "by_close_reason": by_reason,
         "by_symbol": dict(sorted(by_symbol.items(), key=lambda x: x[1]["total_pnl"], reverse=True)[:10]),
+        "by_strategy": by_strategy,
         "monthly_breakdown": monthly_list,
         "scan_parameter_analysis": sorted(param_analysis, key=lambda x: x["avg_pnl"], reverse=True)
     }
