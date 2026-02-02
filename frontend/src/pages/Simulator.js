@@ -1136,6 +1136,7 @@ const Simulator = () => {
       </Card>
     </div>
   );
+  };
 
   const renderLogsTab = () => (
     <div className="space-y-6">
