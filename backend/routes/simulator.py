@@ -649,7 +649,7 @@ async def update_simulator_prices(user: dict = Depends(get_current_user)):
     for accurate P&L tracking during market hours.
     """
     active_trades = await db.simulator_trades.find(
-        {"user_id": user["id"], "status": "active"},
+        {"user_id": user["id"], "status": {"$in": ["open", "rolled"]}},
         {"_id": 0}
     ).to_list(1000)
     
@@ -767,7 +767,7 @@ async def update_simulator_prices(user: dict = Depends(get_current_user)):
     if user_rules:
         # Re-fetch active trades with updated prices
         updated_trades = await db.simulator_trades.find(
-            {"user_id": user["id"], "status": "active"},
+            {"user_id": user["id"], "status": {"$in": ["open", "rolled"]}},
             {"_id": 0}
         ).to_list(1000)
         
@@ -1095,7 +1095,7 @@ async def evaluate_rules_now(user: dict = Depends(get_current_user)):
         return {"message": "No active rules", "results": []}
     
     active_trades = await db.simulator_trades.find(
-        {"user_id": user["id"], "status": "active"},
+        {"user_id": user["id"], "status": {"$in": ["open", "rolled"]}},
         {"_id": 0}
     ).to_list(1000)
     
