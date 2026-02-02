@@ -1505,7 +1505,7 @@ async def get_performance_analytics(
     losers = []
     
     for t in completed_trades:
-        pnl = t.get("realized_pnl", 0) or t.get("final_pnl", 0)
+        pnl = (t.get("realized_pnl") or t.get("final_pnl") or 0)
         status = t.get("status", "")
         close_reason = t.get("close_reason", "")
         
