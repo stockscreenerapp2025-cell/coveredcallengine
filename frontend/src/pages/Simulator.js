@@ -1843,8 +1843,8 @@ const Simulator = () => {
             PMCC Tracker
           </TabsTrigger>
           <TabsTrigger value="analytics" className="data-[state=active]:bg-violet-600 data-[state=active]:text-white">
-            <LineChart className="w-4 h-4 mr-2" />
-            Analytics
+            <BarChart3 className="w-4 h-4 mr-2" />
+            Analyzer
           </TabsTrigger>
         </TabsList>
 
