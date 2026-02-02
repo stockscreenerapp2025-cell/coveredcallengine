@@ -1665,17 +1665,21 @@ async def get_performance_analytics(
             })
     
     # Convert by_symbol dict to list format for frontend charts
-    by_symbol_list = [
-        {
+    by_symbol_list = []
+    for symbol, data in sorted(by_symbol.items(), key=lambda x: x[1]["total_pnl"], reverse=True)[:10]:
+        completed_count = data["trades"] - data["open"]
+        avg_pnl = data["total_pnl"] / completed_count if completed_count > 0 else 0
+        by_symbol_list.append({
             "symbol": symbol,
+            "trade_count": data["trades"],
             "trades": data["trades"],
             "wins": data["wins"],
-            "total_pnl": data["total_pnl"],
+            "total_pnl": round(data["total_pnl"], 2),
+            "avg_pnl": round(avg_pnl, 2),
             "open": data["open"],
-            "win_rate": data["win_rate"]
-        }
-        for symbol, data in sorted(by_symbol.items(), key=lambda x: x[1]["total_pnl"], reverse=True)[:10]
-    ]
+            "win_rate": data["win_rate"],
+            "roi": data["win_rate"]  # Using win_rate as proxy for ROI display
+        })
     
     # Return in format expected by frontend
     return {
