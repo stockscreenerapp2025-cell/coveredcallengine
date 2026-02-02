@@ -844,7 +844,7 @@ async def get_simulator_summary(user: dict = Depends(get_current_user)):
     
     # By status
     by_status = {}
-    for status in ["active", "closed", "expired", "assigned"]:
+    for status in ["open", "rolled", "closed", "expired", "assigned"]:
         status_trades = [t for t in all_trades if t.get("status") == status]
         by_status[status] = len(status_trades)
     
