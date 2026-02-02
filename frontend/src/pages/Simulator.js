@@ -679,7 +679,8 @@ const Simulator = () => {
               </SelectTrigger>
               <SelectContent className="bg-zinc-900 border-zinc-700">
                 <SelectItem value="all">All Status</SelectItem>
-                <SelectItem value="active">Active</SelectItem>
+                <SelectItem value="open">Open</SelectItem>
+                <SelectItem value="rolled">Rolled</SelectItem>
                 <SelectItem value="closed">Closed</SelectItem>
                 <SelectItem value="expired">Expired</SelectItem>
                 <SelectItem value="assigned">Assigned</SelectItem>
