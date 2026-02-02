@@ -391,4 +391,4 @@ For CC and PMCC, **loss is NOT managed via stop-loss**. Loss is managed via:
 ---
 
 ## Last Updated
-2026-02-02 - Simulator Trade Lifecycle Model (Analytics + PMCC Tracker Fix)
+2026-02-02 - Trade Management Rules Redesign (Income Strategy Focus)
