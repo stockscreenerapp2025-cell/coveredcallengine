@@ -1617,7 +1617,7 @@ async def get_performance_analytics(
             if month not in monthly:
                 monthly[month] = {"trades": 0, "pnl": 0, "wins": 0}
             monthly[month]["trades"] += 1
-            pnl = t.get("realized_pnl", 0) or t.get("final_pnl", 0)
+            pnl = (t.get("realized_pnl") or t.get("final_pnl") or 0)
             monthly[month]["pnl"] += pnl
             if pnl > 0 or t.get("status") in ["assigned", "expired"]:
                 monthly[month]["wins"] += 1
