@@ -1,5 +1,5 @@
 """
-Subscription Routes - Stripe subscription management endpoints
+Subscription Routes - Payment link management endpoints
 """
 from fastapi import APIRouter, Depends, Query, HTTPException
 from pydantic import BaseModel, Field
@@ -16,36 +16,125 @@ from utils.auth import get_admin_user
 subscription_router = APIRouter(tags=["Subscription"])
 
 
-class SubscriptionLinksUpdate(BaseModel):
-    mode: str = Field(..., description="'test' or 'live'")
-    trial_link: Optional[str] = None
-    monthly_link: Optional[str] = None
-    yearly_link: Optional[str] = None
+# Plan definitions with pricing
+SUBSCRIPTION_PLANS = {
+    "basic": {
+        "name": "Basic",
+        "monthly_price": 39,
+        "yearly_price": 390,
+        "yearly_savings": "Save 2 months",
+        "features": [
+            "Access to Covered Call Dashboard",
+            "Covered Call Scans",
+            "Real Market Data",
+            "TradingView Integration",
+            "Charts",
+            "Key Technical Indicators",
+            "Portfolio Tracker",
+            "Cancel any time",
+            "Dedicated Support"
+        ],
+        "trial_days": 7
+    },
+    "standard": {
+        "name": "Standard",
+        "monthly_price": 69,
+        "yearly_price": 690,
+        "yearly_savings": "Save 2 months",
+        "features": [
+            "Everything in Basic",
+            "PMCC Strategy Scanner",
+            "Powerful Watch List with AI Features",
+            "Dedicated Support"
+        ],
+        "trial_days": 7
+    },
+    "premium": {
+        "name": "Premium",
+        "monthly_price": 99,
+        "yearly_price": 990,
+        "yearly_savings": "Save 2 months",
+        "features": [
+            "Everything in Standard",
+            "Powerful Simulator and Analyser",
+            "AI Management of Trades",
+            "Selected Dedicated Support"
+        ],
+        "trial_days": 7
+    }
+}
+
+
+@subscription_router.get("/plans")
+async def get_subscription_plans():
+    """Get all subscription plans with pricing (public endpoint)"""
+    return {
+        "plans": SUBSCRIPTION_PLANS,
+        "trial_days": 7
+    }
 
 
 @subscription_router.get("/links")
 async def get_subscription_links():
     """Get active subscription payment links (public endpoint)"""
-    settings = await db.subscription_settings.find_one({"type": "stripe_links"}, {"_id": 0})
+    # Get PayPal links
+    paypal_links = await db.admin_settings.find_one({"type": "paypal_links"}, {"_id": 0})
+    paypal_settings = await db.admin_settings.find_one({"type": "paypal_settings"}, {"_id": 0})
     
-    if not settings:
-        # Return default test links
+    paypal_enabled = paypal_settings.get("enabled", False) if paypal_settings else False
+    
+    if paypal_links and paypal_enabled:
+        mode = paypal_links.get("active_mode", "sandbox")
+        links_key = f"{mode}_links"
+        links = paypal_links.get(links_key, {})
+        
         return {
-            "trial_link": "https://buy.stripe.com/test_14A00caQj0XUeHG43m3ZK02",
-            "monthly_link": "https://buy.stripe.com/test_6oU5kw6A3cGC0QQ0Ra3ZK01",
-            "yearly_link": "https://buy.stripe.com/test_9B6cMYbUn362bvueI03ZK00",
-            "mode": "test"
+            "provider": "paypal",
+            "mode": mode,
+            "basic_monthly_link": links.get("basic_monthly", ""),
+            "basic_yearly_link": links.get("basic_yearly", ""),
+            "standard_monthly_link": links.get("standard_monthly", ""),
+            "standard_yearly_link": links.get("standard_yearly", ""),
+            "premium_monthly_link": links.get("premium_monthly", ""),
+            "premium_yearly_link": links.get("premium_yearly", ""),
+            # Legacy support
+            "trial_link": links.get("trial", links.get("basic_monthly", "")),
+            "monthly_link": links.get("monthly", links.get("standard_monthly", "")),
+            "yearly_link": links.get("yearly", links.get("standard_yearly", ""))
         }
     
-    mode = settings.get("active_mode", "test")
-    links_key = f"{mode}_links"
-    links = settings.get(links_key, {})
+    # Fallback to Stripe links
+    stripe_settings = await db.subscription_settings.find_one({"type": "stripe_links"}, {"_id": 0})
+    
+    if stripe_settings:
+        mode = stripe_settings.get("active_mode", "test")
+        links_key = f"{mode}_links"
+        links = stripe_settings.get(links_key, {})
+        
+        return {
+            "provider": "stripe",
+            "mode": mode,
+            "basic_monthly_link": links.get("basic_monthly", links.get("trial", "")),
+            "basic_yearly_link": links.get("basic_yearly", ""),
+            "standard_monthly_link": links.get("standard_monthly", links.get("monthly", "")),
+            "standard_yearly_link": links.get("standard_yearly", ""),
+            "premium_monthly_link": links.get("premium_monthly", links.get("yearly", "")),
+            "premium_yearly_link": links.get("premium_yearly", ""),
+            # Legacy support
+            "trial_link": links.get("trial", ""),
+            "monthly_link": links.get("monthly", ""),
+            "yearly_link": links.get("yearly", "")
+        }
     
     return {
-        "trial_link": links.get("trial", ""),
-        "monthly_link": links.get("monthly", ""),
-        "yearly_link": links.get("yearly", ""),
-        "mode": mode
+        "provider": "none",
+        "mode": "test",
+        "basic_monthly_link": "",
+        "basic_yearly_link": "",
+        "standard_monthly_link": "",
+        "standard_yearly_link": "",
+        "premium_monthly_link": "",
+        "premium_yearly_link": ""
     }
 
 
@@ -59,14 +148,20 @@ async def get_subscription_settings(admin: dict = Depends(get_admin_user)):
         return {
             "active_mode": "test",
             "test_links": {
-                "trial": "https://buy.stripe.com/test_14A00caQj0XUeHG43m3ZK02",
-                "monthly": "https://buy.stripe.com/test_6oU5kw6A3cGC0QQ0Ra3ZK01",
-                "yearly": "https://buy.stripe.com/test_9B6cMYbUn362bvueI03ZK00"
+                "basic_monthly": "",
+                "basic_yearly": "",
+                "standard_monthly": "",
+                "standard_yearly": "",
+                "premium_monthly": "",
+                "premium_yearly": ""
             },
             "live_links": {
-                "trial": "",
-                "monthly": "",
-                "yearly": ""
+                "basic_monthly": "",
+                "basic_yearly": "",
+                "standard_monthly": "",
+                "standard_yearly": "",
+                "premium_monthly": "",
+                "premium_yearly": ""
             }
         }
     
