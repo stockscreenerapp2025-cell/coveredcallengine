@@ -447,11 +447,25 @@ async def get_paypal_links_admin(admin: dict = Depends(get_admin_user)):
         return {
             "active_mode": "sandbox",
             "sandbox_links": {
+                "basic_monthly": "",
+                "basic_yearly": "",
+                "standard_monthly": "",
+                "standard_yearly": "",
+                "premium_monthly": "",
+                "premium_yearly": "",
+                # Legacy support
                 "trial": "",
                 "monthly": "",
                 "yearly": ""
             },
             "live_links": {
+                "basic_monthly": "",
+                "basic_yearly": "",
+                "standard_monthly": "",
+                "standard_yearly": "",
+                "premium_monthly": "",
+                "premium_yearly": "",
+                # Legacy support
                 "trial": "",
                 "monthly": "",
                 "yearly": ""
@@ -468,6 +482,20 @@ async def get_paypal_links_admin(admin: dict = Depends(get_admin_user)):
 @paypal_router.post("/admin/links")
 async def update_paypal_links(
     active_mode: str = Query(..., description="'sandbox' or 'live'"),
+    # New 3-tier plan links
+    sandbox_basic_monthly: Optional[str] = Query(None),
+    sandbox_basic_yearly: Optional[str] = Query(None),
+    sandbox_standard_monthly: Optional[str] = Query(None),
+    sandbox_standard_yearly: Optional[str] = Query(None),
+    sandbox_premium_monthly: Optional[str] = Query(None),
+    sandbox_premium_yearly: Optional[str] = Query(None),
+    live_basic_monthly: Optional[str] = Query(None),
+    live_basic_yearly: Optional[str] = Query(None),
+    live_standard_monthly: Optional[str] = Query(None),
+    live_standard_yearly: Optional[str] = Query(None),
+    live_premium_monthly: Optional[str] = Query(None),
+    live_premium_yearly: Optional[str] = Query(None),
+    # Legacy support
     sandbox_trial: Optional[str] = Query(None),
     sandbox_monthly: Optional[str] = Query(None),
     sandbox_yearly: Optional[str] = Query(None),
@@ -483,7 +511,34 @@ async def update_paypal_links(
     sandbox_links = existing.get("sandbox_links", {}) if existing else {}
     live_links = existing.get("live_links", {}) if existing else {}
     
-    # Update only provided values
+    # Update new 3-tier plan links
+    if sandbox_basic_monthly is not None:
+        sandbox_links["basic_monthly"] = sandbox_basic_monthly
+    if sandbox_basic_yearly is not None:
+        sandbox_links["basic_yearly"] = sandbox_basic_yearly
+    if sandbox_standard_monthly is not None:
+        sandbox_links["standard_monthly"] = sandbox_standard_monthly
+    if sandbox_standard_yearly is not None:
+        sandbox_links["standard_yearly"] = sandbox_standard_yearly
+    if sandbox_premium_monthly is not None:
+        sandbox_links["premium_monthly"] = sandbox_premium_monthly
+    if sandbox_premium_yearly is not None:
+        sandbox_links["premium_yearly"] = sandbox_premium_yearly
+        
+    if live_basic_monthly is not None:
+        live_links["basic_monthly"] = live_basic_monthly
+    if live_basic_yearly is not None:
+        live_links["basic_yearly"] = live_basic_yearly
+    if live_standard_monthly is not None:
+        live_links["standard_monthly"] = live_standard_monthly
+    if live_standard_yearly is not None:
+        live_links["standard_yearly"] = live_standard_yearly
+    if live_premium_monthly is not None:
+        live_links["premium_monthly"] = live_premium_monthly
+    if live_premium_yearly is not None:
+        live_links["premium_yearly"] = live_premium_yearly
+    
+    # Update legacy links
     if sandbox_trial is not None:
         sandbox_links["trial"] = sandbox_trial
     if sandbox_monthly is not None:
