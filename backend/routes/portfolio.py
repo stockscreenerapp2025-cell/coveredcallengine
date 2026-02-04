@@ -872,10 +872,10 @@ async def _generate_ai_suggestion_for_trade(trade: dict) -> dict:
     """
     
     try:
-        from emergentintegrations.llm.chat import LlmChat, UserMessage
+        from services.gemini_service import GeminiChat, UserMessage
         
-        llm = LlmChat(
-            api_key=os.environ.get("EMERGENT_LLM_KEY"),
+        llm = GeminiChat(
+            api_key=os.environ.get("GEMINI_API_KEY"),
             session_id=str(uuid.uuid4()),
             system_message="You are a professional options trading advisor. Start with ONE action word, then explain briefly."
         )

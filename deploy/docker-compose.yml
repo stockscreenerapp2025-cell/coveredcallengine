@@ -1,0 +1,45 @@
+version: '3.8'
+
+services:
+  mongo:
+    image: mongo:latest
+    container_name: cce_mongo
+    ports:
+      - "27017:27017"
+    volumes:
+      - ./mongo_data:/data/db
+    restart: unless-stopped
+  backend:
+    build:
+      context: ../backend
+      dockerfile: ../deploy/backend.Dockerfile
+    container_name: cce_backend
+    ports:
+      - "8000:8000"
+    volumes:
+      - ../backend:/app
+    environment:
+      - MONGO_URL=mongodb://mongo:27017
+      - DB_NAME=premium_hunter
+      - JWT_SECRET=dev_secret_key
+    depends_on:
+      - mongo
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ../frontend
+      dockerfile: ../deploy/frontend.Dockerfile
+    container_name: cce_frontend
+    ports:
+      - "3000:3000"
+    volumes:
+      - ../frontend:/app
+      - /app/node_modules
+    environment:
+      - REACT_APP_BACKEND_URL=http://localhost:8000
+    stdin_open: true
+    tty: true
+    depends_on:
+      - backend
+    restart: unless-stopped

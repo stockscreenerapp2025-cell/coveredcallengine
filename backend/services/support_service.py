@@ -158,7 +158,7 @@ class SupportService:
     
     def __init__(self, db):
         self.db = db
-        self.llm_key = os.environ.get("EMERGENT_LLM_KEY")
+        self.llm_key = os.environ.get("GEMINI_API_KEY")
         self._ticket_counter = None
     
     def get_support_from_address(self) -> str:
@@ -192,17 +192,17 @@ class SupportService:
     async def _call_llm(self, system_prompt: str, user_message: str) -> Optional[Dict]:
         """Call LLM for classification or draft generation"""
         if not self.llm_key:
-            logger.warning("No EMERGENT_LLM_KEY configured - AI features disabled")
+            logger.warning("No GEMINI_API_KEY configured - AI features disabled")
             return None
         
         try:
-            from emergentintegrations.llm.chat import LlmChat, UserMessage
+            from services.gemini_service import GeminiChat, UserMessage
             
-            chat = LlmChat(
+            chat = GeminiChat(
                 api_key=self.llm_key,
                 session_id=f"support-{uuid4()}",
                 system_message=system_prompt
-            ).with_model("openai", "gpt-5.2")
+            )
             
             response = await chat.send_message(UserMessage(text=user_message))
             
