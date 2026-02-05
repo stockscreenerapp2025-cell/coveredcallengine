@@ -244,7 +244,7 @@ class EmailService:
         self.db = db
         self.api_key = None
         self.sender_email = None
-        self.base_url = os.environ.get("APP_BASE_URL", "https://coveredcallengine.com")
+        self.base_url = os.environ.get("APP_BASE_URL", "https://cce.coveredcallengine.com")
     
     async def initialize(self):
         """Load email settings from database"""

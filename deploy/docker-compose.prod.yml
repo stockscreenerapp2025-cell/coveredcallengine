@@ -4,7 +4,7 @@ services:
     container_name: cce_mongodb_prod
     restart: always
     volumes:
-      - cce_mongo_data:/data/db
+      - ./mongo_data:/data/db
     networks:
       - cce_prod_network
     # Security: Resource limits
@@ -121,7 +121,4 @@ networks:
   cce_prod_network:
     driver: bridge
 
-volumes:
-  cce_mongo_data:
-    external: true
-    name: cce_mongo_data
+# Volumes are now host-mounted in ./mongo_data for localized persistence

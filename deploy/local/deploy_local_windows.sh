@@ -1,7 +1,7 @@
 #!/bin/bash
 
-# deploy_local_mac.sh
-# Single script to deploy CCE locally on macOS
+# deploy_local_windows.sh
+# Script to deploy CCE locally on Windows (using Git Bash or WSL)
 # Checks prerequisites, initializes directories, and runs Docker Compose
 
 set -e
@@ -11,20 +11,20 @@ YELLOW='\033[1;33m'
 RED='\033[0;31m'
 NC='\033[0m'
 
-echo -e "${GREEN}Starting CCE Local Mac Deployment...${NC}"
+echo -e "${GREEN}Starting CCE Local Windows Deployment...${NC}"
 
-# 1. OS Check
+# 1. OS Check (Minimal check for Windows-like environments in bash)
 OS_NAME=$(uname -s)
-if [ "$OS_NAME" != "Darwin" ]; then
-    echo -e "${RED}Error: This script is intended for macOS. Detected: $OS_NAME${NC}"
-    exit 1
+if [[ "$OS_NAME" != *"NT"* && "$OS_NAME" != *"MINGW"* && "$OS_NAME" != *"CYGWIN"* && "$OS_NAME" != *"Linux"* ]]; then
+    echo -e "${YELLOW}Warning: This script is intended for Windows (Git Bash/WSL). Detected: $OS_NAME${NC}"
+    echo -e "Proceeding anyway... if this is a Mac, please use deploy_local_mac.sh"
 fi
 
 # 2. Check for Docker
 echo -e "${YELLOW}Checking Prerequisites...${NC}"
 if ! command -v docker &> /dev/null; then
     echo -e "${RED}Docker is not installed.${NC}"
-    echo -e "Please install Docker Desktop for Mac: https://www.docker.com/products/docker-desktop/"
+    echo -e "Please install Docker Desktop for Windows: https://www.docker.com/products/docker-desktop/"
     exit 1
 fi
 
@@ -38,13 +38,15 @@ echo -e "${GREEN}✅ Docker is running.${NC}"
 
 # 3. Initialize Directories
 echo -e "\n${YELLOW}Initializing Directories...${NC}"
+# Get the directory where this script is located
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
-bash "$SCRIPT_DIR/init_dirs.sh"
+# Reference scripts in the parent 'deploy' directory
+bash "$SCRIPT_DIR/../init_dirs.sh"
 
 # 4. Run Docker Compose
 echo -e "\n${YELLOW}Building and Starting Containers...${NC}"
-# Use the docker-compose.yml from the same directory
-docker compose -f "$SCRIPT_DIR/docker-compose.yml" up -d --build
+# Use the docker-compose.yml from the parent directory
+docker compose -f "$SCRIPT_DIR/../docker-compose.yml" up -d --build
 
 echo -e "\n${GREEN}Deployment Successful!${NC}"
 echo -e "Frontend: http://localhost:3000"

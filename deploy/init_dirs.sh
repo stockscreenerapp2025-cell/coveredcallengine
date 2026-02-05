@@ -14,15 +14,15 @@ echo -e "${GREEN}Creating deployment directories...${NC}"
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 DEPLOY_ROOT="$SCRIPT_DIR"
 
-# Create MongoDB data directory
-echo "Creating mongo_data..."
+# Create MongoDB data directory (Used for host-mounted volume persistence)
+echo "Creating mongo_data for MongoDB persistence..."
 mkdir -p "$DEPLOY_ROOT/mongo_data"
 
 # Create Logs directory
 echo "Creating logs..."
 mkdir -p "$DEPLOY_ROOT/logs"
 
-# Set permissions (optional but good for docker)
+# Set permissions for host-mounted volumes (MongoDB runs as UID 999)
 chmod 777 "$DEPLOY_ROOT/mongo_data"
 chmod 777 "$DEPLOY_ROOT/logs"
 

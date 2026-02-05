@@ -47,3 +47,5 @@ services:
 networks:
   cce_network:
     driver: bridge
+
+# MongoDB usage: host-mounted in ./mongo_data
