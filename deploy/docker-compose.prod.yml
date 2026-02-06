@@ -4,7 +4,7 @@ services:
     container_name: cce_mongodb_prod
     restart: always
     volumes:
-      - ./mongo_data:/data/db
+      - ../../mongo_data:/data/db
     networks:
       - cce_prod_network
     # Security: Resource limits
