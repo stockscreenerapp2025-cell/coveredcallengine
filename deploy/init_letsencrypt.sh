@@ -5,7 +5,7 @@ if ! [ -x "$(command -v docker-compose)" ]; then
   exit 1
 fi
 
-domains=(cce.coveredcallengine.com)
+domains=(coveredcallengine.com www.coveredcallengine.com)
 rsa_key_size=4096
 data_path="./certbot"
 email="sray68@gmail.com" # Adding a valid address is strongly recommended
@@ -27,16 +27,22 @@ if [ ! -e "$data_path/conf/options-ssl-nginx.conf" ] || [ ! -e "$data_path/conf/
   echo
 fi
 
+echo "### Checking if port 80 is available ..."
+if lsof -Pi :80 -sTCP:LISTEN -t >/dev/null ; then
+    echo "Error: Port 80 is already in use. Please stop any process using it before running this script."
+    exit 1
+fi
+echo
+
 echo "### Creating dummy certificate for $domains ..."
 path="/etc/letsencrypt/live/$domains"
 mkdir -p "$data_path/conf/live/$domains"
 docker-compose -f docker-compose.prod.yml run --rm --entrypoint "\
-  openssl req -x509 -nodes -newkey rsa:$rsa_key_size -days 1\
-    -keyout '$path/privkey.pem' \
-    -out '$path/fullchain.pem' \
-    -subj '/CN=localhost'" certbot
+  sh -c 'mkdir -p $path && openssl req -x509 -nodes -newkey rsa:$rsa_key_size -days 1\
+    -keyout \"\$path/privkey.pem\" \
+    -out \"\$path/fullchain.pem\" \
+    -subj \"/CN=localhost\"'" certbot
 echo
-
 
 echo "### Starting nginx ..."
 docker-compose -f docker-compose.prod.yml up --force-recreate -d nginx

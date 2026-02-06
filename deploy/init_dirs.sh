@@ -12,7 +12,7 @@ echo -e "${GREEN}Creating deployment directories...${NC}"
 
 # Get the directory where this script is located
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
-DEPLOY_ROOT="$SCRIPT_DIR"
+DEPLOY_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
 # Create MongoDB data directory (Used for host-mounted volume persistence)
 echo "Creating mongo_data for MongoDB persistence..."

@@ -58,7 +58,7 @@ services:
       context: ../frontend
       dockerfile: ../deploy/Dockerfile.frontend
       args:
-        - REACT_APP_BACKEND_URL=https://cce.coveredcallengine.com
+        - REACT_APP_BACKEND_URL=https://coveredcallengine.com
     container_name: cce_frontend_prod
     restart: always
     expose:

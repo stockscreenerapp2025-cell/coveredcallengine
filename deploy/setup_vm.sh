@@ -45,13 +45,13 @@ install_packages_ubuntu() {
     fi
 
     # 2. Install Node.js (Latest Stable - Setup NodeSource)
-    if ! command -v node &> /dev/null; then
-        echo -e "${YELLOW}Installing Node.js (Latest Stable)...${NC}"
-        curl -fsSL https://deb.nodesource.com/setup_current.x | sudo -E bash -
-        sudo apt-get install -y nodejs
-    else
-        echo -e "${GREEN}Node.js is already installed: $(node -v)${NC}"
-    fi
+    #if ! command -v node &> /dev/null; then
+    #    echo -e "${YELLOW}Installing Node.js (Latest Stable)...${NC}"
+    #    curl -fsSL https://deb.nodesource.com/setup_current.x | sudo -E bash -
+    #    sudo apt-get install -y nodejs
+    #else
+    #    echo -e "${GREEN}Node.js is already installed: $(node -v)${NC}"
+    #fi
 
     # 3. Install Docker
     if ! command -v docker &> /dev/null; then
@@ -72,6 +72,18 @@ install_packages_ubuntu() {
     else
          echo -e "${GREEN}Docker Compose is already installed.${NC}"
     fi
+
+    # # 5. Configure Firewall (UFW)
+    # if command -v ufw &> /dev/null; then
+    #     echo -e "${YELLOW}Configuring Firewall (UFW)...${NC}"
+    #     sudo ufw allow 80/tcp
+    #     sudo ufw allow 443/tcp
+    #     sudo ufw allow 22/tcp
+    #     echo "y" | sudo ufw enable
+    # fi
+
+    # 6. Ensure scripts are executable
+    chmod +x init_letsencrypt.sh deploy.sh init_dirs.sh
 }
 
 verify_prerequisites() {
