@@ -11,12 +11,12 @@ NC='\033[0m'
 echo -e "${GREEN}Starting Deployment...${NC}"
 
 # 1. Pull Latest Code
-echo -e "${GREEN}Pulling latest code...${NC}"
-git pull origin main
+#echo -e "${GREEN}Pulling latest code...${NC}"
+#git pull origin main
 
 # 2. Initialize directories
-echo "Running init_dirs.sh..."
-bash ./init_dirs.sh
+#echo "Running init_dirs.sh..."
+#bash ./init_dirs.sh
 
 # 3. Create MongoDB volume if it doesn't exist (for data persistence)
 echo -e "${GREEN}Ensuring MongoDB volume exists...${NC}"
