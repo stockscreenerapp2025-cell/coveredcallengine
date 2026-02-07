@@ -5,6 +5,8 @@ services:
     restart: always
     volumes:
       - ../../mongo_data:/data/db
+    environment:
+      - TZ=Australia/Sydney
     networks:
       - cce_prod_network
     # Security: Resource limits
@@ -31,6 +33,7 @@ services:
     environment:
       - MONGO_URL=mongodb://mongodb:27017
       - DB_NAME=cce_db
+      - TZ=Australia/Sydney
     env_file:
       - .env
     depends_on:
@@ -63,6 +66,8 @@ services:
     restart: always
     expose:
       - "80"
+    environment:
+      - TZ=Australia/Sydney
     depends_on:
       - backend
     networks:
@@ -89,6 +94,8 @@ services:
     ports:
       - "80:80"
       - "443:443"
+    environment:
+      - TZ=Australia/Sydney
     volumes:
       - ./nginx/conf.d:/etc/nginx/conf.d:ro
       - ./certbot/conf:/etc/letsencrypt:ro
@@ -115,6 +122,8 @@ services:
     volumes:
       - ./certbot/conf:/etc/letsencrypt
       - ./certbot/www:/var/www/certbot
+    environment:
+      - TZ=Australia/Sydney
     entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew; sleep 12h & wait $${!}; done;'"
 
 networks:
