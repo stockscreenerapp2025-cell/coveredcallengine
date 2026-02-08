@@ -20,10 +20,8 @@ services:
     restart: always
     ports:
       - "8000:8000"
-    environment:
-      - MONGO_URL=mongodb://mongodb:27017
-      - DB_NAME=cce_db
-      # Add other environment variables here or use env_file: ../backend/.env
+    env_file:
+      - .env
     depends_on:
       - mongodb
     networks:

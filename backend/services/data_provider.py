@@ -31,6 +31,18 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional, List, Dict, Any
 from concurrent.futures import ThreadPoolExecutor
 import pytz
+import pandas as pd
+import numpy as np
+
+# Import Greeks calculator
+try:
+    from backend.utils.greeks import calculate_greeks
+except ImportError:
+    # Fallback for local development if backend package is not in path
+    import sys
+    from pathlib import Path
+    sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+    from utils.greeks import calculate_greeks
 
 # =============================================================================
 # CONFIGURATION
@@ -422,6 +434,22 @@ def _fetch_options_chain_yahoo_sync(
                     if iv and (iv < 0.01 or iv > 5.0):
                         iv = 0
                     
+                    # Calculate Greeks if not provided by Yahoo or if we want to ensure consistency
+                    # Yahoo often provides basic Greeks, but we'll calculate them for coverage
+                    
+                    # Risk-free rate approximation (e.g. 1-year Treasury yield ~ 4.5%)
+                    risk_free_rate = 0.045 
+                    
+                    # Calculate Greeks
+                    greeks = calculate_greeks(
+                        S=float(current_price),
+                        K=float(strike),
+                        T=dte / 365.0,
+                        r=risk_free_rate,
+                        sigma=float(iv),
+                        option_type=option_type
+                    )
+                    
                     options.append({
                         "contract_ticker": contract_symbol,
                         "underlying": symbol,
@@ -434,6 +462,10 @@ def _fetch_options_chain_yahoo_sync(
                         "volume": int(volume) if volume else 0,
                         "open_interest": int(oi) if oi else 0,
                         "implied_volatility": float(iv) if iv else 0,
+                        "delta": greeks["delta"],
+                        "gamma": greeks["gamma"],
+                        "theta": greeks["theta"],
+                        "vega": greeks["vega"],
                         "quote_source": quote_source,
                         "quote_timestamp": quote_timestamp,
                         "source": "yahoo"
@@ -607,11 +639,11 @@ async def fetch_options_chain(
     if options and len(options) > 0:
         return options
     
-    # Fallback to Polygon (basic plan - no IV/OI)
-    if api_key:
-        options = await _fetch_options_chain_polygon(symbol, api_key, option_type, max_dte, min_dte, current_price)
-        if options:
-            return options
+    # Fallback to Polygon - REMOVED
+    # if api_key:
+    #     options = await _fetch_options_chain_polygon(symbol, api_key, option_type, max_dte, min_dte, current_price)
+    #     if options:
+    #         return options
     
     return []
 
@@ -624,75 +656,8 @@ async def _fetch_options_chain_polygon(
     min_dte: int = 1,
     current_price: float = None
 ) -> List[Dict]:
-    """Polygon options chain backup (no IV/OI in basic plan)"""
-    try:
-        async with httpx.AsyncClient(timeout=HTTP_TIMEOUT) as client:
-            # Get contracts
-            today = datetime.now()
-            min_expiry = (today + timedelta(days=min_dte)).strftime('%Y-%m-%d')
-            max_expiry = (today + timedelta(days=max_dte)).strftime('%Y-%m-%d')
-            
-            response = await client.get(
-                f"{POLYGON_BASE_URL}/v3/reference/options/contracts",
-                params={
-                    "underlying_ticker": symbol.upper(),
-                    "contract_type": option_type,
-                    "expiration_date.gte": min_expiry,
-                    "expiration_date.lte": max_expiry,
-                    "limit": 50,
-                    "apiKey": api_key
-                }
-            )
-            
-            if response.status_code != 200:
-                return []
-            
-            data = response.json()
-            contracts = data.get("results", [])
-            
-            if not contracts:
-                return []
-            
-            # Get prices for contracts
-            options = []
-            for contract in contracts[:30]:
-                ticker = contract.get("ticker", "")
-                strike = contract.get("strike_price", 0)
-                expiry = contract.get("expiration_date", "")
-                
-                try:
-                    price_response = await client.get(
-                        f"{POLYGON_BASE_URL}/v2/aggs/ticker/{ticker}/prev",
-                        params={"apiKey": api_key}
-                    )
-                    
-                    if price_response.status_code == 200:
-                        price_data = price_response.json()
-                        results = price_data.get("results", [])
-                        
-                        if results:
-                            r = results[0]
-                            options.append({
-                                "contract_ticker": ticker,
-                                "underlying": symbol.upper(),
-                                "strike": strike,
-                                "expiry": expiry,
-                                "dte": calculate_dte(expiry),
-                                "type": option_type,
-                                "close": r.get("c", 0),
-                                "volume": r.get("v", 0),
-                                "open_interest": 0,  # Not available in basic plan
-                                "implied_volatility": 0,  # Not available in basic plan
-                                "source": "polygon"
-                            })
-                except Exception:
-                    continue
-            
-            return options
-            
-    except Exception as e:
-        logging.warning(f"Polygon options chain failed for {symbol}: {e}")
-        return []
+    """Polygon options chain backup (no IV/OI in basic plan) - REMOVED"""
+    return []
 
 
 async def fetch_stock_quotes_batch(symbols: List[str], api_key: str = None) -> Dict[str, Dict]:
@@ -760,3 +725,118 @@ async def fetch_historical_data(
     except Exception as e:
         logging.warning(f"Historical data fetch failed for {symbol}: {e}")
         return []
+
+
+# =============================================================================
+# TECHNICAL & FUNDAMENTAL DATA (Yahoo Finance)
+# =============================================================================
+
+async def fetch_technical_data(symbol: str) -> Optional[Dict[str, Any]]:
+    """
+    Fetch technical indicators for a symbol using Yahoo Finance.
+    Returns SMA50, SMA200, RSI14, ATR14, volume data.
+    """
+    try:
+        def _fetch_yahoo_tech():
+            import yfinance as yf
+            ticker = yf.Ticker(symbol)
+            # Get 200 days of history for SMA200
+            hist = ticker.history(period="1y")
+            if hist.empty or len(hist) < 50:
+                return None
+            
+            # Calculate SMAs
+            hist['SMA20'] = hist['Close'].rolling(window=20).mean()
+            hist['SMA50'] = hist['Close'].rolling(window=50).mean()
+            hist['SMA200'] = hist['Close'].rolling(window=200).mean()
+            
+            # Calculate RSI (14-period)
+            delta = hist['Close'].diff()
+            gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
+            loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
+            rs = gain / loss
+            hist['RSI14'] = 100 - (100 / (1 + rs))
+            
+            # Calculate ATR (14-period)
+            high_low = hist['High'] - hist['Low']
+            high_close = (hist['High'] - hist['Close'].shift()).abs()
+            low_close = (hist['Low'] - hist['Close'].shift()).abs()
+            tr = pd.concat([high_low, high_close, low_close], axis=1).max(axis=1)
+            hist['ATR14'] = tr.rolling(window=14).mean()
+            
+            # PRICE CONSISTENCY FIX: Use PREVIOUS MARKET CLOSE
+            eastern = pytz.timezone('US/Eastern')
+            today = datetime.now(eastern).date()
+            last_date = hist.index[-1].date()
+            
+            use_index = -1
+            if not is_market_closed() and last_date == today:
+                use_index = -2
+            
+            if len(hist) >= abs(use_index):
+                latest = hist.iloc[use_index]
+            else:
+                latest = hist.iloc[-1]
+            
+            close = float(latest['Close'])
+            
+            return {
+                "symbol": symbol,
+                "close": close,
+                "sma20": float(latest['SMA20']) if pd.notna(latest['SMA20']) else None,
+                "sma50": float(latest['SMA50']) if pd.notna(latest['SMA50']) else None,
+                "sma200": float(latest['SMA200']) if pd.notna(latest['SMA200']) else None,
+                "rsi14": float(latest['RSI14']) if pd.notna(latest['RSI14']) else None,
+                "atr14": float(latest['ATR14']) if pd.notna(latest['ATR14']) else None,
+                "atr_pct": float(latest['ATR14'] / close) if pd.notna(latest['ATR14']) and close > 0 else None,
+                "volume": int(latest['Volume']),
+                "timestamp": datetime.now(timezone.utc).isoformat()
+            }
+        
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(_yahoo_executor, _fetch_yahoo_tech)
+        
+    except Exception as e:
+        logging.warning(f"Failed to fetch technical data for {symbol}: {e}")
+        return None
+
+
+async def fetch_fundamental_data(symbol: str) -> Optional[Dict[str, Any]]:
+    """
+    Fetch fundamental data from Yahoo Finance.
+    Returns: description, market cap, employees, etc.
+    """
+    try:
+        def _fetch_fundamentals():
+            import yfinance as yf
+            ticker = yf.Ticker(symbol)
+            info = ticker.info
+            
+            if not info:
+                return None
+            
+            return {
+                "symbol": symbol,
+                "name": info.get("longName") or info.get("shortName") or symbol,
+                "market_cap": info.get('marketCap', 0),
+                "description": info.get("longBusinessSummary") or info.get("description", ""),
+                "employees": info.get("fullTimeEmployees"),
+                "homepage": info.get("website", ""),
+                "list_date": None,  # Yahoo doesn't explicitly provide list date in simple info
+                "primary_exchange": info.get("exchange", ""),
+                "sector": info.get('sector', ''),
+                "industry": info.get('industry', ''),
+                "pe_ratio": info.get('trailingPE'),
+                "forward_pe": info.get('forwardPE'),
+                "dividend_yield": info.get('dividendYield'),
+                "eps": info.get('trailingEps'),
+                "beta": info.get('beta'),
+                "timestamp": datetime.now(timezone.utc).isoformat()
+            }
+        
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(_yahoo_executor, _fetch_fundamentals)
+        
+    except Exception as e:
+        logging.warning(f"Failed to fetch fundamental data for {symbol}: {e}")
+        return None

@@ -277,10 +277,7 @@ async def trigger_scan(
     service = await get_scan_service()
     
     if not service.api_key:
-        raise HTTPException(
-            status_code=400, 
-            detail="Polygon API key not configured in admin settings"
-        )
+        logger.info("Triggering scan without Polygon API key (using Yahoo fallback)")
     
     logger.info(f"Admin {admin.get('email')} triggered {strategy}/{risk_profile} scan")
     
@@ -309,10 +306,7 @@ async def trigger_all_scans(admin: dict = Depends(get_admin_user)):
     service = await get_scan_service()
     
     if not service.api_key:
-        raise HTTPException(
-            status_code=400,
-            detail="Polygon API key not configured in admin settings"
-        )
+        logger.info("Triggering all scans without Polygon API key (using Yahoo fallback)")
     
     logger.info(f"Admin {admin.get('email')} triggered all scans")
     
