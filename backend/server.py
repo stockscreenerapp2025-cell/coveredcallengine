@@ -1233,18 +1233,10 @@ async def startup():
             
             from services.precomputed_scans import PrecomputedScanService
             
-            # Get API key
-            settings = await db.admin_settings.find_one(
-                {"massive_api_key": {"$exists": True}}, 
-                {"_id": 0}
-            )
-            api_key = settings.get("massive_api_key") if settings else None
+            # REMOVED: Polygon API key check
+            # Yahoo Finance does not require an API key for this service
             
-            if not api_key:
-                logger.warning("Pre-computed scans skipped: No Polygon API key configured")
-                return
-            
-            service = PrecomputedScanService(db, api_key)
+            service = PrecomputedScanService(db)
             results = await service.run_all_scans()
             logger.info(f"Pre-computed scans complete: {results}")
             

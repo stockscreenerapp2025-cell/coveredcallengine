@@ -183,7 +183,7 @@ class PrecomputedScanService:
     
     def __init__(self, db, api_key: str = None):
         self.db = db
-        self.api_key = api_key
+        # api_key no longer needed for Yahoo Finance
         self._rate_limit_semaphore = asyncio.Semaphore(STOCK_API_RATE_LIMIT)
         self._last_stock_calls = []
         self._executor = ThreadPoolExecutor(max_workers=10)

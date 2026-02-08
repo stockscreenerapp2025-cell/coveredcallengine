@@ -47,6 +47,18 @@ except ImportError:
 # =============================================================================
 # CONFIGURATION
 # =============================================================================
+
+# Fix for Docker permission denied error in yfinance cache
+# https://github.com/ranaroussi/yfinance/issues/1084
+import yfinance as yf
+# Ensure cache dir exists and is writable
+try:
+    cache_dir = "/tmp/yfinance_cache"
+    os.makedirs(cache_dir, exist_ok=True)
+    yf.set_tz_cache_location(cache_dir)
+except Exception as e:
+    logging.warning(f"Failed to set yfinance cache location: {e}")
+
 HTTP_TIMEOUT = httpx.Timeout(30.0, connect=10.0)
 POLYGON_BASE_URL = "https://api.polygon.io"
 

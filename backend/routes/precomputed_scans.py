@@ -28,17 +28,10 @@ scans_router = APIRouter(prefix="/scans", tags=["Pre-Computed Scans"])
 
 
 async def get_scan_service():
-    """Get scan service instance with API key."""
+    """Get scan service instance."""
     from services.precomputed_scans import PrecomputedScanService
-    
-    # Get Polygon API key from admin settings
-    settings = await db.admin_settings.find_one(
-        {"massive_api_key": {"$exists": True}}, 
-        {"_id": 0}
-    )
-    api_key = settings.get("massive_api_key") if settings else None
-    
-    return PrecomputedScanService(db, api_key)
+    # No API key needed for Yahoo Finance
+    return PrecomputedScanService(db)
 
 
 # ==================== PUBLIC ENDPOINTS ====================
@@ -276,9 +269,6 @@ async def trigger_scan(
     
     service = await get_scan_service()
     
-    if not service.api_key:
-        logger.info("Triggering scan without Polygon API key (using Yahoo fallback)")
-    
     logger.info(f"Admin {admin.get('email')} triggered {strategy}/{risk_profile} scan")
     
     if strategy == "covered_call":
@@ -305,9 +295,6 @@ async def trigger_all_scans(admin: dict = Depends(get_admin_user)):
     """
     service = await get_scan_service()
     
-    if not service.api_key:
-        logger.info("Triggering all scans without Polygon API key (using Yahoo fallback)")
-    
     logger.info(f"Admin {admin.get('email')} triggered all scans")
     
     results = await service.run_all_scans()
@@ -327,6 +314,6 @@ async def get_scan_status(admin: dict = Depends(get_admin_user)):
     
     return {
         "scans": scans,
-        "api_key_configured": bool(service.api_key),
+        "api_key_configured": False, # No longer applicable
         "total_scans": len(scans)
     }
