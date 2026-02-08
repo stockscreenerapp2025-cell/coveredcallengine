@@ -304,10 +304,19 @@ async def get_historical_data(
     days: int = Query(30, ge=1, le=365),
     user: dict = Depends(get_current_user)
 ):
-    """Get historical stock data"""
-    MOCK_STOCKS, _, _, _ = _get_server_data()
+    """Get historical stock data using centralized provider"""
+    from services.data_provider import fetch_historical_data as fetch_history_provider
     
     symbol = symbol.upper()
+    
+    # Fetch real data from Yahoo Finance via centralized provider
+    data = await fetch_history_provider(symbol, days=days)
+    
+    if data:
+        return data
+        
+    # Fallback to mock data only if provider fails
+    MOCK_STOCKS, _, _, _ = _get_server_data()
     
     # Generate mock historical data
     data = []
