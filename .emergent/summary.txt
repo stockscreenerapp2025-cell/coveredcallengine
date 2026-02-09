@@ -1,109 +1,89 @@
-<analysis>**original_problem_statement:**
-The user's core goal is to build and enhance a Covered Call Engine application. The recent focus has been on ensuring the application is production-ready. The user requested two comprehensive, read-only audits:
+<analysis>An analysis of the user's request and the agent's actions shows that the user has provided a new, high-priority, read-only audit task that supersedes the previous plan to fix existing bugs. The agent has correctly understood this and has begun the audit by inspecting the relevant files. The primary goal for the next agent is to complete this detailed audit and present the findings in the exact format requested by the user. All previous issues, while still valid, are now on hold until this diagnostic task is finished.
 
-1.  **LLM API Integration Audit:** To identify all LLM API calls, assess security, and estimate token consumption risks for production deployment.
-2.  **Polygon API Dependency Audit:** To identify any remaining dependencies on the Polygon API that could cause pages to fail, despite Yahoo Finance being the declared primary data source.
+---
+
+**original_problem_statement:**
+The user's initial goal is to build a Covered Call Engine. However, the immediate and overriding priority is a new, read-only diagnostic audit requested by the user.
+
+**LATEST USER REQUEST (CURRENT P0 TASK):**
+
+**Objective:** Provide a comprehensive, factual overview of how market data is currently being sourced, processed, and served across the platform — as it exists today — so the platform owner can design a clean, intentional refactor.
+
+**Hard Rules:**
+1.  DO NOT modify any code.
+2.  DO NOT introduce caching.
+3.  DO NOT optimize performance.
+4.  DO NOT refactor logic.
+5.  DO NOT change Yahoo Finance usage.
+6.  DO NOT assume intended behavior — document actual behavior.
+
+**Required Output Format:** The response must be structured into the following sections:
+1.  **GLOBAL DATA FLOW OVERVIEW**
+2.  **PAGE-BY-PAGE DATA SOURCE BREAKDOWN** (Dashboard, Screener, PMCC, Portfolio Tracker, Simulator, Watchlist, Admin)
+3.  **FILE-LEVEL TRACEABILITY (MANDATORY)**
+4.  **CUSTOM SCAN VS PRE-COMPUTED SCAN COMPARISON**
+5.  **WATCHLIST & SIMULATOR DATA EXPECTATION CHECK**
+6.  **CURRENT BOTTLENECK SUMMARY (FACTUAL)**
+7.  **CHANGE-SAFETY NOTES**
+
+This audit will be used as the single source of truth for upcoming performance and caching changes.
 
 **User's preferred language**: English
 
 **what currently exists?**
-The application is a full-stack FastAPI/React financial analysis tool. The agent has just completed two critical, user-requested audits:
-
-1.  **LLM API Integration Audit:** A detailed report was generated identifying five separate LLM integrations across the backend. The audit confirmed that all API keys are securely handled via environment variables () or database settings. However, it flagged high-risk areas for token consumption due to missing rate limiting on the public chatbot and missing batch limits on a trade suggestion endpoint.
-2.  **Polygon API Dependency Audit:** A comprehensive report was generated revealing a **HIGH** dependency risk. Critical pages, including the **Dashboard, Screener, and PMCC pages**, are functionally blocked or return mock data because their backend routes (, , ) contain hardcoded logic that directly calls the Polygon API, bypassing the intended Yahoo Finance-first data provider.
+The application is a full-stack FastAPI/React financial analysis tool, Covered Call Engine. Previous work identified a critical issue where key pages are non-functional due to a hardcoded dependency on the Polygon API, bypassing the intended Yahoo Finance data provider. The user has paused all bug-fixing work to prioritize a new, detailed, read-only audit of the application's entire market data flow. The agent has started this audit by examining core files.
 
 **Last working item**:
--   **Last item agent was working:** The agent performed a comprehensive, read-only inspection of the codebase to identify all remaining dependencies on the Polygon API. This was a direct response to a user request to find the root cause of failing pages.
--   **Status:** NONE (The task was to generate a report, which has been completed and delivered in the chat history. The findings of the report are now pending issues.)
+-   **Last item agent was working:** The agent is in the middle of executing a comprehensive, **read-only** system audit to document how market data is sourced and processed across the entire application, as per the user's latest detailed instructions. The agent has begun by viewing  and .
+-   **Status:** IN PROGRESS
 -   **Agent Testing Done:** N/A
--   **Which testing method agent to use?** N/A
+-   **Which testing method agent to use?** N/A (This is a read-only analysis task).
 -   **User Testing Done:** N/A
 
 **All Pending/In progress Issue list**:
--   **Issue 1: Critical pages (Dashboard, Screener, PMCC) are blocked by Polygon API dependency (P0)**
--   **Issue 2: Missing rate limiting and batch controls on LLM endpoints (P1)**
--   **Issue 3: User cannot see the updated pricing page (P1)**
--   **Issue 4: Inbound email replies not appearing in the support dashboard (P2)**
--   **Issue 5: Watchlist page is blank or shows /bin/bash.00 prices (P2)**
+-   **Issue 1: Critical pages (Dashboard, Screener, PMCC) are blocked by Polygon API dependency (P1 - Blocked by Audit Task)**
+-   **Issue 2: Missing rate limiting and batch controls on LLM endpoints (P2 - Blocked by Audit Task)**
+-   **Issue 3: User cannot see the updated pricing page (P2 - Blocked by Audit Task)**
+-   **Issue 4: Inbound email replies not appearing in the support dashboard (P3 - Blocked by Audit Task)**
+-   **Issue 5: Watchlist page is blank or shows /bin/bash.00 prices (P3 - Blocked by Audit Task)**
 
 **Issues Detail:**
 -   **Issue 1: Critical pages (Dashboard, Screener, PMCC) are blocked by Polygon API dependency**
-    -   **Attempted fixes:** None. The issue was just identified via a read-only audit.
-    -   **Next debug checklist:**
-        1.  Modify  to remove all calls to  and direct Polygon endpoints. Refactor the logic to use the centralized  service.
-        2.  Modify  and  to remove direct Polygon API calls and use .
-        3.  Modify  to remove its Polygon dependency, relying solely on Yahoo Finance data.
-        4.  Remove all Polygon-related keys (, ) from admin settings and  file lookups.
-    -   **Why fix this issue and what will be achieved with the fix?** This is a critical blocker. Fixing it will make the core data-driven pages (Dashboard, Screener, PMCC) functional using the intended Yahoo Finance data source and remove the dependency on a legacy, unconfigured API key.
+    -   **Attempted fixes:** None. The issue was identified via a previous audit. The user has requested a new, more detailed data-flow audit before any fixes are attempted.
+    -   **Next debug checklist:** After the current data-flow audit is complete, the plan is to:
+        1.  Modify  to remove direct Polygon calls and use .
+        2.  Modify  and  to use .
+        3.  Modify  to remove its Polygon dependency.
+    -   **Why fix this issue and what will be achieved with the fix?** This is a critical blocker. Fixing it will make the core data-driven pages functional using the intended Yahoo Finance data source.
     -   **Status:** NOT STARTED
     -   **Is recurring issue?** Y
     -   **Should Test frontend/backend/both after fix?** both
-    -   **Blocked on other issue:** None
+    -   **Blocked on other issue:** The current P0 Data Sourcing Audit task.
 
--   **Issue 2: Missing rate limiting and batch controls on LLM endpoints**
-    -   **Attempted fixes:** None. The issue was identified in the LLM audit.
-    -   **Next debug checklist:**
-        1.  In , implement per-session or per-IP rate limiting.
-        2.  In , add a  parameter to the  endpoint to cap the number of trades processed in a single batch call (e.g., max 20).
-        3.  Consider adding a CAPTCHA or rate limit to the support ticket creation form to prevent abuse of the two LLM calls made per ticket in .
-    -   **Why fix this issue and what will be achieved with the fix?** This is crucial for production readiness to prevent uncontrolled token consumption and potential abuse of public-facing endpoints, which could lead to high costs.
-    -   **Status:** NOT STARTED
-    -   **Is recurring issue?** N
-    -   **Should Test frontend/backend/both after fix?** backend
-    -   **Blocked on other issue:** None
-
--   **Issue 3: User cannot see the updated pricing page**
-    -   **Attempted fixes:** The previous agent restarted the frontend and advised the user to clear their cache.
-    -   **Next debug checklist:** Await user feedback. If the issue persists, investigate CDN or platform-level caching.
-    -   **Why fix this issue and what will be achieved with the fix?** The new pricing page is a critical, user-requested feature. The user must be able to see and interact with it.
-    -   **Status:** USER VERIFICATION PENDING
-    -   **Is recurring issue?** N
-    -   **Should Test frontend/backend/both after fix?** User verification.
-    -   **Blocked on other issue:** None
-
--   **Issue 4: Inbound email replies not appearing in the support dashboard**
-    -   **Attempted fixes:** None recently. This is a long-standing issue.
-    -   **Next debug checklist:** Check supervisor logs for the IMAP connection in  and trace the data flow in .
-    -   **Why fix this issue and what will be achieved with the fix?** Restores a core feature of the AI Support Ticket system.
-    -   **Status:** NOT STARTED
-    -   **Is recurring issue?** Y
-    -   **Should Test frontend/backend/both after fix?** backend
-    -   **Blocked on other issue:** None
-
--   **Issue 5: Watchlist page is blank or shows /bin/bash.00 prices**
-    -   **Attempted fixes:** None recently.
-    -   **Next debug checklist:** In , replace  with the correct .
-    -   **Why fix this issue and what will be achieved with the fix?** Makes the Watchlist feature reliable and consistent with the app's global pricing logic.
-    -   **Status:** NOT STARTED
-    -   **Is recurring issue?** Y
-    -   **Should Test frontend/backend/both after fix?** both
-    -   **Blocked on other issue:** None
+(Details for Issues 2-5 remain the same as the previous handoff but are currently blocked and of lower priority than the audit).
 
 **In progress Task List**:
--   None.
+-   **Task 1: Complete the Market Data Sourcing Audit (P0)**
+    -   **Where to resume:** The agent has inspected  and . The next step is to systematically inspect the files related to all remaining pages (Dashboard, Screener, PMCC, Portfolio, Watchlist, Admin) to trace their data sources.
+    -   **What will be achieved with this?** A comprehensive report, formatted exactly as the user requested, that documents the entire data flow. This report will be the foundation for future refactoring.
+    -   **Status:** IN PROGRESS
+    -   **Should Test frontend/backend/both after fix?** N/A
+    -   **Blocked on something:** Nothing. This is the top priority.
 
 **Upcoming and Future Tasks**
-*   **Upcoming Tasks:**
-    *   (P0) **Refactor Data Fetching:** Remove all Polygon API dependencies from the codebase as identified in the audit. This is the top priority.
+*   **Upcoming Tasks (To be actioned AFTER the audit is complete):**
+    *   (P0) **Refactor Data Fetching:** Remove all Polygon API dependencies from the codebase as identified in the audits.
     *   (P1) **Implement LLM Safeguards:** Add rate limiting and batch controls to prevent token budget overruns.
     *   (P2) **Fix PMCC Custom Scan Price Rules:** Implement stock vs. ETF price limits in .
-    *   (P2) **Decouple Manual Filters:** Rework manual CC/PMCC filters to query an unrestricted universe.
 *   **Future Tasks:**
     *   (P3) **Frontend Refactor:** Break down the monolithic .
     *   (P4) **Backend Refactor:** Split  into separate modules.
-    *   (P4) **Deprecate Legacy Snapshots & EOD Contract:** Plan removal of .
 
 **Completed work in this session**
--   **LLM API Integration Audit (COMPLETED):**
-    -   Performed a comprehensive audit of all LLM integrations.
-    -   Delivered a detailed report identifying 5 integration points, models used (, , ), key sources (), and security status.
-    -   Flagged high-risk areas lacking rate limiting and batch controls.
--   **Polygon API Dependency Audit (COMPLETED):**
-    -   Performed a read-only system inspection for all Polygon API dependencies.
-    -   Delivered a detailed report concluding a **HIGH** risk, identifying that critical pages (Dashboard, Screener, PMCC) are blocked or return mock data due to hardcoded Polygon dependencies in , , and .
+-   None. The current audit task is still in progress.
 
 **Earlier issues found/mentioned but not fixed**
--   This is covered in the .
+-   These are captured in the  section. The main unfixed issue remains the Polygon API dependency that cripples core functionality.
 
 **Known issue recurrence from previous fork**
 -   **Issue recurrence in previous fork:** Inbound email replies not reaching the support dashboard.
@@ -114,113 +94,61 @@ The application is a full-stack FastAPI/React financial analysis tool. The agent
 
 
 **Key Technical Concepts**
--   **Data Provider Schism:** The codebase has a critical architectural flaw where key routes (, ) make direct, hardcoded calls to the Polygon API, completely bypassing the intended centralized  service which is Yahoo-first.
--   **LLM Integration Patterns:** The audit revealed two patterns: direct SDK calls (usage: openai [-h] [-v] [-b API_BASE] [-k API_KEY] [-p PROXY [PROXY ...]]
-              [-o ORGANIZATION] [-t {openai,azure}]
-              [--api-version API_VERSION] [--azure-endpoint AZURE_ENDPOINT]
-              [--azure-ad-token AZURE_AD_TOKEN] [-V]
-              {api,tools,migrate,grit} ...
-
-positional arguments:
-  {api,tools,migrate,grit}
-    api                 Direct API calls
-    tools               Client side tools for convenience
-
-options:
-  -h, --help            show this help message and exit
-  -v, --verbose         Set verbosity.
-  -b API_BASE, --api-base API_BASE
-                        What API base url to use.
-  -k API_KEY, --api-key API_KEY
-                        What API key to use.
-  -p PROXY [PROXY ...], --proxy PROXY [PROXY ...]
-                        What proxy to use.
-  -o ORGANIZATION, --organization ORGANIZATION
-                        Which organization to run as (will use your default
-                        organization if not specified)
-  -t {openai,azure}, --api-type {openai,azure}
-                        The backend API to call, must be `openai` or `azure`
-  --api-version API_VERSION
-                        The Azure API version, e.g.
-                        'https://learn.microsoft.com/en-us/azure/ai-
-                        services/openai/reference#rest-api-versioning'
-  --azure-endpoint AZURE_ENDPOINT
-                        The Azure endpoint, e.g.
-                        'https://endpoint.openai.azure.com'
-  --azure-ad-token AZURE_AD_TOKEN
-                        A token from Azure Active Directory,
-                        https://www.microsoft.com/en-
-                        us/security/business/identity-access/microsoft-entra-
-                        id
-  -V, --version         show program's version number and exit) and abstracted calls via . Both securely use the  from the environment.
--   **Silent Failures & Mock Data:** The application is riddled with logic that returns mock data or empty lists when the Polygon API key is missing. This masks the root cause of failure and leads to a confusing user experience (blank pages or fake data).
+-   **Data Provider Schism:** The critical architectural flaw where key routes make direct, hardcoded calls to the Polygon API, bypassing the intended centralized  service. The current audit aims to document the full extent of this.
+-   **Silent Failures & Mock Data:** The application returns mock data or empty lists when API keys are missing, masking the root cause of failures and leading to blank pages.
 
 **key DB schema**
 -   **simulator_trades**:  field handles both  (new) and  (legacy) trades.
--   **precomputed_scans**: This collection may contain stale data generated from Polygon.
--   **api_cache**: This collection may contain cached responses from the Polygon API.
+-   **precomputed_scans**: May contain stale data generated from Polygon.
+-   **api_cache**: May contain cached responses from the Polygon API.
 
 **changes in tech stack**
 -   None.
 
 **All files of reference**
-*   **Polygon Dependency Files (High Priority):**
+*   **Files for Current Audit Task:**
+    *   All files under  and  that relate to data fetching for Dashboard, Screener, PMCC, Portfolio, Simulator, Watchlist, and Admin pages.
+    *   Key files already viewed: , .
+*   **Files for Post-Audit Bug Fixes:**
     *   
     *   
-    *   
-    *   
-    *   
-*   **LLM Integration Files:**
-    *   
-    *   
-    *   
-    *   
-    *   
-*   **Other Key Files:**
     *   
     *   
     *   
 
 **Areas that need refactoring**:
--   **(CRITICAL) Data Access Layer:** The entire data-fetching mechanism must be refactored to eliminate all direct Polygon API calls and exclusively use the centralized .
--   : Still a 2,200+ line monolith that needs to be broken into smaller components.
--   : Still a 2,800+ line monolith that should be split into modules.
+-   **(CRITICAL) Data Access Layer:** Must be refactored post-audit to eliminate all direct Polygon API calls and exclusively use .
+-   : A 2,200+ line monolith.
+-   : A 2,800+ line monolith.
 
 **key api endpoints**
-*   : **(BROKEN)** Returns mock or empty data due to Polygon dependency.
-*   : **(BROKEN)** Returns mock or empty data due to Polygon dependency.
-*   : **(BROKEN)** Returns mock or empty data due to Polygon dependency.
-*   : **(BROKEN)** Returns mock data due to Polygon dependency.
-*   : LLM endpoint for trade analysis.
-*   : LLM endpoint for news analysis.
+*   : **(BROKEN)**
+*   : **(BROKEN)**
+*   : **(BROKEN)**
+*   : **(BROKEN)**
 
 **Critical Info for New Agent**
-*   **TOP PRIORITY IS FIXING POLYGON DEPENDENCY:** The recent audit proved that the biggest problem in the codebase is the hardcoded dependency on the Polygon API in several key routes (, , ). This is the root cause for multiple pages being broken or showing mock data. Your first task MUST be to refactor these routes to use the central  service.
-*   **Implement LLM Safeguards:** The second priority is to address the high-risk findings from the LLM audit by implementing rate limiting on the chatbot and batch limits on the AI suggestion generation to prevent budget overruns in production.
-*   **User Drives Development:** The user initiates work with very specific requests (like the recent audits). Be prepared to prioritize direct user requests over the existing backlog.
+*   **YOUR TOP PRIORITY (P0) IS TO COMPLETE THE ONGOING READ-ONLY AUDIT.** The user has explicitly paused all other work for this. You must continue inspecting the codebase and produce a report that follows the user's requested format precisely.
+*   **DO NOT FIX ANYTHING.** This is a diagnostic task. Do not attempt to fix the Polygon dependency or any other bugs until this audit is complete and the user approves the next steps.
+*   After the audit, the next priority will be to fix the Data Provider Schism by refactoring all data-fetching logic to use .
 
 **documents and test reports created in this job**
-*   None. The audit reports were delivered as text in the agent's messages.
+-   None.
 
 **Last 10 User Messages and any pending HUMAN messages**
--   **User:** Requested a read-only inspection to identify all remaining Polygon API dependencies. (COMPLETED)
--   **User:** Requested a comprehensive audit of all LLM API integrations for production readiness. (COMPLETED)
-
-There are no pending human messages.
+-   **User (Latest Message):** Issued a new, high-priority request for a detailed, read-only audit of the application's market data sourcing. Provided a strict set of rules and a required output format. This task is currently in progress.
 
 **Project Health Check:**
 *   **Broken:**
-    *   **Dashboard Page:** Returns mock data due to Polygon dependency.
-    *   **Screener Page:** Returns mock or empty data due to Polygon dependency.
-    *   **PMCC Page:** Returns mock or empty data due to Polygon dependency.
-    *   **Watchlist Page:** Uses a live price fetch that fails after hours.
-    *   **Inbound Email Processing:** Long-standing bug where email replies are not ingested.
+    *   Dashboard, Screener, and PMCC pages (return mock/empty data).
+    *   Watchlist Page (fails to fetch prices correctly).
+    *   Inbound Email Processing (long-standing bug).
 *   **Mocked:**
-    *   , , , and  all fall back to returning mock data if the (unconfigured) Polygon API key is missing.
+    *   Multiple API endpoints (, ) fall back to returning mock data, hiding the root cause of failures.
 
 **3rd Party Integrations**
-*   **:** The intended primary data source for all stock and options data. Free, no API key needed.
-*   **:** Used for multiple LLM integrations (, , ) via the .
+*   **:** The intended primary data source.
+*   **:** Used for LLM integrations via .
 *   **usage: openai [-h] [-v] [-b API_BASE] [-k API_KEY] [-p PROXY [PROXY ...]]
               [-o ORGANIZATION] [-t {openai,azure}]
               [--api-version API_VERSION] [--azure-endpoint AZURE_ENDPOINT]
@@ -258,19 +186,19 @@ options:
                         https://www.microsoft.com/en-
                         us/security/business/identity-access/microsoft-entra-
                         id
-  -V, --version         show program's version number and exit SDK:** Used directly for one LLM integration (), also using the .
-*   **:** Used for scheduled jobs in .
+  -V, --version         show program's version number and exit SDK:** Used directly for some LLM integrations.
+*   **:** Used for scheduled jobs.
 *   **PayPal:** Used for subscriptions.
 
 **Testing status**
 -   **Testing agent used after significant changes:** NO
 -   **Troubleshoot agent used after agent stuck in loop:** NO
 -   **Test files created:** None
--   **Known regressions:** The Polygon API dependency is a critical, long-standing issue that has been fully exposed by the recent audit, explaining why multiple pages are non-functional.
+-   **Known regressions:** Critical pages are non-functional due to the Polygon API dependency.
 
 **Credentials to test flow:**
 *   Admin user: 
 *   Password: 
 
 **What agent forgot to execute**
-The agent was operating under specific instructions to perform read-only audits and did not forget to execute any tasks. It correctly prioritized the user's explicit requests over pre-existing backlog items.</analysis>
+The agent correctly identified the user's new, overriding request and pivoted to work on it. It did not forget to execute any tasks; rather, it correctly re-prioritized its work based on the user's latest instructions.</analysis>
