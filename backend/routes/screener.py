@@ -222,9 +222,11 @@ async def screen_covered_calls(
     
     logging.info(f"Covered Calls Screener: api_key={'present' if api_key else 'missing'}, min_roi={min_roi}, max_dte={max_dte}")
     
-    logging.info(f"Covered Calls Screener: api_key={'present' if api_key else 'missing'}, min_roi={min_roi}, max_dte={max_dte}")
-    
-    # POLYGON REMOVAL: Removed API key gate. Data provider handles fallback to Yahoo.
+    if not api_key:
+        # No API key - return mock data
+        opportunities = funcs['generate_mock_covered_call_opportunities']()
+        filtered = [o for o in opportunities if o["roi_pct"] >= min_roi and o["dte"] <= max_dte]
+        return {"opportunities": filtered[:20], "total": len(filtered), "is_mock": True, "message": "API key required for live data"}
     
     try:
         opportunities = []
@@ -592,7 +594,7 @@ async def get_dashboard_opportunities(
     api_key = await funcs['get_massive_api_key']()
     
     if not api_key:
-        logging.info("Dashboard: No API key configured, proceeding with Yahoo fallback")
+        return {"opportunities": [], "total": 0, "message": "API key not configured", "is_mock": True}
     
     # DASHBOARD FILTERS (broader than Custom Scan Phase 4 filters)
     DASHBOARD_FILTERS = {
@@ -1000,7 +1002,7 @@ async def screen_pmcc(
     api_key = await funcs['get_massive_api_key']()
     
     if not api_key:
-        logging.info("PMCC: No API key configured, proceeding with Yahoo fallback")
+        return {"opportunities": [], "total": 0, "message": "API key required for PMCC screening", "is_mock": True}
     
     try:
         # Extended symbol list including ETFs for Phase 5

@@ -233,12 +233,6 @@ frontend/node_modules/.cache/default-development/13.pack
 # Environment files
 *.env
 *.env.*
-deploy/mongo_data
-
-# Production deployment
-deploy/prod/.env.production
-deploy/prod/certbot/
-deploy/prod/mongo_data/
 -e 
 # Environment files
 *.env

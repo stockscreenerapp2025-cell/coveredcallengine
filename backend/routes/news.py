@@ -244,7 +244,7 @@ async def analyze_news_sentiment(
     from dotenv import load_dotenv
     
     load_dotenv()
-    api_key = os.environ.get("GEMINI_API_KEY")
+    api_key = os.environ.get("EMERGENT_LLM_KEY")
     
     if not api_key:
         return {
@@ -262,7 +262,7 @@ async def analyze_news_sentiment(
         }
     
     try:
-        from services.gemini_service import GeminiChat, UserMessage
+        from emergentintegrations.llm.chat import LlmChat, UserMessage
         
         # Prepare news text for analysis
         news_text = ""
@@ -272,7 +272,7 @@ async def analyze_news_sentiment(
             news_text += f"{i}. {title}\n{desc[:200] if desc else ''}\n\n"
         
         # Create chat instance
-        chat = GeminiChat(
+        chat = LlmChat(
             api_key=api_key,
             session_id=f"sentiment_{datetime.now().timestamp()}",
             system_message="""You are a financial sentiment analyst. Analyze the sentiment of stock-related news articles.
@@ -297,7 +297,7 @@ Respond in JSON format ONLY:
   "overall_score": 65,
   "summary": "Brief 1-sentence summary of overall sentiment"
 }"""
-        )
+        ).with_model("openai", "gpt-5.2")
         
         user_message = UserMessage(text=f"Analyze the sentiment of these news articles:\n\n{news_text}")
         response = await chat.send_message(user_message)
