@@ -205,7 +205,14 @@ async def get_market_indices(user: dict = Depends(get_current_user)):
 
 @stocks_router.get("/details/{symbol}")
 async def get_stock_details(symbol: str, user: dict = Depends(get_current_user)):
-    """Get comprehensive stock details including news, fundamentals, and ratings"""
+    """
+    Get comprehensive stock details including news, fundamentals, and ratings.
+    
+    PHASE 1 REFACTOR: Stock price now routes through data_provider.py
+    - Primary: Yahoo Finance (via data_provider.fetch_stock_quote)
+    - News/Fundamentals: Still uses Polygon (supplementary data, not core price)
+    - Analyst ratings: Yahoo Finance direct (already was)
+    """
     _, _, get_massive_api_key, get_admin_settings = _get_server_data()
     
     symbol = symbol.upper()
@@ -227,28 +234,30 @@ async def get_stock_details(symbol: str, user: dict = Depends(get_current_user))
     loop = asyncio.get_event_loop()
     analyst_task = loop.run_in_executor(_executor, _fetch_analyst_ratings, symbol)
     
+    # PHASE 1: Get stock price from data_provider (Yahoo primary)
+    try:
+        stock_data = await fetch_stock_quote(symbol, api_key)
+        if stock_data and stock_data.get("price", 0) > 0:
+            result["price"] = stock_data.get("price", 0)
+            result["previous_close"] = stock_data.get("previous_close", 0)
+            result["close_date"] = stock_data.get("close_date")
+            result["is_live"] = True
+            result["price_source"] = stock_data.get("source", "yahoo")
+            
+            # Calculate change from previous close if available
+            prev = stock_data.get("previous_close", 0)
+            if prev and prev > 0:
+                result["change"] = round(stock_data.get("price", 0) - prev, 2)
+                result["change_pct"] = round((result["change"] / prev) * 100, 2)
+    except Exception as e:
+        logging.error(f"data_provider stock quote error for {symbol}: {e}")
+    
+    # Supplementary data from Polygon (news, fundamentals, technicals)
+    # NOTE: This is NOT core price data - kept as supplementary enrichment
     if api_key:
         try:
             async with httpx.AsyncClient(timeout=30.0) as client:
-                # Get current price
-                price_response = await client.get(
-                    f"https://api.polygon.io/v2/aggs/ticker/{symbol}/prev",
-                    params={"apiKey": api_key}
-                )
-                if price_response.status_code == 200:
-                    price_data = price_response.json()
-                    if price_data.get("results"):
-                        r = price_data["results"][0]
-                        result["price"] = r.get("c", 0)
-                        result["open"] = r.get("o", 0)
-                        result["high"] = r.get("h", 0)
-                        result["low"] = r.get("l", 0)
-                        result["volume"] = r.get("v", 0)
-                        result["change"] = round(r.get("c", 0) - r.get("o", 0), 2)
-                        result["change_pct"] = round((r.get("c", 0) - r.get("o", 0)) / r.get("o", 1) * 100, 2) if r.get("o") else 0
-                        result["is_live"] = True
-                
-                # Get ticker details/fundamentals
+                # Get ticker details/fundamentals from Polygon
                 ticker_response = await client.get(
                     f"https://api.polygon.io/v3/reference/tickers/{symbol}",
                     params={"apiKey": api_key}
@@ -268,7 +277,7 @@ async def get_stock_details(symbol: str, user: dict = Depends(get_current_user))
                         "primary_exchange": details.get("primary_exchange", "")
                     }
                 
-                # Get news from Massive.com
+                # Get news from Polygon
                 news_response = await client.get(
                     "https://api.polygon.io/v2/reference/news",
                     params={"apiKey": api_key, "ticker": symbol, "limit": 5}
@@ -338,7 +347,7 @@ async def get_stock_details(symbol: str, user: dict = Depends(get_current_user))
                         }
                 
         except Exception as e:
-            logging.error(f"Stock details error for {symbol}: {e}")
+            logging.error(f"Stock details supplementary data error for {symbol}: {e}")
     
     # Get MarketAux news as supplement
     settings = await get_admin_settings()
