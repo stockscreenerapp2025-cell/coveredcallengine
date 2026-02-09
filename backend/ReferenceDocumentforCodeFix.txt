@@ -1,0 +1,284 @@
+📌 FULL CODE AUDIT & PERMANENT FIX INSTRUCTIONS
+
+1️⃣ Context & Non-Negotiable Constraints
+1.1 Data Sources (Single Source of Truth)
+•	Yahoo Finance API
+o	Used for:
+	Stocks
+	ETFs
+	Options Chains
+•	MarketAux API
+o	Used ONLY for market news
+•	❌ No mixing, fallback, inferred pricing, or synthetic data from any other source
+
+2️⃣ Core Problems Identified
+2.1 Cross-Page Impact Bug
+Issue
+Fixes applied to one page (e.g. Screener or Simulator) are unintentionally impacting:
+•	Watchlist prices
+•	Pre-computed scans
+•	PMCC / CC trackers
+Root Cause
+•	Shared pricing utilities
+•	Global mutable state
+•	No separation between:
+o	Live pricing
+o	Snapshot pricing
+o	Cached / pre-computed pricing
+Required Fix
+Introduce explicit pricing context isolation:
+•	LiveMarketContext
+•	AfterHoursContext
+•	SnapshotContext (Simulator / Watchlist snapshots / Pre-computed scans)
+🚫 No default context
+✅ Every price fetch must explicitly declare its context
+
+
+3️⃣ Market Hours Logic (CRITICAL FIX)
+3.1 Market Time Definitions (ET)
+Time	Expected Behaviour
+9:30 AM – 4:00 PM ET	Market Open
+4:00 PM – 4:15 PM ET	After-Hours (same day)
+After 4:05 PM ET	Market Closed
+⚠️ Example: 4:05 PM ET is still SAME-DAY logic, never “next day” or blank.
+
+
+
+3.2 DO NOT Block Execution When Market Is Open ❌
+Current Wrong Logic
+•	Cron / backend logic assumes execution only after market close
+•	Result: blank dashboards, missing scans, missing prices intraday
+Correct Rule
+•	Logic MUST ALWAYS RUN
+•	Only price selection rules change based on market state
+
+4️⃣ Stock & ETF Price Rules (FINAL)
+4.1 Market OPEN
+price = regularMarketPrice
+timestamp = regularMarketTime
+4.2 After 4:05 PM ET (Same Day)
+price = postMarketPrice IF available
+ELSE price = regularMarketPrice
+timestamp = max(regularMarketTime, postMarketTime)
+4.3 Weekends / US Public Holidays
+price = lastRegularMarketClose
+timestamp = lastRegularMarketTime
+
+
+5️⃣ Options Chain Fetching – Correct Logic
+5.1 Yahoo Finance Reality Check
+•	❌ Yahoo does NOT provide Delta
+•	❌ Yahoo does NOT guarantee intraday greeks
+•	✔️ Yahoo provides:
+o	Bid
+o	Ask
+o	LastPrice
+o	Implied Volatility
+o	Volume / Open Interest
+
+5.2 Options Chain Fetching Rules
+Market Open
+•	Fetch latest available chain
+•	Never reject chain just because market is open
+After Market Close (≥ 4:05 PM ET)
+•	Fetch same-day chain
+•	Accept slight staleness
+•	❌ No next-day inference
+Weekends/Holidays
+•	Use last trading day chain
+•	Mark explicitly: stale = true
+
+
+
+
+To keep the user from getting confused during holidays or weekends, use this hierarchy:
+
+Period	Stock Price Source	Option Price Source	UI Label
+Market Hours	Live (Last)	Live (Mid)	● LIVE
+After-Hours	Last (at 4:05 PM)	Last (at 4:05 PM)	● MARKET CLOSED (EOD)
+Weekend/Holiday	Last (on Friday 4:05 PM)	Last (on Friday 4:05 PM)	● MARKET CLOSED (EOD)
+
+Component	Price Source for Scans	Price Source for P/L Tracking
+Long Call Leg	Ask_Price	(Bid + Ask) / 2 (Mid)
+Short Call Leg	Bid_Price	(Bid + Ask) / 2 (Mid)
+Stock/ETF Price	Last_Price	Last_Price
+
+Master Price Fetching Logic
+Module	Market State	Stock Price Source	Option Leg Source (Long/Short)	Logic Purpose
+Pre-Computed Scan	Closed	Previous Market Close (PMC)	At Close - Long: PMC Ask Close / Short: PMC Bid Close	Pre-calculates setups overnight using the final "synced" state of the market.
+Live Scan	Open	Latest Snapshot (Last)	Latest - Long: Snapshot Ask / Short: Snapshot Bid	Ensures a trade is still viable at current "natural" fill prices before entry.
+Simulator (Entry)	Open	Latest Snapshot (Last)	Latest - Long: Entry Ask / Short: Entry Bid	Records your "Slippage." You start the trade with a small loss representing the spread.
+Simulator (Entry)	Closed	Previous Market Close (PMC)	At Close - Long: PMC Ask / Short: PMC Bid	Allows users to "Paper Trade" on weekends using the most recent valid data.
+Watchlist (Live)	Open	Live Stream (Last)	Both Legs: Live Mid Price	Prevents "P/L flickering." Uses Fair Value so the user sees true movement.
+Watchlist (Static)	Closed	Previous Market Close (PMC)	Both Legs: PMC Mid Price	Locks the P/L at the final "Mark" of the day to avoid After-Hours stock price noise.
+
+NOTE: Mid Price = (Bid Price + Ask Price) / 2
+
+6️⃣ Options Pricing Rules (MANDATORY)
+6.1 Price Selection
+Leg	Use
+Long (Buy)	ASK
+Short (Sell)	BID
+❌ Never use:
+•	Mid prices
+•	Last traded price
+•	Synthetic averages
+
+7️⃣ Delta Calculation – FINAL DECISION
+7.1 Validation
+•	Yahoo Finance does NOT supply Delta
+•	Any existing Delta is invalid or inferred
+
+7.2 Chosen Approach (APPROVED)
+✅ Black-Scholes Formula ONLY
+
+7.3 Black-Scholes Delta Formula
+Inputs:
+•	S = Current stock price
+•	K = Strike price
+•	T = Time to expiry (years)
+•	r = Risk-free rate (configurable constant)
+•	σ = Implied volatility (fallback allowed)
+Formula:
+d1 = [ ln(S / K) + (r + σ² / 2)T ] / (σ√T)
+Call Delta = N(d1)
+
+7.4 Implementation Rules
+•	Delta must be:
+o	Calculated dynamically
+o	Cached per option contract
+•	If IV missing:
+if option.IV is None or option.IV == 0:
+    use_fallback_IV()
+Fallback (Explicit & Logged)
+Option A – Historical Volatility (HV)
+HV = StdDev( ln(Pt / Pt-1) ) × √252
+🚫 Never silently fail
+
+8️⃣ Covered Call (CC) & PMCC Logic
+8.1 Covered Call (CC)
+•	Underlying stock owned
+•	Short call:
+o	Market Cap > $2 Billion
+o	Strike > current stock price
+o	Expiry ≤ 45 days
+o	Delta target configurable (e.g. 0.20–0.35)
+o	OI (Open Interest) > 500
+o	Bid-Ask Price Spread < 10%
+o	IV Rank > 30%
+o	Option Expiry Date < Earnings Date and Ex-Dividend Date
+o	RSI between 40 and 60
+o	Current Stock Price > SMA (Simple Moving Average) 50 and 200  
+
+8.2 PMCC – FINAL RULES
+•	Market Cap > $2 Billion
+•	Average Daily Volume > 1 Million shares 
+•	IV Rank: > 20% but < 70% 
+•	Earnings Date: Not within the next 30 days 
+•	Trend: Stock Price is above its 200-day Moving Average 
+
+Long LEAPS Call
+•	Expiry: 12–24 months
+•	Strike: Deep ITM
+•	Delta ≥ 0.70 ≤ 90
+•	Price source: ASK
+Short Call
+•	Expiry between 30 - 45 days
+•	Strike > long-leg strike
+•	Delta ≥ 0.15 and ≤ 0.30
+•	Price source: BID
+•	Expected Yield = 1-2% of the Leaps Cost
+AI Management Rules (this is for user suggestion only)
+•	Green Day (Stock Rises): If Short Delta hits 0.45, roll the call Up and Out for a credit.
+•	Red Day (Stock Falls): If Long Delta hits 0.70, exit the entire position. Capital preservation is priority #1.
+•	=IF((Current_Stock_Price - Long_Strike) > (Adjusted_Cost_Basis / 100), "PROFITABLE EXIT", "HOLD")
+o	Adjusted Cost Basis=(Initial LEAPS Cost)−(Total Net Premium Received)
+•	Time Passes: If Short Call reaches 50% profit, buy it back and sell a new one for the next cycle.
+
+9️⃣ Pre-Computed Scans vs Simulator vs Watchlist
+9.1 Pre-Computed Scans
+•	Executed by cron jobs
+•	Use SnapshotContext
+•	Prices:
+o	Timestamped
+o	Immutable once stored
+9.2 Simulator
+•	Uses SnapshotContext
+•	Prices frozen at trade open
+•	No live updates unless explicitly simulated
+9.3 Watchlist
+•	Uses LiveMarketContext
+•	Prices refresh dynamically
+•	❌ Must NOT inherit simulator or scan prices
+
+🔟 CRON JOBS – REQUIRED CHANGES (NEW)
+10.1 Cron Jobs MUST NEVER:
+•	Assume market is closed
+•	Block execution during market hours
+•	Write into LiveMarketContext
+•	Mutate existing snapshot data
+
+10.2 Cron Execution Rules
+All cron jobs must:
+•	Always run on schedule
+•	Detect market state at runtime
+•	Explicitly declare:
+context = SNAPSHOT
+market_state = OPEN | CLOSED
+
+10.3 Cron Job Responsibilities
+Job Type	Allowed
+Pre-computed scans	✅ Yes
+Strategy ranking	✅ Yes
+Cache warming (snapshot only)	✅ Yes
+Watchlist price refresh	❌ No
+Live pricing writes	❌ No
+
+10.4 Timestamp Discipline
+Every cron-generated record must include:
+•	price
+•	timestamp
+•	market_state
+•	data_staleness flag
+❌ Cron jobs must NEVER overwrite:
+•	Simulator trade entry prices
+•	Watchlist live prices
+•	Previously stored snapshots
+
+10.5 Failure Handling
+•	If Yahoo Finance returns partial data:
+o	Store record with:
+o	valid = false
+o	reason = "DATA_INCOMPLETE"
+•	Never return empty rows or silent failures
+
+11️⃣ Structural Refactor (MANDATORY)
+Create explicit modules:
+•	market_hours.py
+•	price_context.py
+•	options_pricing.py
+•	greeks_black_scholes.py
+•	cron_snapshot_runner.py
+
+11.1 Mandatory Flags
+Every price fetch must declare:
+{
+  "context": "LIVE | AFTER_HOURS | SNAPSHOT",
+  "market_state": "OPEN | CLOSED",
+  "timestamp_source": "REGULAR | POST | LAST_CLOSE"
+}
+
+✅ Final Acceptance Criteria
+•	No cross-page side effects
+•	Valid data during market hours
+•	Correct 4:05 PM ET handling
+•	Yahoo Finance as sole pricing source
+•	Delta computed via Black-Scholes only
+•	CC & PMCC rules enforced
+•	Cron jobs isolated to snapshot context
+•	Automated test cases covering:
+o	Market open
+o	4:05 PM ET
+o	Weekends
+o	Cron execution during market hours
+

@@ -1,0 +1,25 @@
+name: Deploy
+
+on:
+  push:
+    branches: [ main, master ]
+
+jobs:
+  trigger-deployment:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.HOST }}
+          username: ${{ secrets.USERNAME }}
+          key: ${{ secrets.KEY }}
+          port: ${{ secrets.PORT || 22 }}
+          script: |
+            # Navigate to the deploy directory
+            # Adjust this path to where your repository is cloned on the server
+            cd ~/CCE/deploy 
+            
+            # Execute the local deployment script
+            # This script handles pulling code, building images, and restarting containers
+            bash deploy.sh

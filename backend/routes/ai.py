@@ -44,8 +44,8 @@ async def ai_analysis(request: AIAnalysisRequest, user: dict = Depends(get_curre
     """AI-powered trade analysis using GPT-5.2"""
     settings = await get_admin_settings()
     
-    # Use Emergent LLM key or admin-configured key
-    api_key = settings.openai_api_key or os.environ.get('EMERGENT_LLM_KEY')
+    # Use Gemini key or admin-configured key
+    api_key = settings.openai_api_key or os.environ.get('GEMINI_API_KEY')
     
     if not api_key:
         # Return mock analysis if no API key

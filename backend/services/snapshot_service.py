@@ -223,19 +223,9 @@ class SnapshotService:
                 
                 logger.info(f"[LAYER1] {symbol}: Using previousClose=${previous_close} (LTD={ltd_str})")
                 
-            elif self.polygon_api_key:
-                # Fallback to Polygon (already uses close price from previous day)
-                data = await self._fetch_stock_polygon(symbol)
-                if data and data.get("price"):
-                    snapshot.update({
-                        "source": "polygon",
-                        "stock_close_price": data["price"],  # Polygon /prev returns previous close
-                        "price": data["price"],  # Legacy compatibility
-                        "volume": data.get("volume"),
-                        "completeness_flag": True
-                    })
-                    
-                    logger.info(f"[LAYER1] {symbol}: Polygon fallback, close=${data['price']} (LTD={ltd_str})")
+            # elif self.polygon_api_key:
+            #     # Fallback to Polygon - REMOVED
+            #     pass
             
             # Calculate data age from market close
             market_close = self.get_market_close_time(ltd)
@@ -501,30 +491,9 @@ class SnapshotService:
         else:
             return last_session.to_pydatetime().replace(tzinfo=timezone.utc)
     
-    async def _fetch_stock_polygon(self, symbol: str) -> Optional[Dict]:
-        """Fetch stock data from Polygon as fallback."""
-        if not self.polygon_api_key:
-            return None
-        
-        try:
-            async with httpx.AsyncClient(timeout=HTTP_TIMEOUT) as client:
-                url = f"{POLYGON_BASE_URL}/v2/aggs/ticker/{symbol}/prev"
-                response = await client.get(url, params={"apiKey": self.polygon_api_key})
-                
-                if response.status_code == 200:
-                    data = response.json()
-                    results = data.get("results", [])
-                    if results:
-                        r = results[0]
-                        return {
-                            "price": r.get("c"),  # Close price
-                            "previous_close": r.get("c"),
-                            "volume": r.get("v")
-                        }
-        except Exception as e:
-            logger.debug(f"Polygon stock fetch error for {symbol}: {e}")
-        
-        return None
+    # async def _fetch_stock_polygon(self, symbol: str) -> Optional[Dict]:
+    #     """Fetch stock data from Polygon as fallback - REMOVED"""
+    #     return None
     
     async def _fetch_option_chain_yahoo(self, symbol: str, stock_price: float) -> Optional[Dict]:
         """

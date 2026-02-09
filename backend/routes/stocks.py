@@ -45,40 +45,31 @@ def _get_server_data():
 
 @stocks_router.get("/quote/{symbol}")
 async def get_stock_quote(symbol: str, user: dict = Depends(get_current_user)):
-    """
-    Get stock quote for a symbol.
-    
-    PHASE 1 REFACTOR: Now routes through data_provider.py
-    - Primary: Yahoo Finance (via data_provider.fetch_stock_quote)
-    - Backup: Polygon (via data_provider fallback)
-    - Last Resort: MOCK_STOCKS (flagged with is_mock=True)
-    """
-    MOCK_STOCKS, _, get_massive_api_key, _ = _get_server_data()
+    """Get stock quote for a symbol"""
+    # Use centralized data provider
+    from services.data_provider import fetch_stock_quote as fetch_quote_provider
     
     symbol = symbol.upper()
     
-    # Get API key for potential Polygon fallback
-    api_key = await get_massive_api_key()
+    # Fetch from centralized provider (Yahoo primary)
+    quote_data = await fetch_quote_provider(symbol)
     
-    # Route through centralized data_provider (Yahoo primary, Polygon backup)
-    try:
-        result = await fetch_stock_quote(symbol, api_key)
-        
-        if result and result.get("price", 0) > 0:
-            return {
-                "symbol": symbol,
-                "price": result.get("price"),
-                "previous_close": result.get("previous_close"),
-                "change": result.get("change", 0),
-                "change_pct": result.get("change_pct", 0),
-                "close_date": result.get("close_date"),
-                "source": result.get("source", "yahoo"),
-                "is_live": True
-            }
-    except Exception as e:
-        logging.error(f"data_provider fetch_stock_quote error for {symbol}: {e}")
+    if quote_data:
+        return {
+            "symbol": symbol,
+            "price": quote_data.get("price", 0),
+            "open": quote_data.get("price", 0), # Fallback as we primarily get close
+            "high": quote_data.get("price", 0), # Fallback
+            "low": quote_data.get("price", 0),  # Fallback
+            "volume": quote_data.get("avg_volume", 0),
+            "change": 0, # Calculated in frontend or via history
+            "change_pct": 0,
+            "is_live": True,
+            "source": quote_data.get("source", "yahoo")
+        }
     
-    # Fallback to mock data (flagged)
+    # Fallback to mock data if provider fails
+    MOCK_STOCKS, _, _, _ = _get_server_data()
     if symbol in MOCK_STOCKS:
         data = MOCK_STOCKS[symbol]
         logging.warning(f"Using MOCK_STOCKS fallback for {symbol}")
@@ -205,19 +196,19 @@ async def get_market_indices(user: dict = Depends(get_current_user)):
 
 @stocks_router.get("/details/{symbol}")
 async def get_stock_details(symbol: str, user: dict = Depends(get_current_user)):
-    """
-    Get comprehensive stock details including news, fundamentals, and ratings.
+    """Get comprehensive stock details including news, fundamentals, and ratings"""
+    _, _, _, get_admin_settings = _get_server_data()
     
-    PHASE 1 REFACTOR: Stock price now routes through data_provider.py
-    - Primary: Yahoo Finance (via data_provider.fetch_stock_quote)
-    - News/Fundamentals: Still uses Polygon (supplementary data, not core price)
-    - Analyst ratings: Yahoo Finance direct (already was)
-    """
-    _, _, get_massive_api_key, get_admin_settings = _get_server_data()
+    # Import centralized data providers
+    from services.data_provider import (
+        fetch_stock_quote, 
+        fetch_fundamental_data,
+        fetch_technical_data
+    )
     
     symbol = symbol.upper()
-    api_key = await get_massive_api_key()
     
+    # Initialize result structure
     result = {
         "symbol": symbol,
         "price": 0,
@@ -230,124 +221,49 @@ async def get_stock_details(symbol: str, user: dict = Depends(get_current_user))
         "is_live": False
     }
     
-    # Fetch analyst ratings from yfinance in parallel
-    loop = asyncio.get_event_loop()
-    analyst_task = loop.run_in_executor(_executor, _fetch_analyst_ratings, symbol)
-    
-    # PHASE 1: Get stock price from data_provider (Yahoo primary)
     try:
-        stock_data = await fetch_stock_quote(symbol, api_key)
-        if stock_data and stock_data.get("price", 0) > 0:
-            result["price"] = stock_data.get("price", 0)
-            result["previous_close"] = stock_data.get("previous_close", 0)
-            result["close_date"] = stock_data.get("close_date")
+        # 1. Fetch Price Data (Yahoo)
+        quote_data = await fetch_stock_quote(symbol)
+        if quote_data:
+            result["price"] = quote_data.get("price", 0)
             result["is_live"] = True
-            result["price_source"] = stock_data.get("source", "yahoo")
             
-            # Calculate change from previous close if available
-            prev = stock_data.get("previous_close", 0)
-            if prev and prev > 0:
-                result["change"] = round(stock_data.get("price", 0) - prev, 2)
-                result["change_pct"] = round((result["change"] / prev) * 100, 2)
+            # Use data from quote if available
+            if quote_data.get("analyst_rating"):
+                result["analyst_ratings"]["rating"] = quote_data["analyst_rating"]
+        
+        # 2. Fetch Fundamental Data (Yahoo)
+        fund_data = await fetch_fundamental_data(symbol)
+        if fund_data:
+            result["fundamentals"] = fund_data
+        
+        # 3. Fetch Technical Data (Yahoo)
+        tech_data = await fetch_technical_data(symbol)
+        if tech_data:
+            # Determine trend based on SMAs
+            sma50 = tech_data.get("sma50")
+            sma200 = tech_data.get("sma200")
+            current = tech_data.get("close", 0)
+            
+            trend = "neutral"
+            if sma50 and sma200:
+                if current > sma50 > sma200:
+                    trend = "bullish"
+                elif current < sma50 < sma200:
+                    trend = "bearish"
+            
+            result["technicals"] = {
+                "sma_50": round(sma50, 2) if sma50 else None,
+                "sma_200": round(sma200, 2) if sma200 else None,
+                "rsi": round(tech_data.get("rsi14"), 1) if tech_data.get("rsi14") else None,
+                "trend": trend,
+                "above_sma_50": current > sma50 if sma50 else False,
+                "above_sma_200": current > sma200 if sma200 else False,
+                "sma_50_above_200": sma50 > sma200 if sma50 and sma200 else False
+            }
+
     except Exception as e:
-        logging.error(f"data_provider stock quote error for {symbol}: {e}")
-    
-    # Supplementary data from Polygon (news, fundamentals, technicals)
-    # NOTE: This is NOT core price data - kept as supplementary enrichment
-    if api_key:
-        try:
-            async with httpx.AsyncClient(timeout=30.0) as client:
-                # Get ticker details/fundamentals from Polygon
-                ticker_response = await client.get(
-                    f"https://api.polygon.io/v3/reference/tickers/{symbol}",
-                    params={"apiKey": api_key}
-                )
-                if ticker_response.status_code == 200:
-                    ticker_data = ticker_response.json()
-                    details = ticker_data.get("results", {})
-                    result["fundamentals"] = {
-                        "name": details.get("name", symbol),
-                        "market_cap": details.get("market_cap"),
-                        "description": details.get("description", ""),
-                        "homepage": details.get("homepage_url", ""),
-                        "employees": details.get("total_employees"),
-                        "list_date": details.get("list_date"),
-                        "sic_description": details.get("sic_description", ""),
-                        "locale": details.get("locale", "us"),
-                        "primary_exchange": details.get("primary_exchange", "")
-                    }
-                
-                # Get news from Polygon
-                news_response = await client.get(
-                    "https://api.polygon.io/v2/reference/news",
-                    params={"apiKey": api_key, "ticker": symbol, "limit": 5}
-                )
-                if news_response.status_code == 200:
-                    news_data = news_response.json()
-                    for article in news_data.get("results", [])[:5]:
-                        result["news"].append({
-                            "title": article.get("title", ""),
-                            "description": article.get("description", ""),
-                            "published": article.get("published_utc", ""),
-                            "source": article.get("publisher", {}).get("name", ""),
-                            "url": article.get("article_url", ""),
-                            "image": article.get("image_url", "")
-                        })
-                
-                # Calculate technical indicators from historical data
-                end_date = datetime.now().strftime("%Y-%m-%d")
-                start_date = (datetime.now() - timedelta(days=250)).strftime("%Y-%m-%d")
-                
-                hist_response = await client.get(
-                    f"https://api.polygon.io/v2/aggs/ticker/{symbol}/range/1/day/{start_date}/{end_date}",
-                    params={"apiKey": api_key, "adjusted": "true", "sort": "desc", "limit": 250}
-                )
-                
-                if hist_response.status_code == 200:
-                    hist_data = hist_response.json()
-                    bars = hist_data.get("results", [])
-                    
-                    if len(bars) >= 50:
-                        closes = [b.get("c", 0) for b in bars]
-                        
-                        # SMA 50 and SMA 200
-                        sma_50 = sum(closes[:50]) / 50
-                        sma_200 = sum(closes[:200]) / 200 if len(closes) >= 200 else sum(closes) / len(closes)
-                        
-                        current = closes[0] if closes else 0
-                        
-                        # Simple RSI calculation (14 period)
-                        gains = []
-                        losses = []
-                        for i in range(min(14, len(closes) - 1)):
-                            change = closes[i] - closes[i + 1]
-                            if change > 0:
-                                gains.append(change)
-                                losses.append(0)
-                            else:
-                                gains.append(0)
-                                losses.append(abs(change))
-                        
-                        avg_gain = sum(gains) / 14 if gains else 0
-                        avg_loss = sum(losses) / 14 if losses else 0.001
-                        rs = avg_gain / avg_loss if avg_loss > 0 else 100
-                        rsi = 100 - (100 / (1 + rs))
-                        
-                        # Trend analysis
-                        trend = "bullish" if current > sma_50 > sma_200 else "bearish" if current < sma_50 < sma_200 else "neutral"
-                        
-                        result["technicals"] = {
-                            "sma_50": round(sma_50, 2),
-                            "sma_200": round(sma_200, 2),
-                            "rsi": round(rsi, 1),
-                            "trend": trend,
-                            "above_sma_50": current > sma_50,
-                            "above_sma_200": current > sma_200,
-                            "sma_50_above_200": sma_50 > sma_200
-                        }
-                
-        except Exception as e:
-            logging.error(f"Stock details supplementary data error for {symbol}: {e}")
+        logging.error(f"Stock details fetch error for {symbol}: {e}")
     
     # Get MarketAux news as supplement
     settings = await get_admin_settings()
@@ -395,10 +311,19 @@ async def get_historical_data(
     days: int = Query(30, ge=1, le=365),
     user: dict = Depends(get_current_user)
 ):
-    """Get historical stock data"""
-    MOCK_STOCKS, _, _, _ = _get_server_data()
+    """Get historical stock data using centralized provider"""
+    from services.data_provider import fetch_historical_data as fetch_history_provider
     
     symbol = symbol.upper()
+    
+    # Fetch real data from Yahoo Finance via centralized provider
+    data = await fetch_history_provider(symbol, days=days)
+    
+    if data:
+        return data
+        
+    # Fallback to mock data only if provider fails
+    MOCK_STOCKS, _, _, _ = _get_server_data()
     
     # Generate mock historical data
     data = []

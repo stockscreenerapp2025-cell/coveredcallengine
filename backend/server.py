@@ -390,30 +390,12 @@ async def fetch_stock_quote(symbol: str, api_key: str = None) -> Optional[dict]:
     except Exception as e:
         logging.warning(f"Yahoo Finance error for {symbol}: {e}")
     
-    # Fallback to Massive.com API (previous day close)
-    if not api_key:
-        api_key = await get_massive_api_key()
+    # Fallback to Massive.com API (previous day close) - REMOVED
+    # if not api_key:
+    #     api_key = await get_massive_api_key()
     
-    if api_key:
-        try:
-            async with aiohttp.ClientSession() as session:
-                url = f"https://api.polygon.io/v2/aggs/ticker/{symbol}/prev"
-                headers = {"Authorization": f"Bearer {api_key}"}
-                async with session.get(url, headers=headers, timeout=10) as response:
-                    if response.status == 200:
-                        data = await response.json()
-                        results = data.get("results", [])
-                        if results:
-                            return {
-                                "symbol": symbol.upper(),
-                                "price": results[0].get("c", 0),
-                                "open": results[0].get("o", 0),
-                                "high": results[0].get("h", 0),
-                                "low": results[0].get("l", 0),
-                                "volume": results[0].get("v", 0)
-                            }
-        except Exception as e:
-            logging.warning(f"Massive API error for {symbol}: {e}")
+    # if api_key:
+    #     ... (Polygon code removed) ...
     
     # Last resort: check mock data
     mock = MOCK_STOCKS.get(symbol.upper())
@@ -430,154 +412,17 @@ async def get_marketaux_client():
     return None
 
 
-async def fetch_options_chain_polygon(symbol: str, api_key: str, contract_type: str = "call", max_dte: int = 45, min_dte: int = 1, current_price: float = 0) -> list:
-    """
-    Fetch options chain using Polygon.io endpoints that work with basic subscription:
-    1. v3/reference/options/contracts - Get list of available contracts
-    2. v2/aggs/ticker/{contract}/prev - Get previous day OHLCV for each contract (PARALLEL)
-    
-    Returns list of option data with pricing info.
-    
-    Uses asyncio.gather for PARALLEL price fetching to dramatically improve performance.
-    
-    If current_price is provided, filters contracts to strikes between 40-95% of price (for LEAPS)
-    or 95-150% of price (for short calls - EXPANDED range).
-    """
-    from datetime import datetime, timedelta
-    
-    options = []
-    today = datetime.now()
-    min_expiry = (today + timedelta(days=min_dte)).strftime("%Y-%m-%d")
-    max_expiry = (today + timedelta(days=max_dte)).strftime("%Y-%m-%d")
-    
-    try:
-        async with httpx.AsyncClient(timeout=60.0) as client:
-            # Step 1: Get list of contracts - request sorted by strike price
-            params = {
-                "underlying_ticker": symbol.upper(),
-                "contract_type": contract_type,
-                "expired": "false",
-                "expiration_date.gte": min_expiry,
-                "expiration_date.lte": max_expiry,
-                "limit": 250,
-                "apiKey": api_key
-            }
-            
-            # For short calls (low DTE), sort ascending to get OTM strikes first
-            # For LEAPS (high DTE), sort descending to get ITM strikes first
-            if min_dte < 100:
-                params["sort"] = "strike_price"
-                params["order"] = "asc"  # Get lower strikes first, then filter to OTM
-            else:
-                params["sort"] = "strike_price"
-                params["order"] = "desc"  # Get higher strikes first for LEAPS
-            
-            contracts_response = await client.get(
-                "https://api.polygon.io/v3/reference/options/contracts",
-                params=params
-            )
-            
-            if contracts_response.status_code != 200:
-                logging.warning(f"Polygon contracts API returned {contracts_response.status_code} for {symbol}")
-                return []
-            
-            contracts_data = contracts_response.json()
-            contracts = contracts_data.get("results", [])
-            
-            if not contracts:
-                logging.info(f"No contracts found for {symbol} (DTE: {min_dte}-{max_dte})")
-                return []
-            
-            logging.info(f"Found {len(contracts)} raw {contract_type} contracts for {symbol} (DTE: {min_dte}-{max_dte})")
-            
-            # If current_price provided, filter to valid strike range before fetching pricing
-            if current_price > 0:
-                if min_dte >= 300:  # LEAPS - want ITM (40-95% of price)
-                    valid_contracts = [c for c in contracts 
-                                      if current_price * 0.40 <= c.get("strike_price", 0) <= current_price * 0.95]
-                    logging.info(f"{symbol} LEAPS: {len(valid_contracts)} contracts in ITM range (40-95% of ${current_price:.2f})")
-                else:  # Short calls - want OTM (95-150% of price) - EXPANDED RANGE
-                    valid_contracts = [c for c in contracts 
-                                      if current_price * 0.95 <= c.get("strike_price", 0) <= current_price * 1.50]
-                    logging.info(f"{symbol} Short: {len(valid_contracts)} contracts in OTM range (95-150% of ${current_price:.2f})")
-                
-                # Use filtered contracts if we have them, otherwise use all contracts
-                if valid_contracts:
-                    contracts = valid_contracts
-                else:
-                    logging.warning(f"{symbol}: No contracts in target range, using top 50 from all")
-                    contracts = contracts[:50]
-            
-            # Limit to 40 contracts per symbol for price fetching (increased from 30)
-            contracts_to_fetch = contracts[:40]
-            logging.info(f"Fetching prices for {len(contracts_to_fetch)} contracts for {symbol}")
-            
-            # Step 2: Fetch prices in PARALLEL using asyncio.gather
-            async def fetch_single_price(contract):
-                """Fetch price for a single contract"""
-                contract_ticker = contract.get("ticker", "")
-                if not contract_ticker:
-                    return None
-                
-                try:
-                    price_response = await client.get(
-                        f"https://api.polygon.io/v2/aggs/ticker/{contract_ticker}/prev",
-                        params={"apiKey": api_key}
-                    )
-                    
-                    if price_response.status_code == 200:
-                        price_data = price_response.json()
-                        results = price_data.get("results", [])
-                        
-                        if results:
-                            result = results[0]
-                            strike = contract.get("strike_price", 0)
-                            
-                            return {
-                                "contract_ticker": contract_ticker,
-                                "underlying": symbol.upper(),
-                                "strike": strike,
-                                "expiry": contract.get("expiration_date", ""),
-                                "dte": calculate_dte(contract.get("expiration_date", "")),
-                                "type": contract.get("contract_type", "call"),
-                                "close": result.get("c", 0),
-                                "open": result.get("o", 0),
-                                "high": result.get("h", 0),
-                                "low": result.get("l", 0),
-                                "volume": result.get("v", 0),
-                                "vwap": result.get("vw", 0),
-                            }
-                except Exception as e:
-                    logging.debug(f"Error fetching price for {contract_ticker}: {e}")
-                return None
-            
-            # Execute all price fetches in parallel with semaphore to limit concurrency
-            semaphore = asyncio.Semaphore(15)  # Limit to 15 concurrent requests
-            
-            async def fetch_with_semaphore(contract):
-                async with semaphore:
-                    return await fetch_single_price(contract)
-            
-            # Run all fetches in parallel
-            results = await asyncio.gather(*[fetch_with_semaphore(c) for c in contracts_to_fetch], return_exceptions=True)
-            
-            # Filter out None results and exceptions
-            for result in results:
-                if result and not isinstance(result, Exception):
-                    options.append(result)
-            
-            logging.info(f"Successfully fetched {len(options)} option prices for {symbol}")
-            return options
-            
-    except Exception as e:
-        logging.error(f"Error fetching options chain for {symbol}: {e}")
-        return []
-
+# async def fetch_options_chain_polygon(symbol: str, api_key: str, contract_type: str = "call", max_dte: int = 45, min_dte: int = 1, current_price: float = 0) -> list:
+#     """
+#     Fetch options chain using Polygon.io endpoints that work with basic subscription:
+#     REMOVED: Polygon dependency removed in favor of Yahoo Finance
+#     """
+#     return []
 
 async def fetch_options_chain_yahoo(symbol: str, contract_type: str = "call", max_dte: int = 45, min_dte: int = 1, current_price: float = 0) -> list:
     """
     Fetch options chain using Yahoo Finance (yfinance) as fallback.
-    Useful for ETFs like SPY, QQQ, IWM that may not have data in Polygon.
+    Useful for ETFs like SPY, QQQ, IWM.
     
     Returns list of option data with pricing info.
     """
@@ -1388,18 +1233,10 @@ async def startup():
             
             from services.precomputed_scans import PrecomputedScanService
             
-            # Get API key
-            settings = await db.admin_settings.find_one(
-                {"massive_api_key": {"$exists": True}}, 
-                {"_id": 0}
-            )
-            api_key = settings.get("massive_api_key") if settings else None
+            # REMOVED: Polygon API key check
+            # Yahoo Finance does not require an API key for this service
             
-            if not api_key:
-                logger.warning("Pre-computed scans skipped: No Polygon API key configured")
-                return
-            
-            service = PrecomputedScanService(db, api_key)
+            service = PrecomputedScanService(db)
             results = await service.run_all_scans()
             logger.info(f"Pre-computed scans complete: {results}")
             

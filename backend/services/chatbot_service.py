@@ -64,19 +64,19 @@ Remember: You're here to help visitors understand how Covered Call Engine can im
 class ChatbotService:
     def __init__(self, db=None):
         self.db = db
-        self.api_key = os.environ.get('EMERGENT_LLM_KEY')
+        self.api_key = os.environ.get('GEMINI_API_KEY')
     
     async def get_response(self, session_id: str, message: str, history: List[Dict] = None) -> Dict:
         """Get AI response for a chat message"""
         try:
-            from emergentintegrations.llm.chat import LlmChat, UserMessage
+            from services.gemini_service import GeminiChat, UserMessage
             
             # Initialize chat with system prompt
-            chat = LlmChat(
+            chat = GeminiChat(
                 api_key=self.api_key,
                 session_id=session_id,
                 system_message=CHATBOT_SYSTEM_PROMPT
-            ).with_model("openai", "gpt-4o-mini")  # Using gpt-4o-mini for fast responses
+            )
             
             # Add conversation history if provided
             if history:

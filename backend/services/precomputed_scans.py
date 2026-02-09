@@ -9,9 +9,10 @@ SCAN TYPES:
 - Aggressive (High Premium): Momentum stocks, high IV, maximum yield
 
 DATA SOURCES:
-- Technical (SMA, RSI, ATR): Polygon Historical API (rate-limited: 5/min for stocks)
+DATA SOURCES:
+- Technical (SMA, RSI, ATR): Yahoo Finance (free)
 - Fundamental (EPS, ROE, D/E): Yahoo Finance (free)
-- Options: Polygon API (unlimited)
+- Options: Yahoo Finance (primary), Polygon API (optional backup)
 - Earnings Dates: Yahoo Finance (free)
 
 ARCHITECTURE:
@@ -182,7 +183,7 @@ class PrecomputedScanService:
     
     def __init__(self, db, api_key: str = None):
         self.db = db
-        self.api_key = api_key
+        # api_key no longer needed for Yahoo Finance
         self._rate_limit_semaphore = asyncio.Semaphore(STOCK_API_RATE_LIMIT)
         self._last_stock_calls = []
         self._executor = ThreadPoolExecutor(max_workers=10)
@@ -468,9 +469,9 @@ class PrecomputedScanService:
             if options:
                 return options
             
-            # Fallback to Polygon (no IV/OI in basic plan)
-            if self.api_key:
-                return await self._fetch_options_polygon(symbol, current_price, dte_min, dte_max, delta_min, delta_max)
+            # Fallback to Polygon - REMOVED
+            # if self.api_key:
+            #     return await self._fetch_options_polygon(symbol, current_price, dte_min, dte_max, delta_min, delta_max)
             
             return []
         except Exception as e:
@@ -1462,122 +1463,8 @@ class PrecomputedScanService:
         delta_max: float,
         itm_pct: float
     ) -> List[Dict[str, Any]]:
-        """Fallback: Fetch LEAPS from Polygon."""
-        if not self.api_key:
-            return []
-        
-        try:
-            today = datetime.now()
-            min_expiry = (today + timedelta(days=dte_min)).strftime("%Y-%m-%d")
-            max_expiry = (today + timedelta(days=dte_max or 730)).strftime("%Y-%m-%d")
-            
-            # LEAPS should be ITM - strike below current price
-            strike_max = current_price * (1 - itm_pct)  # At least ITM by itm_pct
-            strike_min = current_price * 0.5  # Don't go too deep
-            
-            async with httpx.AsyncClient(timeout=HTTP_TIMEOUT) as client:
-                contracts_url = f"{POLYGON_BASE_URL}/v3/reference/options/contracts"
-                params = {
-                    "underlying_ticker": symbol.upper(),
-                    "contract_type": "call",
-                    "expiration_date.gte": min_expiry,
-                    "expiration_date.lte": max_expiry,
-                    "strike_price.gte": strike_min,
-                    "strike_price.lte": strike_max,
-                    "limit": 50,
-                    "apiKey": self.api_key
-                }
-                
-                response = await client.get(contracts_url, params=params)
-                if response.status_code != 200:
-                    return []
-                
-                data = response.json()
-                contracts = data.get("results", [])
-                
-                if not contracts:
-                    return []
-                
-                # Fetch prices for LEAPS
-                semaphore = asyncio.Semaphore(20)
-                
-                async def fetch_leap_price(contract):
-                    async with semaphore:
-                        ticker = contract.get("ticker", "")
-                        if not ticker:
-                            return None
-                        
-                        try:
-                            price_resp = await client.get(
-                                f"{POLYGON_BASE_URL}/v2/aggs/ticker/{ticker}/prev",
-                                params={"apiKey": self.api_key}
-                            )
-                            
-                            if price_resp.status_code == 200:
-                                price_data = price_resp.json()
-                                results = price_data.get("results", [])
-                                
-                                if results:
-                                    r = results[0]
-                                    strike = contract.get("strike_price", 0)
-                                    expiry = contract.get("expiration_date", "")
-                                    
-                                    # Calculate DTE
-                                    dte = 0
-                                    if expiry:
-                                        try:
-                                            exp_dt = datetime.strptime(expiry, "%Y-%m-%d")
-                                            dte = (exp_dt - datetime.now()).days
-                                        except Exception:
-                                            pass
-                                    
-                                    # Estimate delta for ITM calls (higher for deeper ITM)
-                                    moneyness = (current_price - strike) / current_price
-                                    est_delta = 0.50 + moneyness * 2  # Rough estimate
-                                    est_delta = max(0.50, min(0.95, est_delta))
-                                    
-                                    # Filter by delta
-                                    if est_delta < delta_min or est_delta > delta_max:
-                                        return None
-                                    
-                                    close_price = r.get("c", 0)
-                                    if close_price <= 0:
-                                        return None
-                                    
-                                    # Calculate intrinsic and extrinsic value
-                                    intrinsic = max(0, current_price - strike)
-                                    extrinsic = close_price - intrinsic
-                                    
-                                    return {
-                                        "contract_ticker": ticker,
-                                        "symbol": symbol,
-                                        "strike": strike,
-                                        "expiry": expiry,
-                                        "dte": dte,
-                                        "premium": close_price,
-                                        "delta": round(est_delta, 3),
-                                        "intrinsic": round(intrinsic, 2),
-                                        "extrinsic": round(extrinsic, 2),
-                                        "itm_pct": round(moneyness * 100, 1),
-                                        "volume": r.get("v", 0),
-                                    }
-                        except Exception as e:
-                            logger.debug(f"Error fetching LEAP price for {ticker}: {e}")
-                        return None
-                
-                tasks = [fetch_leap_price(c) for c in contracts[:30]]
-                results = await asyncio.gather(*tasks, return_exceptions=True)
-                
-                leaps = [r for r in results if r and not isinstance(r, Exception)]
-                
-                # Sort by DTE (prefer longer) and delta (prefer higher)
-                leaps.sort(key=lambda x: (x["dte"], x["delta"]), reverse=True)
-                
-                return leaps
-                
-        except Exception as e:
-            logger.error(f"Error fetching LEAPS for {symbol}: {e}")
-            return []
+        """Fallback: Fetch LEAPS from Polygon - REMOVED"""
+        return []
     
     async def run_pmcc_scan(self, risk_profile: str = "conservative") -> List[Dict[str, Any]]:
         """
