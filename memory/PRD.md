@@ -397,7 +397,43 @@ For CC and PMCC, **loss is NOT managed via stop-loss**. Loss is managed via:
 ---
 
 ## Last Updated
-2025-12 - Phase 2 Complete (Market Snapshot Cache for Custom Scans)
+2025-12 - Phase 3 Complete (AI-Based Best Option Selection per Symbol)
+
+---
+
+## Phase 3 - COMPLETED 2025-12
+
+### Objective:
+Prevent duplicate symbols in scan results by selecting ONE best option per symbol based on AI score.
+
+### Implementation:
+1. ✅ Added `select_best_option_per_symbol()` helper function in `screener_snapshot.py`
+2. ✅ Updated CC Custom Scan deduplication with AI-based selection
+3. ✅ Updated PMCC Custom Scan deduplication with AI-based selection
+4. ✅ Updated Precomputed Scans `_dedupe_by_symbol_timeframe()` method
+5. ✅ Added defensive comments to all deduplication blocks
+
+### Selection Criteria (in order of priority):
+1. **Highest AI score** (score field) - Primary
+2. **Highest quality score** (base_score field) - Tie-breaker
+3. **Highest ROI** (roi_pct field) - Secondary tie-breaker
+4. **OTM% closest to 5%** - Tertiary tie-breaker
+
+### Files Modified:
+- `/backend/routes/screener_snapshot.py` - Added helper function, updated CC/PMCC deduplication
+- `/backend/services/precomputed_scans.py` - Updated deduplication method
+- `/backend/routes/screener.py` - Added Phase 3 defensive comments
+
+### Not Affected (Verified):
+- ✅ Watchlist (no changes)
+- ✅ Simulator (multiple trades per symbol still allowed)
+- ✅ Portfolio (no changes)
+- ✅ Scoring formulas (unchanged)
+- ✅ Data fetching logic (unchanged)
+
+### Validation Results:
+- CC Screener: 5 results, 5 unique symbols, 0 duplicates ✅
+- Simulator: 26 trades, 25 unique symbols (INTC appears twice - correct) ✅
 
 ---
 
