@@ -1049,3 +1049,94 @@ async def get_imap_status(admin: dict = Depends(get_admin_user)):
         "last_sync_error": settings.get("last_sync_error"),
         "last_sync_processed": settings.get("last_sync_processed", 0)
     }
+
+
+
+# ==================== PHASE 2: CACHE HEALTH ENDPOINTS ====================
+
+@admin_router.get("/cache/health")
+async def get_cache_health(admin: dict = Depends(get_admin_user)):
+    """
+    PHASE 2: Get cache health metrics for monitoring.
+    
+    Returns:
+    - Hit rate percentage
+    - Yahoo calls per hour
+    - Average fetch latency
+    - Cache collection statistics
+    """
+    from services.data_provider import get_cache_status
+    
+    return await get_cache_status(db)
+
+
+@admin_router.get("/cache/metrics")
+async def get_cache_metrics(admin: dict = Depends(get_admin_user)):
+    """
+    PHASE 2: Get in-memory cache metrics.
+    
+    These metrics track the current session's cache performance.
+    """
+    from services.data_provider import get_cache_metrics
+    
+    return get_cache_metrics()
+
+
+@admin_router.post("/cache/reset-metrics")
+async def reset_cache_metrics_endpoint(admin: dict = Depends(get_admin_user)):
+    """
+    PHASE 2: Reset cache metrics.
+    
+    Resets the in-memory counters for hit rate tracking.
+    Useful for starting fresh measurements.
+    """
+    from services.data_provider import reset_cache_metrics
+    
+    return reset_cache_metrics()
+
+
+@admin_router.post("/cache/clear")
+async def clear_snapshot_cache(
+    symbol: Optional[str] = Query(None, description="Symbol to clear, or all if not provided"),
+    admin: dict = Depends(get_admin_user)
+):
+    """
+    PHASE 2: Clear snapshot cache entries.
+    
+    Args:
+        symbol: Optional specific symbol to clear (clears all if not provided)
+    
+    Returns:
+        Number of entries deleted
+    """
+    from services.data_provider import clear_snapshot_cache as dp_clear_cache
+    
+    return await dp_clear_cache(db, symbol)
+
+
+@admin_router.get("/cache/entries")
+async def get_cache_entries(
+    limit: int = Query(50, ge=1, le=200),
+    admin: dict = Depends(get_admin_user)
+):
+    """
+    PHASE 2: Get recent cache entries for inspection.
+    
+    Returns the most recent cached symbols with their data.
+    """
+    from services.data_provider import SNAPSHOT_CACHE_COLLECTION
+    
+    try:
+        entries = await db[SNAPSHOT_CACHE_COLLECTION].find(
+            {},
+            {"_id": 0}
+        ).sort("cached_at", -1).limit(limit).to_list(limit)
+        
+        return {
+            "entries": entries,
+            "count": len(entries)
+        }
+    except Exception as e:
+        logging.error(f"Error fetching cache entries: {e}")
+        return {"error": str(e)}
+
