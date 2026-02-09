@@ -1026,13 +1026,38 @@ async def screen_pmcc(
         rejected_symbols = []
         passed_filter_count = 0
         
+        # PHASE 2: Batch fetch snapshots with cache-first approach
+        # Note: PMCC needs LEAPS (long DTE), so we use max_leaps_dte
+        snapshots = await get_symbol_snapshots_batch(
+            db=db,
+            symbols=symbols_to_scan,
+            api_key=api_key,
+            include_options=False,  # PMCC options fetched separately due to different DTE ranges
+            batch_size=10
+        )
+        
+        cache_stats = {"hits": 0, "misses": 0, "symbols_processed": 0}
+        
         for symbol in symbols_to_scan:
             try:
                 # Check if ETF (exempt from price filter in Phase 5)
                 is_etf = symbol.upper() in ETF_SYMBOLS
                 
-                # Get stock data with fundamentals
-                stock_data = await fetch_stock_quote(symbol, api_key)
+                # PHASE 2: Get stock data from snapshot cache
+                snapshot = snapshots.get(symbol.upper())
+                
+                if not snapshot or not snapshot.get("stock_data"):
+                    rejected_symbols.append({"symbol": symbol, "reason": "No price data"})
+                    continue
+                
+                # Track cache stats
+                cache_stats["symbols_processed"] += 1
+                if snapshot.get("from_cache"):
+                    cache_stats["hits"] += 1
+                else:
+                    cache_stats["misses"] += 1
+                
+                stock_data = snapshot["stock_data"]
                 
                 if not stock_data or stock_data.get("price", 0) == 0:
                     rejected_symbols.append({"symbol": symbol, "reason": "No price data"})
@@ -1078,12 +1103,12 @@ async def screen_pmcc(
                 
                 passed_filter_count += 1
                 
-                # Get LEAPS options from Polygon ONLY (long leg)
+                # Get LEAPS options (long leg) - fetched directly since DTE range differs
                 leaps_options = await fetch_options_chain(
                     symbol, api_key, "call", max_leaps_dte, min_dte=min_leaps_dte, current_price=current_price
                 )
                 
-                # Get short-term options from Polygon ONLY (short leg)
+                # Get short-term options (short leg)
                 short_options = await fetch_options_chain(
                     symbol, api_key, "call", max_short_dte, min_dte=min_short_dte, current_price=current_price
                 )
