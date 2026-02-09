@@ -561,3 +561,54 @@ _fetch_options_polygon(...)                  # Line 599-737 - DUPLICATE
 *End of Audit Report*
 *Baseline Locked: December 2025*
 *Ready for Phased Refactor Specification*
+
+---
+
+## PHASE 1 REFACTOR LOG - COMPLETED
+
+### Date: December 2025
+
+### Files Changed:
+1. **`/app/backend/routes/stocks.py`**
+   - Removed direct Polygon API calls for `/quote/{symbol}` endpoint
+   - Removed direct Polygon API calls for stock price in `/details/{symbol}` endpoint
+   - Added import: `from services.data_provider import fetch_stock_quote, fetch_live_stock_quote`
+   - Stock prices now route through data_provider.py (Yahoo primary, Polygon backup)
+   - Supplementary data (news, fundamentals, technicals) still uses Polygon where applicable
+
+2. **`/app/backend/routes/options.py`**
+   - Removed direct Polygon API calls for `/chain/{symbol}` endpoint
+   - Added import: `from services.data_provider import fetch_stock_quote, fetch_options_chain, calculate_dte`
+   - Options data now routes through data_provider.py (Yahoo primary, Polygon backup)
+   - Removed duplicate `calculate_dte()` function (now uses data_provider's version)
+
+3. **`/app/backend/routes/portfolio.py`**
+   - Changed import from `server.py` to `data_provider.py` for `fetch_stock_quote`
+   - Updated `_get_server_data()` to no longer return `fetch_stock_quote`
+   - Fixed 3 function calls that previously destructured `fetch_stock_quote` from `_get_server_data()`
+
+### Before/After Data Flow:
+
+| Endpoint | BEFORE (Direct Polygon) | AFTER (via data_provider) |
+|----------|-------------------------|---------------------------|
+| `GET /api/stocks/quote/{symbol}` | `api.polygon.io/v2/aggs/ticker/{symbol}/prev` | `data_provider.fetch_stock_quote()` → Yahoo primary |
+| `GET /api/stocks/details/{symbol}` | `api.polygon.io/v2/aggs/ticker/{symbol}/prev` (price) | `data_provider.fetch_stock_quote()` → Yahoo primary |
+| `GET /api/options/chain/{symbol}` | `api.polygon.io/v3/snapshot/options/{symbol}` | `data_provider.fetch_options_chain()` → Yahoo primary |
+| Portfolio IBKR trades | `server.py fetch_stock_quote()` | `data_provider.fetch_stock_quote()` → Yahoo primary |
+
+### Watchlist & Simulator Behavior Confirmation:
+- **Watchlist**: ✅ UNCHANGED - Already used `data_provider.py` (lines 26-32 imports)
+- **Simulator**: ✅ UNCHANGED - Already used `data_provider.fetch_live_stock_quote` (line 40 import)
+
+### Test Results:
+```
+GET /api/stocks/quote/AAPL → source: "yahoo", is_live: true, price: 278.12
+GET /api/stocks/details/MSFT → price_source: "yahoo", is_live: true, price: 401.14
+GET /api/options/chain/AAPL → source: "polygon" (fallback), is_live: true, options_count: 1
+GET /api/simulator/trades → trades_count: 26 (unchanged)
+```
+
+### MOCK_STOCKS Status:
+- **NOT REMOVED** - Retained as fallback
+- **FLAGGED** - Returns `is_mock: true` when mock data is used
+- Logged with warning: `"Using MOCK_STOCKS fallback for {symbol}"`
