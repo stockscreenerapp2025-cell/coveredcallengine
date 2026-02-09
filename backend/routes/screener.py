@@ -1304,8 +1304,14 @@ async def screen_pmcc(
                 opp.get("short_delta", 0.25)
             )
         
-        # ========== SINGLE-CANDIDATE RULE ==========
-        # One best trade per symbol (highest score wins)
+        # ============================================================
+        # PHASE 3: AI-BASED BEST OPTION SELECTION PER SYMBOL (PMCC)
+        # ============================================================
+        # IMPORTANT:
+        # Scan candidates may include multiple PMCC combinations per symbol.
+        # Final output must return ONE best option per symbol,
+        # selected by highest AI score.
+        # ============================================================
         best_by_symbol = {}
         for opp in opportunities:
             sym = opp["symbol"]
