@@ -829,6 +829,10 @@ async def _get_cached_snapshot(db, symbol: str) -> Optional[Dict[str, Any]]:
         if isinstance(cached_at, str):
             cached_at = datetime.fromisoformat(cached_at.replace('Z', '+00:00'))
         
+        # Ensure cached_at is timezone-aware
+        if cached_at.tzinfo is None:
+            cached_at = cached_at.replace(tzinfo=timezone.utc)
+        
         ttl_seconds = _get_cache_ttl_seconds()
         age_seconds = (datetime.now(timezone.utc) - cached_at).total_seconds()
         
