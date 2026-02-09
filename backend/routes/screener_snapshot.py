@@ -1087,8 +1087,8 @@ async def screen_covered_calls(
         "filter_reasons": symbols_filtered[:10],
         "market_bias": market_bias,
         "bias_weight": bias_weight,
-        "stock_price_source": "yahoo_last_close",  # SINGLE SOURCE OF TRUTH
-        "options_chain_source": "yahoo_live",
+        "stock_price_source": "yahoo_cached",  # PHASE 2: Cache-first approach
+        "options_chain_source": "yahoo_live",  # Options still fetched live
         "layer": 3,
         "scan_mode": scan_mode,
         "dte_mode": dte_mode,
@@ -1101,7 +1101,8 @@ async def screen_covered_calls(
         },
         "spread_threshold": f"{MAX_SPREAD_PCT}%",
         "architecture": "YAHOO_SINGLE_SOURCE_OF_TRUTH",
-        "live_data_used": True
+        "live_data_used": True,
+        "snapshot_cache_stats": cache_stats  # PHASE 2: Include cache stats
     }
 
 
