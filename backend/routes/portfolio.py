@@ -832,7 +832,7 @@ def _get_strategy_labels(trade: ManualTradeEntry) -> tuple:
 
 async def _generate_ai_suggestion_for_trade(trade: dict) -> dict:
     """Generate AI suggestion for a single trade"""
-    _, fetch_stock_quote = _get_server_data()
+    # PHASE 1: fetch_stock_quote now imported from data_provider.py at module level
     
     symbol = trade.get('symbol', '')
     current_price = None
