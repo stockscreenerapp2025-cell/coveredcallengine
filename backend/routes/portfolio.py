@@ -334,7 +334,7 @@ async def get_ibkr_trades(
 @portfolio_router.get("/ibkr/trades/{trade_id}")
 async def get_ibkr_trade_detail(trade_id: str, user: dict = Depends(get_current_user)):
     """Get detailed trade information including transaction history"""
-    _, fetch_stock_quote = _get_server_data()
+    # PHASE 1: fetch_stock_quote now imported from data_provider.py at module level
     
     trade = await db.ibkr_trades.find_one({"user_id": user["id"], "id": trade_id}, {"_id": 0})
     if not trade:
