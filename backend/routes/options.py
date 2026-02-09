@@ -1,6 +1,11 @@
 """
 Options Routes - Options chain and expiration endpoints
 Designed for scalability with proper async patterns and connection reuse
+
+PHASE 1 REFACTOR (December 2025):
+- All options data now routes through services/data_provider.py
+- Yahoo Finance is primary source, Polygon is backup (via data_provider)
+- MOCK options retained for fallback but flagged
 """
 from fastapi import APIRouter, Depends, Query, HTTPException
 from typing import Optional
@@ -13,6 +18,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from utils.auth import get_current_user
+from services.data_provider import fetch_stock_quote, fetch_options_chain, calculate_dte
 
 options_router = APIRouter(tags=["Options"])
 
@@ -24,18 +30,6 @@ def _get_server_data():
     """Lazy import to avoid circular dependencies"""
     from server import MOCK_STOCKS, get_massive_api_key, generate_mock_options
     return MOCK_STOCKS, get_massive_api_key, generate_mock_options
-
-
-def calculate_dte(expiry_date: str) -> int:
-    """Calculate days to expiration - pure function for performance"""
-    if not expiry_date:
-        return 0
-    try:
-        exp = datetime.strptime(expiry_date, "%Y-%m-%d")
-        today = datetime.now()
-        return max(0, (exp - today).days)
-    except Exception:
-        return 0
 
 
 @options_router.get("/chain/{symbol}")
