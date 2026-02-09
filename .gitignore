@@ -239,3 +239,11 @@ deploy/mongo_data
 deploy/prod/.env.production
 deploy/prod/certbot/
 deploy/prod/mongo_data/
+-e 
+# Environment files
+*.env
+*.env.*
+-e 
+# Environment files
+*.env
+*.env.*

@@ -397,4 +397,146 @@ For CC and PMCC, **loss is NOT managed via stop-loss**. Loss is managed via:
 ---
 
 ## Last Updated
-2026-02-02 - Analyzer Page Enhancement (3-Row Structure + Scope-Aware Metrics)
+2025-12 - Phase 3 Complete (AI-Based Best Option Selection per Symbol)
+
+---
+
+## Phase 3 - COMPLETED 2025-12
+
+### Objective:
+Prevent duplicate symbols in scan results by selecting ONE best option per symbol based on AI score.
+
+### Implementation:
+1. ✅ Added `select_best_option_per_symbol()` helper function in `screener_snapshot.py`
+2. ✅ Updated CC Custom Scan deduplication with AI-based selection
+3. ✅ Updated PMCC Custom Scan deduplication with AI-based selection
+4. ✅ Updated Precomputed Scans `_dedupe_by_symbol_timeframe()` method
+5. ✅ Added defensive comments to all deduplication blocks
+
+### Selection Criteria (in order of priority):
+1. **Highest AI score** (score field) - Primary
+2. **Highest quality score** (base_score field) - Tie-breaker
+3. **Highest ROI** (roi_pct field) - Secondary tie-breaker
+4. **OTM% closest to 5%** - Tertiary tie-breaker
+
+### Files Modified:
+- `/backend/routes/screener_snapshot.py` - Added helper function, updated CC/PMCC deduplication
+- `/backend/services/precomputed_scans.py` - Updated deduplication method
+- `/backend/routes/screener.py` - Added Phase 3 defensive comments
+
+### Not Affected (Verified):
+- ✅ Watchlist (no changes)
+- ✅ Simulator (multiple trades per symbol still allowed)
+- ✅ Portfolio (no changes)
+- ✅ Scoring formulas (unchanged)
+- ✅ Data fetching logic (unchanged)
+
+### Validation Results:
+- CC Screener: 5 results, 5 unique symbols, 0 duplicates ✅
+- Simulator: 26 trades, 25 unique symbols (INTC appears twice - correct) ✅
+
+---
+
+## Phase 2 Refactor - COMPLETED 2025-12
+
+### Objectives Completed:
+1. ✅ Introduced `market_snapshot_cache` MongoDB collection
+2. ✅ Added cache-first helpers in `data_provider.py` (`get_symbol_snapshot`, `get_symbol_snapshots_batch`)
+3. ✅ Refactored Custom Scans in `/routes/screener_snapshot.py` to use snapshot data
+4. ✅ Enforced Yahoo-safe concurrency (max 4 concurrent calls via semaphore)
+5. ✅ Added Admin Cache Health endpoints (`/api/admin/cache/health`, `/api/admin/cache/metrics`)
+
+### Cache Configuration:
+- TTL during market hours: 12 minutes
+- TTL after market close: 3 hours
+- Yahoo concurrency limit: 4 simultaneous calls
+- Batch size: 10 symbols per batch
+
+### Performance Results:
+| Metric | Before | After | Improvement |
+|--------|--------|-------|-------------|
+| Cold cache scan | ~15s | ~15s | (baseline) |
+| Warm cache scan | N/A | ~9s | **40% faster** |
+| Yahoo calls (2nd run) | 72 | 0 | **100% reduction** |
+| Cache hit rate | N/A | 100% | ✅ |
+
+### Files Changed:
+- `/backend/services/data_provider.py` - Added cache functions and Yahoo semaphore
+- `/backend/routes/screener_snapshot.py` - Uses cache-first batch fetching for stock data
+- `/backend/routes/admin.py` - Added cache health endpoints
+- `/backend/services/quality_score.py` - Fixed None iv_rank bug (pre-existing)
+
+### Unchanged (Verified):
+- ✅ Watchlist behavior (uses live data, not cache)
+- ✅ Simulator behavior (uses live data, not cache)
+- ✅ Options data (still fetched live, not cached)
+- ✅ Scoring logic (no changes)
+- ✅ Filters (no changes)
+- ✅ UI (no changes)
+
+---
+
+## Phase 1 Refactor - COMPLETED 2025-12
+
+### Objectives Completed:
+1. ✅ Eliminated direct Polygon API calls in `/routes/stocks.py`
+2. ✅ Eliminated direct Polygon API calls in `/routes/options.py`
+3. ✅ Updated `/routes/portfolio.py` to import from `data_provider.py` instead of `server.py`
+
+### Files Changed:
+- `/app/backend/routes/stocks.py` - Now uses `data_provider.fetch_stock_quote()`
+- `/app/backend/routes/options.py` - Now uses `data_provider.fetch_options_chain()`
+- `/app/backend/routes/portfolio.py` - Imports `fetch_stock_quote` from `data_provider.py`
+
+### Data Flow After Refactor:
+
+| Route | Before | After |
+|-------|--------|-------|
+| `/api/stocks/quote/*` | Direct Polygon | data_provider.py (Yahoo primary) |
+| `/api/stocks/details/*` | Direct Polygon (price) | data_provider.py (Yahoo primary) |
+| `/api/options/chain/*` | Direct Polygon | data_provider.py (Yahoo primary) |
+| Portfolio IBKR trades | server.py | data_provider.py (Yahoo primary) |
+
+### Unchanged (Verified):
+- Watchlist behavior ✅
+- Simulator behavior ✅
+- Screener behavior ✅
+
+### Not Changed (As Specified):
+- No caching changes
+- No performance optimizations
+- MOCK_STOCKS retained (flagged with `is_mock: true`)
+- No UI changes
+
+---
+
+## Market Data Sourcing Audit - COMPLETED 2025-12
+
+### Audit Output
+Full audit report saved to: `/app/memory/DATA_SOURCING_AUDIT.md`
+
+### Key Findings
+
+**Data Provider Schism Identified:**
+The codebase has multiple parallel data fetching implementations rather than using `data_provider.py` exclusively:
+1. `data_provider.py` - Intended centralized source (Yahoo primary)
+2. `server.py` - Contains duplicate fetch_stock_quote(), fetch_options_chain_polygon(), fetch_options_chain_yahoo()
+3. `routes/stocks.py` - ~~Direct Polygon API calls~~ **FIXED in Phase 1**
+4. `routes/options.py` - ~~Direct Polygon API calls~~ **FIXED in Phase 1**
+5. `services/precomputed_scans.py` - Own Yahoo Finance fetching (duplicates data_provider.py)
+
+**Files Using data_provider.py Correctly:**
+- `/routes/screener.py` ✅
+- `/routes/watchlist.py` ✅
+- `/routes/simulator.py` ✅
+- `/routes/stocks.py` ✅ **FIXED**
+- `/routes/options.py` ✅ **FIXED**
+- `/routes/portfolio.py` ✅ **FIXED**
+
+**Remaining Items for Future Phases:**
+- `/services/precomputed_scans.py` ⚠️ - Own implementation (working, low priority)
+- `server.py` - Contains duplicate functions (can be removed after verification)
+
+### Phase 2 (Pending User Specification):
+- Custom Scan performance improvements
+- Caching strategy

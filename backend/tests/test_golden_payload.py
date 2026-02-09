@@ -18,7 +18,7 @@ import pytest
 import requests
 import os
 
-BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', 'https://callengine-fixes.preview.emergentagent.com')
+BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', 'https://datamap.preview.emergentagent.com')
 
 TEST_EMAIL = "admin@premiumhunter.com"
 TEST_PASSWORD = "admin123"

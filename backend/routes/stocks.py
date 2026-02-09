@@ -1,5 +1,10 @@
 """
 Stocks Routes - Stock data and quote endpoints
+
+PHASE 1 REFACTOR (December 2025):
+- All stock quotes now route through services/data_provider.py
+- Yahoo Finance is primary source, Polygon is backup (via data_provider)
+- MOCK_STOCKS retained for fallback but flagged
 """
 from fastapi import APIRouter, Depends, Query, HTTPException
 from datetime import datetime, timedelta
@@ -14,8 +19,9 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from utils.auth import get_current_user
+from services.data_provider import fetch_stock_quote, fetch_live_stock_quote
 
-# Lazy import yfinance to avoid startup slowdown
+# Lazy import yfinance to avoid startup slowdown (retained for analyst ratings)
 _yf = None
 def get_yfinance():
     global _yf
@@ -24,7 +30,7 @@ def get_yfinance():
         _yf = yf
     return _yf
 
-# Thread pool for yfinance (which is blocking)
+# Thread pool for yfinance (which is blocking) - retained for analyst ratings
 _executor = ThreadPoolExecutor(max_workers=5)
 
 stocks_router = APIRouter(tags=["Stocks"])
@@ -66,6 +72,7 @@ async def get_stock_quote(symbol: str, user: dict = Depends(get_current_user)):
     MOCK_STOCKS, _, _, _ = _get_server_data()
     if symbol in MOCK_STOCKS:
         data = MOCK_STOCKS[symbol]
+        logging.warning(f"Using MOCK_STOCKS fallback for {symbol}")
         return {
             "symbol": symbol,
             "price": data["price"],
@@ -74,7 +81,7 @@ async def get_stock_quote(symbol: str, user: dict = Depends(get_current_user)):
             "volume": data["volume"],
             "pe": data["pe"],
             "roe": data["roe"],
-            "is_mock": True
+            "is_mock": True  # FLAG: Mock data in use
         }
     
     raise HTTPException(status_code=404, detail=f"Stock {symbol} not found")

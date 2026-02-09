@@ -1,6 +1,10 @@
 """
 Portfolio Routes - Portfolio management, IBKR integration, and manual trade entry
 Designed for scalability with proper async patterns and efficient queries
+
+PHASE 1 REFACTOR (December 2025):
+- fetch_stock_quote now imports from data_provider.py instead of server.py
+- This ensures portfolio uses the same data source as other pages
 """
 from fastapi import APIRouter, Depends, Query, HTTPException, File, UploadFile
 from pydantic import BaseModel, Field
@@ -18,6 +22,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from database import db
 from utils.auth import get_current_user
+from services.data_provider import fetch_stock_quote
 
 portfolio_router = APIRouter(tags=["Portfolio"])
 
@@ -73,9 +78,14 @@ class ManualTradeEntry(BaseModel):
 
 
 def _get_server_data():
-    """Lazy import to avoid circular dependencies"""
-    from server import MOCK_STOCKS, fetch_stock_quote
-    return MOCK_STOCKS, fetch_stock_quote
+    """
+    Lazy import to avoid circular dependencies.
+    
+    PHASE 1 REFACTOR: fetch_stock_quote now comes from data_provider.py
+    MOCK_STOCKS still comes from server.py for fallback
+    """
+    from server import MOCK_STOCKS, get_massive_api_key
+    return MOCK_STOCKS, get_massive_api_key
 
 
 # ==================== BASIC PORTFOLIO CRUD ====================
@@ -274,7 +284,7 @@ async def get_ibkr_trades(
     limit: int = Query(50, ge=1, le=100)
 ):
     """Get parsed IBKR trades with filters and pagination"""
-    _, fetch_stock_quote = _get_server_data()
+    # PHASE 1: fetch_stock_quote now imported from data_provider.py at module level
     
     query = {"user_id": user["id"]}
     
@@ -324,7 +334,7 @@ async def get_ibkr_trades(
 @portfolio_router.get("/ibkr/trades/{trade_id}")
 async def get_ibkr_trade_detail(trade_id: str, user: dict = Depends(get_current_user)):
     """Get detailed trade information including transaction history"""
-    _, fetch_stock_quote = _get_server_data()
+    # PHASE 1: fetch_stock_quote now imported from data_provider.py at module level
     
     trade = await db.ibkr_trades.find_one({"user_id": user["id"], "id": trade_id}, {"_id": 0})
     if not trade:
@@ -822,7 +832,7 @@ def _get_strategy_labels(trade: ManualTradeEntry) -> tuple:
 
 async def _generate_ai_suggestion_for_trade(trade: dict) -> dict:
     """Generate AI suggestion for a single trade"""
-    _, fetch_stock_quote = _get_server_data()
+    # PHASE 1: fetch_stock_quote now imported from data_provider.py at module level
     
     symbol = trade.get('symbol', '')
     current_price = None

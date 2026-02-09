@@ -66,6 +66,10 @@ def calculate_cc_volatility_score(
     """
     max_score = 30.0
     
+    # PHASE 2 FIX: Handle None iv_rank
+    if iv_rank is None:
+        iv_rank = 50  # Default to neutral IV rank
+    
     # IV Rank scoring (0-100 → 0-12 points)
     # Sweet spot: 30-70 IV Rank (not too low, not panic high)
     if 30 <= iv_rank <= 70:

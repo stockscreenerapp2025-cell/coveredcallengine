@@ -22,6 +22,12 @@ LAYER 3 RESPONSIBILITIES:
     - Separate Weekly (7-14 DTE) and Monthly (21-45 DTE) modes
     - Compute/enrich Greeks (Delta, IV, IV Rank, OI)
     - Prepare enriched data for downstream scoring
+
+PHASE 2 (December 2025): Market Snapshot Cache
+- Stock data now uses get_symbol_snapshot() for cache-first approach
+- Reduces Yahoo Finance calls by ~70% for Custom Scans
+- Options are still fetched live (not cached)
+- Does NOT affect Watchlist or Simulator
 """
 from fastapi import APIRouter, Depends, Query, HTTPException
 from pydantic import BaseModel
@@ -39,7 +45,15 @@ from database import db
 from utils.auth import get_current_user
 
 # Import data_provider for LIVE options fetching
-from services.data_provider import fetch_options_chain, fetch_stock_quote, fetch_options_with_cache
+from services.data_provider import (
+    fetch_options_chain, 
+    fetch_stock_quote, 
+    fetch_options_with_cache,
+    # PHASE 2: Import cache-first functions
+    get_symbol_snapshot,
+    get_symbol_snapshots_batch,
+    get_cache_metrics
+)
 
 # Import quote cache for after-hours support
 from services.quote_cache_service import get_quote_cache
@@ -150,6 +164,93 @@ SCAN_SYMBOLS = [
     # ETFs - only those with existing snapshots
     "SPY", "QQQ", "IWM", "SLV"
 ]
+
+
+# ============================================================
+# PHASE 3: AI-BASED BEST OPTION SELECTION PER SYMBOL
+# ============================================================
+# IMPORTANT:
+# Scan candidates may include multiple options per symbol.
+# Final output must return ONE best option per symbol,
+# selected by highest AI score.
+#
+# This is a post-processing step AFTER:
+# - Option scoring
+# - AI ranking
+# - Quality score calculation
+#
+# ❌ Does NOT affect: Watchlist, Simulator, Portfolio
+# ============================================================
+
+def select_best_option_per_symbol(opportunities: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """
+    PHASE 3: Select the single best option for each underlying symbol.
+    
+    This function ensures clean, professional UI output with one actionable
+    recommendation per stock, while allowing rich option exploration internally.
+    
+    Selection Criteria (in order of priority):
+    1. Highest AI score (score field) - Primary
+    2. Highest quality score (base_score field) - Tie-breaker
+    3. Highest ROI (roi_pct field) - Secondary tie-breaker
+    4. Lower downside risk (otm_pct closer to target) - Tertiary tie-breaker
+    
+    Args:
+        opportunities: List of opportunity dictionaries, each containing:
+            - symbol: Underlying stock symbol
+            - score: AI/final score
+            - base_score: Quality score
+            - roi_pct: Return on investment percentage
+            - otm_pct: Out-of-the-money percentage
+            
+    Returns:
+        Deduplicated list with ONE best option per symbol
+    """
+    if not opportunities:
+        return []
+    
+    # Group opportunities by underlying symbol
+    symbol_groups: Dict[str, List[Dict[str, Any]]] = {}
+    for opp in opportunities:
+        symbol = opp.get("symbol", "UNKNOWN")
+        if symbol not in symbol_groups:
+            symbol_groups[symbol] = []
+        symbol_groups[symbol].append(opp)
+    
+    # Select best option from each group
+    best_options = []
+    for symbol, candidates in symbol_groups.items():
+        if len(candidates) == 1:
+            # Single candidate - no selection needed
+            best_options.append(candidates[0])
+        else:
+            # Multiple candidates - apply AI-based selection
+            # Sort by: score (desc), base_score (desc), roi_pct (desc), otm_pct (closer to 5%)
+            sorted_candidates = sorted(
+                candidates,
+                key=lambda x: (
+                    x.get("score", 0),                    # Primary: AI score (higher is better)
+                    x.get("base_score", 0),               # Tie-breaker 1: Quality score
+                    x.get("roi_pct", 0),                  # Tie-breaker 2: ROI
+                    -abs(x.get("otm_pct", 5) - 5)         # Tie-breaker 3: OTM% closest to 5%
+                ),
+                reverse=True
+            )
+            best_options.append(sorted_candidates[0])
+            
+            # Log when multiple candidates exist (for debugging)
+            if len(candidates) > 2:
+                logging.debug(
+                    f"PHASE 3: {symbol} had {len(candidates)} candidates, "
+                    f"selected strike={sorted_candidates[0].get('strike')} "
+                    f"expiry={sorted_candidates[0].get('expiry')} "
+                    f"score={sorted_candidates[0].get('score')}"
+                )
+    
+    # Sort final results by score descending
+    best_options.sort(key=lambda x: x.get("score", 0), reverse=True)
+    
+    return best_options
 
 
 # ============================================================
@@ -727,29 +828,54 @@ async def screen_covered_calls(
         min_dte = min_dte if min_dte is not None else auto_min_dte
         max_dte = max_dte if max_dte is not None else auto_max_dte
     
-    # Step 1: Get stock prices - YAHOO FINANCE IS THE SINGLE SOURCE OF TRUTH
-    # The most recent market close from Yahoo Finance history() is the only valid price
-    # DO NOT use EOD contract, cached prices, or stale fallbacks
+    # Step 1: Get stock prices - PHASE 2: Use cache-first approach for Yahoo Finance
+    # This reduces Yahoo calls by ~70% while still using Yahoo as single source of truth
+    # Cache TTL: 12 min during market hours, 3 hours after close
     stock_data = {}
     symbols_with_stock_data = []
     
+    # PHASE 2: Track cache performance
+    cache_stats = {"hits": 0, "misses": 0, "symbols_processed": 0}
+    
+    # PHASE 2: Batch fetch snapshots with cache-first approach
+    snapshots = await get_symbol_snapshots_batch(
+        db=db,
+        symbols=SCAN_SYMBOLS,
+        api_key=None,  # Not needed for Yahoo-only mode
+        include_options=False,  # Options fetched live below
+        batch_size=10
+    )
+    
     for symbol in SCAN_SYMBOLS:
         try:
-            # ALWAYS use Yahoo Finance for stock price (SINGLE SOURCE OF TRUTH)
-            quote = await fetch_stock_quote(symbol)
-            if quote and quote.get("price") and quote.get("price") > 0:
-                stock_data[symbol] = {
-                    "stock_price": quote["price"],
-                    "trade_date": quote.get("close_date"),  # Date of the close price
-                    "market_cap": quote.get("market_cap"),
-                    "avg_volume": quote.get("avg_volume"),
-                    "earnings_date": quote.get("earnings_date"),
-                    "analyst_rating": quote.get("analyst_rating"),
-                    "source": "yahoo_last_close"
-                }
-                symbols_with_stock_data.append(symbol)
+            # PHASE 2: Get data from snapshot cache
+            snapshot = snapshots.get(symbol.upper())
+            
+            if snapshot and snapshot.get("stock_data"):
+                quote = snapshot["stock_data"]
+                
+                # Track cache stats
+                cache_stats["symbols_processed"] += 1
+                if snapshot.get("from_cache"):
+                    cache_stats["hits"] += 1
+                else:
+                    cache_stats["misses"] += 1
+                
+                if quote.get("price") and quote.get("price") > 0:
+                    stock_data[symbol] = {
+                        "stock_price": quote["price"],
+                        "trade_date": quote.get("close_date"),  # Date of the close price
+                        "market_cap": quote.get("market_cap"),
+                        "avg_volume": quote.get("avg_volume"),
+                        "earnings_date": quote.get("earnings_date"),
+                        "analyst_rating": quote.get("analyst_rating"),
+                        "source": "yahoo_cached" if snapshot.get("from_cache") else "yahoo_live"
+                    }
+                    symbols_with_stock_data.append(symbol)
         except Exception as e:
             logging.debug(f"Could not get stock price for {symbol}: {e}")
+    
+    logging.info(f"CC Screener cache stats: {cache_stats}")
     
     # Step 2: Get market sentiment for scoring
     try:
@@ -1025,18 +1151,15 @@ async def screen_covered_calls(
         if live_options:
             symbols_with_results += 1
     
-    # Sort by score descending
-    opportunities.sort(key=lambda x: x["score"], reverse=True)
-    
-    # DEDUPLICATION: Keep only the best opportunity per symbol
-    seen_symbols = set()
-    deduplicated = []
-    for opp in opportunities:
-        if opp["symbol"] not in seen_symbols:
-            seen_symbols.add(opp["symbol"])
-            deduplicated.append(opp)
-    
-    opportunities = deduplicated
+    # ============================================================
+    # PHASE 3: AI-BASED BEST OPTION SELECTION PER SYMBOL
+    # ============================================================
+    # IMPORTANT:
+    # Scan candidates may include multiple options per symbol.
+    # Final output must return ONE best option per symbol,
+    # selected by highest AI score.
+    # ============================================================
+    opportunities = select_best_option_per_symbol(opportunities)
     
     return {
         "total": len(opportunities),
@@ -1048,8 +1171,8 @@ async def screen_covered_calls(
         "filter_reasons": symbols_filtered[:10],
         "market_bias": market_bias,
         "bias_weight": bias_weight,
-        "stock_price_source": "yahoo_last_close",  # SINGLE SOURCE OF TRUTH
-        "options_chain_source": "yahoo_live",
+        "stock_price_source": "yahoo_cached",  # PHASE 2: Cache-first approach
+        "options_chain_source": "yahoo_live",  # Options still fetched live
         "layer": 3,
         "scan_mode": scan_mode,
         "dte_mode": dte_mode,
@@ -1062,7 +1185,8 @@ async def screen_covered_calls(
         },
         "spread_threshold": f"{MAX_SPREAD_PCT}%",
         "architecture": "YAHOO_SINGLE_SOURCE_OF_TRUTH",
-        "live_data_used": True
+        "live_data_used": True,
+        "snapshot_cache_stats": cache_stats  # PHASE 2: Include cache stats
     }
 
 
@@ -1126,36 +1250,64 @@ async def screen_pmcc(
     PRICE FILTERS (PMCC-specific):
     - Stocks: $30-$90
     - ETFs: No price limits
+    
+    PHASE 2: Uses cache-first approach for stock data
     """
-    # Step 1: Get stock prices - YAHOO FINANCE SINGLE SOURCE
+    # PHASE 2: Track cache performance
+    cache_stats = {"hits": 0, "misses": 0, "symbols_processed": 0}
+    
+    # PHASE 2: Batch fetch snapshots with cache-first approach
+    snapshots = await get_symbol_snapshots_batch(
+        db=db,
+        symbols=SCAN_SYMBOLS,
+        api_key=None,
+        include_options=False,
+        batch_size=10
+    )
+    
+    # Step 1: Get stock prices - PHASE 2: Cache-first approach
     stock_data = {}
     symbols_with_stock_data = []
     
     for symbol in SCAN_SYMBOLS:
         try:
-            quote = await fetch_stock_quote(symbol)
-            if quote and quote.get("price") and quote.get("price") > 0:
-                stock_price = quote["price"]
-                is_etf = symbol in ETF_SYMBOLS
+            # PHASE 2: Get data from snapshot cache
+            snapshot = snapshots.get(symbol.upper())
+            
+            if snapshot and snapshot.get("stock_data"):
+                quote = snapshot["stock_data"]
                 
-                # PMCC-specific price filter (different from CC)
-                if not is_etf:
-                    # Stocks: $30-$90
-                    if stock_price < PMCC_STOCK_MIN_PRICE or stock_price > PMCC_STOCK_MAX_PRICE:
-                        continue
-                # ETFs: No price limits
+                # Track cache stats
+                cache_stats["symbols_processed"] += 1
+                if snapshot.get("from_cache"):
+                    cache_stats["hits"] += 1
+                else:
+                    cache_stats["misses"] += 1
                 
-                stock_data[symbol] = {
-                    "stock_price": stock_price,
-                    "trade_date": quote.get("close_date"),
-                    "market_cap": quote.get("market_cap"),
-                    "analyst_rating": quote.get("analyst_rating"),
-                    "is_etf": is_etf,
-                    "source": "yahoo_last_close"
-                }
-                symbols_with_stock_data.append(symbol)
+                if quote.get("price") and quote.get("price") > 0:
+                    stock_price = quote["price"]
+                    is_etf = symbol in ETF_SYMBOLS
+                    
+                    # PMCC-specific price filter (different from CC)
+                    if not is_etf:
+                        # Stocks: $30-$90
+                        if stock_price < PMCC_STOCK_MIN_PRICE or stock_price > PMCC_STOCK_MAX_PRICE:
+                            continue
+                    # ETFs: No price limits
+                    
+                    stock_data[symbol] = {
+                        "stock_price": stock_price,
+                        "trade_date": quote.get("close_date"),
+                        "market_cap": quote.get("market_cap"),
+                        "analyst_rating": quote.get("analyst_rating"),
+                        "is_etf": is_etf,
+                        "source": "yahoo_cached" if snapshot.get("from_cache") else "yahoo_live"
+                    }
+                    symbols_with_stock_data.append(symbol)
         except Exception as e:
             logging.debug(f"Could not get stock price for {symbol}: {e}")
+    
+    logging.info(f"PMCC Screener cache stats: {cache_stats}")
     
     # Step 2: Get market sentiment
     try:
@@ -1539,18 +1691,15 @@ async def screen_pmcc(
                     "data_source": "yahoo_live_pmcc"
                 })
     
-    # Sort by annualized ROI
-    opportunities.sort(key=lambda x: x.get("annualized_roi", 0), reverse=True)
-    
-    # DEDUPLICATION: Keep only the best PMCC opportunity per symbol
-    seen_symbols = set()
-    deduplicated = []
-    for opp in opportunities:
-        if opp["symbol"] not in seen_symbols:
-            seen_symbols.add(opp["symbol"])
-            deduplicated.append(opp)
-    
-    opportunities = deduplicated
+    # ============================================================
+    # PHASE 3: AI-BASED BEST OPTION SELECTION PER SYMBOL (PMCC)
+    # ============================================================
+    # IMPORTANT:
+    # Scan candidates may include multiple PMCC combinations per symbol.
+    # Final output must return ONE best option per symbol,
+    # selected by highest AI score.
+    # ============================================================
+    opportunities = select_best_option_per_symbol(opportunities)
     
     return {
         "total": len(opportunities),

@@ -995,23 +995,50 @@ class PrecomputedScanService:
     
     def _dedupe_by_symbol_timeframe(self, opportunities: List[Dict]) -> List[Dict]:
         """
-        Deduplicate opportunities: Keep only the best (highest score) 
-        Weekly and Monthly option per symbol.
+        PHASE 3: AI-Based Best Option Selection per Symbol
+        
+        ============================================================
+        IMPORTANT:
+        Scan candidates may include multiple options per symbol.
+        Final output must return ONE best option per symbol,
+        selected by highest AI score.
+        ============================================================
+        
+        Selection Criteria (in order of priority):
+        1. Highest AI score (score field) - Primary
+        2. Highest quality score (quality_score field) - Tie-breaker
+        3. Highest ROI (roi_pct field) - Secondary tie-breaker
         """
-        # Group by symbol and timeframe
-        symbol_timeframe_best = {}
+        if not opportunities:
+            return []
+        
+        # Group by symbol only (not by timeframe)
+        symbol_best = {}
         
         for opp in opportunities:
             symbol = opp["symbol"]
-            timeframe = opp.get("timeframe", "monthly")
-            key = f"{symbol}_{timeframe}"
             
-            if key not in symbol_timeframe_best:
-                symbol_timeframe_best[key] = opp
-            elif opp["score"] > symbol_timeframe_best[key]["score"]:
-                symbol_timeframe_best[key] = opp
+            if symbol not in symbol_best:
+                symbol_best[symbol] = opp
+            else:
+                # Compare: score → quality_score → roi_pct
+                current_best = symbol_best[symbol]
+                
+                # Primary: AI score
+                if opp.get("score", 0) > current_best.get("score", 0):
+                    symbol_best[symbol] = opp
+                elif opp.get("score", 0) == current_best.get("score", 0):
+                    # Tie-breaker 1: quality_score
+                    if opp.get("quality_score", 0) > current_best.get("quality_score", 0):
+                        symbol_best[symbol] = opp
+                    elif opp.get("quality_score", 0) == current_best.get("quality_score", 0):
+                        # Tie-breaker 2: roi_pct
+                        if opp.get("roi_pct", 0) > current_best.get("roi_pct", 0):
+                            symbol_best[symbol] = opp
         
-        return list(symbol_timeframe_best.values())
+        result = list(symbol_best.values())
+        logger.debug(f"PHASE 3: Deduplicated {len(opportunities)} candidates to {len(result)} unique symbols")
+        return result
     
     # ==================== STORAGE ====================
     
@@ -1606,7 +1633,14 @@ class PrecomputedScanService:
             # Longer delay between batches to avoid Yahoo Finance rate limits
             await asyncio.sleep(2.0)
         
-        # Deduplicate by symbol (keep best)
+        # ============================================================
+        # PHASE 3: AI-BASED BEST OPTION SELECTION PER SYMBOL (PMCC)
+        # ============================================================
+        # IMPORTANT:
+        # Scan candidates may include multiple PMCC combinations per symbol.
+        # Final output must return ONE best option per symbol,
+        # selected by highest AI score.
+        # ============================================================
         symbol_best = {}
         for opp in opportunities:
             symbol = opp["symbol"]
