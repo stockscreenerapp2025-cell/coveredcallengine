@@ -1691,18 +1691,15 @@ async def screen_pmcc(
                     "data_source": "yahoo_live_pmcc"
                 })
     
-    # Sort by annualized ROI
-    opportunities.sort(key=lambda x: x.get("annualized_roi", 0), reverse=True)
-    
-    # DEDUPLICATION: Keep only the best PMCC opportunity per symbol
-    seen_symbols = set()
-    deduplicated = []
-    for opp in opportunities:
-        if opp["symbol"] not in seen_symbols:
-            seen_symbols.add(opp["symbol"])
-            deduplicated.append(opp)
-    
-    opportunities = deduplicated
+    # ============================================================
+    # PHASE 3: AI-BASED BEST OPTION SELECTION PER SYMBOL (PMCC)
+    # ============================================================
+    # IMPORTANT:
+    # Scan candidates may include multiple PMCC combinations per symbol.
+    # Final output must return ONE best option per symbol,
+    # selected by highest AI score.
+    # ============================================================
+    opportunities = select_best_option_per_symbol(opportunities)
     
     return {
         "total": len(opportunities),
