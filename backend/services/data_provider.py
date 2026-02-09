@@ -21,6 +21,12 @@ PRICING RULES:
 - BUY legs: Use ASK only, reject if ASK is None/0/missing
 - NEVER use: lastPrice, mid, theoretical price
 - After hours: Use last market session quotes with timestamp
+
+PHASE 2 (December 2025): Market Snapshot Cache
+- Per-symbol cache for Custom Scans (reduces Yahoo calls by ~70%)
+- TTL: 10-15 min market open, 2-4 hrs market closed
+- Yahoo-safe concurrency: max 4 concurrent calls
+- Does NOT affect Watchlist or Simulator (they use live data)
 """
 
 import os
@@ -31,6 +37,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional, List, Dict, Any
 from concurrent.futures import ThreadPoolExecutor
 import pytz
+import time
 
 # =============================================================================
 # CONFIGURATION
@@ -38,8 +45,20 @@ import pytz
 HTTP_TIMEOUT = httpx.Timeout(30.0, connect=10.0)
 POLYGON_BASE_URL = "https://api.polygon.io"
 
-# Thread pool for blocking yfinance calls
-_yahoo_executor = ThreadPoolExecutor(max_workers=8)
+# Thread pool for blocking yfinance calls - PHASE 2: Reduced to 4 for rate safety
+_yahoo_executor = ThreadPoolExecutor(max_workers=4)
+
+# PHASE 2: Semaphore for Yahoo rate limiting (max 4 concurrent calls)
+_yahoo_semaphore = asyncio.Semaphore(4)
+
+# PHASE 2: Cache metrics tracking
+_cache_metrics = {
+    "hits": 0,
+    "misses": 0,
+    "yahoo_calls": 0,
+    "last_reset": datetime.now(timezone.utc),
+    "fetch_times_ms": []  # Rolling window of last 100 fetch times
+}
 
 
 def shutdown_executor():
