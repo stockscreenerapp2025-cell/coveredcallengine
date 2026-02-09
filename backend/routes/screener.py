@@ -711,22 +711,34 @@ async def get_dashboard_opportunities(
                 passed_filter_count += 1
                 
                 # ========== FETCH OPTIONS ==========
+                # PHASE 2: Get options from snapshot if available
+                all_options = snapshot.get("options_data") or []
                 
-                # Get Weekly options (7-14 DTE)
-                weekly_opts = await fetch_options_chain(
-                    symbol, api_key, "call", 
-                    DASHBOARD_FILTERS["weekly_dte_max"], 
-                    min_dte=DASHBOARD_FILTERS["weekly_dte_min"], 
-                    current_price=current_price
-                )
+                # Split into weekly and monthly based on DTE
+                weekly_opts = [
+                    opt for opt in all_options 
+                    if DASHBOARD_FILTERS["weekly_dte_min"] <= opt.get("dte", 0) <= DASHBOARD_FILTERS["weekly_dte_max"]
+                ]
+                monthly_opts = [
+                    opt for opt in all_options 
+                    if DASHBOARD_FILTERS["monthly_dte_min"] <= opt.get("dte", 0) <= DASHBOARD_FILTERS["monthly_dte_max"]
+                ]
                 
-                # Get Monthly options (21-45 DTE)
-                monthly_opts = await fetch_options_chain(
-                    symbol, api_key, "call", 
-                    DASHBOARD_FILTERS["monthly_dte_max"], 
-                    min_dte=DASHBOARD_FILTERS["monthly_dte_min"], 
-                    current_price=current_price
-                )
+                # If no options in snapshot, fetch directly (fallback)
+                if not all_options:
+                    weekly_opts = await fetch_options_chain(
+                        symbol, api_key, "call", 
+                        DASHBOARD_FILTERS["weekly_dte_max"], 
+                        min_dte=DASHBOARD_FILTERS["weekly_dte_min"], 
+                        current_price=current_price
+                    )
+                    
+                    monthly_opts = await fetch_options_chain(
+                        symbol, api_key, "call", 
+                        DASHBOARD_FILTERS["monthly_dte_max"], 
+                        min_dte=DASHBOARD_FILTERS["monthly_dte_min"], 
+                        current_price=current_price
+                    )
                 
                 # ========== PROCESS OPTIONS ==========
                 
