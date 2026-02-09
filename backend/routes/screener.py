@@ -908,6 +908,9 @@ async def get_dashboard_opportunities(
         weekly_count = len(top_weekly)
         monthly_count = len(top_monthly)
         
+        # PHASE 2: Log cache performance
+        logging.info(f"Dashboard cache stats: {cache_stats}")
+        
         result = {
             "opportunities": final_opportunities, 
             "total": len(final_opportunities),
@@ -921,7 +924,8 @@ async def get_dashboard_opportunities(
             "market_bias": market_sentiment.get("bias", "neutral"),
             "bias_weight": bias_weight,
             "filters_applied": DASHBOARD_FILTERS,
-            "data_source": "yahoo_primary"
+            "data_source": "yahoo_cached",  # PHASE 2: Updated source
+            "snapshot_cache_stats": cache_stats  # PHASE 2: Include cache stats
         }
         await funcs['set_cached_data'](cache_key, result)
         return result
