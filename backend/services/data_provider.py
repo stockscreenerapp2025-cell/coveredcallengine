@@ -1178,6 +1178,9 @@ async def get_cache_status(db) -> Dict[str, Any]:
             if cached_at:
                 if isinstance(cached_at, str):
                     cached_at = datetime.fromisoformat(cached_at.replace('Z', '+00:00'))
+                # Ensure timezone-aware
+                if cached_at.tzinfo is None:
+                    cached_at = cached_at.replace(tzinfo=timezone.utc)
                 age = (now - cached_at).total_seconds()
                 if age > ttl_seconds:
                     stale_count += 1
