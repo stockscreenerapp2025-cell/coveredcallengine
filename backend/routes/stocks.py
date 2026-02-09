@@ -45,60 +45,43 @@ def _get_server_data():
 
 @stocks_router.get("/quote/{symbol}")
 async def get_stock_quote(symbol: str, user: dict = Depends(get_current_user)):
-    """Get stock quote for a symbol"""
+    """
+    Get stock quote for a symbol.
+    
+    PHASE 1 REFACTOR: Now routes through data_provider.py
+    - Primary: Yahoo Finance (via data_provider.fetch_stock_quote)
+    - Backup: Polygon (via data_provider fallback)
+    - Last Resort: MOCK_STOCKS (flagged with is_mock=True)
+    """
     MOCK_STOCKS, _, get_massive_api_key, _ = _get_server_data()
     
     symbol = symbol.upper()
     
-    # Try Massive.com API first
+    # Get API key for potential Polygon fallback
     api_key = await get_massive_api_key()
-    if api_key:
-        try:
-            async with httpx.AsyncClient(timeout=30.0) as client:
-                # Massive.com uses apiKey as query parameter (similar to Polygon)
-                # Get previous day aggregates for price data
-                response = await client.get(
-                    f"https://api.polygon.io/v2/aggs/ticker/{symbol}/prev",
-                    params={"apiKey": api_key}
-                )
-                logging.info(f"Stock quote API response for {symbol}: status={response.status_code}")
-                if response.status_code == 200:
-                    data = response.json()
-                    if data.get("results") and len(data["results"]) > 0:
-                        result = data["results"][0]
-                        return {
-                            "symbol": symbol,
-                            "price": result.get("c"),  # close price
-                            "open": result.get("o"),
-                            "high": result.get("h"),
-                            "low": result.get("l"),
-                            "volume": result.get("v"),
-                            "change": round(result.get("c", 0) - result.get("o", 0), 2),
-                            "change_pct": round((result.get("c", 0) - result.get("o", 0)) / result.get("o", 1) * 100, 2) if result.get("o") else 0,
-                            "is_live": True
-                        }
-                
-                # Fallback: try last trade endpoint
-                response = await client.get(
-                    f"https://api.polygon.io/v2/last/trade/{symbol}",
-                    params={"apiKey": api_key}
-                )
-                if response.status_code == 200:
-                    data = response.json()
-                    if data.get("results"):
-                        result = data["results"]
-                        return {
-                            "symbol": symbol,
-                            "price": result.get("p"),  # price
-                            "volume": result.get("s"),  # size
-                            "is_live": True
-                        }
-        except Exception as e:
-            logging.error(f"Massive.com API error: {e}")
     
-    # Fallback to mock data
+    # Route through centralized data_provider (Yahoo primary, Polygon backup)
+    try:
+        result = await fetch_stock_quote(symbol, api_key)
+        
+        if result and result.get("price", 0) > 0:
+            return {
+                "symbol": symbol,
+                "price": result.get("price"),
+                "previous_close": result.get("previous_close"),
+                "change": result.get("change", 0),
+                "change_pct": result.get("change_pct", 0),
+                "close_date": result.get("close_date"),
+                "source": result.get("source", "yahoo"),
+                "is_live": True
+            }
+    except Exception as e:
+        logging.error(f"data_provider fetch_stock_quote error for {symbol}: {e}")
+    
+    # Fallback to mock data (flagged)
     if symbol in MOCK_STOCKS:
         data = MOCK_STOCKS[symbol]
+        logging.warning(f"Using MOCK_STOCKS fallback for {symbol}")
         return {
             "symbol": symbol,
             "price": data["price"],
@@ -107,7 +90,7 @@ async def get_stock_quote(symbol: str, user: dict = Depends(get_current_user)):
             "volume": data["volume"],
             "pe": data["pe"],
             "roe": data["roe"],
-            "is_mock": True
+            "is_mock": True  # FLAG: Mock data in use
         }
     
     raise HTTPException(status_code=404, detail=f"Stock {symbol} not found")
