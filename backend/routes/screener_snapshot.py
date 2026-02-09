@@ -22,6 +22,12 @@ LAYER 3 RESPONSIBILITIES:
     - Separate Weekly (7-14 DTE) and Monthly (21-45 DTE) modes
     - Compute/enrich Greeks (Delta, IV, IV Rank, OI)
     - Prepare enriched data for downstream scoring
+
+PHASE 2 (December 2025): Market Snapshot Cache
+- Stock data now uses get_symbol_snapshot() for cache-first approach
+- Reduces Yahoo Finance calls by ~70% for Custom Scans
+- Options are still fetched live (not cached)
+- Does NOT affect Watchlist or Simulator
 """
 from fastapi import APIRouter, Depends, Query, HTTPException
 from pydantic import BaseModel
@@ -39,7 +45,15 @@ from database import db
 from utils.auth import get_current_user
 
 # Import data_provider for LIVE options fetching
-from services.data_provider import fetch_options_chain, fetch_stock_quote, fetch_options_with_cache
+from services.data_provider import (
+    fetch_options_chain, 
+    fetch_stock_quote, 
+    fetch_options_with_cache,
+    # PHASE 2: Import cache-first functions
+    get_symbol_snapshot,
+    get_symbol_snapshots_batch,
+    get_cache_metrics
+)
 
 # Import quote cache for after-hours support
 from services.quote_cache_service import get_quote_cache
