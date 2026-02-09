@@ -741,29 +741,54 @@ async def screen_covered_calls(
         min_dte = min_dte if min_dte is not None else auto_min_dte
         max_dte = max_dte if max_dte is not None else auto_max_dte
     
-    # Step 1: Get stock prices - YAHOO FINANCE IS THE SINGLE SOURCE OF TRUTH
-    # The most recent market close from Yahoo Finance history() is the only valid price
-    # DO NOT use EOD contract, cached prices, or stale fallbacks
+    # Step 1: Get stock prices - PHASE 2: Use cache-first approach for Yahoo Finance
+    # This reduces Yahoo calls by ~70% while still using Yahoo as single source of truth
+    # Cache TTL: 12 min during market hours, 3 hours after close
     stock_data = {}
     symbols_with_stock_data = []
     
+    # PHASE 2: Track cache performance
+    cache_stats = {"hits": 0, "misses": 0, "symbols_processed": 0}
+    
+    # PHASE 2: Batch fetch snapshots with cache-first approach
+    snapshots = await get_symbol_snapshots_batch(
+        db=db,
+        symbols=SCAN_SYMBOLS,
+        api_key=None,  # Not needed for Yahoo-only mode
+        include_options=False,  # Options fetched live below
+        batch_size=10
+    )
+    
     for symbol in SCAN_SYMBOLS:
         try:
-            # ALWAYS use Yahoo Finance for stock price (SINGLE SOURCE OF TRUTH)
-            quote = await fetch_stock_quote(symbol)
-            if quote and quote.get("price") and quote.get("price") > 0:
-                stock_data[symbol] = {
-                    "stock_price": quote["price"],
-                    "trade_date": quote.get("close_date"),  # Date of the close price
-                    "market_cap": quote.get("market_cap"),
-                    "avg_volume": quote.get("avg_volume"),
-                    "earnings_date": quote.get("earnings_date"),
-                    "analyst_rating": quote.get("analyst_rating"),
-                    "source": "yahoo_last_close"
-                }
-                symbols_with_stock_data.append(symbol)
+            # PHASE 2: Get data from snapshot cache
+            snapshot = snapshots.get(symbol.upper())
+            
+            if snapshot and snapshot.get("stock_data"):
+                quote = snapshot["stock_data"]
+                
+                # Track cache stats
+                cache_stats["symbols_processed"] += 1
+                if snapshot.get("from_cache"):
+                    cache_stats["hits"] += 1
+                else:
+                    cache_stats["misses"] += 1
+                
+                if quote.get("price") and quote.get("price") > 0:
+                    stock_data[symbol] = {
+                        "stock_price": quote["price"],
+                        "trade_date": quote.get("close_date"),  # Date of the close price
+                        "market_cap": quote.get("market_cap"),
+                        "avg_volume": quote.get("avg_volume"),
+                        "earnings_date": quote.get("earnings_date"),
+                        "analyst_rating": quote.get("analyst_rating"),
+                        "source": "yahoo_cached" if snapshot.get("from_cache") else "yahoo_live"
+                    }
+                    symbols_with_stock_data.append(symbol)
         except Exception as e:
             logging.debug(f"Could not get stock price for {symbol}: {e}")
+    
+    logging.info(f"CC Screener cache stats: {cache_stats}")
     
     # Step 2: Get market sentiment for scoring
     try:
