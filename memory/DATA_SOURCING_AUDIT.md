@@ -2,6 +2,39 @@
 ## Covered Call Engine - Comprehensive Data Flow Analysis
 **Audit Date:** December 2025
 **Purpose:** Document actual data sourcing behavior for refactoring planning
+**Status:** ✅ BASELINE LOCKED - Approved for Refactor Planning
+
+---
+
+## EXPLICIT CONFIRMATIONS
+
+### ✅ Confirmation 1: No Code Changes Made During Audit
+**Verified via `git status`:** Only untracked yarn.lock files exist. No source code modifications were made during this audit. All findings reflect the actual production codebase as of commit `9b317c6`.
+
+### ✅ Confirmation 2: Documented File List Represents Actual Current Production Behavior
+**Verified:** All file paths and line numbers have been cross-referenced against the actual codebase. The data flow documented here represents the live production behavior, not intended or deprecated behavior.
+
+### ✅ Confirmation 3: All 5 Parallel Data-Fetching Paths Are Active
+**Verified:** Each of the following implementations contains active, callable code:
+1. `/backend/services/data_provider.py` - ACTIVE (used by screener.py, watchlist.py, simulator.py)
+2. `/backend/server.py` - ACTIVE (used by portfolio.py for fetch_stock_quote)
+3. `/backend/routes/stocks.py` - ACTIVE (direct Polygon calls on `/api/stocks/*` endpoints)
+4. `/backend/routes/options.py` - ACTIVE (direct Polygon calls on `/api/options/*` endpoints)
+5. `/backend/services/precomputed_scans.py` - ACTIVE (nightly job uses own Yahoo implementation)
+
+### ✅ Confirmation 4: Custom Scans Perform LIVE, Synchronous Yahoo Fetches Per Symbol
+**Verified in `/backend/routes/screener.py`:**
+- Lines 264, 601, 949: Call `fetch_stock_quote()` from data_provider.py (synchronous per-symbol)
+- Lines 303, 646, 654, 996, 1001: Call `fetch_options_chain()` from data_provider.py (synchronous per-symbol)
+- **No caching layer between user request and Yahoo Finance for custom scans**
+- Each custom scan request triggers live HTTP calls to Yahoo for every symbol in the scan list
+
+### ✅ Confirmation 5: Pre-Computed Scans Are DB-Backed (No Yahoo Fetch on User Request)
+**Verified in `/backend/services/precomputed_scans.py`:**
+- `get_scan_results()` method (line ~795-807): Reads directly from MongoDB `precomputed_scans` collection
+- **Zero Yahoo Finance calls** when user requests pre-computed scan results
+- Yahoo fetches occur ONLY during nightly job execution (4:45 PM ET)
+- User requests return pre-stored database results with no live market data fetching
 
 ---
 
