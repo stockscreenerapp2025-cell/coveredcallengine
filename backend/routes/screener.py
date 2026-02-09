@@ -334,13 +334,18 @@ async def screen_covered_calls(
                         except:
                             pass
                 
-                # Get options chain (Yahoo primary with IV/OI, Polygon backup)
-                options_results = await fetch_options_chain(
-                    symbol, api_key, "call", max_dte, min_dte=1, current_price=underlying_price
-                )
+                # PHASE 2: Get options from snapshot if available, otherwise fetch
+                options_results = snapshot.get("options_data")
+                
+                if not options_results:
+                    # Fallback: fetch options directly if not in snapshot
+                    options_results = await fetch_options_chain(
+                        symbol, api_key, "call", max_dte, min_dte=1, current_price=underlying_price
+                    )
                 
                 if not options_results:
                     logging.debug(f"No options data for {symbol}")
+                    continue
                     continue
                 
                 for opt in options_results:
