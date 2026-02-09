@@ -284,7 +284,7 @@ async def get_ibkr_trades(
     limit: int = Query(50, ge=1, le=100)
 ):
     """Get parsed IBKR trades with filters and pagination"""
-    _, fetch_stock_quote = _get_server_data()
+    # PHASE 1: fetch_stock_quote now imported from data_provider.py at module level
     
     query = {"user_id": user["id"]}
     
