@@ -526,6 +526,9 @@ async def screen_covered_calls(
         
         opportunities = sorted(best_by_symbol.values(), key=lambda x: x["score"], reverse=True)
         
+        # PHASE 2: Log cache performance
+        logging.info(f"Custom scan cache stats: {cache_stats}")
+        
         result = {
             "opportunities": opportunities, 
             "total": len(opportunities), 
@@ -535,7 +538,8 @@ async def screen_covered_calls(
             "scoring": "pillar_based",  # PHASE 7: Scoring method
             "market_bias": market_sentiment.get("bias", "neutral"),
             "bias_weight": bias_weight,
-            "data_source": "polygon"
+            "data_source": "yahoo_cached",  # PHASE 2: Updated data source
+            "snapshot_cache_stats": cache_stats  # PHASE 2: Include cache stats
         }
         await funcs['set_cached_data'](cache_key, result)
         return result
