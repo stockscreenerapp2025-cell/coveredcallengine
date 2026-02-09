@@ -1,6 +1,10 @@
 """
 Portfolio Routes - Portfolio management, IBKR integration, and manual trade entry
 Designed for scalability with proper async patterns and efficient queries
+
+PHASE 1 REFACTOR (December 2025):
+- fetch_stock_quote now imports from data_provider.py instead of server.py
+- This ensures portfolio uses the same data source as other pages
 """
 from fastapi import APIRouter, Depends, Query, HTTPException, File, UploadFile
 from pydantic import BaseModel, Field
@@ -18,6 +22,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from database import db
 from utils.auth import get_current_user
+from services.data_provider import fetch_stock_quote
 
 portfolio_router = APIRouter(tags=["Portfolio"])
 
@@ -73,9 +78,14 @@ class ManualTradeEntry(BaseModel):
 
 
 def _get_server_data():
-    """Lazy import to avoid circular dependencies"""
-    from server import MOCK_STOCKS, fetch_stock_quote
-    return MOCK_STOCKS, fetch_stock_quote
+    """
+    Lazy import to avoid circular dependencies.
+    
+    PHASE 1 REFACTOR: fetch_stock_quote now comes from data_provider.py
+    MOCK_STOCKS still comes from server.py for fallback
+    """
+    from server import MOCK_STOCKS, get_massive_api_key
+    return MOCK_STOCKS, get_massive_api_key
 
 
 # ==================== BASIC PORTFOLIO CRUD ====================
