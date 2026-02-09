@@ -1166,36 +1166,64 @@ async def screen_pmcc(
     PRICE FILTERS (PMCC-specific):
     - Stocks: $30-$90
     - ETFs: No price limits
+    
+    PHASE 2: Uses cache-first approach for stock data
     """
-    # Step 1: Get stock prices - YAHOO FINANCE SINGLE SOURCE
+    # PHASE 2: Track cache performance
+    cache_stats = {"hits": 0, "misses": 0, "symbols_processed": 0}
+    
+    # PHASE 2: Batch fetch snapshots with cache-first approach
+    snapshots = await get_symbol_snapshots_batch(
+        db=db,
+        symbols=SCAN_SYMBOLS,
+        api_key=None,
+        include_options=False,
+        batch_size=10
+    )
+    
+    # Step 1: Get stock prices - PHASE 2: Cache-first approach
     stock_data = {}
     symbols_with_stock_data = []
     
     for symbol in SCAN_SYMBOLS:
         try:
-            quote = await fetch_stock_quote(symbol)
-            if quote and quote.get("price") and quote.get("price") > 0:
-                stock_price = quote["price"]
-                is_etf = symbol in ETF_SYMBOLS
+            # PHASE 2: Get data from snapshot cache
+            snapshot = snapshots.get(symbol.upper())
+            
+            if snapshot and snapshot.get("stock_data"):
+                quote = snapshot["stock_data"]
                 
-                # PMCC-specific price filter (different from CC)
-                if not is_etf:
-                    # Stocks: $30-$90
-                    if stock_price < PMCC_STOCK_MIN_PRICE or stock_price > PMCC_STOCK_MAX_PRICE:
-                        continue
-                # ETFs: No price limits
+                # Track cache stats
+                cache_stats["symbols_processed"] += 1
+                if snapshot.get("from_cache"):
+                    cache_stats["hits"] += 1
+                else:
+                    cache_stats["misses"] += 1
                 
-                stock_data[symbol] = {
-                    "stock_price": stock_price,
-                    "trade_date": quote.get("close_date"),
-                    "market_cap": quote.get("market_cap"),
-                    "analyst_rating": quote.get("analyst_rating"),
-                    "is_etf": is_etf,
-                    "source": "yahoo_last_close"
-                }
-                symbols_with_stock_data.append(symbol)
+                if quote.get("price") and quote.get("price") > 0:
+                    stock_price = quote["price"]
+                    is_etf = symbol in ETF_SYMBOLS
+                    
+                    # PMCC-specific price filter (different from CC)
+                    if not is_etf:
+                        # Stocks: $30-$90
+                        if stock_price < PMCC_STOCK_MIN_PRICE or stock_price > PMCC_STOCK_MAX_PRICE:
+                            continue
+                    # ETFs: No price limits
+                    
+                    stock_data[symbol] = {
+                        "stock_price": stock_price,
+                        "trade_date": quote.get("close_date"),
+                        "market_cap": quote.get("market_cap"),
+                        "analyst_rating": quote.get("analyst_rating"),
+                        "is_etf": is_etf,
+                        "source": "yahoo_cached" if snapshot.get("from_cache") else "yahoo_live"
+                    }
+                    symbols_with_stock_data.append(symbol)
         except Exception as e:
             logging.debug(f"Could not get stock price for {symbol}: {e}")
+    
+    logging.info(f"PMCC Screener cache stats: {cache_stats}")
     
     # Step 2: Get market sentiment
     try:
