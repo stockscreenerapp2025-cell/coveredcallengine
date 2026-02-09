@@ -516,7 +516,14 @@ async def screen_covered_calls(
                 opp["delta"]
             )
         
-        # Sort by final (bias-adjusted) score and dedupe
+        # ============================================================
+        # PHASE 3: AI-BASED BEST OPTION SELECTION PER SYMBOL
+        # ============================================================
+        # IMPORTANT:
+        # Scan candidates may include multiple options per symbol.
+        # Final output must return ONE best option per symbol,
+        # selected by highest AI score.
+        # ============================================================
         opportunities.sort(key=lambda x: x["score"], reverse=True)
         best_by_symbol = {}
         for opp in opportunities:
