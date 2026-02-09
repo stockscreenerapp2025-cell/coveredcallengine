@@ -397,4 +397,39 @@ For CC and PMCC, **loss is NOT managed via stop-loss**. Loss is managed via:
 ---
 
 ## Last Updated
-2026-02-02 - Analyzer Page Enhancement (3-Row Structure + Scope-Aware Metrics)
+2025-12 - Market Data Sourcing Audit Complete
+
+---
+
+## Market Data Sourcing Audit - COMPLETED 2025-12
+
+### Audit Output
+Full audit report saved to: `/app/memory/DATA_SOURCING_AUDIT.md`
+
+### Key Findings
+
+**Data Provider Schism Identified:**
+The codebase has multiple parallel data fetching implementations rather than using `data_provider.py` exclusively:
+1. `data_provider.py` - Intended centralized source (Yahoo primary)
+2. `server.py` - Contains duplicate fetch_stock_quote(), fetch_options_chain_polygon(), fetch_options_chain_yahoo()
+3. `routes/stocks.py` - Direct Polygon API calls (BYPASSES data_provider.py)
+4. `routes/options.py` - Direct Polygon API calls (BYPASSES data_provider.py)
+5. `services/precomputed_scans.py` - Own Yahoo Finance fetching (duplicates data_provider.py)
+
+**Files Using data_provider.py Correctly:**
+- `/routes/screener.py` ✅
+- `/routes/watchlist.py` ✅
+- `/routes/simulator.py` (partial) ✅
+
+**Files Bypassing data_provider.py:**
+- `/routes/stocks.py` ❌ - Direct Polygon calls
+- `/routes/options.py` ❌ - Direct Polygon calls
+- `/routes/portfolio.py` ⚠️ - Uses server.py's fetch_stock_quote
+- `/services/precomputed_scans.py` ⚠️ - Own implementation (working)
+
+### Recommended Refactoring Priority
+1. **HIGH:** Refactor `/routes/stocks.py` to use data_provider.py
+2. **HIGH:** Refactor `/routes/options.py` to use data_provider.py
+3. **MEDIUM:** Change portfolio.py import from server.py to data_provider.py
+4. **MEDIUM:** Remove duplicate functions from server.py
+5. **LOW:** Consolidate precomputed_scans.py to use data_provider.py
