@@ -474,6 +474,80 @@ _fetch_options_polygon(...)                  # Line 599-737 - DUPLICATE
 
 ---
 
+## APPENDIX A: PAGE → DATA SOURCE → FILE PATH MAPPING
+
+| Page/Feature | Data Type | Primary Source | File Path | Line(s) |
+|--------------|-----------|----------------|-----------|---------|
+| **Dashboard** | Stock Price | Yahoo (via data_provider) | `/backend/routes/screener.py` | 601-612 |
+| **Dashboard** | Options Chain | Yahoo (via data_provider) | `/backend/routes/screener.py` | 646-660 |
+| **Dashboard** | Market Sentiment | Yahoo (via market_bias) | `/backend/services/market_bias.py` | - |
+| **Screener (CC)** | Stock Price | Yahoo (via data_provider) | `/backend/routes/screener.py` | 264-275 |
+| **Screener (CC)** | Options Chain | Yahoo (via data_provider) | `/backend/routes/screener.py` | 303-305 |
+| **Screener (PMCC)** | Stock Price | Yahoo (via data_provider) | `/backend/routes/screener.py` | 949-958 |
+| **Screener (PMCC)** | LEAPS Options | Yahoo (via data_provider) | `/backend/routes/screener.py` | 996-998 |
+| **Pre-Computed Scans** | All Data | MongoDB (DB-backed) | `/backend/routes/precomputed_scans.py` | 163, 220 |
+| **Pre-Computed Scans** | Nightly Job | Yahoo (own impl) | `/backend/services/precomputed_scans.py` | 260-737 |
+| **Portfolio Tracker** | Stock Price | Yahoo→Polygon (via server.py) | `/backend/routes/portfolio.py` | 78, 306, 347 |
+| **Portfolio Tracker** | Position P/L | MOCK_STOCKS dict | `/backend/routes/portfolio.py` | 92, 158 |
+| **Simulator** | Open Trade Prices | Yahoo (via data_provider) | `/backend/routes/simulator.py` | 856 |
+| **Simulator** | Trade Entry | Yahoo→Polygon (via server.py) | `/backend/routes/simulator.py` | 185-186 |
+| **Watchlist** | Stock Price (Live) | Yahoo (via data_provider) | `/backend/routes/watchlist.py` | 505-507 |
+| **Watchlist** | Options Chain | Yahoo (via data_provider) | `/backend/routes/watchlist.py` | 79-86 |
+| **Stock Details API** | Stock Quote | **Polygon DIRECT** | `/backend/routes/stocks.py` | 51-89 |
+| **Stock Details API** | Analyst Ratings | Yahoo (direct yfinance) | `/backend/routes/stocks.py` | 110-151 |
+| **Stock Details API** | Market Indices | Yahoo (direct yfinance) | `/backend/routes/stocks.py` | 155-214 |
+| **Stock Details API** | Company Details | **Polygon DIRECT** | `/backend/routes/stocks.py` | 217-390 |
+| **Options Chain API** | Stock Price | **Polygon DIRECT** | `/backend/routes/options.py` | 61-70 |
+| **Options Chain API** | Options Snapshot | **Polygon DIRECT** | `/backend/routes/options.py` | 82-127 |
+| **Admin** | API Key Management | MongoDB | `/backend/routes/admin.py` | 346-361 |
+| **EOD Ingestion** | Stock Prices | Yahoo (direct yfinance) | `/backend/services/eod_ingestion_service.py` | - |
+
+---
+
+## APPENDIX B: FILES WHERE YAHOO FINANCE IS CALLED
+
+| File Path | Usage Type | Method |
+|-----------|------------|--------|
+| `/backend/services/data_provider.py` | **CENTRALIZED** (intended source) | `yf.Ticker().history()`, `yf.Ticker().option_chain()` |
+| `/backend/server.py` | **DUPLICATE** | `yf.Ticker().history()`, HTTP to `query1.finance.yahoo.com` |
+| `/backend/services/precomputed_scans.py` | **DUPLICATE** (nightly job) | `yf.Ticker().history()`, `yf.Ticker().info`, `yf.Ticker().option_chain()` |
+| `/backend/routes/stocks.py` | **PARTIAL** (analyst ratings only) | `yf.Ticker().info` |
+| `/backend/routes/screener.py` | Via data_provider.py import | N/A - uses data_provider functions |
+| `/backend/services/market_bias.py` | Direct yfinance | `yf.Ticker().history()` for indices |
+| `/backend/services/eod_ingestion_service.py` | Direct yfinance | `yf.Ticker().history()` for EOD prices |
+| `/backend/services/snapshot_service.py` | Direct yfinance | `yf.Ticker()` for snapshots |
+| `/backend/routes/eod.py` | Via services | N/A - uses eod_ingestion_service |
+| `/backend/tests/test_stock_price_and_quote_cache.py` | Test file | `yf.Ticker()` for test assertions |
+
+**Total files with direct yfinance usage:** 10
+
+---
+
+## APPENDIX C: FILES WHERE POLYGON API IS REFERENCED
+
+| File Path | Status | Polygon Usage | Notes |
+|-----------|--------|---------------|-------|
+| `/backend/routes/stocks.py` | **ACTIVE** | Direct HTTP calls | Lines 55, 77, 246, 264, 284, 304 |
+| `/backend/routes/options.py` | **ACTIVE** | Direct HTTP calls | Lines 63, 82 |
+| `/backend/server.py` | **ACTIVE** | Direct HTTP calls (fallback) | Lines 400, 476, 524 |
+| `/backend/services/data_provider.py` | **ACTIVE** | Fallback only (if Yahoo fails) | Line 39: `POLYGON_BASE_URL` defined |
+| `/backend/services/precomputed_scans.py` | **ACTIVE** | Fallback for options | Line 42: `POLYGON_BASE_URL`, Lines 599-737 |
+| `/backend/services/snapshot_service.py` | **ACTIVE** | Fallback for snapshots | Line 50: `POLYGON_BASE_URL` |
+| `/backend/routes/admin.py` | **PASSIVE** | Stores/retrieves `massive_api_key` | Does not make API calls |
+| `/backend/routes/screener.py` | **PASSIVE** | References `get_massive_api_key()` | Passes key to data_provider |
+| `/backend/routes/screener_snapshot.py` | **PASSIVE** | May reference key | Passes key to services |
+| `/backend/routes/snapshots.py` | **PASSIVE** | May reference key | Passes key to services |
+| `/backend/routes/watchlist.py` | **PASSIVE** | May reference key | Passes key to data_provider |
+| `/backend/routes/eod.py` | **PASSIVE** | May reference key | Passes key to services |
+
+**Legend:**
+- **ACTIVE:** File makes direct HTTP calls to `api.polygon.io`
+- **PASSIVE:** File references Polygon key but passes to other modules (does not call directly)
+
+**Files with direct Polygon HTTP calls:** 6 (`stocks.py`, `options.py`, `server.py`, `data_provider.py`, `precomputed_scans.py`, `snapshot_service.py`)
+
+---
+
 ## RECOMMENDED REFACTORING PRIORITY
 
 1. **HIGH:** Refactor `/routes/stocks.py` to use data_provider.py
@@ -485,3 +559,5 @@ _fetch_options_polygon(...)                  # Line 599-737 - DUPLICATE
 ---
 
 *End of Audit Report*
+*Baseline Locked: December 2025*
+*Ready for Phased Refactor Specification*
