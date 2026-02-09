@@ -40,106 +40,102 @@ async def get_options_chain(
 ):
     """
     Get options chain for a symbol.
-    Scalability: Uses connection pooling, async I/O, efficient data transformation.
+    
+    PHASE 1 REFACTOR: Now routes through data_provider.py
+    - Primary: Yahoo Finance (via data_provider.fetch_options_chain)
+    - Backup: Polygon (via data_provider fallback)
+    - Last Resort: Mock options (flagged with is_mock=True)
     """
     MOCK_STOCKS, get_massive_api_key, generate_mock_options = _get_server_data()
     
     symbol = symbol.upper()
     
-    # Try Massive.com/Polygon Options API first
+    # Get API key for potential Polygon fallback
     api_key = await get_massive_api_key()
-    if api_key:
-        try:
-            # Use async context manager for proper connection handling
-            async with httpx.AsyncClient(timeout=HTTP_TIMEOUT) as client:
-                # First get the stock price
-                stock_response = await client.get(
-                    f"https://api.polygon.io/v2/aggs/ticker/{symbol}/prev",
-                    params={"apiKey": api_key}
-                )
-                underlying_price = 0
-                if stock_response.status_code == 200:
-                    stock_data = stock_response.json()
-                    if stock_data.get("results"):
-                        underlying_price = stock_data["results"][0].get("c", 0)
-                
-                # Then get options chain
-                params = {
-                    "apiKey": api_key,
-                    "limit": 250
-                }
-                
-                # Add expiration filter if provided
-                if expiry:
-                    params["expiration_date"] = expiry
-                
-                url = f"https://api.polygon.io/v3/snapshot/options/{symbol}"
-                logging.info(f"Options chain request: {symbol}, expiry={expiry}")
-                
-                response = await client.get(url, params=params)
-                
-                if response.status_code == 200:
-                    data = response.json()
-                    results = data.get("results", [])
-                    
-                    logging.info(f"Options chain: {len(results)} results for {symbol}")
-                    
-                    if results:
-                        # Efficient list comprehension for data transformation
-                        options = [
-                            {
-                                "symbol": opt.get("details", {}).get("ticker", ""),
-                                "underlying": symbol,
-                                "strike": opt.get("details", {}).get("strike_price", 0),
-                                "expiry": opt.get("details", {}).get("expiration_date", ""),
-                                "dte": calculate_dte(opt.get("details", {}).get("expiration_date", "")),
-                                "type": opt.get("details", {}).get("contract_type", "call"),
-                                "bid": opt.get("last_quote", {}).get("bid", 0) if opt.get("last_quote") else 0,
-                                "ask": opt.get("last_quote", {}).get("ask", 0) if opt.get("last_quote") else 0,
-                                "last": (opt.get("day", {}).get("close", 0) if opt.get("day") else 0) or 
-                                        (opt.get("last_quote", {}).get("midpoint", 0) if opt.get("last_quote") else 0),
-                                "delta": opt.get("greeks", {}).get("delta", 0) if opt.get("greeks") else 0,
-                                "gamma": opt.get("greeks", {}).get("gamma", 0) if opt.get("greeks") else 0,
-                                "theta": opt.get("greeks", {}).get("theta", 0) if opt.get("greeks") else 0,
-                                "vega": opt.get("greeks", {}).get("vega", 0) if opt.get("greeks") else 0,
-                                "iv": opt.get("implied_volatility", 0),
-                                "volume": opt.get("day", {}).get("volume", 0) if opt.get("day") else 0,
-                                "open_interest": opt.get("open_interest", 0),
-                                "break_even": opt.get("break_even_price", 0),
-                            }
-                            for opt in results
-                        ]
-                        
-                        # Filter to calls only for covered call screener
-                        call_options = [o for o in options if o["type"] == "call"]
-                        
-                        return {
-                            "symbol": symbol,
-                            "stock_price": underlying_price,
-                            "options": call_options,
-                            "is_live": True
-                        }
-                elif response.status_code == 403:
-                    logging.error("Polygon API 403 - check API plan for options access")
-                else:
-                    logging.error(f"Polygon API error: {response.status_code}")
-        except httpx.TimeoutException:
-            logging.error(f"Timeout fetching options for {symbol}")
-        except Exception as e:
-            logging.error(f"Options API error: {e}")
     
-    # Fallback to mock data
+    try:
+        # Get stock price from data_provider
+        stock_data = await fetch_stock_quote(symbol, api_key)
+        underlying_price = stock_data.get("price", 0) if stock_data else 0
+        
+        # Calculate DTE range based on expiry filter
+        min_dte = 1
+        max_dte = 90  # Default: fetch up to 90 days
+        
+        if expiry:
+            # If specific expiry requested, narrow the DTE range
+            try:
+                exp_date = datetime.strptime(expiry, "%Y-%m-%d")
+                dte = (exp_date - datetime.now()).days
+                min_dte = max(1, dte - 7)
+                max_dte = dte + 7
+            except Exception:
+                pass
+        
+        # Fetch options from data_provider (Yahoo primary, Polygon backup)
+        options = await fetch_options_chain(
+            symbol=symbol,
+            api_key=api_key,
+            option_type="call",
+            min_dte=min_dte,
+            max_dte=max_dte,
+            current_price=underlying_price
+        )
+        
+        if options and len(options) > 0:
+            # Transform to expected format
+            transformed_options = []
+            for opt in options:
+                # Filter by specific expiry if provided
+                if expiry and opt.get("expiry") != expiry:
+                    continue
+                    
+                transformed_options.append({
+                    "symbol": opt.get("contract_ticker", ""),
+                    "underlying": symbol,
+                    "strike": opt.get("strike", 0),
+                    "expiry": opt.get("expiry", ""),
+                    "dte": opt.get("dte", 0),
+                    "type": opt.get("type", "call"),
+                    "bid": opt.get("bid", 0),
+                    "ask": opt.get("ask", 0),
+                    "last": opt.get("close", 0),
+                    "delta": opt.get("delta", 0),
+                    "gamma": opt.get("gamma", 0),
+                    "theta": opt.get("theta", 0),
+                    "vega": opt.get("vega", 0),
+                    "iv": opt.get("implied_volatility", 0),
+                    "volume": opt.get("volume", 0),
+                    "open_interest": opt.get("open_interest", 0),
+                    "break_even": opt.get("strike", 0) + opt.get("ask", 0) if opt.get("type") == "call" else opt.get("strike", 0) - opt.get("ask", 0),
+                })
+            
+            if transformed_options:
+                logging.info(f"Options chain: {len(transformed_options)} results for {symbol} via data_provider")
+                return {
+                    "symbol": symbol,
+                    "stock_price": underlying_price,
+                    "options": transformed_options,
+                    "source": options[0].get("source", "yahoo") if options else "yahoo",
+                    "is_live": True
+                }
+    
+    except Exception as e:
+        logging.error(f"data_provider options chain error for {symbol}: {e}")
+    
+    # Fallback to mock data (flagged)
     stock_price = MOCK_STOCKS.get(symbol, {}).get("price", 100)
-    options = generate_mock_options(symbol, stock_price)
+    mock_options = generate_mock_options(symbol, stock_price)
     
     if expiry:
-        options = [o for o in options if o["expiry"] == expiry]
+        mock_options = [o for o in mock_options if o["expiry"] == expiry]
     
+    logging.warning(f"Using mock options fallback for {symbol}")
     return {
         "symbol": symbol,
         "stock_price": stock_price,
-        "options": options,
-        "is_mock": True
+        "options": mock_options,
+        "is_mock": True  # FLAG: Mock data in use
     }
 
 
