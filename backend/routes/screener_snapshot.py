@@ -167,6 +167,93 @@ SCAN_SYMBOLS = [
 
 
 # ============================================================
+# PHASE 3: AI-BASED BEST OPTION SELECTION PER SYMBOL
+# ============================================================
+# IMPORTANT:
+# Scan candidates may include multiple options per symbol.
+# Final output must return ONE best option per symbol,
+# selected by highest AI score.
+#
+# This is a post-processing step AFTER:
+# - Option scoring
+# - AI ranking
+# - Quality score calculation
+#
+# ❌ Does NOT affect: Watchlist, Simulator, Portfolio
+# ============================================================
+
+def select_best_option_per_symbol(opportunities: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """
+    PHASE 3: Select the single best option for each underlying symbol.
+    
+    This function ensures clean, professional UI output with one actionable
+    recommendation per stock, while allowing rich option exploration internally.
+    
+    Selection Criteria (in order of priority):
+    1. Highest AI score (score field) - Primary
+    2. Highest quality score (base_score field) - Tie-breaker
+    3. Highest ROI (roi_pct field) - Secondary tie-breaker
+    4. Lower downside risk (otm_pct closer to target) - Tertiary tie-breaker
+    
+    Args:
+        opportunities: List of opportunity dictionaries, each containing:
+            - symbol: Underlying stock symbol
+            - score: AI/final score
+            - base_score: Quality score
+            - roi_pct: Return on investment percentage
+            - otm_pct: Out-of-the-money percentage
+            
+    Returns:
+        Deduplicated list with ONE best option per symbol
+    """
+    if not opportunities:
+        return []
+    
+    # Group opportunities by underlying symbol
+    symbol_groups: Dict[str, List[Dict[str, Any]]] = {}
+    for opp in opportunities:
+        symbol = opp.get("symbol", "UNKNOWN")
+        if symbol not in symbol_groups:
+            symbol_groups[symbol] = []
+        symbol_groups[symbol].append(opp)
+    
+    # Select best option from each group
+    best_options = []
+    for symbol, candidates in symbol_groups.items():
+        if len(candidates) == 1:
+            # Single candidate - no selection needed
+            best_options.append(candidates[0])
+        else:
+            # Multiple candidates - apply AI-based selection
+            # Sort by: score (desc), base_score (desc), roi_pct (desc), otm_pct (closer to 5%)
+            sorted_candidates = sorted(
+                candidates,
+                key=lambda x: (
+                    x.get("score", 0),                    # Primary: AI score (higher is better)
+                    x.get("base_score", 0),               # Tie-breaker 1: Quality score
+                    x.get("roi_pct", 0),                  # Tie-breaker 2: ROI
+                    -abs(x.get("otm_pct", 5) - 5)         # Tie-breaker 3: OTM% closest to 5%
+                ),
+                reverse=True
+            )
+            best_options.append(sorted_candidates[0])
+            
+            # Log when multiple candidates exist (for debugging)
+            if len(candidates) > 2:
+                logging.debug(
+                    f"PHASE 3: {symbol} had {len(candidates)} candidates, "
+                    f"selected strike={sorted_candidates[0].get('strike')} "
+                    f"expiry={sorted_candidates[0].get('expiry')} "
+                    f"score={sorted_candidates[0].get('score')}"
+                )
+    
+    # Sort final results by score descending
+    best_options.sort(key=lambda x: x.get("score", 0), reverse=True)
+    
+    return best_options
+
+
+# ============================================================
 # LAYER 3: CC ELIGIBILITY CHECKER
 # ============================================================
 
