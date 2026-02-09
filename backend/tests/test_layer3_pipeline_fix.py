@@ -15,7 +15,7 @@ import pytest
 import requests
 import os
 
-BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', 'https://options-analyzer-20.preview.emergentagent.com')
+BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', 'https://option-strategy-hub-1.preview.emergentagent.com')
 
 # Test credentials
 TEST_EMAIL = "admin@premiumhunter.com"

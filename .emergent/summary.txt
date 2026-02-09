@@ -1,190 +1,276 @@
 <analysis>**original_problem_statement:**
-The user wants to build a web-based application named Covered Call Engine. The primary features include AI-assisted Covered Call (CC) and Poor Man's Covered Call (PMCC) screeners, a multi-phased AI Support Ticket System, a role-based Invitation System, Portfolio Tracking, and payment subscriptions.
+The user's core goal is to build and enhance a Covered Call Engine application. The recent focus has been on ensuring the application is production-ready. The user requested two comprehensive, read-only audits:
 
-The most recent user requests have focused on correcting critical data integrity issues within the Portfolio Tracker, which processes uploaded Interactive Brokers (IBKR) transaction histories. The core requirements are to correctly calculate entry prices, P&L, and ROI by implementing a Position Lifecycle system. This system must treat stock positions that are bought, sold/assigned, and then re-bought as separate, isolated lifecycles. Specific, non-negotiable rules have also been provided for handling Cash-Secured Put (CSP) assignments and PMCC strategies, ensuring their financial metrics are calculated independently and accurately.
-
-**PRODUCT REQUIREMENTS (Current Mandate):**
-1.  **Position Lifecycle Logic (P0 - Implemented, User Verification Pending):**
-    *   A stock lifecycle starts on a buy and ends when all shares are sold or assigned.
-    *   Any subsequent purchase of the same ticker starts a brand-new lifecycle, identified by a .
-    *   Entry price, cost basis, and premiums from a closed lifecycle must NOT affect a new one.
-2.  **CSP Assignment Lifecycle Fix (P0 - Implemented, User Verification Pending):**
-    *   Each CSP assignment must create a *distinct* stock lifecycle.
-    *   Assignments must NOT be merged unless they share the same ticker, assignment date, strike, and option expiry.
-    *   The entry price for an assigned lifecycle is strictly the .
-3.  **PMCC Lifecycle Rules (P0 - Implemented, User Verification Pending):**
-    *   Each PMCC lifecycle must be anchored to the purchase of a long LEAPS call, not the stock ticker.
-    *   Short calls can only attach to a LEAPS lifecycle with the same ticker, a higher strike, and an earlier expiry.
-    *   Assignment of a short call does NOT close the PMCC lifecycle; only selling or expiry of the LEAPS does.
-4.  **Fix PMCC Custom Scan Price Rules (P1):** Apply instrument-aware price rules on the custom scan page: Stocks 0-0, ETFs no price limits. This logic must NOT affect CC scans.
-5.  **Restore PMCC Pre-computed Scan (P1):** The Aggressive pre-computed scan must use end-of-day cached options chains and work after-hours/weekends/holidays. It must NOT rely on live fetches.
-6.  **Decouple Manual Filters (P2):** Manual filters for both CC and PMCC must pull from a universal list of all US stocks/ETFs with options, ignoring other restricted universes. All manual filter fields must be blank by default.
+1.  **LLM API Integration Audit:** To identify all LLM API calls, assess security, and estimate token consumption risks for production deployment.
+2.  **Polygon API Dependency Audit:** To identify any remaining dependencies on the Polygon API that could cause pages to fail, despite Yahoo Finance being the declared primary data source.
 
 **User's preferred language**: English
 
 **what currently exists?**
-The application consists of a FastAPI backend and a React frontend. The agent has completed a series of critical fixes:
-1.  **PMCC Screener:** The previously broken PMCC screener () is now fully functional. It correctly applies the user's strict rules for LEAPS (12-24 month DTE, ITM, ASK price) and short calls (≤60 DTE, OTM, BID price), and its logic is now completely isolated from the Covered Call (CC) screener.
-2.  **Portfolio Data Integrity:** The IBKR CSV parser () has been significantly refactored to address major data integrity bugs.
-    *   **Entry Price:** Correctly calculated using the transaction  (not ) and the  for CSP assignments.
-    *   **Position Lifecycles:** A robust lifecycle management system has been implemented. It correctly separates trades into distinct lifecycles when a stock is sold/assigned and then re-bought, preventing P&L and cost basis contamination.
-    *   **CSP & PMCC Logic:** The lifecycle logic now correctly handles complex scenarios, creating separate lifecycles for CSP assignments from different contracts and anchoring PMCC strategies to their LEAPS calls.
+The application is a full-stack FastAPI/React financial analysis tool. The agent has just completed two critical, user-requested audits:
+
+1.  **LLM API Integration Audit:** A detailed report was generated identifying five separate LLM integrations across the backend. The audit confirmed that all API keys are securely handled via environment variables () or database settings. However, it flagged high-risk areas for token consumption due to missing rate limiting on the public chatbot and missing batch limits on a trade suggestion endpoint.
+2.  **Polygon API Dependency Audit:** A comprehensive report was generated revealing a **HIGH** dependency risk. Critical pages, including the **Dashboard, Screener, and PMCC pages**, are functionally blocked or return mock data because their backend routes (, , ) contain hardcoded logic that directly calls the Polygon API, bypassing the intended Yahoo Finance-first data provider.
 
 **Last working item**:
--   **Last item agent was working:** The agent performed a major refactor of the  service to fix two critical bugs related to the new lifecycle logic: 1) CSP Assignment Lifecycle Leakage, where different CSP assignments were incorrectly merged, and 2) PMCC Lifecycle Rules, where PMCCs were not anchored to their LEAPS calls. The agent rewrote the transaction grouping and lifecycle splitting logic to handle these cases correctly.
--   **Status:** USER VERIFICATION PENDING
--   **Agent Testing Done:** Y
--   **Which testing method agent to use?** NA (User needs to verify by re-uploading their CSV files).
--   **User Testing Done:** N
+-   **Last item agent was working:** The agent performed a comprehensive, read-only inspection of the codebase to identify all remaining dependencies on the Polygon API. This was a direct response to a user request to find the root cause of failing pages.
+-   **Status:** NONE (The task was to generate a report, which has been completed and delivered in the chat history. The findings of the report are now pending issues.)
+-   **Agent Testing Done:** N/A
+-   **Which testing method agent to use?** N/A
+-   **User Testing Done:** N/A
 
 **All Pending/In progress Issue list**:
--   **Issue 1: User Verification for Portfolio Lifecycle Fixes (P0)**
-    -   **Description:** The agent has implemented extensive fixes to the portfolio parsing logic. However, these changes only affect newly parsed data. The user must be instructed to delete their existing portfolio data and re-upload their IBKR CSV files to see the corrections.
-    -   **Status:** USER VERIFICATION PENDING
-
--   **Issue 2: Restore PMCC Pre-computed Aggressive Scan (P1)**
-    -   **Description:** This scan relies on live data fetches and fails after market hours, on weekends, and on holidays. It needs to be modified to use the end-of-day cached options chains from .
-    -   **Status:** NOT STARTED
-
--   **Issue 3: Inbound email replies not appearing in the support dashboard (P2)**
-    -   **Description:** A persistent issue where email replies sent to the system do not get ingested and displayed in the support ticket dashboard.
-    -   **Status:** NOT STARTED
+-   **Issue 1: Critical pages (Dashboard, Screener, PMCC) are blocked by Polygon API dependency (P0)**
+-   **Issue 2: Missing rate limiting and batch controls on LLM endpoints (P1)**
+-   **Issue 3: User cannot see the updated pricing page (P1)**
+-   **Issue 4: Inbound email replies not appearing in the support dashboard (P2)**
+-   **Issue 5: Watchlist page is blank or shows /bin/bash.00 prices (P2)**
 
 **Issues Detail:**
--   **Issue 1: User Verification for Portfolio Lifecycle Fixes (P0)**
-    -   **Attempted fixes:** The agent has implemented all required code changes in  and validated them with a new suite of unit tests.
+-   **Issue 1: Critical pages (Dashboard, Screener, PMCC) are blocked by Polygon API dependency**
+    -   **Attempted fixes:** None. The issue was just identified via a read-only audit.
     -   **Next debug checklist:**
-        1.  Clearly inform the user that their existing portfolio data is stale and was parsed with the old, buggy logic.
-        2.  Instruct the user to navigate to the Portfolio page, delete their existing data, and re-upload their IBKR CSV transaction files.
-        3.  Ask the user to verify that the Entry Prices, BE, ROI, and position lifecycles for symbols like IREN, APLD, and IONQ now match their expectations and the provided screenshots.
-    -   **Why fix this issue and what will be achieved with the fix?** This will confirm that the complex data integrity and lifecycle fixes are working correctly from the user's perspective, closing out a major source of bugs.
+        1.  Modify  to remove all calls to  and direct Polygon endpoints. Refactor the logic to use the centralized  service.
+        2.  Modify  and  to remove direct Polygon API calls and use .
+        3.  Modify  to remove its Polygon dependency, relying solely on Yahoo Finance data.
+        4.  Remove all Polygon-related keys (, ) from admin settings and  file lookups.
+    -   **Why fix this issue and what will be achieved with the fix?** This is a critical blocker. Fixing it will make the core data-driven pages (Dashboard, Screener, PMCC) functional using the intended Yahoo Finance data source and remove the dependency on a legacy, unconfigured API key.
+    -   **Status:** NOT STARTED
+    -   **Is recurring issue?** Y
+    -   **Should Test frontend/backend/both after fix?** both
+    -   **Blocked on other issue:** None
+
+-   **Issue 2: Missing rate limiting and batch controls on LLM endpoints**
+    -   **Attempted fixes:** None. The issue was identified in the LLM audit.
+    -   **Next debug checklist:**
+        1.  In , implement per-session or per-IP rate limiting.
+        2.  In , add a  parameter to the  endpoint to cap the number of trades processed in a single batch call (e.g., max 20).
+        3.  Consider adding a CAPTCHA or rate limit to the support ticket creation form to prevent abuse of the two LLM calls made per ticket in .
+    -   **Why fix this issue and what will be achieved with the fix?** This is crucial for production readiness to prevent uncontrolled token consumption and potential abuse of public-facing endpoints, which could lead to high costs.
+    -   **Status:** NOT STARTED
+    -   **Is recurring issue?** N
+    -   **Should Test frontend/backend/both after fix?** backend
+    -   **Blocked on other issue:** None
+
+-   **Issue 3: User cannot see the updated pricing page**
+    -   **Attempted fixes:** The previous agent restarted the frontend and advised the user to clear their cache.
+    -   **Next debug checklist:** Await user feedback. If the issue persists, investigate CDN or platform-level caching.
+    -   **Why fix this issue and what will be achieved with the fix?** The new pricing page is a critical, user-requested feature. The user must be able to see and interact with it.
+    -   **Status:** USER VERIFICATION PENDING
+    -   **Is recurring issue?** N
     -   **Should Test frontend/backend/both after fix?** User verification.
     -   **Blocked on other issue:** None
 
--   **Issue 2: Restore PMCC Pre-computed Aggressive Scan (P1)**
-    -   **Attempted fixes:** None yet.
-    -   **Next debug checklist:**
-        1.  Examine .
-        2.  Locate the logic for the Aggressive PMCC scan.
-        3.  Modify the data-sourcing part of this function to use  instead of a direct live fetch.
-        4.  Ensure it correctly passes flags to prioritize cached data.
-        5.  Test the endpoint after market hours to confirm it returns results.
-    -   **Why fix this issue and what will be achieved with the fix?** It will make a key feature (pre-computed scans) reliable and available 24/7, as intended.
+-   **Issue 4: Inbound email replies not appearing in the support dashboard**
+    -   **Attempted fixes:** None recently. This is a long-standing issue.
+    -   **Next debug checklist:** Check supervisor logs for the IMAP connection in  and trace the data flow in .
+    -   **Why fix this issue and what will be achieved with the fix?** Restores a core feature of the AI Support Ticket system.
+    -   **Status:** NOT STARTED
+    -   **Is recurring issue?** Y
     -   **Should Test frontend/backend/both after fix?** backend
     -   **Blocked on other issue:** None
 
--   **Issue 3: Inbound email replies not appearing in the support dashboard (P2)**
-    -   **Attempted fixes:** Multiple previous attempts failed.
-    -   **Next debug checklist:**
-        1.  Investigate the email ingestion service and related cron jobs.
-        2.  Check logs for the IMAP connection and parsing process.
-        3.  Verify the credentials and server settings are correct.
-        4.  Trace the data flow from email receipt to database insertion for support tickets.
-    -   **Why fix this issue and what will be achieved with the fix?** It will restore a core feature of the AI Support Ticket system.
-    -   **Should Test frontend/backend/both after fix?** backend
+-   **Issue 5: Watchlist page is blank or shows /bin/bash.00 prices**
+    -   **Attempted fixes:** None recently.
+    -   **Next debug checklist:** In , replace  with the correct .
+    -   **Why fix this issue and what will be achieved with the fix?** Makes the Watchlist feature reliable and consistent with the app's global pricing logic.
+    -   **Status:** NOT STARTED
     -   **Is recurring issue?** Y
+    -   **Should Test frontend/backend/both after fix?** both
+    -   **Blocked on other issue:** None
 
 **In progress Task List**:
 -   None.
 
 **Upcoming and Future Tasks**
 *   **Upcoming Tasks:**
-    *   (P1) **Fix PMCC Custom Scan Price Rules:** Implement stock (0-0) vs. ETF (no limit) price limits in the PMCC custom scan logic, separate from CC logic.
-    *   (P2) **Decouple Manual Filters:** Rework manual CC/PMCC filters to query an unrestricted universe of all US stocks/ETFs and default to blank filter fields.
-    *   (P2) **Validation Checklist:** Perform the user's non-negotiable validation checklist, providing logs/screenshots for each item after all fixes are in place.
+    *   (P0) **Refactor Data Fetching:** Remove all Polygon API dependencies from the codebase as identified in the audit. This is the top priority.
+    *   (P1) **Implement LLM Safeguards:** Add rate limiting and batch controls to prevent token budget overruns.
+    *   (P2) **Fix PMCC Custom Scan Price Rules:** Implement stock vs. ETF price limits in .
+    *   (P2) **Decouple Manual Filters:** Rework manual CC/PMCC filters to query an unrestricted universe.
 *   **Future Tasks:**
-    *   (P3) **Frontend Refactor:** Break down large components like , , and .
-    *   (P4) **Deprecate Legacy Snapshots & EOD Contract:** Plan the removal of  and related EOD collections, as they are now superseded by the Yahoo Finance Single Source of Truth.
+    *   (P3) **Frontend Refactor:** Break down the monolithic .
+    *   (P4) **Backend Refactor:** Split  into separate modules.
+    *   (P4) **Deprecate Legacy Snapshots & EOD Contract:** Plan removal of .
 
 **Completed work in this session**
--   **P0 PMCC Screener Fix:** Fixed the broken PMCC screener in , correcting the  variable and updating the LEAPS DTE to the required 12-24 months. Validated with  and the testing agent.
--   **P0 Portfolio Entry Price & BE/ROI Fix:** Corrected the entry price, break-even, and ROI calculations in  for both regular stock buys and CSP assignments, resolving major data discrepancies.
--   **P0 Position Lifecycle Implementation:** Implemented a robust system in  to track distinct position lifecycles. This ensures that when a stock is sold/assigned and re-bought, the new position's metrics are not contaminated by the old one.
--   **P0 CSP & PMCC Lifecycle Bug Fixes:** Refined the lifecycle logic to correctly create separate lifecycles for CSP assignments with different strikes and to anchor PMCC lifecycles to their long LEAPS calls.
--   **Test Suite Expansion:** Created a new test file, , with 8 unit tests to validate the complex new CSP and PMCC lifecycle logic.
+-   **LLM API Integration Audit (COMPLETED):**
+    -   Performed a comprehensive audit of all LLM integrations.
+    -   Delivered a detailed report identifying 5 integration points, models used (, , ), key sources (), and security status.
+    -   Flagged high-risk areas lacking rate limiting and batch controls.
+-   **Polygon API Dependency Audit (COMPLETED):**
+    -   Performed a read-only system inspection for all Polygon API dependencies.
+    -   Delivered a detailed report concluding a **HIGH** risk, identifying that critical pages (Dashboard, Screener, PMCC) are blocked or return mock data due to hardcoded Polygon dependencies in , , and .
 
 **Earlier issues found/mentioned but not fixed**
--   **Issue 1: Manual filters are not working correctly**
-    -   **Debug checklist:** This is covered by the upcoming task Decouple Manual Filters. The filters must query an unrestricted universe of stocks/ETFs, not a pre-computed list.
-    -   **Why to solve this issue and what will be achieved with this?** This is a specific design correction requested by the user to make manual filtering more powerful and intuitive.
-    -   **Should Test frontend/backend/both after fix:** backend
-    -   **Is recurring issue?** Y
+-   This is covered in the .
 
 **Known issue recurrence from previous fork**
 -   **Issue recurrence in previous fork:** Inbound email replies not reaching the support dashboard.
--   **Recurrence count:** 4+
+-   **Recurrence count:** 5+
 -   **Status:** NOT STARTED
 
 **Code Architecture**
 
 
 **Key Technical Concepts**
--   **Position Lifecycle Management:** A major piece of new business logic in . It uses a  to track and isolate financial metrics (entry price, P&L, premiums) for stock positions that are bought, closed (via sale or assignment), and then re-bought. This prevents data contamination between distinct trading periods.
--   **Strategy-Aware Lifecycles:** The lifecycle logic is further refined to handle specific trading strategies. CSP assignments create new, distinct stock lifecycles, while PMCCs are treated as their own type of lifecycle anchored to the long LEAPS option.
--   **Single Source of Truth (Stock Price):** All stock prices are derived from  which uses the most recent historical market close from Yahoo Finance.
--   **Strict Options Pricing (BID/ASK):** All options trading logic is mandated to use  for SELL legs and  for BUY legs.
+-   **Data Provider Schism:** The codebase has a critical architectural flaw where key routes (, ) make direct, hardcoded calls to the Polygon API, completely bypassing the intended centralized  service which is Yahoo-first.
+-   **LLM Integration Patterns:** The audit revealed two patterns: direct SDK calls (usage: openai [-h] [-v] [-b API_BASE] [-k API_KEY] [-p PROXY [PROXY ...]]
+              [-o ORGANIZATION] [-t {openai,azure}]
+              [--api-version API_VERSION] [--azure-endpoint AZURE_ENDPOINT]
+              [--azure-ad-token AZURE_AD_TOKEN] [-V]
+              {api,tools,migrate,grit} ...
+
+positional arguments:
+  {api,tools,migrate,grit}
+    api                 Direct API calls
+    tools               Client side tools for convenience
+
+options:
+  -h, --help            show this help message and exit
+  -v, --verbose         Set verbosity.
+  -b API_BASE, --api-base API_BASE
+                        What API base url to use.
+  -k API_KEY, --api-key API_KEY
+                        What API key to use.
+  -p PROXY [PROXY ...], --proxy PROXY [PROXY ...]
+                        What proxy to use.
+  -o ORGANIZATION, --organization ORGANIZATION
+                        Which organization to run as (will use your default
+                        organization if not specified)
+  -t {openai,azure}, --api-type {openai,azure}
+                        The backend API to call, must be `openai` or `azure`
+  --api-version API_VERSION
+                        The Azure API version, e.g.
+                        'https://learn.microsoft.com/en-us/azure/ai-
+                        services/openai/reference#rest-api-versioning'
+  --azure-endpoint AZURE_ENDPOINT
+                        The Azure endpoint, e.g.
+                        'https://endpoint.openai.azure.com'
+  --azure-ad-token AZURE_AD_TOKEN
+                        A token from Azure Active Directory,
+                        https://www.microsoft.com/en-
+                        us/security/business/identity-access/microsoft-entra-
+                        id
+  -V, --version         show program's version number and exit) and abstracted calls via . Both securely use the  from the environment.
+-   **Silent Failures & Mock Data:** The application is riddled with logic that returns mock data or empty lists when the Polygon API key is missing. This masks the root cause of failure and leads to a confusing user experience (blank pages or fake data).
 
 **key DB schema**
--   **portfolio_trades (collection in MongoDB):** While the schema is unchanged, the documents within it now contain new fields generated by the parser:
-    -   : An integer indicating the lifecycle number for a given symbol.
-    -   : A unique string identifier for the lifecycle (e.g., ).
-    -   Existing documents parsed before the fix will have  values for these fields.
+-   **simulator_trades**:  field handles both  (new) and  (legacy) trades.
+-   **precomputed_scans**: This collection may contain stale data generated from Polygon.
+-   **api_cache**: This collection may contain cached responses from the Polygon API.
 
 **changes in tech stack**
 -   None.
 
 **All files of reference**
-*    (Primary file for all recent portfolio logic changes)
-*    (Unit tests for the new lifecycle logic)
-*    (File containing the fixed PMCC screener logic)
-*    (Frontend component that displays the results)
+*   **Polygon Dependency Files (High Priority):**
+    *   
+    *   
+    *   
+    *   
+    *   
+*   **LLM Integration Files:**
+    *   
+    *   
+    *   
+    *   
+    *   
+*   **Other Key Files:**
+    *   
+    *   
+    *   
 
 **Areas that need refactoring**:
--    has become very complex due to the new lifecycle rules. It may benefit from being broken down into smaller, more specialized classes or functions in the future.
--    remains bloated with logic for CC, PMCC, and dashboard opportunities, and should ideally be split into separate route files.
+-   **(CRITICAL) Data Access Layer:** The entire data-fetching mechanism must be refactored to eliminate all direct Polygon API calls and exclusively use the centralized .
+-   : Still a 2,200+ line monolith that needs to be broken into smaller components.
+-   : Still a 2,800+ line monolith that should be split into modules.
 
 **key api endpoints**
-*   : Endpoint for the user to upload their IBKR CSV file. This is the primary endpoint for the user to trigger the new parsing logic.
-*   : Fetches the parsed portfolio trades for display.
-*   : Fetches Poor Man's Covered Call opportunities (now fixed).
+*   : **(BROKEN)** Returns mock or empty data due to Polygon dependency.
+*   : **(BROKEN)** Returns mock or empty data due to Polygon dependency.
+*   : **(BROKEN)** Returns mock or empty data due to Polygon dependency.
+*   : **(BROKEN)** Returns mock data due to Polygon dependency.
+*   : LLM endpoint for trade analysis.
+*   : LLM endpoint for news analysis.
 
 **Critical Info for New Agent**
-*   **USER MUST RE-UPLOAD CSV:** This is the most critical point. The database contains stale data parsed by the old, buggy logic. You MUST instruct the user to delete their current portfolio and re-upload their IBKR CSV file(s) to see the effect of all the recent fixes.
-*   **Lifecycle Logic is Central:** The new logic in  is complex but foundational to the user's requirements. The tests in  are the best reference for its intended behavior.
-*   **Resume with P1 Tasks:** After user verification is complete, the next priorities are the P1 tasks: fixing the PMCC pre-computed scan and implementing custom scan price rules.
+*   **TOP PRIORITY IS FIXING POLYGON DEPENDENCY:** The recent audit proved that the biggest problem in the codebase is the hardcoded dependency on the Polygon API in several key routes (, , ). This is the root cause for multiple pages being broken or showing mock data. Your first task MUST be to refactor these routes to use the central  service.
+*   **Implement LLM Safeguards:** The second priority is to address the high-risk findings from the LLM audit by implementing rate limiting on the chatbot and batch limits on the AI suggestion generation to prevent budget overruns in production.
+*   **User Drives Development:** The user initiates work with very specific requests (like the recent audits). Be prepared to prioritize direct user requests over the existing backlog.
 
 **documents and test reports created in this job**
-*   
-*   
-*   
+*   None. The audit reports were delivered as text in the agent's messages.
 
 **Last 10 User Messages and any pending HUMAN messages**
-1.  **User:** Requested fixes for two new bugs: 1) CSP assignments with different strikes being merged into one lifecycle, and 2) PMCC lifecycles not being anchored to the LEAPS call. (COMPLETED)
-2.  **User:** Provided new IBKR transaction history CSVs and a detailed, non-negotiable set of rules for handling stock positions that are sold/assigned and then re-bought, demanding the implementation of a Position Lifecycle system. (COMPLETED)
-3.  **User:** Reported that the Portfolio Tracker entry price, BE, and ROI calculations were wrong, providing screenshots of APLD and IONQ as examples. Provided a detailed PRD for an AI Suggestions Engine for the portfolio, which contained the correct calculation rules. (COMPLETED)
-4.  **Agent:** Fixed the broken PMCC screener and verified it with the testing agent. (COMPLETED)
-5.  **User (from previous session):** Provided detailed, multi-step instructions to fix PMCC logic, custom scans, pre-computed scans, and manual filters. (PARTIALLY COMPLETED - PMCC screener is fixed, other items are pending).
+-   **User:** Requested a read-only inspection to identify all remaining Polygon API dependencies. (COMPLETED)
+-   **User:** Requested a comprehensive audit of all LLM API integrations for production readiness. (COMPLETED)
+
+There are no pending human messages.
 
 **Project Health Check:**
 *   **Broken:**
-    *   **PMCC Pre-computed Scan:** Still relies on live data and fails after hours.
-*   **Mocked:** None.
+    *   **Dashboard Page:** Returns mock data due to Polygon dependency.
+    *   **Screener Page:** Returns mock or empty data due to Polygon dependency.
+    *   **PMCC Page:** Returns mock or empty data due to Polygon dependency.
+    *   **Watchlist Page:** Uses a live price fetch that fails after hours.
+    *   **Inbound Email Processing:** Long-standing bug where email replies are not ingested.
+*   **Mocked:**
+    *   , , , and  all fall back to returning mock data if the (unconfigured) Polygon API key is missing.
 
 **3rd Party Integrations**
-*   **:** Primary data source for all stock and options data.
-*   **:** Used for scheduled jobs.
-*   **:** Used for NYSE trading day and holiday calculations.
+*   **:** The intended primary data source for all stock and options data. Free, no API key needed.
+*   **:** Used for multiple LLM integrations (, , ) via the .
+*   **usage: openai [-h] [-v] [-b API_BASE] [-k API_KEY] [-p PROXY [PROXY ...]]
+              [-o ORGANIZATION] [-t {openai,azure}]
+              [--api-version API_VERSION] [--azure-endpoint AZURE_ENDPOINT]
+              [--azure-ad-token AZURE_AD_TOKEN] [-V]
+              {api,tools,migrate,grit} ...
+
+positional arguments:
+  {api,tools,migrate,grit}
+    api                 Direct API calls
+    tools               Client side tools for convenience
+
+options:
+  -h, --help            show this help message and exit
+  -v, --verbose         Set verbosity.
+  -b API_BASE, --api-base API_BASE
+                        What API base url to use.
+  -k API_KEY, --api-key API_KEY
+                        What API key to use.
+  -p PROXY [PROXY ...], --proxy PROXY [PROXY ...]
+                        What proxy to use.
+  -o ORGANIZATION, --organization ORGANIZATION
+                        Which organization to run as (will use your default
+                        organization if not specified)
+  -t {openai,azure}, --api-type {openai,azure}
+                        The backend API to call, must be `openai` or `azure`
+  --api-version API_VERSION
+                        The Azure API version, e.g.
+                        'https://learn.microsoft.com/en-us/azure/ai-
+                        services/openai/reference#rest-api-versioning'
+  --azure-endpoint AZURE_ENDPOINT
+                        The Azure endpoint, e.g.
+                        'https://endpoint.openai.azure.com'
+  --azure-ad-token AZURE_AD_TOKEN
+                        A token from Azure Active Directory,
+                        https://www.microsoft.com/en-
+                        us/security/business/identity-access/microsoft-entra-
+                        id
+  -V, --version         show program's version number and exit SDK:** Used directly for one LLM integration (), also using the .
+*   **:** Used for scheduled jobs in .
+*   **PayPal:** Used for subscriptions.
 
 **Testing status**
--   **Testing agent used after significant changes:** YES
+-   **Testing agent used after significant changes:** NO
 -   **Troubleshoot agent used after agent stuck in loop:** NO
--   **Test files created:**
-    -   
--   **Known regressions:** None. The fixes addressed existing bugs without introducing new ones, according to the test suite.
+-   **Test files created:** None
+-   **Known regressions:** The Polygon API dependency is a critical, long-standing issue that has been fully exposed by the recent audit, explaining why multiple pages are non-functional.
 
 **Credentials to test flow:**
 *   Admin user: 
 *   Password: 
 
 **What agent forgot to execute**
-The agent has been systematically working through the user's high-priority requests. The remaining tasks (PMCC Custom Scan, PMCC Pre-computed Scan, Manual Filters) are tracked in the Upcoming Tasks and are the logical next steps, not forgotten items.</analysis>
+The agent was operating under specific instructions to perform read-only audits and did not forget to execute any tasks. It correctly prioritized the user's explicit requests over pre-existing backlog items.</analysis>
