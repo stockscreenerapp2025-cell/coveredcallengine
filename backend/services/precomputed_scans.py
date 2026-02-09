@@ -1746,7 +1746,14 @@ class PrecomputedScanService:
             # Longer delay between batches to avoid Yahoo Finance rate limits
             await asyncio.sleep(2.0)
         
-        # Deduplicate by symbol (keep best)
+        # ============================================================
+        # PHASE 3: AI-BASED BEST OPTION SELECTION PER SYMBOL (PMCC)
+        # ============================================================
+        # IMPORTANT:
+        # Scan candidates may include multiple PMCC combinations per symbol.
+        # Final output must return ONE best option per symbol,
+        # selected by highest AI score.
+        # ============================================================
         symbol_best = {}
         for opp in opportunities:
             symbol = opp["symbol"]
