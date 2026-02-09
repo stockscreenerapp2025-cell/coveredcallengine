@@ -639,10 +639,36 @@ async def get_dashboard_opportunities(
         rejected_symbols = []
         passed_filter_count = 0
         
+        # PHASE 2: Batch fetch snapshots with cache-first approach
+        snapshots = await get_symbol_snapshots_batch(
+            db=db,
+            symbols=symbols_to_scan[:60],
+            api_key=api_key,
+            include_options=True,
+            max_dte=DASHBOARD_FILTERS["monthly_dte_max"],
+            min_dte=DASHBOARD_FILTERS["weekly_dte_min"],
+            batch_size=10
+        )
+        
+        cache_stats = {"hits": 0, "misses": 0, "symbols_processed": 0}
+        
         for symbol in symbols_to_scan[:60]:  # Scan up to 60 symbols
             try:
-                # Get stock data with fundamentals
-                stock_data = await fetch_stock_quote(symbol, api_key)
+                # PHASE 2: Get stock data from snapshot cache
+                snapshot = snapshots.get(symbol.upper())
+                
+                if not snapshot or not snapshot.get("stock_data"):
+                    rejected_symbols.append({"symbol": symbol, "reason": "No price data"})
+                    continue
+                
+                # Track cache stats
+                cache_stats["symbols_processed"] += 1
+                if snapshot.get("from_cache"):
+                    cache_stats["hits"] += 1
+                else:
+                    cache_stats["misses"] += 1
+                
+                stock_data = snapshot["stock_data"]
                 
                 if not stock_data or stock_data.get("price", 0) == 0:
                     rejected_symbols.append({"symbol": symbol, "reason": "No price data"})
