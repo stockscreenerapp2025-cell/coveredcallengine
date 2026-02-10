@@ -427,23 +427,99 @@ async def clear_ibkr_data(user: dict = Depends(get_current_user)):
 # ==================== AI SUGGESTIONS ====================
 @portfolio_router.post("/ibkr/trades/{trade_id}/ai-suggestion")
 async def get_trade_ai_suggestion(trade_id: str, user: dict = Depends(get_current_user)):
-    """Get AI-powered suggestion for a trade"""
+    """Get AI-powered suggestion for a trade (uses AI tokens)"""
+    from ai_wallet.ai_service import AIExecutionService
+    
     trade = await db.ibkr_trades.find_one({"user_id": user["id"], "id": trade_id}, {"_id": 0})
     if not trade:
         raise HTTPException(status_code=404, detail="Trade not found")
     
-    suggestion = await _generate_ai_suggestion_for_trade(trade)
+    # Build trade context
+    trade_context = _build_trade_context(trade)
     
+    # Execute through AI service with token guard
+    ai_service = AIExecutionService(db)
+    result = await ai_service.execute_trade_suggestion(
+        user_id=user["id"],
+        trade_context=trade_context
+    )
+    
+    if not result["success"]:
+        # Return error with token info
+        raise HTTPException(
+            status_code=402 if result.get("error_code") == "INSUFFICIENT_TOKENS" else 500,
+            detail={
+                "error": result["error"],
+                "error_code": result.get("error_code"),
+                "remaining_balance": result.get("remaining_balance")
+            }
+        )
+    
+    # Parse action from response
+    full_suggestion = result["response"]
+    action = "HOLD"
+    first_line = full_suggestion.strip().split('\n')[0].strip().upper()
+    for possible_action in ["LET_EXPIRE", "HOLD", "CLOSE", "ROLL_UP", "ROLL_DOWN", "ROLL_OUT"]:
+        if possible_action in first_line:
+            action = possible_action
+            break
+    
+    # Update trade with suggestion
     await db.ibkr_trades.update_one(
         {"user_id": user["id"], "id": trade_id},
         {"$set": {
-            "ai_suggestion": suggestion.get("full_suggestion"),
-            "ai_action": suggestion.get("action"),
+            "ai_suggestion": full_suggestion,
+            "ai_action": action,
             "suggestion_updated": datetime.now(timezone.utc).isoformat()
         }}
     )
     
-    return {"suggestion": suggestion.get("full_suggestion"), "action": suggestion.get("action"), "trade_id": trade_id}
+    return {
+        "suggestion": full_suggestion, 
+        "action": action, 
+        "trade_id": trade_id,
+        "tokens_used": result.get("tokens_used", 0),
+        "remaining_balance": result.get("remaining_balance", 0)
+    }
+
+
+def _build_trade_context(trade: dict) -> str:
+    """Build context string for AI trade analysis."""
+    MOCK_STOCKS, _ = _get_server_data()
+    
+    symbol = trade.get('symbol', '')
+    entry_price = trade.get('underlying_price', 0) or trade.get('entry_price', 0)
+    stock_data = MOCK_STOCKS.get(symbol, {})
+    current_price = stock_data.get('price', entry_price)
+    option_strike = trade.get('short_call_strike') or trade.get('strike_price') or trade.get('option_strike')
+    premium = trade.get('total_premium', 0) or trade.get('short_call_premium', 0) or 0
+    dte = trade.get('dte', 0)
+    break_even = trade.get('break_even')
+    strategy = trade.get('strategy_type', '')
+    
+    profit_status = "N/A"
+    if current_price and entry_price:
+        profit_status = "Profitable" if current_price > (break_even or entry_price) else "At Loss"
+    
+    itm_status = "N/A"
+    if option_strike and current_price:
+        if 'CALL' in strategy.upper() or strategy in ['COVERED_CALL', 'PMCC']:
+            itm_status = "ITM" if current_price > option_strike else "OTM"
+        elif 'PUT' in strategy.upper() or strategy == 'NAKED_PUT':
+            itm_status = "ITM" if current_price < option_strike else "OTM"
+    
+    current_price_str = f"${current_price:.2f}" if current_price else "N/A"
+    strike_str = f"${option_strike:.2f}" if option_strike else "N/A"
+    
+    return f"""
+    Analyze this options trade:
+    Symbol: {symbol}, Strategy: {trade.get('strategy_label', strategy)}
+    Entry: ${entry_price:.2f}, Current: {current_price_str}
+    Strike: {strike_str}, DTE: {dte}, Status: {itm_status}
+    Premium: ${premium:.2f}, Profit: {profit_status}
+    
+    Recommend: HOLD, LET_EXPIRE, ROLL_UP, ROLL_DOWN, ROLL_OUT, or CLOSE
+    """
 
 
 @portfolio_router.post("/ibkr/generate-suggestions")
