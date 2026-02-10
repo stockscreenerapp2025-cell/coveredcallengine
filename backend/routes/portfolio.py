@@ -524,7 +524,11 @@ def _build_trade_context(trade: dict) -> str:
 
 @portfolio_router.post("/ibkr/generate-suggestions")
 async def generate_all_suggestions(user: dict = Depends(get_current_user)):
-    """Generate AI suggestions for all open trades"""
+    """Generate AI suggestions for all open trades (uses AI tokens - one per trade)"""
+    from ai_wallet.ai_service import AIExecutionService
+    from ai_wallet.wallet_service import WalletService
+    from ai_wallet.config import AI_ACTION_COSTS
+    
     logging.info(f"Generating suggestions for user {user['id']}")
     
     open_trades = await db.ibkr_trades.find(
@@ -535,27 +539,77 @@ async def generate_all_suggestions(user: dict = Depends(get_current_user)):
     logging.info(f"Found {len(open_trades)} open trades")
     
     if not open_trades:
-        return {"message": "No open trades found", "updated": 0}
+        return {"message": "No open trades found", "updated": 0, "tokens_used": 0}
     
+    # Check if user has enough tokens for all trades
+    wallet_service = WalletService(db)
+    wallet = await wallet_service.get_or_create_wallet(user["id"])
+    total_tokens_needed = len(open_trades) * AI_ACTION_COSTS["trade_suggestion"]
+    available_tokens = wallet.get("free_tokens_remaining", 0) + wallet.get("paid_tokens_remaining", 0)
+    
+    if available_tokens < AI_ACTION_COSTS["trade_suggestion"]:
+        raise HTTPException(
+            status_code=402,
+            detail={
+                "error": "Insufficient tokens for portfolio scan",
+                "error_code": "INSUFFICIENT_TOKENS",
+                "tokens_needed": total_tokens_needed,
+                "available": available_tokens
+            }
+        )
+    
+    ai_service = AIExecutionService(db)
     updated = 0
+    total_tokens_used = 0
+    errors = []
+    
     for trade in open_trades:
         try:
-            suggestion = await _generate_ai_suggestion_for_trade(trade)
+            trade_context = _build_trade_context(trade)
+            result = await ai_service.execute_trade_suggestion(
+                user_id=user["id"],
+                trade_context=trade_context
+            )
+            
+            if not result["success"]:
+                if result.get("error_code") == "INSUFFICIENT_TOKENS":
+                    # Stop processing - no more tokens
+                    errors.append(f"Insufficient tokens after {updated} trades")
+                    break
+                errors.append(f"{trade.get('symbol')}: {result.get('error', 'Unknown error')}")
+                continue
+            
+            # Parse action from response
+            full_suggestion = result["response"]
+            action = "HOLD"
+            first_line = full_suggestion.strip().split('\n')[0].strip().upper()
+            for possible_action in ["LET_EXPIRE", "HOLD", "CLOSE", "ROLL_UP", "ROLL_DOWN", "ROLL_OUT"]:
+                if possible_action in first_line:
+                    action = possible_action
+                    break
             
             await db.ibkr_trades.update_one(
                 {"user_id": user["id"], "id": trade["id"]},
                 {"$set": {
-                    "ai_suggestion": suggestion.get("full_suggestion"),
-                    "ai_action": suggestion.get("action"),
+                    "ai_suggestion": full_suggestion,
+                    "ai_action": action,
                     "suggestion_updated": datetime.now(timezone.utc).isoformat()
                 }}
             )
             updated += 1
+            total_tokens_used += result.get("tokens_used", 0)
+            
         except Exception as e:
             logging.error(f"Error generating suggestion for {trade.get('symbol')}: {e}")
+            errors.append(f"{trade.get('symbol')}: {str(e)}")
             continue
     
-    return {"message": f"Generated suggestions for {updated} open trades", "updated": updated}
+    return {
+        "message": f"Generated suggestions for {updated} of {len(open_trades)} trades", 
+        "updated": updated,
+        "tokens_used": total_tokens_used,
+        "errors": errors if errors else None
+    }
 
 
 # ==================== MANUAL TRADE ENTRY ====================
