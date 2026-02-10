@@ -397,7 +397,74 @@ For CC and PMCC, **loss is NOT managed via stop-loss**. Loss is managed via:
 ---
 
 ## Last Updated
-2025-12 - Phase 3 Complete (AI-Based Best Option Selection per Symbol)
+2026-02-10 - AI Wallet & Token System Complete
+
+---
+
+## AI Wallet & Token System - COMPLETED 2026-02-10
+
+### Objective:
+Add an optional AI Wallet that grants free monthly tokens per billing cycle, supports PayPal token pack purchases, and enforces token deduction before AI execution.
+
+### Key Features:
+1. ✅ **Token Wallet** - Free + Paid tokens per user with atomic deduction
+2. ✅ **Monthly Reset** - Free tokens aligned to billing cycle (expire on reset)
+3. ✅ **Paid Tokens** - Never expire, purchased via PayPal
+4. ✅ **AI Guard** - Enforces token check before AI execution
+5. ✅ **Rate Limiting** - Max 10 calls/minute, 2000 tokens/action
+6. ✅ **Concurrency Control** - One AI call at a time per user
+7. ✅ **Ledger** - Immutable transaction log for all token operations
+8. ✅ **PayPal Integration** - Webhook-only crediting with signature verification
+
+### Token Packs:
+| Pack | Tokens | Price |
+|------|--------|-------|
+| Starter | 5,000 | $10 |
+| Power | 15,000 | $25 |
+| Pro | 50,000 | $75 |
+
+### Plan Free Token Grants:
+| Plan | Monthly Tokens |
+|------|---------------|
+| Basic | 2,000 |
+| Standard | 6,000 |
+| Premium | 15,000 |
+
+### New Collections (Additive-Only):
+- `ai_wallet` - User token balances
+- `ai_token_ledger` - Immutable transaction log
+- `ai_purchases` - Token pack purchase records
+- `paypal_events` - Webhook idempotency store
+- `entitlements` - Feature flags
+
+### New API Endpoints:
+- `GET /api/ai-wallet` - Get wallet balance
+- `GET /api/ai-wallet/ledger` - Get transaction history
+- `GET /api/ai-wallet/packs` - Get token packs
+- `POST /api/ai-wallet/estimate` - Estimate token cost
+- `POST /api/ai-wallet/purchase/create` - Create PayPal purchase
+- `POST /api/ai-wallet/webhook` - PayPal webhook handler
+
+### Frontend Components:
+- `AIWallet.js` - Wallet balance page
+- `BuyTokensModal.js` - Token purchase modal
+- `AIUsageHistoryModal.js` - Transaction history modal
+- `AITokenUsageModal.js` - Pre-execution confirmation modal
+- Updated `Pricing.js` - Added AI Credits section
+
+### Integration Points:
+- `POST /api/ai/analyze` - Now uses AI token guard
+- `POST /api/portfolio/ibkr/trades/{id}/ai-suggestion` - Now uses AI token guard
+- `POST /api/portfolio/ibkr/generate-suggestions` - Now uses AI token guard
+
+### Hard Constraints Met:
+- ✅ Scanner engine untouched
+- ✅ Yahoo Finance unchanged
+- ✅ No AI without prepaid tokens
+- ✅ No negative balances possible (atomic MongoDB updates)
+- ✅ No post-paid billing
+- ✅ USD only
+- ✅ Additive-only changes (new files + new collections)
 
 ---
 
