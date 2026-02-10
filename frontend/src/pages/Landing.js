@@ -144,7 +144,7 @@ const Landing = () => {
     {
       id: 'basic',
       name: 'Basic',
-      price: '$39',
+      price: '$29',
       period: '/month',
       description: 'Essential tools for new traders',
       linkKey: 'basic_monthly_link',
@@ -152,9 +152,9 @@ const Landing = () => {
       aiTokens: '2,000',
       features: [
         'Covered Call Dashboard',
-        'Basic Covered Call Scans',
-        'Near real-time options data',
-        'TradingView chart integration',
+        'Covered Call Scans',
+        'Real Market Data',
+        'TradingView Integration Charts',
         '2,000 AI tokens/month'
       ],
       icon: Clock,
@@ -164,7 +164,7 @@ const Landing = () => {
     {
       id: 'standard',
       name: 'Standard',
-      price: '$69',
+      price: '$59',
       period: '/month',
       description: 'Perfect for active traders',
       linkKey: 'standard_monthly_link',
@@ -172,9 +172,8 @@ const Landing = () => {
       aiTokens: '6,000',
       features: [
         'Everything in Basic',
-        'Unlimited Covered Call Scans',
         'PMCC Strategy Scanner',
-        'Advanced filtering options',
+        'Powerful Watch List with AI Features',
         'Portfolio Tracker',
         '6,000 AI tokens/month'
       ],
@@ -185,7 +184,7 @@ const Landing = () => {
     {
       id: 'premium',
       name: 'Premium',
-      price: '$99',
+      price: '$89',
       period: '/month',
       description: 'Full suite for serious traders',
       linkKey: 'premium_monthly_link',
@@ -193,9 +192,8 @@ const Landing = () => {
       aiTokens: '15,000',
       features: [
         'Everything in Standard',
-        'Priority AI Analysis',
-        'Early access to new features',
-        'Dedicated support channel',
+        'Powerful Simulator and Analyser',
+        'AI Management of Trades',
         '15,000 AI tokens/month'
       ],
       icon: Crown,
