@@ -236,19 +236,9 @@ const Pricing = () => {
                     <span className="text-5xl font-bold text-white">{price}</span>
                     <span className="text-zinc-500 ml-1">{period}</span>
                   </div>
-                  {isYearly && (
-                    <div className="text-sm text-emerald-400 mt-1">
-                      {plan.yearlySavings}
-                    </div>
-                  )}
-                </div>
-                
-                {/* 7-Day Trial Badge */}
-                <div className="flex justify-center">
-                  <Badge className="bg-cyan-500/20 text-cyan-400 border-cyan-500/30">
-                    <Clock className="w-3 h-3 mr-1" />
-                    7 Days FREE Trial
-                  </Badge>
+                  <div className="text-sm text-zinc-500 mt-1">
+                    (USD)
+                  </div>
                 </div>
                 
                 {/* Features */}
@@ -271,7 +261,7 @@ const Pricing = () => {
                     data-testid={`terms-checkbox-${plan.id}`}
                   />
                   <label htmlFor={`terms-${plan.id}`} className="text-xs text-zinc-400 leading-tight cursor-pointer">
-                    I have read and accept the{' '}
+                    Read and Accept{' '}
                     <Link to="/terms" className="text-emerald-400 hover:text-emerald-300 underline" target="_blank">
                       Terms & Conditions
                     </Link>
@@ -286,7 +276,7 @@ const Pricing = () => {
                     className={`w-full ${acceptedTerms[plan.id] ? colors.button : 'bg-zinc-700 cursor-not-allowed'} text-white font-medium py-6`}
                     data-testid={`subscribe-btn-${plan.id}`}
                   >
-                    {acceptedTerms[plan.id] ? 'Subscribe' : 'Accept Terms to Subscribe'}
+                    SUBSCRIBE
                     {acceptedTerms[plan.id] && <ExternalLink className="w-4 h-4 ml-2" />}
                   </Button>
                 </div>
