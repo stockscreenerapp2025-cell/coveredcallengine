@@ -65,9 +65,8 @@ const Pricing = () => {
     {
       id: 'basic',
       name: 'Basic',
-      monthlyPrice: 39,
-      yearlyPrice: 390,
-      yearlySavings: 'Save 2 months',
+      monthlyPrice: 29,
+      yearlyPrice: 290,
       description: 'Essential tools for covered call trading',
       popular: false,
       color: 'emerald',
@@ -75,12 +74,13 @@ const Pricing = () => {
         'Access to Covered Call Dashboard',
         'Covered Call Scans',
         'Real Market Data',
-        'TradingView Integration',
-        'Charts',
+        'TradingView Integration Charts',
         'Key Technical Indicators',
         'Portfolio Tracker',
         'Cancel any time',
-        'Dedicated Support'
+        'Dedicated Support',
+        '7 Days FREE Trial',
+        '2,000 AI Tokens/month'
       ],
       monthlyLinkKey: 'basic_monthly_link',
       yearlyLinkKey: 'basic_yearly_link'
@@ -88,9 +88,8 @@ const Pricing = () => {
     {
       id: 'standard',
       name: 'Standard',
-      monthlyPrice: 69,
-      yearlyPrice: 690,
-      yearlySavings: 'Save 2 months',
+      monthlyPrice: 59,
+      yearlyPrice: 590,
       description: 'Advanced features for serious traders',
       popular: true,
       color: 'violet',
@@ -98,7 +97,9 @@ const Pricing = () => {
         'Everything in Basic',
         'PMCC Strategy Scanner',
         'Powerful Watch List with AI Features',
-        'Dedicated Support'
+        'Dedicated Support',
+        '7 Days FREE Trial',
+        '6,000 AI Tokens/month'
       ],
       monthlyLinkKey: 'standard_monthly_link',
       yearlyLinkKey: 'standard_yearly_link'
@@ -106,17 +107,18 @@ const Pricing = () => {
     {
       id: 'premium',
       name: 'Premium',
-      monthlyPrice: 99,
-      yearlyPrice: 990,
-      yearlySavings: 'Save 2 months',
+      monthlyPrice: 89,
+      yearlyPrice: 890,
       description: 'Full suite for professional traders',
       popular: false,
       color: 'amber',
       features: [
         'Everything in Standard',
         'Powerful Simulator and Analyser',
-        'AI Management of Trades',
-        'Selected Dedicated Support'
+        'AI Management of Trades Selected',
+        'Dedicated Support',
+        '7 Days FREE Trial',
+        '15,000 AI Tokens/month'
       ],
       monthlyLinkKey: 'premium_monthly_link',
       yearlyLinkKey: 'premium_yearly_link'
