@@ -114,7 +114,7 @@ class WalletService:
         
         try:
             next_reset = datetime.fromisoformat(next_reset_str.replace('Z', '+00:00'))
-        except:
+        except (ValueError, AttributeError):
             return wallet
         
         now = datetime.now(timezone.utc)

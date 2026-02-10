@@ -262,8 +262,6 @@ class AIGuard:
     async def _check_concurrency(self, user_id: str, request_id: str) -> Tuple[bool, str]:
         """Check and acquire concurrency lock."""
         async with self._lock:
-            max_concurrent = RATE_LIMITS["per_user_concurrency"]
-            
             if user_id in self._active_requests:
                 return False, ERROR_CODES["CONCURRENCY_LIMIT"]
             

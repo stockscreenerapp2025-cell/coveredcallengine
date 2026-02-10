@@ -120,7 +120,7 @@ async def get_billing_cycle_dates(db, user_id: str) -> Tuple[Optional[datetime],
                 cycle_start = start_str
             else:
                 cycle_start = datetime.fromisoformat(start_str.replace('Z', '+00:00'))
-        except:
+        except (ValueError, AttributeError):
             cycle_start = datetime.now(timezone.utc)
         
         if next_billing_str:
@@ -129,7 +129,7 @@ async def get_billing_cycle_dates(db, user_id: str) -> Tuple[Optional[datetime],
                     cycle_end = next_billing_str
                 else:
                     cycle_end = datetime.fromisoformat(next_billing_str.replace('Z', '+00:00'))
-            except:
+            except (ValueError, AttributeError):
                 cycle_end = None
         else:
             cycle_end = None
