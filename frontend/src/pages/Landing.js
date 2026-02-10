@@ -142,63 +142,65 @@ const Landing = () => {
 
   const plans = [
     {
-      id: 'trial',
-      name: '7-Day FREE Trial',
-      price: '$0',
-      period: '7 days',
-      description: 'Try premium features risk-free',
-      linkKey: 'trial_link',
+      id: 'basic',
+      name: 'Basic',
+      price: '$39',
+      period: '/month',
+      description: 'Essential tools for new traders',
+      linkKey: 'basic_monthly_link',
       popular: false,
+      aiTokens: '2,000',
       features: [
-        'Access to Covered Call Dashboard',
-        'Limited Covered Call Scans',
+        'Covered Call Dashboard',
+        'Basic Covered Call Scans',
         'Near real-time options data',
         'TradingView chart integration',
-        'Key Technical indicators'
+        '2,000 AI tokens/month'
       ],
       icon: Clock,
       color: 'emerald',
-      buttonText: 'FREE TRIAL'
+      buttonText: 'GET STARTED'
     },
     {
-      id: 'monthly',
-      name: 'Monthly Plan',
-      price: '$49',
+      id: 'standard',
+      name: 'Standard',
+      price: '$69',
       period: '/month',
       description: 'Perfect for active traders',
-      linkKey: 'monthly_link',
+      linkKey: 'standard_monthly_link',
       popular: true,
+      aiTokens: '6,000',
       features: [
-        'Everything in Free Trial',
+        'Everything in Basic',
         'Unlimited Covered Call Scans',
         'PMCC Strategy Scanner',
         'Advanced filtering options',
         'Portfolio Tracker',
-        'Cancel anytime'
+        '6,000 AI tokens/month'
       ],
       icon: Zap,
       color: 'violet',
-      buttonText: 'SUBSCRIBE'
+      buttonText: 'GET STARTED'
     },
     {
-      id: 'yearly',
-      name: 'Annual Plan',
-      price: '$499',
-      period: '/year',
-      description: 'Best value for serious traders',
-      linkKey: 'yearly_link',
+      id: 'premium',
+      name: 'Premium',
+      price: '$99',
+      period: '/month',
+      description: 'Full suite for serious traders',
+      linkKey: 'premium_monthly_link',
       popular: false,
-      savings: 'Save 15%+',
+      aiTokens: '15,000',
       features: [
-        'Everything in Monthly Plan',
-        'Special Discount',
+        'Everything in Standard',
+        'Priority AI Analysis',
         'Early access to new features',
         'Dedicated support channel',
-        'Locked-in pricing'
+        '15,000 AI tokens/month'
       ],
       icon: Crown,
       color: 'amber',
-      buttonText: 'SUBSCRIBE'
+      buttonText: 'GET STARTED'
     }
   ];
 
