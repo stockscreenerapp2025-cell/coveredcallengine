@@ -157,6 +157,14 @@ function App() {
             </ProtectedRoute>
           } />
           
+          <Route path="/ai-wallet" element={
+            <ProtectedRoute>
+              <Layout>
+                <AIWallet />
+              </Layout>
+            </ProtectedRoute>
+          } />
+          
           {/* Public pages */}
           <Route path="/terms" element={<Terms />} />
           <Route path="/privacy" element={<Privacy />} />
