@@ -519,6 +519,35 @@ const Landing = () => {
             })}
           </div>
 
+          {/* AI Credits Info */}
+          <div className="max-w-3xl mx-auto mt-8">
+            <Card className="glass-card border-amber-500/20">
+              <CardContent className="p-6 text-center">
+                <div className="flex items-center justify-center gap-2 mb-3">
+                  <Sparkles className="w-5 h-5 text-amber-400" />
+                  <h3 className="text-lg font-semibold text-white">AI Credits Included</h3>
+                </div>
+                <p className="text-zinc-400 mb-4 text-sm">
+                  All plans include free monthly AI credits. Use AI only if you want. Buy more credits anytime — no surprises.
+                </p>
+                <div className="grid grid-cols-3 gap-3 text-center">
+                  <div className="bg-zinc-800/50 rounded-lg p-2">
+                    <p className="text-zinc-400 text-xs">Basic</p>
+                    <p className="text-white font-bold text-sm">2,000/mo</p>
+                  </div>
+                  <div className="bg-zinc-800/50 rounded-lg p-2 border border-violet-500/20">
+                    <p className="text-zinc-400 text-xs">Standard</p>
+                    <p className="text-white font-bold text-sm">6,000/mo</p>
+                  </div>
+                  <div className="bg-zinc-800/50 rounded-lg p-2">
+                    <p className="text-zinc-400 text-xs">Premium</p>
+                    <p className="text-white font-bold text-sm">15,000/mo</p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+
           {/* Trust Badges */}
           <div className="text-center mt-12 text-zinc-500 text-sm">
             <p className="flex items-center justify-center gap-6 flex-wrap">
