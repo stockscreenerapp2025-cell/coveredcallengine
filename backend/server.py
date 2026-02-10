@@ -70,6 +70,8 @@ from routes.precomputed_scans import scans_router
 from routes.snapshots import snapshot_router  # PHASE 1: Snapshot management (legacy)
 # ADR-001: EOD Market Close Price Contract
 from routes.eod import eod_router  # Canonical EOD data management
+# AI Wallet: Token-based access control for AI features
+from ai_wallet.routes import ai_wallet_router
 
 # Create routers (still in server.py - to be refactored)
 api_router = APIRouter(prefix="/api")
@@ -1230,6 +1232,7 @@ api_router.include_router(simulator_router, prefix="/simulator")
 api_router.include_router(support_router)
 api_router.include_router(invitation_router)
 api_router.include_router(scans_router)  # Pre-computed scans
+api_router.include_router(ai_wallet_router)  # AI Wallet: Token purchases & balance
 app.include_router(snapshot_router)  # PHASE 1: Snapshot management (legacy - no prefix)
 # ADR-001: EOD Market Close Price Contract
 app.include_router(eod_router)  # Canonical EOD data (no prefix - already has /api/eod)
