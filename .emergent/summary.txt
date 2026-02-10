@@ -1,89 +1,74 @@
-<analysis>An analysis of the user's request and the agent's actions shows that the user has provided a new, high-priority, read-only audit task that supersedes the previous plan to fix existing bugs. The agent has correctly understood this and has begun the audit by inspecting the relevant files. The primary goal for the next agent is to complete this detailed audit and present the findings in the exact format requested by the user. All previous issues, while still valid, are now on hold until this diagnostic task is finished.
-
----
-
-**original_problem_statement:**
-The user's initial goal is to build a Covered Call Engine. However, the immediate and overriding priority is a new, read-only diagnostic audit requested by the user.
-
-**LATEST USER REQUEST (CURRENT P0 TASK):**
-
-**Objective:** Provide a comprehensive, factual overview of how market data is currently being sourced, processed, and served across the platform — as it exists today — so the platform owner can design a clean, intentional refactor.
-
-**Hard Rules:**
-1.  DO NOT modify any code.
-2.  DO NOT introduce caching.
-3.  DO NOT optimize performance.
-4.  DO NOT refactor logic.
-5.  DO NOT change Yahoo Finance usage.
-6.  DO NOT assume intended behavior — document actual behavior.
-
-**Required Output Format:** The response must be structured into the following sections:
-1.  **GLOBAL DATA FLOW OVERVIEW**
-2.  **PAGE-BY-PAGE DATA SOURCE BREAKDOWN** (Dashboard, Screener, PMCC, Portfolio Tracker, Simulator, Watchlist, Admin)
-3.  **FILE-LEVEL TRACEABILITY (MANDATORY)**
-4.  **CUSTOM SCAN VS PRE-COMPUTED SCAN COMPARISON**
-5.  **WATCHLIST & SIMULATOR DATA EXPECTATION CHECK**
-6.  **CURRENT BOTTLENECK SUMMARY (FACTUAL)**
-7.  **CHANGE-SAFETY NOTES**
-
-This audit will be used as the single source of truth for upcoming performance and caching changes.
+<analysis>**original_problem_statement:**
+The user's goal is to build a Covered Call Engine. The development is proceeding in user-directed phases. The initial problem was a Data Provider Schism where parts of the app used a deprecated Polygon API instead of the intended Yahoo Finance provider. The project has since moved through three phases of refactoring:
+1.  **Phase 1:** Eliminate Polygon dependencies and centralize data fetching through .
+2.  **Phase 2:** Implement a MongoDB caching layer for custom scans to improve performance.
+3.  **Phase 3:** Refine scan results by implementing AI-driven deduplication to show only the single best option per stock symbol.
 
 **User's preferred language**: English
 
 **what currently exists?**
-The application is a full-stack FastAPI/React financial analysis tool, Covered Call Engine. Previous work identified a critical issue where key pages are non-functional due to a hardcoded dependency on the Polygon API, bypassing the intended Yahoo Finance data provider. The user has paused all bug-fixing work to prioritize a new, detailed, read-only audit of the application's entire market data flow. The agent has started this audit by examining core files.
+The application is a full-stack FastAPI/React financial analysis tool. The core data-fetching architecture has been significantly refactored. Direct calls to the Polygon API have been eliminated from critical routes (, ). Custom scans (, , ) are now accelerated by a MongoDB caching layer (). All scan results are now post-processed to deduplicate results, showing only the highest-ranked option per stock symbol based on an AI score. Monolithic components like  and  still exist but the data flow for the main screener functionality is now more robust and performant.
 
 **Last working item**:
--   **Last item agent was working:** The agent is in the middle of executing a comprehensive, **read-only** system audit to document how market data is sourced and processed across the entire application, as per the user's latest detailed instructions. The agent has begun by viewing  and .
--   **Status:** IN PROGRESS
--   **Agent Testing Done:** N/A
--   **Which testing method agent to use?** N/A (This is a read-only analysis task).
--   **User Testing Done:** N/A
+-   **Last item agent was working:** The agent completed Phase 3, which focused on refining the presentation of scan results. This involved implementing a deduplication logic that groups scan candidates by their underlying stock symbol and selects only the single best option based on the highest AI score and other tie-breakers. This logic was applied to all custom and precomputed scans.
+-   **Status:** USER VERIFICATION PENDING
+-   **Agent Testing Done:** Y
+-   **Which testing method agent to use?** Manual testing by . The agent verified that screener endpoints no longer return duplicate stock symbols and that the simulator/watchlist behavior was unchanged.
+-   **User Testing Done:** N
 
 **All Pending/In progress Issue list**:
--   **Issue 1: Critical pages (Dashboard, Screener, PMCC) are blocked by Polygon API dependency (P1 - Blocked by Audit Task)**
--   **Issue 2: Missing rate limiting and batch controls on LLM endpoints (P2 - Blocked by Audit Task)**
--   **Issue 3: User cannot see the updated pricing page (P2 - Blocked by Audit Task)**
--   **Issue 4: Inbound email replies not appearing in the support dashboard (P3 - Blocked by Audit Task)**
--   **Issue 5: Watchlist page is blank or shows /bin/bash.00 prices (P3 - Blocked by Audit Task)**
+-   **Issue 1: Missing rate limiting and batch controls on LLM endpoints (P2)**
+-   **Issue 2: User cannot see the updated pricing page (P2)**
+-   **Issue 3: Inbound email replies not appearing in the support dashboard (P3 - Recurring)**
+-   **Issue 4: Verify Watchlist page functionality after data-fetching refactors (P3)**
 
 **Issues Detail:**
--   **Issue 1: Critical pages (Dashboard, Screener, PMCC) are blocked by Polygon API dependency**
-    -   **Attempted fixes:** None. The issue was identified via a previous audit. The user has requested a new, more detailed data-flow audit before any fixes are attempted.
-    -   **Next debug checklist:** After the current data-flow audit is complete, the plan is to:
-        1.  Modify  to remove direct Polygon calls and use .
-        2.  Modify  and  to use .
-        3.  Modify  to remove its Polygon dependency.
-    -   **Why fix this issue and what will be achieved with the fix?** This is a critical blocker. Fixing it will make the core data-driven pages functional using the intended Yahoo Finance data source.
+-   **Issue 1: Missing rate limiting and batch controls on LLM endpoints**
+    -   **Attempted fixes:** None. This was deferred while data-sourcing refactors were prioritized.
+    -   **Next debug checklist:**
+        1.  Investigate  and  where LLMs are used.
+        2.  Implement a token bucket or leaky bucket algorithm for rate limiting.
+        3.  Consider using a library like  for FastAPI.
+    -   **Why fix this issue and what will be achieved with the fix?** To prevent excessive API costs and ensure service stability under load.
+    -   **Status:** NOT STARTED
+    -   **Is recurring issue?** N
+    -   **Should Test frontend/backend/both after fix?** backend
+    -   **Blocked on other issue:** None.
+
+-   **Issue 3: Inbound email replies not appearing in the support dashboard**
+    -   **Attempted fixes:** None in this session. This is a long-standing issue.
+    -   **Next debug checklist:**
+        1.  Trace the IMAP sync logic in  and the associated scheduler jobs.
+        2.  Check logs for IMAP connection or parsing errors.
+        3.  Verify email processing logic and database insertion into the support ticket collection.
+    -   **Why fix this issue and what will be achieved with the fix?** This breaks a core support function. Fixing it will restore the two-way communication flow in the support dashboard.
     -   **Status:** NOT STARTED
     -   **Is recurring issue?** Y
     -   **Should Test frontend/backend/both after fix?** both
-    -   **Blocked on other issue:** The current P0 Data Sourcing Audit task.
-
-(Details for Issues 2-5 remain the same as the previous handoff but are currently blocked and of lower priority than the audit).
+    -   **Blocked on other issue:** None.
 
 **In progress Task List**:
--   **Task 1: Complete the Market Data Sourcing Audit (P0)**
-    -   **Where to resume:** The agent has inspected  and . The next step is to systematically inspect the files related to all remaining pages (Dashboard, Screener, PMCC, Portfolio, Watchlist, Admin) to trace their data sources.
-    -   **What will be achieved with this?** A comprehensive report, formatted exactly as the user requested, that documents the entire data flow. This report will be the foundation for future refactoring.
-    -   **Status:** IN PROGRESS
-    -   **Should Test frontend/backend/both after fix?** N/A
-    -   **Blocked on something:** Nothing. This is the top priority.
+-   None.
 
 **Upcoming and Future Tasks**
-*   **Upcoming Tasks (To be actioned AFTER the audit is complete):**
-    *   (P0) **Refactor Data Fetching:** Remove all Polygon API dependencies from the codebase as identified in the audits.
-    *   (P1) **Implement LLM Safeguards:** Add rate limiting and batch controls to prevent token budget overruns.
-    *   (P2) **Fix PMCC Custom Scan Price Rules:** Implement stock vs. ETF price limits in .
-*   **Future Tasks:**
+*   **Upcoming Tasks:**
+    *   (P1) **Propose Next Phase:** Await user direction for Phase 4 or propose a plan based on pending tasks (e.g., tackling the monolithic simulator, fixing pending bugs).
+    *   (P2) **Implement LLM Safeguards:** Add rate limiting and batch controls.
+    *   (P3) **Fix Pre-existing Bugs:** Address the pricing page and inbound email issues.
+*   **Future Tasks (Backlog):**
     *   (P3) **Frontend Refactor:** Break down the monolithic .
-    *   (P4) **Backend Refactor:** Split  into separate modules.
+    *   (P4) **Backend Refactor:** Split the monolithic  into separate modules.
+    *   (P4) **Consolidate :** Refactor to fully use  functions.
 
 **Completed work in this session**
--   None. The current audit task is still in progress.
+-   **Market Data Sourcing Audit (DONE):** Completed a comprehensive read-only audit of the application's data flow, delivered in .
+-   **Phase 1 Refactor (DONE):** Eliminated Polygon API dependencies in  and , centralizing data access through .
+-   **Phase 2 Refactor (DONE):** Implemented a MongoDB caching layer () in  and refactored  to use it, significantly improving custom scan performance. Added  endpoint.
+-   **Phase 3 Refactor (DONE):** Implemented AI-score-driven deduplication logic in  and  to ensure scan results show only the single best option per stock.
+-   **Bug Fix (DONE):** Resolved a  in  caused by  being .
 
 **Earlier issues found/mentioned but not fixed**
--   These are captured in the  section. The main unfixed issue remains the Polygon API dependency that cripples core functionality.
+-   These are captured in the  section.
 
 **Known issue recurrence from previous fork**
 -   **Issue recurrence in previous fork:** Inbound email replies not reaching the support dashboard.
@@ -94,62 +79,71 @@ The application is a full-stack FastAPI/React financial analysis tool, Covered C
 
 
 **Key Technical Concepts**
--   **Data Provider Schism:** The critical architectural flaw where key routes make direct, hardcoded calls to the Polygon API, bypassing the intended centralized  service. The current audit aims to document the full extent of this.
--   **Silent Failures & Mock Data:** The application returns mock data or empty lists when API keys are missing, masking the root cause of failures and leading to blank pages.
+-   **Market Snapshot Cache:** A MongoDB collection () that stores stock quotes, fundamentals, and options metadata with a 10-15 minute TTL (market open) to reduce redundant API calls to Yahoo Finance during scans.
+-   **AI-Score-Driven Deduplication:** A mandatory post-processing step for all scans. It groups option candidates by stock symbol and returns only the single highest-ranked option based on , , and ROI.
+-   **Active vs. Deprecated Files:** It was discovered that  is unused. All screener logic is handled by , which is included in .
 
 **key DB schema**
--   **simulator_trades**:  field handles both  (new) and  (legacy) trades.
--   **precomputed_scans**: May contain stale data generated from Polygon.
--   **api_cache**: May contain cached responses from the Polygon API.
+-   **market_snapshot_cache**: 
 
 **changes in tech stack**
 -   None.
 
 **All files of reference**
-*   **Files for Current Audit Task:**
-    *   All files under  and  that relate to data fetching for Dashboard, Screener, PMCC, Portfolio, Simulator, Watchlist, and Admin pages.
-    *   Key files already viewed: , .
-*   **Files for Post-Audit Bug Fixes:**
-    *   
-    *   
-    *   
-    *   
-    *   
+-   : The initial audit report, now serving as a historical baseline.
+-   : The active and most critical file for screener functionality. It was heavily modified in Phases 2 and 3.
+-   : The core of the data layer. It was heavily modified in Phase 2 to add the caching mechanism.
+-   : Modified in Phase 3 to align its deduplication logic with the new best-option-per-symbol rule.
+-   : Modified in Phase 2 to add the  endpoint.
+-   : Modified to fix a pre-existing bug.
+-   , , : Modified in Phase 1 to remove Polygon dependencies.
+-   : Updated to track the completion of Phases 1, 2, and 3.
 
 **Areas that need refactoring**:
--   **(CRITICAL) Data Access Layer:** Must be refactored post-audit to eliminate all direct Polygon API calls and exclusively use .
 -   : A 2,200+ line monolith.
 -   : A 2,800+ line monolith.
 
 **key api endpoints**
-*   : **(BROKEN)**
-*   : **(BROKEN)**
-*   : **(BROKEN)**
-*   : **(BROKEN)**
+-   : The main custom scan endpoint. Now uses caching and AI deduplication.
+-   : Dashboard endpoint. Also uses caching.
+-   : New endpoint to monitor the market snapshot cache.
+-   : Now correctly routes through .
+-   : Now correctly routes through .
 
 **Critical Info for New Agent**
-*   **YOUR TOP PRIORITY (P0) IS TO COMPLETE THE ONGOING READ-ONLY AUDIT.** The user has explicitly paused all other work for this. You must continue inspecting the codebase and produce a report that follows the user's requested format precisely.
-*   **DO NOT FIX ANYTHING.** This is a diagnostic task. Do not attempt to fix the Polygon dependency or any other bugs until this audit is complete and the user approves the next steps.
-*   After the audit, the next priority will be to fix the Data Provider Schism by refactoring all data-fetching logic to use .
+-   **Wait for User Direction:** The project proceeds in user-defined phases. Do not start a new major task (like refactoring the simulator) without explicit user approval. Your first action should be to propose a plan based on the pending tasks and await the user's choice.
+-   **The Active Screener is :** Do not make changes to  as it is not used by the application. All screener-related work must be done in .
+-   **Deduplication is Mandatory:** The one best option per symbol rule is a critical business logic requirement for all scan outputs. This is handled by the  helper function.
 
 **documents and test reports created in this job**
--   None.
+-   
+-    (updated)
 
 **Last 10 User Messages and any pending HUMAN messages**
--   **User (Latest Message):** Issued a new, high-priority request for a detailed, read-only audit of the application's market data sourcing. Provided a strict set of rules and a required output format. This task is currently in progress.
+1.  **User (Phase 2):** Defined Phase 2 requirements: introduce a MongoDB cache for custom scans to improve performance and reduce Yahoo API calls.
+2.  **Agent:** Implemented Phase 2, but discovered changes were made to the wrong file ().
+3.  **Agent:** Corrected the mistake, re-implementing the caching logic in the correct file ().
+4.  **Agent:** Found and fixed a timezone-related bug in the cache logic ().
+5.  **Agent:** Successfully tested Phase 2, confirming a ~40% performance improvement and 100% cache hit rate on subsequent runs.
+6.  **Agent:** Finished Phase 2 and provided a summary.
+7.  **User (Phase 3):** Defined Phase 3 requirements: refine scan outputs to prevent duplicate symbols by showing only the single best option per symbol, selected by the highest AI score. Explicitly stated this is a presentation fix, not a data-fetching refactor.
+8.  **Agent:** Implemented the AI-driven deduplication logic in  and updated the similar logic in .
+9.  **Agent:** Tested the changes, confirming that custom scans no longer show duplicate symbols and that the simulator (which should not be deduplicated) was unaffected.
+10. **Agent:** Finished Phase 3 and provided a summary.
 
 **Project Health Check:**
 *   **Broken:**
-    *   Dashboard, Screener, and PMCC pages (return mock/empty data).
-    *   Watchlist Page (fails to fetch prices correctly).
-    *   Inbound Email Processing (long-standing bug).
+    *   Inbound Email Processing (recurring issue).
+*   **Needs Verification:**
+    *   Watchlist Page functionality.
+    *   Pricing Page visibility.
 *   **Mocked:**
-    *   Multiple API endpoints (, ) fall back to returning mock data, hiding the root cause of failures.
+    *   The  flag still exists in the code, but the primary data-sourcing issues that necessitated it have been resolved.
 
 **3rd Party Integrations**
-*   **:** The intended primary data source.
-*   **:** Used for LLM integrations via .
-*   **usage: openai [-h] [-v] [-b API_BASE] [-k API_KEY] [-p PROXY [PROXY ...]]
+*   : The primary market data source.
+*   : Used for LLM integrations via .
+*   usage: openai [-h] [-v] [-b API_BASE] [-k API_KEY] [-p PROXY [PROXY ...]]
               [-o ORGANIZATION] [-t {openai,azure}]
               [--api-version API_VERSION] [--azure-endpoint AZURE_ENDPOINT]
               [--azure-ad-token AZURE_AD_TOKEN] [-V]
@@ -186,19 +180,19 @@ options:
                         https://www.microsoft.com/en-
                         us/security/business/identity-access/microsoft-entra-
                         id
-  -V, --version         show program's version number and exit SDK:** Used directly for some LLM integrations.
-*   **:** Used for scheduled jobs.
-*   **PayPal:** Used for subscriptions.
+  -V, --version         show program's version number and exit SDK: Used directly for some LLM integrations.
+*   : Used for scheduled jobs (e.g., precomputed scans).
+*   PayPal: Used for subscriptions.
 
 **Testing status**
 -   **Testing agent used after significant changes:** NO
 -   **Troubleshoot agent used after agent stuck in loop:** NO
 -   **Test files created:** None
--   **Known regressions:** Critical pages are non-functional due to the Polygon API dependency.
+-   **Known regressions:** None from the work in this session. Pre-existing bugs remain.
 
 **Credentials to test flow:**
 *   Admin user: 
 *   Password: 
 
 **What agent forgot to execute**
-The agent correctly identified the user's new, overriding request and pivoted to work on it. It did not forget to execute any tasks; rather, it correctly re-prioritized its work based on the user's latest instructions.</analysis>
+The agent initially applied Phase 2 changes to the wrong file () but quickly diagnosed the routing issue by inspecting  and corrected the work by applying the changes to . No other tasks or instructions were overlooked.</analysis>
