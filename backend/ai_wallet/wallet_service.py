@@ -299,8 +299,13 @@ class WalletService:
         action: str,
         request_id: str
     ) -> AIGuardResult:
-        """Retry deduction after race condition (max 1 retry per spec)."""
-        logger.warning(f"Race condition in token deduction for user {user_id}, retrying...")
+        """
+        Retry deduction after race condition.
+        
+        IMPORTANT: Max 1 retry per spec - this function is only called once
+        from deduct_tokens() and does NOT call itself recursively.
+        """
+        logger.warning(f"Race condition in token deduction for user {user_id}, retrying (1/1)...")
         
         # Refresh wallet state
         wallet = await self.get_or_create_wallet(user_id)
@@ -340,7 +345,8 @@ class WalletService:
         )
         
         if result.modified_count == 0:
-            # Still failed - report insufficient tokens
+            # Max 1 retry reached - do NOT retry again, fail with clear message
+            logger.error(f"Token deduction failed after max retry (1) for user {user_id}")
             return AIGuardResult(
                 allowed=False,
                 error_code="INSUFFICIENT_TOKENS",
