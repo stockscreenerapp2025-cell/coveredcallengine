@@ -294,6 +294,35 @@ const Pricing = () => {
         })}
       </div>
 
+      {/* AI Credits Section */}
+      <div className="max-w-4xl mx-auto mt-8">
+        <Card className="glass-card border-amber-500/20">
+          <CardContent className="p-6 text-center">
+            <div className="flex items-center justify-center gap-2 mb-3">
+              <Sparkles className="w-5 h-5 text-amber-400" />
+              <h3 className="text-lg font-semibold text-white">AI Credits Included</h3>
+            </div>
+            <p className="text-zinc-400 mb-4">
+              All plans include free monthly AI credits. Use AI only if you want. Buy more credits anytime — no surprises.
+            </p>
+            <div className="grid md:grid-cols-3 gap-4 text-center">
+              <div className="bg-zinc-800/50 rounded-lg p-3">
+                <p className="text-zinc-400 text-sm">Basic</p>
+                <p className="text-white font-bold">2,000 tokens/mo</p>
+              </div>
+              <div className="bg-zinc-800/50 rounded-lg p-3 border border-violet-500/20">
+                <p className="text-zinc-400 text-sm">Standard</p>
+                <p className="text-white font-bold">6,000 tokens/mo</p>
+              </div>
+              <div className="bg-zinc-800/50 rounded-lg p-3">
+                <p className="text-zinc-400 text-sm">Premium</p>
+                <p className="text-white font-bold">15,000 tokens/mo</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
       {/* Trust Badges */}
       <div className="text-center text-zinc-500 text-sm pt-4">
         <p className="flex items-center justify-center gap-6 flex-wrap">
