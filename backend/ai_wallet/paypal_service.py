@@ -211,18 +211,19 @@ class PayPalTokenService:
         body: bytes
     ) -> bool:
         """
-        Verify PayPal webhook signature.
+        Verify PayPal webhook signature using PayPal's verification API.
         
-        Args:
-            headers: Request headers containing PayPal signature info
-            body: Raw request body
-            
-        Returns:
-            True if signature is valid
+        IMPORTANT: In production (PAYPAL_ENV=live), verification is REQUIRED.
+        Missing PAYPAL_WEBHOOK_ID in production will hard-fail.
         """
         if not self.webhook_id:
-            logger.warning("PAYPAL_WEBHOOK_ID not configured, skipping verification")
-            return True  # In development, might skip
+            # In production, MUST have webhook ID configured - hard fail
+            if self.env == "live":
+                logger.error("PAYPAL_WEBHOOK_ID not configured in production - rejecting webhook")
+                return False
+            # In sandbox/development, allow skipping for testing
+            logger.warning("PAYPAL_WEBHOOK_ID not configured (sandbox mode) - skipping verification")
+            return True
         
         access_token = await self.get_access_token()
         
