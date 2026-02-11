@@ -575,7 +575,9 @@ async def get_iv_collection_stats(db) -> Dict[str, Any]:
             "symbols_sample": unique_symbols[:20] if unique_symbols else [],
             "oldest_date": oldest.get("trading_date") if oldest else None,
             "newest_date": newest.get("trading_date") if newest else None,
-            "min_samples_required": MIN_SAMPLES_FOR_IV_RANK
+            "min_samples_for_full_rank": MIN_SAMPLES_BOOTSTRAP,
+            "min_samples_for_any_rank": MIN_SAMPLES_TOO_FEW,
+            "min_samples_for_high_confidence": MIN_SAMPLES_HIGH_CONF
         }
         
     except Exception as e:
