@@ -351,103 +351,96 @@ def check_cc_eligibility(
 def enrich_option_greeks(
     contract: Dict,
     stock_price: float,
-    risk_free_rate: float = 0.05
+    iv_metrics: Any = None
 ) -> Dict:
     """
-    Enrich option contract with computed/estimated Greeks.
+    Enrich option contract with computed Greeks using Black-Scholes.
     
-    CCE MASTER ARCHITECTURE - LAYER 3 COMPLIANT (ENHANCED)
+    CCE VOLATILITY & GREEKS CORRECTNESS - REFACTORED
     
-    Computes/estimates:
-    - Delta (from snapshot or estimated using validated previousClose)
-    - IV (from snapshot)
-    - IV Rank (estimated from current IV relative to typical range)
-    - Theta (estimated based on premium and DTE)
-    - Gamma (estimated based on moneyness and time)
+    CHANGES FROM PREVIOUS VERSION:
+    - Delta: Now uses Black-Scholes (removed moneyness fallback)
+    - IV: Standardized to decimal (iv) and percentage (iv_pct)
+    - IV Rank: Uses true industry-standard calculation when history available
+    - All *_source fields added for transparency
+    
+    Computes:
+    - Delta via Black-Scholes (greeks_service.py)
+    - IV normalized to decimal and percentage
+    - IV Rank/Percentile from historical data (or neutral fallback)
+    - Gamma, Theta, Vega via Black-Scholes
     - ROI (%) = (Premium / Stock Price) * 100 * (365 / DTE)
     
     Args:
         contract: Option contract data from snapshot
         stock_price: Stock close price (validated previousClose from Layer 1)
-        risk_free_rate: Risk-free rate for calculations
+        iv_metrics: IVMetrics object with pre-computed IV rank data (optional)
     
     Returns:
-        Enriched contract with Greeks and ROI
+        Enriched contract with Greeks, ROI, and source fields
     """
+    from services.greeks_service import calculate_greeks, normalize_iv_fields
+    from services.iv_rank_service import IVMetrics
+    
     enriched = contract.copy()
     
     strike = contract.get("strike", 0)
     dte = contract.get("dte", 30)
-    iv = contract.get("implied_volatility", 0)
-    option_type = contract.get("option_type", "call")
+    iv_raw = contract.get("implied_volatility", 0)
+    option_type = contract.get("option_type", contract.get("type", "call"))
     premium = contract.get("bid", 0) or contract.get("premium", 0)
     ask = contract.get("ask", 0)
     
-    # DELTA - use from snapshot or estimate
-    if "delta" not in enriched or enriched["delta"] == 0:
-        # Estimate delta based on moneyness
-        if stock_price > 0 and strike > 0:
-            moneyness = (stock_price - strike) / stock_price
-            if option_type == "call":
-                if moneyness > 0:  # ITM
-                    enriched["delta"] = min(0.95, 0.50 + moneyness * 2)
-                else:  # OTM
-                    enriched["delta"] = max(0.05, 0.50 + moneyness * 2)
-            else:  # put
-                if moneyness < 0:  # ITM put
-                    enriched["delta"] = max(-0.95, -0.50 + moneyness * 2)
-                else:  # OTM put
-                    enriched["delta"] = min(-0.05, -0.50 + moneyness * 2)
+    # ==========================================================================
+    # STEP 1: Normalize IV to decimal and percentage
+    # ==========================================================================
+    iv_data = normalize_iv_fields(iv_raw)
+    enriched["iv"] = iv_data["iv"]
+    enriched["iv_pct"] = iv_data["iv_pct"]
     
-    # IV - convert to percentage if needed
-    if iv > 0 and iv < 5:  # Likely decimal form (0.30 = 30%)
-        enriched["iv_pct"] = round(iv * 100, 1)
+    # ==========================================================================
+    # STEP 2: Calculate Greeks via Black-Scholes
+    # (Removed moneyness-based delta fallback - accuracy and consistency)
+    # ==========================================================================
+    T = max(dte, 1) / 365.0  # Time in years
+    
+    greeks_result = calculate_greeks(
+        S=stock_price,
+        K=strike,
+        T=T,
+        sigma=iv_data["iv"] if iv_data["iv"] > 0 else None,
+        option_type=option_type
+    )
+    
+    enriched["delta"] = greeks_result.delta
+    enriched["delta_source"] = greeks_result.delta_source
+    enriched["gamma"] = greeks_result.gamma
+    enriched["theta"] = greeks_result.theta
+    enriched["vega"] = greeks_result.vega
+    
+    # Legacy field names for backward compatibility
+    enriched["gamma_estimate"] = greeks_result.gamma
+    enriched["theta_estimate"] = greeks_result.theta
+    enriched["vega_estimate"] = greeks_result.vega
+    
+    # ==========================================================================
+    # STEP 3: IV Rank and Percentile
+    # ==========================================================================
+    if iv_metrics is not None and isinstance(iv_metrics, IVMetrics):
+        enriched["iv_rank"] = iv_metrics.iv_rank
+        enriched["iv_percentile"] = iv_metrics.iv_percentile
+        enriched["iv_rank_source"] = iv_metrics.iv_rank_source
+        enriched["iv_samples"] = iv_metrics.iv_samples
     else:
-        enriched["iv_pct"] = round(iv, 1) if iv else 0
+        # No metrics provided - use neutral defaults
+        enriched["iv_rank"] = 50.0
+        enriched["iv_percentile"] = 50.0
+        enriched["iv_rank_source"] = "DEFAULT_NEUTRAL_NO_METRICS"
+        enriched["iv_samples"] = 0
     
-    # IV RANK - estimated from current IV relative to typical range
-    # Uses range 15-80% as typical for most stocks
-    if iv > 0:
-        iv_pct = iv * 100 if iv < 5 else iv
-        # More accurate IV rank estimation
-        # 15% = 0 rank, 50% = 50 rank, 80%+ = 100 rank
-        enriched["iv_rank"] = min(100, max(0, round((iv_pct - 15) / 65 * 100)))
-    else:
-        enriched["iv_rank"] = None
-    
-    # THETA estimate (simplified)
-    if dte > 0 and premium > 0:
-        # Rough theta estimate: premium decay accelerates near expiry
-        daily_decay = premium / dte
-        # Adjust for time decay acceleration (theta increases as expiry approaches)
-        if dte < 7:
-            daily_decay *= 1.5
-        elif dte < 14:
-            daily_decay *= 1.2
-        enriched["theta_estimate"] = -round(daily_decay, 3)
-    else:
-        enriched["theta_estimate"] = 0
-    
-    # GAMMA estimate (simplified)
-    if "delta" in enriched and dte > 0 and stock_price > 0 and strike > 0:
-        # Gamma is highest ATM and near expiry
-        atm_factor = 1 - abs((stock_price - strike) / stock_price)
-        time_factor = max(0.1, 1 - dte / 60)
-        enriched["gamma_estimate"] = round(atm_factor * time_factor * 0.05, 4)
-    else:
-        enriched["gamma_estimate"] = 0
-    
-    # VEGA estimate (simplified - based on IV and DTE)
-    if iv > 0 and dte > 0 and stock_price > 0:
-        # Vega is higher for longer DTE and ATM options
-        atm_factor = 1 - abs((stock_price - strike) / stock_price) if strike > 0 else 0.5
-        time_factor = min(1.0, dte / 30)  # Normalize to 30 days
-        enriched["vega_estimate"] = round(stock_price * 0.01 * atm_factor * time_factor, 3)
-    else:
-        enriched["vega_estimate"] = 0
-    
-    # ROI CALCULATION: (Premium / Stock Price) * 100 * (365 / DTE)
-    # This is the annualized return on investment
+    # ==========================================================================
+    # STEP 4: ROI Calculation
+    # ==========================================================================
     if stock_price > 0 and premium > 0 and dte > 0:
         roi_per_trade = (premium / stock_price) * 100
         annualized_roi = roi_per_trade * (365 / dte)
