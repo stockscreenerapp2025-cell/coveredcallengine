@@ -402,11 +402,15 @@ async def get_iv_metrics_for_symbol(
     
     This is the main function to call from endpoints.
     
-    Steps:
+    CRITICAL ORDER (Part B fix - prevent self-teaching):
     1. Compute ATM proxy IV from current chain
-    2. Optionally store in history
-    3. Retrieve historical series
-    4. Compute IV Rank and Percentile
+    2. Load historical series (BEFORE storing today)
+    3. Compute IV Rank and Percentile from history
+    4. Store today's value in history (idempotent)
+    5. Return metrics
+    
+    This ensures custom scans don't artificially teach history and 
+    immediately consume it, which would cause rank=100 clustering.
     
     Args:
         db: MongoDB database instance
@@ -434,24 +438,37 @@ async def get_iv_metrics_for_symbol(
             iv_high=0.0,
             iv_samples=0,
             iv_rank_source="NO_ATM_PROXY_AVAILABLE",
-            proxy_meta=proxy_meta
+            proxy_meta=proxy_meta,
+            iv_rank_confidence="LOW",
+            iv_samples_used=0
         )
     
-    # Step 2: Store in history if requested
+    # Step 2: Get historical series BEFORE storing today's value
+    # This prevents "self-teaching" where we store and immediately rank ourselves
+    series = await get_iv_history_series(db, symbol)
+    
+    # Step 3: Compute IV Rank and Percentile from historical data
+    metrics = compute_iv_rank_percentile(iv_proxy, series)
+    
+    # Step 4: Store in history if requested (AFTER computing rank)
     if store_history:
         trading_date = get_trading_date_eastern()
         await upsert_iv_history(db, symbol, trading_date, iv_proxy, proxy_meta)
     
-    # Step 3: Get historical series
-    series = await get_iv_history_series(db, symbol)
-    
-    # Step 4: Compute IV Rank and Percentile
-    metrics = compute_iv_rank_percentile(iv_proxy, series)
-    
+    # Step 5: Return complete metrics
     return IVMetrics(
         iv_proxy=round(iv_proxy, 4),
         iv_proxy_pct=round(iv_proxy * 100, 1),
         iv_rank=metrics["iv_rank"],
+        iv_percentile=metrics["iv_percentile"],
+        iv_low=metrics["iv_low"],
+        iv_high=metrics["iv_high"],
+        iv_samples=metrics["iv_samples"],
+        iv_rank_source=metrics["iv_rank_source"],
+        proxy_meta=proxy_meta,
+        iv_rank_confidence=metrics["iv_rank_confidence"],
+        iv_samples_used=metrics["iv_samples_used"]
+    )
         iv_percentile=metrics["iv_percentile"],
         iv_low=metrics["iv_low"],
         iv_high=metrics["iv_high"],
