@@ -1384,6 +1384,24 @@ async def screen_pmcc(
         if not live_leaps:
             continue
         
+        # ============================================================
+        # COMPUTE IV METRICS FOR SYMBOL (Industry Standard IV Rank)
+        # Use short-term options for IV proxy (more liquid)
+        # ============================================================
+        try:
+            # Combine all options for IV metrics
+            all_options = live_leaps.copy()
+            iv_metrics = await get_iv_metrics_for_symbol(
+                db=db,
+                symbol=symbol,
+                options=all_options,
+                stock_price=stock_price,
+                store_history=True
+            )
+        except Exception as e:
+            logging.debug(f"PMCC: Could not compute IV metrics for {symbol}: {e}")
+            iv_metrics = None
+        
         # Filter LEAPS - PMCC specific rules (NOT shared with CC)
         valid_leaps = []
         for opt in live_leaps:
@@ -1404,14 +1422,24 @@ async def screen_pmcc(
             if strike >= stock_price:
                 continue  # Reject - must be ITM
             
-            # Calculate delta estimate for deep ITM
-            moneyness = stock_price / strike if strike > 0 else 0
-            if moneyness > 1.0:  # ITM
-                estimated_delta = min(0.95, 0.5 + (moneyness - 1) * 0.5)
-            else:
-                estimated_delta = 0.5
+            # Calculate delta using Black-Scholes
+            from services.greeks_service import calculate_greeks, normalize_iv_fields
             
-            delta = opt.get("delta") or estimated_delta
+            iv_raw = opt.get("implied_volatility", 0)
+            iv_data = normalize_iv_fields(iv_raw)
+            T = max(dte, 1) / 365.0
+            
+            greeks_result = calculate_greeks(
+                S=stock_price,
+                K=strike,
+                T=T,
+                sigma=iv_data["iv"] if iv_data["iv"] > 0 else None,
+                option_type="call"
+            )
+            
+            delta = greeks_result.delta
+            delta_source = greeks_result.delta_source
+            
             if delta < min_delta:
                 continue
             
@@ -1422,7 +1450,9 @@ async def screen_pmcc(
                 "ask": ask,  # PMCC uses ASK for long leg
                 "bid": bid,
                 "delta": delta,
-                "iv": opt.get("implied_volatility", 0),
+                "delta_source": delta_source,
+                "iv": iv_data["iv"],
+                "iv_pct": iv_data["iv_pct"],
                 "oi": opt.get("open_interest", 0),
                 "contract_symbol": opt.get("contract_ticker", "")
             })
