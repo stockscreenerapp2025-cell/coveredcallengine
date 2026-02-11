@@ -120,7 +120,6 @@ def compute_iv_atm_proxy(
     # Find expiry nearest to target_dte
     valid_options.sort(key=lambda x: abs(x["dte"] - target_dte))
     target_expiry = valid_options[0]["expiry"]
-    target_actual_dte = valid_options[0]["dte"]
     
     # Filter to only that expiry
     expiry_options = [o for o in valid_options if o["expiry"] == target_expiry]
