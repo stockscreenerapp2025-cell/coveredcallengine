@@ -31,6 +31,10 @@ from services.data_provider import (
     fetch_stock_quotes_batch  # Batch previous close
 )
 
+# CCE Volatility & Greeks Correctness - Use shared services
+from services.greeks_service import calculate_greeks, normalize_iv_fields
+from services.iv_rank_service import get_iv_metrics_for_symbol
+
 # ADR-001: Import EOD Price Contract (for backward compat only)
 from services.eod_ingestion_service import (
     EODPriceContract,
