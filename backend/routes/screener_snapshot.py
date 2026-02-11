@@ -386,7 +386,6 @@ def enrich_option_greeks(
         Enriched contract with Greeks, ROI, and source fields
     """
     from services.greeks_service import calculate_greeks, normalize_iv_fields
-    from services.iv_rank_service import IVMetrics
     
     enriched = contract.copy()
     
