@@ -14,10 +14,15 @@ DATABASE:
 - TTL: ~450 days
 - Unique index: (symbol, trading_date)
 
+BOOTSTRAP BEHAVIOR (to reduce 50/100 clustering):
+- < 5 samples: return neutral 50 with LOW confidence
+- 5-19 samples: compute true rank with shrinkage toward 50, MEDIUM confidence
+- >= 20 samples: true rank/percentile, HIGH confidence (MEDIUM if < 60 samples)
+
 HARD CONSTRAINTS:
-- If sample size < 20, return neutral (50) with source="DEFAULT_NEUTRAL_INSUFFICIENT_HISTORY"
 - trading_date uses US/Eastern timezone
 - All fields always populated, never None/null
+- Compute rank BEFORE storing today's value (prevent self-teaching)
 """
 
 import logging
@@ -32,8 +37,10 @@ logger = logging.getLogger(__name__)
 # CONFIGURATION
 # =============================================================================
 
-# Minimum samples required for true IV Rank calculation
-MIN_SAMPLES_FOR_IV_RANK = 20
+# Staged confidence thresholds
+MIN_SAMPLES_TOO_FEW = 5       # Below this: pure neutral
+MIN_SAMPLES_BOOTSTRAP = 20    # Below this: shrinkage applied
+MIN_SAMPLES_HIGH_CONF = 60    # Above this: HIGH confidence
 
 # Target DTE for ATM proxy selection
 TARGET_DTE = 35
@@ -63,6 +70,8 @@ class IVMetrics:
     iv_samples: int  # Number of historical samples
     iv_rank_source: str  # Source/quality indicator
     proxy_meta: Dict[str, Any]  # Metadata about proxy selection
+    iv_rank_confidence: str = "LOW"  # "LOW", "MEDIUM", "HIGH"
+    iv_samples_used: int = 0  # Samples used in calculation (may differ from iv_samples)
 
 
 # =============================================================================
