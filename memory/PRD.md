@@ -172,9 +172,19 @@ Standardize IV and Delta calculations across all endpoints using industry-standa
 
 ### Files Modified:
 - `/backend/routes/screener_snapshot.py` - Custom scan with IV metrics
+- `/backend/routes/options.py` - Options chain endpoint with normalized fields
+- `/backend/routes/watchlist.py` - Watchlist with IV metrics integration
+- `/backend/routes/simulator.py` - Delegated Greeks to shared service
 - `/backend/routes/admin.py` - IV metrics verification endpoints
 - `/backend/services/precomputed_scans.py` - Black-Scholes delta
 - `/backend/server.py` - IV history index creation at startup
+
+### Endpoints Updated with New Fields:
+1. **GET /api/options/chain/{symbol}** - Options chain with per-option and symbol-level IV metrics
+2. **GET /api/screener/covered-calls** - Custom scan with Black-Scholes delta and IV rank
+3. **GET /api/screener/pmcc** - PMCC scan with Black-Scholes delta
+4. **GET /api/watchlist/** - Watchlist items with best_opportunity containing all fields
+5. **GET /api/simulator/trades** - Simulator trades using shared Greeks service
 
 ### Admin Verification Endpoints:
 - `GET /api/admin/iv-metrics/check/{symbol}` - Full IV/Greeks sanity check
