@@ -1468,6 +1468,9 @@ class PrecomputedScanService:
                             
                             oi = row.get('openInterest', 0)
                             
+                            # Calculate ITM percentage for display
+                            itm_moneyness = (current_price - float(strike)) / current_price
+                            
                             leaps.append({
                                 "contract_ticker": row.get('contractSymbol', ''),
                                 "symbol": symbol,
@@ -1475,13 +1478,21 @@ class PrecomputedScanService:
                                 "expiry": exp_str,
                                 "dte": dte,
                                 "premium": round(float(premium), 2),
-                                "delta": round(est_delta, 3),
+                                # Greeks (Black-Scholes)
+                                "delta": round(est_delta, 4),
+                                "delta_source": delta_source,
+                                "gamma": greeks_result.gamma,
+                                "theta": greeks_result.theta,
+                                "vega": greeks_result.vega,
+                                # IV fields (standardized)
+                                "iv": iv_data["iv"],
+                                "iv_pct": iv_data["iv_pct"],
+                                # Other metrics
                                 "intrinsic": round(intrinsic, 2),
                                 "extrinsic": round(extrinsic, 2),
-                                "itm_pct": round(moneyness * 100, 1),
+                                "itm_pct": round(itm_moneyness * 100, 1),
                                 "volume": int(row.get('volume', 0) or 0),
-                                "open_interest": int(oi) if oi else 0,
-                                "iv": float(iv) if iv else 0
+                                "open_interest": int(oi) if oi else 0
                             })
                             
                     except Exception as e:
