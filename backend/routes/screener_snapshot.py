@@ -940,6 +940,21 @@ async def screen_covered_calls(
         if not live_options:
             continue
         
+        # ============================================================
+        # COMPUTE IV METRICS FOR SYMBOL (Industry Standard IV Rank)
+        # ============================================================
+        try:
+            iv_metrics = await get_iv_metrics_for_symbol(
+                db=db,
+                symbol=symbol,
+                options=live_options,
+                stock_price=stock_price,
+                store_history=True  # Store for future IV Rank calculations
+            )
+        except Exception as e:
+            logging.debug(f"Could not compute IV metrics for {symbol}: {e}")
+            iv_metrics = None
+        
         # Process each option
         for opt in live_options:
             strike = opt.get("strike", 0)
