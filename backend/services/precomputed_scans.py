@@ -1589,10 +1589,20 @@ class PrecomputedScanService:
                                         except Exception:
                                             pass
                                     
-                                    # Estimate delta for ITM calls (higher for deeper ITM)
-                                    moneyness = (current_price - strike) / current_price
-                                    est_delta = 0.50 + moneyness * 2  # Rough estimate
-                                    est_delta = max(0.50, min(0.95, est_delta))
+                                    # Calculate delta using Black-Scholes
+                                    from services.greeks_service import calculate_greeks
+                                    
+                                    T = max(dte, 1) / 365.0
+                                    greeks_result = calculate_greeks(
+                                        S=current_price,
+                                        K=float(strike),
+                                        T=T,
+                                        sigma=None,  # Polygon doesn't provide IV
+                                        option_type="call"
+                                    )
+                                    
+                                    est_delta = greeks_result.delta
+                                    delta_source = greeks_result.delta_source
                                     
                                     # Filter by delta
                                     if est_delta < delta_min or est_delta > delta_max:
@@ -1605,9 +1615,31 @@ class PrecomputedScanService:
                                     # Calculate intrinsic and extrinsic value
                                     intrinsic = max(0, current_price - strike)
                                     extrinsic = close_price - intrinsic
+                                    itm_moneyness = (current_price - float(strike)) / current_price
                                     
                                     return {
                                         "contract_ticker": ticker,
+                                        "symbol": symbol,
+                                        "strike": float(strike),
+                                        "expiry": expiry,
+                                        "dte": dte,
+                                        "premium": round(close_price, 2),
+                                        # Greeks (Black-Scholes with proxy sigma)
+                                        "delta": round(est_delta, 4),
+                                        "delta_source": delta_source,
+                                        "gamma": greeks_result.gamma,
+                                        "theta": greeks_result.theta,
+                                        "vega": greeks_result.vega,
+                                        # IV (not available from Polygon basic)
+                                        "iv": 0.0,
+                                        "iv_pct": 0.0,
+                                        # Other metrics
+                                        "intrinsic": round(intrinsic, 2),
+                                        "extrinsic": round(extrinsic, 2),
+                                        "itm_pct": round(itm_moneyness * 100, 1),
+                                        "volume": r.get("v", 0),
+                                        "open_interest": 0
+                                    }
                                         "symbol": symbol,
                                         "strike": strike,
                                         "expiry": expiry,
