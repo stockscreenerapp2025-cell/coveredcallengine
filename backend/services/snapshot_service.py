@@ -939,15 +939,29 @@ class SnapshotService:
                 if spread_pct > max_spread_pct:
                     continue
             
-            # Estimate delta for ITM call
-            moneyness = (stock_price - strike) / stock_price
-            est_delta = 0.50 + moneyness * 2
-            est_delta = min(0.95, max(0.50, est_delta))
+            # CCE VOLATILITY & GREEKS CORRECTNESS: Use Black-Scholes for delta
+            from services.greeks_service import calculate_greeks, normalize_iv_fields
+            
+            iv_raw = call.get("implied_volatility", 0) or call.get("iv", 0)
+            iv_data = normalize_iv_fields(iv_raw)
+            T = max(dte, 1) / 365.0
+            
+            greeks_result = calculate_greeks(
+                S=stock_price,
+                K=strike,
+                T=T,
+                sigma=iv_data["iv"] if iv_data["iv"] > 0 else None,
+                option_type="call"
+            )
+            
+            est_delta = greeks_result.delta
+            delta_source = greeks_result.delta_source
             
             if est_delta < min_delta:
                 continue
             
             # Return contract with ASK as the premium (BUY leg)
+            # CCE VOLATILITY & GREEKS: All fields populated
             valid_leaps.append({
                 "contract_symbol": call.get("contract_symbol"),
                 "strike": strike,
@@ -956,10 +970,24 @@ class SnapshotService:
                 "premium": ask,  # ASK ONLY for BUY
                 "bid": bid,
                 "ask": ask,
-                "delta": round(est_delta, 3),
+                # Greeks (Black-Scholes) - ALWAYS POPULATED
+                "delta": est_delta,
+                "delta_source": delta_source,
+                "gamma": greeks_result.gamma,
+                "theta": greeks_result.theta,
+                "vega": greeks_result.vega,
+                # IV fields (standardized) - ALWAYS POPULATED
+                "iv": iv_data["iv"],
+                "iv_pct": iv_data["iv_pct"],
+                "implied_volatility": call.get("implied_volatility", 0),  # Legacy
+                # IV Rank (placeholder - computed at symbol level)
+                "iv_rank": 50.0,
+                "iv_percentile": 50.0,
+                "iv_rank_source": "DEFAULT_NEUTRAL_LEAPS",
+                "iv_samples": 0,
+                # Liquidity
                 "volume": call.get("volume", 0),
                 "open_interest": oi,
-                "implied_volatility": call.get("implied_volatility", 0),
                 "stock_price": stock_price
             })
         
