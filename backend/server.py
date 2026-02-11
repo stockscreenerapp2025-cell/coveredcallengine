@@ -1303,6 +1303,10 @@ async def startup():
     await db.eod_options_chain.create_index([("trade_date", 1), ("is_final", 1)])
     await db.eod_options_chain.create_index("ingestion_run_id")
     
+    # CCE Volatility & Greeks Correctness - IV History indexes
+    from services.iv_rank_service import ensure_iv_history_indexes
+    await ensure_iv_history_indexes(db)
+    
     # Create default admin if not exists (production only - credentials should be changed immediately)
     admin = await db.users.find_one({"is_admin": True})
     if not admin:
