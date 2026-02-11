@@ -39,6 +39,13 @@ from utils.auth import get_current_user
 # Import LIVE price function for simulator (Rule #2)
 from services.data_provider import fetch_live_stock_quote
 
+# CCE Volatility & Greeks Correctness - Use shared Greeks service
+from services.greeks_service import (
+    calculate_greeks as calculate_greeks_bs,
+    normalize_iv_fields,
+    get_risk_free_rate
+)
+
 simulator_router = APIRouter(tags=["Simulator"])
 
 # Valid lifecycle statuses
@@ -49,6 +56,8 @@ COMPLETED_STATUSES = ["expired", "assigned", "closed"]  # For analytics - ASSIGN
 
 
 # ==================== BLACK-SCHOLES CALCULATIONS ====================
+# NOTE: These local functions are kept for backward compatibility.
+# New code should use services/greeks_service.py
 
 def calculate_d1_d2(S, K, T, r, sigma):
     """Calculate d1 and d2 for Black-Scholes"""
