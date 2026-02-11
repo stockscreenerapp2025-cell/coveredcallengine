@@ -1157,10 +1157,11 @@ async def screen_covered_calls(
                 "iv": enriched_call.get("iv", 0),  # Decimal
                 "iv_pct": enriched_call.get("iv_pct", 0),  # Percentage
                 "implied_volatility": enriched_call.get("iv_pct", 0),  # Legacy alias
-                # IV Rank (industry standard) - ALWAYS POPULATED
+                # IV Rank (industry standard with bootstrap handling) - ALWAYS POPULATED
                 "iv_rank": enriched_call.get("iv_rank", 50.0),
                 "iv_percentile": enriched_call.get("iv_percentile", 50.0),
                 "iv_rank_source": enriched_call.get("iv_rank_source", "DEFAULT_NEUTRAL"),
+                "iv_rank_confidence": enriched_call.get("iv_rank_confidence", "LOW"),
                 "iv_samples": enriched_call.get("iv_samples", 0),
                 # Liquidity
                 "open_interest": oi,
@@ -1173,6 +1174,7 @@ async def screen_covered_calls(
                     "total": round(quality_result.total_score, 1),
                     "pillars": {k: {"score": round(v.actual_score, 1), "max": v.max_score} 
                                for k, v in quality_result.pillars.items()} if quality_result.pillars else {}
+                },
                 },
                 "market_cap": market_cap,
                 "avg_volume": avg_volume,
