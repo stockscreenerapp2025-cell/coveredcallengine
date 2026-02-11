@@ -119,12 +119,79 @@ PUBLIC_APP_URL=https://your-domain.com
 
 ---
 
+## CCE Volatility & Greeks Correctness - COMPLETED 2026-02-11
+
+### Status: ✅ COMPLETE
+
+### Objective:
+Standardize IV and Delta calculations across all endpoints using industry-standard formulas. Remove inaccurate moneyness-based delta fallbacks. Implement true IV Rank and IV Percentile using historical IV proxy data.
+
+### Key Changes:
+1. ✅ **Delta via Black-Scholes** - All delta calculations now use Black-Scholes formula
+   - Removed moneyness-based delta fallback (accuracy and consistency)
+   - Delta source field: `delta_source = "BS"` or `"BS_PROXY_SIGMA"`
+   - Delta bounds enforced: calls [0, 1], puts [-1, 0]
+   
+2. ✅ **IV Normalization** - Consistent across all endpoints
+   - `iv` = decimal form (e.g., 0.30)
+   - `iv_pct` = percentage form (e.g., 30.0)
+   - Invalid IV (< 0.01 or > 5.0) rejected
+
+3. ✅ **Industry-Standard IV Rank** - True historical calculation
+   - Formula: `iv_rank = 100 * (iv_current - iv_low) / (iv_high - iv_low)`
+   - Requires 20+ historical samples for true calculation
+   - Neutral fallback (50) when insufficient history
+   
+4. ✅ **IV Percentile** - Distribution-based metric
+   - Formula: `iv_percentile = 100 * count(iv_hist < iv_current) / N`
+   
+5. ✅ **IV History Storage** - New collection with TTL
+   - Collection: `iv_history`
+   - Stores daily ATM proxy IV per symbol
+   - TTL: 450 days auto-expiry
+   - Indexes: unique (symbol, trading_date)
+
+### API Response Fields (All endpoints):
+| Field | Type | Description |
+|-------|------|-------------|
+| delta | float | Black-Scholes delta |
+| delta_source | string | "BS", "BS_PROXY_SIGMA", "EXPIRY", "MISSING" |
+| gamma, theta, vega | float | Black-Scholes Greeks |
+| iv | float | IV decimal (0.30 = 30%) |
+| iv_pct | float | IV percentage (30.0) |
+| iv_rank | float | Industry-standard IV Rank (0-100) |
+| iv_percentile | float | IV Percentile (0-100) |
+| iv_rank_source | string | Source/quality indicator |
+| iv_samples | int | Number of historical samples used |
+
+### Files Created:
+- `/backend/services/greeks_service.py` - Black-Scholes Greeks calculation
+- `/backend/services/iv_rank_service.py` - IV history and rank/percentile
+- `/backend/services/option_normalizer.py` - Shared field normalization helper
+- `/backend/tests/test_iv_rank_service.py` - 25 unit tests
+
+### Files Modified:
+- `/backend/routes/screener_snapshot.py` - Custom scan with IV metrics
+- `/backend/routes/admin.py` - IV metrics verification endpoints
+- `/backend/services/precomputed_scans.py` - Black-Scholes delta
+- `/backend/server.py` - IV history index creation at startup
+
+### Admin Verification Endpoints:
+- `GET /api/admin/iv-metrics/check/{symbol}` - Full IV/Greeks sanity check
+- `GET /api/admin/iv-metrics/stats` - IV history collection statistics
+- `GET /api/admin/iv-metrics/completeness-test` - Field completeness validation
+
+### ENV Configuration:
+- `RISK_FREE_RATE` - Optional, default 0.045 (4.5%), bounds [0.001, 0.20]
+
+---
+
 ## Pending Issues (Pre-existing)
 
 | Issue | Priority | Status |
 |-------|----------|--------|
 | Inbound email replies not appearing in support dashboard | P3 | Recurring |
-| LLM rate limiting safeguards | P2 | Not Started |
+| LLM rate limiting safeguards | P2 | Addressed by AI Wallet guard |
 
 ---
 
@@ -133,3 +200,4 @@ PUBLIC_APP_URL=https://your-domain.com
 - (P3) Frontend refactor - break down `Simulator.js` (2,200+ lines)
 - (P4) Backend refactor - split `simulator.py` (2,800+ lines)
 - (P4) Consolidate `precomputed_scans.py` to fully use `data_provider.py`
+
