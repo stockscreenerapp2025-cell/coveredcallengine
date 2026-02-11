@@ -39,11 +39,11 @@ class TestIVRankCalculation:
     """Test IV Rank and Percentile calculations."""
     
     def test_iv_rank_basic(self):
-        """Test basic IV Rank calculation."""
-        # Series: [0.20, 0.25, 0.30, 0.35]
+        """Test basic IV Rank calculation with full history."""
+        # Series: [0.20, 0.25, 0.30, 0.35] x 10 = 40 samples (>= 20, full calculation)
         # Current: 0.30
         # iv_rank = 100 * (0.30 - 0.20) / (0.35 - 0.20) = 66.67
-        series = [0.20, 0.25, 0.30, 0.35] * 10  # Duplicate to meet min samples
+        series = [0.20, 0.25, 0.30, 0.35] * 10
         iv_current = 0.30
         
         result = compute_iv_rank_percentile(iv_current, series)
@@ -54,6 +54,7 @@ class TestIVRankCalculation:
         # Expected: 100 * (0.30 - 0.20) / (0.35 - 0.20) = 66.67
         assert abs(result["iv_rank"] - 66.7) < 0.1
         assert result["iv_rank_source"] == "OBSERVED_ATM_PROXY"
+        assert result["iv_rank_confidence"] in ["MEDIUM", "HIGH"]
     
     def test_iv_percentile_basic(self):
         """Test IV Percentile calculation."""
@@ -86,17 +87,44 @@ class TestIVRankCalculation:
         
         assert result["iv_rank"] == 100.0
     
-    def test_iv_rank_insufficient_history(self):
-        """Test IV Rank with insufficient history (<20 samples)."""
+    def test_iv_rank_too_few_samples(self):
+        """Test IV Rank with too few samples (<5) - pure neutral."""
         series = [0.20, 0.25, 0.30]  # Only 3 samples
         iv_current = 0.25
         
         result = compute_iv_rank_percentile(iv_current, series)
         
-        assert result["iv_rank"] == 50.0  # Default neutral
+        assert result["iv_rank"] == 50.0  # Pure neutral
         assert result["iv_percentile"] == 50.0
-        assert result["iv_rank_source"] == "DEFAULT_NEUTRAL_INSUFFICIENT_HISTORY"
+        assert result["iv_rank_source"] == "DEFAULT_NEUTRAL_TOO_FEW_SAMPLES"
+        assert result["iv_rank_confidence"] == "LOW"
         assert result["iv_samples"] == 3
+    
+    def test_iv_rank_bootstrap_shrinkage(self):
+        """Test IV Rank with bootstrap shrinkage (5-19 samples)."""
+        # 10 samples - should apply shrinkage
+        series = [0.20, 0.25, 0.30, 0.35, 0.40, 0.45, 0.50, 0.55, 0.60, 0.65]
+        iv_current = 0.65  # Raw rank would be 100
+        
+        result = compute_iv_rank_percentile(iv_current, series)
+        
+        # With 10 samples, w = 10/20 = 0.5
+        # shrunk_rank = 50 + 0.5 * (100 - 50) = 75
+        assert result["iv_rank_source"] == "OBSERVED_ATM_PROXY_BOOTSTRAP_SHRUNK"
+        assert result["iv_rank_confidence"] == "MEDIUM"
+        assert result["iv_rank"] == 75.0  # Shrunk from 100 toward 50
+        assert result["iv_samples"] == 10
+    
+    def test_iv_rank_bootstrap_shrinkage_at_low(self):
+        """Test IV Rank bootstrap shrinkage when at low (would be 0)."""
+        series = [0.20, 0.25, 0.30, 0.35, 0.40, 0.45, 0.50, 0.55, 0.60, 0.65]
+        iv_current = 0.20  # Raw rank would be 0
+        
+        result = compute_iv_rank_percentile(iv_current, series)
+        
+        # With 10 samples, w = 10/20 = 0.5
+        # shrunk_rank = 50 + 0.5 * (0 - 50) = 25
+        assert result["iv_rank"] == 25.0  # Shrunk from 0 toward 50
     
     def test_iv_rank_flat_series(self):
         """Test IV Rank with flat series (all same values)."""
@@ -119,6 +147,18 @@ class TestIVRankCalculation:
         # Current below min
         result_low = compute_iv_rank_percentile(0.10, series)
         assert result_low["iv_rank"] == 0.0
+    
+    def test_iv_rank_high_confidence(self):
+        """Test IV Rank confidence levels based on sample count."""
+        # 60+ samples = HIGH confidence
+        series_high = [0.30] * 70
+        result_high = compute_iv_rank_percentile(0.30, series_high)
+        assert result_high["iv_rank_confidence"] == "HIGH"
+        
+        # 20-59 samples = MEDIUM confidence
+        series_med = [0.30] * 30
+        result_med = compute_iv_rank_percentile(0.30, series_med)
+        assert result_med["iv_rank_confidence"] == "MEDIUM"
 
 
 class TestATMProxySelection:
