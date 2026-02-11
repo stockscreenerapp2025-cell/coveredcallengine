@@ -1145,12 +1145,22 @@ async def screen_covered_calls(
                 "otm_pct": round(otm_pct, 2),
                 "roi_pct": round(roi_pct, 2),
                 "roi_annualized": round(roi_annualized, 1),
-                "delta": round(enriched_call.get("delta", 0), 4),
-                "gamma": round(enriched_call.get("gamma_estimate", 0), 4),
-                "theta": round(enriched_call.get("theta_estimate", 0), 4),
-                "vega": round(enriched_call.get("vega_estimate", 0), 4),
-                "implied_volatility": round(enriched_call.get("iv_pct", iv * 100 if iv < 1 else iv), 1),
-                "iv_rank": round(enriched_call.get("iv_rank", 0), 1) if enriched_call.get("iv_rank") else None,
+                # Greeks (Black-Scholes) - ALWAYS POPULATED
+                "delta": enriched_call.get("delta", 0),
+                "delta_source": enriched_call.get("delta_source", "UNKNOWN"),
+                "gamma": enriched_call.get("gamma", 0),
+                "theta": enriched_call.get("theta", 0),
+                "vega": enriched_call.get("vega", 0),
+                # IV fields (standardized) - ALWAYS POPULATED
+                "iv": enriched_call.get("iv", 0),  # Decimal
+                "iv_pct": enriched_call.get("iv_pct", 0),  # Percentage
+                "implied_volatility": enriched_call.get("iv_pct", 0),  # Legacy alias
+                # IV Rank (industry standard) - ALWAYS POPULATED
+                "iv_rank": enriched_call.get("iv_rank", 50.0),
+                "iv_percentile": enriched_call.get("iv_percentile", 50.0),
+                "iv_rank_source": enriched_call.get("iv_rank_source", "DEFAULT_NEUTRAL"),
+                "iv_samples": enriched_call.get("iv_samples", 0),
+                # Liquidity
                 "open_interest": oi,
                 "volume": volume,
                 "is_etf": is_etf,
