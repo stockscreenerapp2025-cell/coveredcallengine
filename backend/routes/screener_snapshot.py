@@ -1175,7 +1175,6 @@ async def screen_covered_calls(
                     "pillars": {k: {"score": round(v.actual_score, 1), "max": v.max_score} 
                                for k, v in quality_result.pillars.items()} if quality_result.pillars else {}
                 },
-                },
                 "market_cap": market_cap,
                 "avg_volume": avg_volume,
                 "analyst_rating": analyst_rating,  # From Yahoo Finance
