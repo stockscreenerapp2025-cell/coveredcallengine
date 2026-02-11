@@ -55,6 +55,12 @@ from services.data_provider import (
     get_cache_metrics
 )
 
+# IV Rank Service for industry-standard IV metrics
+from services.iv_rank_service import (
+    get_iv_metrics_for_symbol,
+    IVMetrics
+)
+
 # Import quote cache for after-hours support
 from services.quote_cache_service import get_quote_cache
 
