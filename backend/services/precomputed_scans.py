@@ -517,15 +517,30 @@ class PrecomputedScanService:
                             if not strike:
                                 continue
                             
-                            # Filter strikes based on moneyness for delta range
-                            moneyness = (strike - current_price) / current_price
+                            # Get IV for Black-Scholes delta calculation
+                            iv_raw = row.get('impliedVolatility', 0)
                             
-                            # Estimate delta based on moneyness
-                            if moneyness <= 0:  # ITM
-                                est_delta = 0.55 + abs(moneyness) * 0.5
-                            else:  # OTM
-                                est_delta = 0.50 - moneyness * 3
-                            est_delta = max(0.10, min(0.90, est_delta))
+                            # Skip if IV is unrealistic
+                            if iv_raw and (iv_raw < 0.01 or iv_raw > 5.0):
+                                iv_raw = 0
+                            
+                            # Calculate delta using Black-Scholes
+                            # (Removed moneyness-based delta fallback for accuracy)
+                            from services.greeks_service import calculate_greeks, normalize_iv_fields
+                            
+                            iv_data = normalize_iv_fields(iv_raw)
+                            T = max(dte, 1) / 365.0
+                            
+                            greeks_result = calculate_greeks(
+                                S=current_price,
+                                K=float(strike),
+                                T=T,
+                                sigma=iv_data["iv"] if iv_data["iv"] > 0 else None,
+                                option_type="call"
+                            )
+                            
+                            est_delta = greeks_result.delta
+                            delta_source = greeks_result.delta_source
                             
                             # Filter by delta
                             if est_delta < delta_min or est_delta > delta_max:
@@ -554,14 +569,9 @@ class PrecomputedScanService:
                             if premium_yield > 0.50:
                                 continue
                             
-                            # Get IV and OI from Yahoo
-                            iv = row.get('impliedVolatility', 0)
+                            # Get OI and volume from Yahoo
                             oi = row.get('openInterest', 0)
                             volume = row.get('volume', 0)
-                            
-                            # Skip if IV is unrealistic
-                            if iv and (iv < 0.01 or iv > 5.0):
-                                iv = 0
                             
                             # Filter low liquidity options
                             if oi and oi > 0 and oi < 10:
@@ -575,10 +585,18 @@ class PrecomputedScanService:
                                 "dte": dte,
                                 "premium": round(float(premium), 2),
                                 "premium_yield": round(premium_yield, 4),
-                                "delta": round(est_delta, 3),
+                                # Greeks (Black-Scholes)
+                                "delta": round(est_delta, 4),
+                                "delta_source": delta_source,
+                                "gamma": greeks_result.gamma,
+                                "theta": greeks_result.theta,
+                                "vega": greeks_result.vega,
+                                # IV fields (standardized)
+                                "iv": iv_data["iv"],
+                                "iv_pct": iv_data["iv_pct"],
+                                # Liquidity
                                 "volume": int(volume) if volume else 0,
                                 "open_interest": int(oi) if oi else 0,
-                                "iv": float(iv) if iv else 0,
                                 "bid": float(bid) if bid else 0,
                                 "ask": float(ask) if ask else 0
                             })
