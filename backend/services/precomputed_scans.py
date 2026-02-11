@@ -1640,17 +1640,6 @@ class PrecomputedScanService:
                                         "volume": r.get("v", 0),
                                         "open_interest": 0
                                     }
-                                        "symbol": symbol,
-                                        "strike": strike,
-                                        "expiry": expiry,
-                                        "dte": dte,
-                                        "premium": close_price,
-                                        "delta": round(est_delta, 3),
-                                        "intrinsic": round(intrinsic, 2),
-                                        "extrinsic": round(extrinsic, 2),
-                                        "itm_pct": round(moneyness * 100, 1),
-                                        "volume": r.get("v", 0),
-                                    }
                         except Exception as e:
                             logger.debug(f"Error fetching LEAP price for {ticker}: {e}")
                         return None
