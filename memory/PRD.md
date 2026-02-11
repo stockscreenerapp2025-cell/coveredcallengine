@@ -177,6 +177,7 @@ Standardize IV and Delta calculations across all endpoints using industry-standa
 - `/backend/routes/simulator.py` - Delegated Greeks to shared service
 - `/backend/routes/admin.py` - IV metrics verification endpoints
 - `/backend/services/precomputed_scans.py` - Black-Scholes delta
+- `/backend/services/snapshot_service.py` - Ingestion + retrieval with B-S Greeks
 - `/backend/server.py` - IV history index creation at startup
 
 ### Endpoints Updated with New Fields:
@@ -185,6 +186,8 @@ Standardize IV and Delta calculations across all endpoints using industry-standa
 3. **GET /api/screener/pmcc** - PMCC scan with Black-Scholes delta
 4. **GET /api/watchlist/** - Watchlist items with best_opportunity containing all fields
 5. **GET /api/simulator/trades** - Simulator trades using shared Greeks service
+6. **GET /api/snapshots/calls/{symbol}** - Dashboard snapshots with B-S Greeks (on-the-fly for legacy data)
+7. **GET /api/snapshots/leaps/{symbol}** - LEAPS snapshots with B-S Greeks
 
 ### Admin Verification Endpoints:
 - `GET /api/admin/iv-metrics/check/{symbol}` - Full IV/Greeks sanity check
