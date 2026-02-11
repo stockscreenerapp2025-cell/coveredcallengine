@@ -23,7 +23,9 @@ sys.path.insert(0, '/app/backend')
 from services.iv_rank_service import (
     compute_iv_atm_proxy,
     compute_iv_rank_percentile,
-    MIN_SAMPLES_FOR_IV_RANK
+    MIN_SAMPLES_TOO_FEW,
+    MIN_SAMPLES_BOOTSTRAP,
+    MIN_SAMPLES_HIGH_CONF
 )
 from services.greeks_service import (
     calculate_greeks,
