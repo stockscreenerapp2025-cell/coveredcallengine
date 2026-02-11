@@ -294,50 +294,95 @@ def compute_iv_rank_percentile(
     - IV Rank = 100 * (iv_current - iv_low) / (iv_high - iv_low)
     - IV Percentile = 100 * count(iv_hist < iv_current) / N
     
+    STAGED BOOTSTRAP BEHAVIOR (to reduce 50/100 clustering):
+    - < 5 samples: return neutral 50 with LOW confidence
+    - 5-19 samples: compute true rank with shrinkage toward 50, MEDIUM confidence
+    - >= 20 samples: true rank/percentile unchanged, HIGH/MEDIUM confidence
+    
+    Shrinkage formula (5-19 samples):
+        w = samples / 20
+        iv_rank = 50 + w * (raw_iv_rank - 50)
+    
     Args:
         iv_current: Current IV proxy value (decimal)
         series: Historical IV values (decimals)
     
     Returns:
-        Dict with iv_rank, iv_percentile, iv_low, iv_high, iv_samples, iv_rank_source
+        Dict with iv_rank, iv_percentile, iv_low, iv_high, iv_samples, 
+        iv_rank_source, iv_rank_confidence, iv_samples_used
     """
     sample_count = len(series)
     
-    # Insufficient history - return neutral
-    if sample_count < MIN_SAMPLES_FOR_IV_RANK:
+    # ==========================================================================
+    # STAGE 1: Too few samples (< 5) - Pure neutral
+    # ==========================================================================
+    if sample_count < MIN_SAMPLES_TOO_FEW:
         return {
             "iv_rank": 50.0,
             "iv_percentile": 50.0,
             "iv_low": 0.0,
             "iv_high": 0.0,
             "iv_samples": sample_count,
-            "iv_rank_source": "DEFAULT_NEUTRAL_INSUFFICIENT_HISTORY"
+            "iv_samples_used": sample_count,
+            "iv_rank_source": "DEFAULT_NEUTRAL_TOO_FEW_SAMPLES",
+            "iv_rank_confidence": "LOW"
         }
     
-    # Calculate statistics
+    # ==========================================================================
+    # Calculate raw statistics (used for both bootstrap and full calculation)
+    # ==========================================================================
     iv_low = min(series)
     iv_high = max(series)
     
-    # IV Rank
+    # Raw IV Rank (industry standard)
     if iv_high == iv_low:
         # Flat series - return neutral
-        iv_rank = 50.0
+        raw_iv_rank = 50.0
     else:
-        iv_rank = 100 * (iv_current - iv_low) / (iv_high - iv_low)
-        iv_rank = max(0.0, min(100.0, iv_rank))
+        raw_iv_rank = 100 * (iv_current - iv_low) / (iv_high - iv_low)
+        raw_iv_rank = max(0.0, min(100.0, raw_iv_rank))
     
-    # IV Percentile
+    # Raw IV Percentile (industry standard)
     count_below = sum(1 for iv in series if iv < iv_current)
-    iv_percentile = 100 * count_below / sample_count
-    iv_percentile = max(0.0, min(100.0, iv_percentile))
+    raw_percentile = 100 * count_below / sample_count
+    raw_percentile = max(0.0, min(100.0, raw_percentile))
+    
+    # ==========================================================================
+    # STAGE 2: Bootstrap phase (5-19 samples) - Shrinkage toward 50
+    # ==========================================================================
+    if sample_count < MIN_SAMPLES_BOOTSTRAP:
+        # Apply shrinkage: pull extreme values toward 50
+        # w = 0.25 at 5 samples, w = 0.95 at 19 samples
+        w = sample_count / MIN_SAMPLES_BOOTSTRAP
+        
+        iv_rank = 50.0 + w * (raw_iv_rank - 50.0)
+        iv_percentile = 50.0 + w * (raw_percentile - 50.0)
+        
+        return {
+            "iv_rank": round(iv_rank, 1),
+            "iv_percentile": round(iv_percentile, 1),
+            "iv_low": round(iv_low, 4),
+            "iv_high": round(iv_high, 4),
+            "iv_samples": sample_count,
+            "iv_samples_used": sample_count,
+            "iv_rank_source": "OBSERVED_ATM_PROXY_BOOTSTRAP_SHRUNK",
+            "iv_rank_confidence": "MEDIUM"
+        }
+    
+    # ==========================================================================
+    # STAGE 3: Full history (>= 20 samples) - True rank/percentile
+    # ==========================================================================
+    confidence = "HIGH" if sample_count >= MIN_SAMPLES_HIGH_CONF else "MEDIUM"
     
     return {
-        "iv_rank": round(iv_rank, 1),
-        "iv_percentile": round(iv_percentile, 1),
+        "iv_rank": round(raw_iv_rank, 1),
+        "iv_percentile": round(raw_percentile, 1),
         "iv_low": round(iv_low, 4),
         "iv_high": round(iv_high, 4),
         "iv_samples": sample_count,
-        "iv_rank_source": "OBSERVED_ATM_PROXY"
+        "iv_samples_used": sample_count,
+        "iv_rank_source": "OBSERVED_ATM_PROXY",
+        "iv_rank_confidence": confidence
     }
 
 
