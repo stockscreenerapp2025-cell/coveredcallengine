@@ -342,7 +342,7 @@ class TestIVRankNeutralFallback:
     """Test IV Rank neutral fallback behavior."""
     
     def test_iv_rank_neutral_when_insufficient_history(self, auth_headers):
-        """Test that IV rank is 50 (neutral) when history is insufficient."""
+        """Test that IV rank is 50 (neutral) when history is insufficient or proxy unavailable."""
         response = requests.get(
             f"{BASE_URL}/api/admin/iv-metrics/check/AAPL",
             headers=auth_headers
@@ -355,11 +355,17 @@ class TestIVRankNeutralFallback:
         iv_rank = iv_metrics.get("iv_rank", 0)
         iv_rank_source = iv_metrics.get("iv_rank_source", "")
         
-        # If samples < 20, should be neutral
-        if iv_samples < 20:
+        # If samples < 20 or no proxy available, should be neutral (50)
+        if iv_samples < 20 or "NO_ATM_PROXY" in iv_rank_source:
             assert iv_rank == 50.0, f"Expected neutral IV rank (50) with {iv_samples} samples, got {iv_rank}"
-            assert "INSUFFICIENT" in iv_rank_source or "DEFAULT" in iv_rank_source, \
-                f"Expected insufficient/default source, got {iv_rank_source}"
+            # Valid neutral sources
+            valid_neutral_sources = [
+                "DEFAULT_NEUTRAL_INSUFFICIENT_HISTORY",
+                "NO_ATM_PROXY_AVAILABLE",
+                "NO_HISTORY_AVAILABLE"
+            ]
+            assert any(s in iv_rank_source for s in ["INSUFFICIENT", "DEFAULT", "NO_ATM", "NO_HISTORY"]), \
+                f"Expected neutral source, got {iv_rank_source}"
 
 
 class TestIVMetricsStats:
