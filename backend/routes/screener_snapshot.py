@@ -1500,13 +1500,29 @@ async def screen_pmcc(
             if bid < 0.10:
                 continue
             
+            # Calculate delta using Black-Scholes for short calls
+            iv_raw = opt.get("implied_volatility", 0)
+            iv_data = normalize_iv_fields(iv_raw)
+            T = max(dte, 1) / 365.0
+            
+            greeks_result = calculate_greeks(
+                S=stock_price,
+                K=strike,
+                T=T,
+                sigma=iv_data["iv"] if iv_data["iv"] > 0 else None,
+                option_type="call"
+            )
+            
             valid_shorts.append({
                 "strike": strike,
                 "expiry": opt.get("expiry", ""),
                 "dte": dte,
                 "bid": bid,  # PMCC uses BID for short leg
                 "ask": ask,
-                "iv": opt.get("implied_volatility", 0),
+                "delta": greeks_result.delta,
+                "delta_source": greeks_result.delta_source,
+                "iv": iv_data["iv"],
+                "iv_pct": iv_data["iv_pct"],
                 "oi": opt.get("open_interest", 0),
                 "contract_symbol": opt.get("contract_ticker", "")
             })
@@ -1524,8 +1540,10 @@ async def screen_pmcc(
             leap_dte = leap["dte"]
             leap_expiry = leap["expiry"]
             leap_delta = leap["delta"]
+            leap_delta_source = leap.get("delta_source", "UNKNOWN")
             leap_bid = leap["bid"]
             leap_iv = leap["iv"]
+            leap_iv_pct = leap.get("iv_pct", leap_iv * 100 if leap_iv < 5 else leap_iv)
             leap_oi = leap["oi"]
             
             for short in valid_shorts:
@@ -1534,7 +1552,10 @@ async def screen_pmcc(
                 short_ask = short["ask"]
                 short_dte = short["dte"]
                 short_expiry = short["expiry"]
+                short_delta = short.get("delta", 0.3)
+                short_delta_source = short.get("delta_source", "UNKNOWN")
                 short_iv = short["iv"]
+                short_iv_pct = short.get("iv_pct", short_iv * 100 if short_iv < 5 else short_iv)
                 short_oi = short["oi"]
                 
                 # PMCC RULE: Short strike must be ABOVE long-leg strike
