@@ -851,6 +851,9 @@ class SnapshotService:
         calls = snapshot.get("calls", [])
         valid_calls = []
         
+        # Import shared Greeks service for on-the-fly computation if needed
+        from services.greeks_service import calculate_greeks, normalize_iv_fields
+        
         for call in calls:
             if not call.get("valid"):
                 continue
@@ -868,8 +871,40 @@ class SnapshotService:
             if bid < min_bid:
                 continue
             
+            # CCE VOLATILITY & GREEKS CORRECTNESS:
+            # If delta_source is missing/UNKNOWN, compute Greeks on the fly
+            # This handles legacy data that was ingested before the update
+            delta = call.get("delta", 0.0)
+            delta_source = call.get("delta_source", "UNKNOWN")
+            gamma = call.get("gamma", 0.0)
+            theta = call.get("theta", 0.0)
+            vega = call.get("vega", 0.0)
+            iv = call.get("iv", 0.0)
+            iv_pct = call.get("iv_pct", 0.0)
+            
+            # If data looks like legacy (delta_source unknown or iv=0 but implied_volatility exists)
+            if delta_source == "UNKNOWN" or (iv == 0 and call.get("implied_volatility", 0) > 0):
+                iv_raw = call.get("implied_volatility", 0)
+                iv_data = normalize_iv_fields(iv_raw)
+                iv = iv_data["iv"]
+                iv_pct = iv_data["iv_pct"]
+                
+                T = max(dte, 1) / 365.0
+                greeks_result = calculate_greeks(
+                    S=stock_price,
+                    K=strike,
+                    T=T,
+                    sigma=iv if iv > 0 else None,
+                    option_type="call"
+                )
+                delta = greeks_result.delta
+                delta_source = greeks_result.delta_source
+                gamma = greeks_result.gamma
+                theta = greeks_result.theta
+                vega = greeks_result.vega
+            
             # Return contract with BID as the premium (SELL leg)
-            # CCE VOLATILITY & GREEKS: All fields populated from ingestion
+            # CCE VOLATILITY & GREEKS: All fields always populated
             valid_calls.append({
                 "contract_symbol": call.get("contract_symbol"),
                 "strike": strike,
@@ -878,18 +913,18 @@ class SnapshotService:
                 "premium": bid,  # BID ONLY for SELL
                 "bid": bid,
                 "ask": call.get("ask", 0),
-                # Greeks (Black-Scholes) - from ingestion
-                "delta": call.get("delta", 0.0),
-                "delta_source": call.get("delta_source", "UNKNOWN"),
-                "gamma": call.get("gamma", 0.0),
-                "theta": call.get("theta", 0.0),
-                "vega": call.get("vega", 0.0),
-                # IV fields (standardized) - from ingestion
-                "iv": call.get("iv", 0.0),
-                "iv_pct": call.get("iv_pct", 0.0),
+                # Greeks (Black-Scholes) - ALWAYS POPULATED
+                "delta": delta,
+                "delta_source": delta_source,
+                "gamma": gamma,
+                "theta": theta,
+                "vega": vega,
+                # IV fields (standardized) - ALWAYS POPULATED
+                "iv": iv,
+                "iv_pct": iv_pct,
                 "implied_volatility": call.get("implied_volatility", 0),  # Legacy
-                # IV Rank (from ingestion - defaults)
-                "iv_rank": call.get("iv_rank", 50.0),
+                # IV Rank (defaults - computed at symbol level in scan phase)
+                "iv_rank": call.get("iv_rank", 50.0) if call.get("iv_rank") is not None else 50.0,
                 "iv_percentile": call.get("iv_percentile", 50.0),
                 "iv_rank_source": call.get("iv_rank_source", "DEFAULT_NEUTRAL"),
                 "iv_samples": call.get("iv_samples", 0),
