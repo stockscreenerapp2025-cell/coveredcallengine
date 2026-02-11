@@ -489,6 +489,10 @@ async def _get_best_opportunity_live_fallback(symbol: str, api_key: str, underly
     """
     FALLBACK: Get opportunity from live data when snapshot unavailable.
     Used only when Layer 3 snapshot data is not available.
+    
+    CCE VOLATILITY & GREEKS CORRECTNESS:
+    - Delta computed via Black-Scholes (not moneyness fallback)
+    - IV Rank computed using industry-standard formula
     """
     try:
         # Fetch options chain (Yahoo primary with IV/OI, Polygon backup)
@@ -499,6 +503,19 @@ async def _get_best_opportunity_live_fallback(symbol: str, api_key: str, underly
         if not options:
             return None
         
+        # Compute IV metrics for the symbol
+        try:
+            iv_metrics = await get_iv_metrics_for_symbol(
+                db=db,
+                symbol=symbol,
+                options=options,
+                stock_price=underlying_price,
+                store_history=True
+            )
+        except Exception as e:
+            logging.warning(f"Could not compute IV metrics for {symbol}: {e}")
+            iv_metrics = None
+        
         best_opp = None
         best_roi = 0
         
@@ -508,7 +525,7 @@ async def _get_best_opportunity_live_fallback(symbol: str, api_key: str, underly
             dte = opt.get("dte", 0)
             premium = opt.get("close", 0) or opt.get("bid", 0)
             open_interest = opt.get("open_interest", 0) or 0
-            iv = opt.get("implied_volatility", 0) or 0
+            iv_raw = opt.get("implied_volatility", 0) or 0
             
             if premium <= 0 or strike <= 0 or dte < 1:
                 continue
@@ -529,33 +546,28 @@ async def _get_best_opportunity_live_fallback(symbol: str, api_key: str, underly
             if roi_pct > best_roi and roi_pct >= 0.3:
                 best_roi = roi_pct
                 
-                # Estimate delta based on moneyness
-                strike_pct_diff = ((strike - underlying_price) / underlying_price) * 100
-                if strike_pct_diff <= 0:
-                    estimated_delta = 0.55 - (abs(strike_pct_diff) * 0.02)
-                else:
-                    estimated_delta = 0.50 - (strike_pct_diff * 0.03)
-                estimated_delta = max(0.15, min(0.60, estimated_delta))
+                # Normalize IV
+                iv_data = normalize_iv_fields(iv_raw)
                 
-                if iv == 0:
-                    iv = 0.30
+                # Calculate delta using Black-Scholes (not moneyness fallback)
+                T = max(dte, 1) / 365.0
+                greeks_result = calculate_greeks(
+                    S=underlying_price,
+                    K=strike,
+                    T=T,
+                    sigma=iv_data["iv"] if iv_data["iv"] > 0 else None,
+                    option_type="call"
+                )
                 
                 option_type = "Weekly" if dte <= 14 else "Monthly"
-                
-                # Convert IV to percentage
-                iv_pct = iv * 100 if iv < 5 else iv
-                
-                # IV Rank (Layer 3 standard)
-                iv_rank = min(100, max(0, (iv_pct - 15) / 65 * 100)) if iv_pct > 0 else 0
+                annualized_roi = roi_pct * (365 / dte) if dte > 0 else 0
                 
                 # Calculate AI Score
                 roi_score = min(roi_pct * 15, 40)
-                iv_score = min(iv_pct / 5, 20)
-                delta_score = max(0, 20 - abs(estimated_delta - 0.35) * 50)
+                iv_score = min(iv_data["iv_pct"] / 5, 20) if iv_data["iv_pct"] > 0 else 10
+                delta_score = max(0, 20 - abs(greeks_result.delta - 0.35) * 50)
                 liquidity_score = 10 if open_interest >= 500 else 5 if open_interest >= 100 else 2
                 ai_score = round(roi_score + iv_score + delta_score + liquidity_score, 1)
-                
-                annualized_roi = roi_pct * (365 / dte) if dte > 0 else 0
                 
                 best_opp = {
                     "strike": strike,
@@ -563,14 +575,28 @@ async def _get_best_opportunity_live_fallback(symbol: str, api_key: str, underly
                     "dte": dte,
                     "premium": round(premium, 2),
                     "bid": round(premium, 2),
-                    "delta": round(estimated_delta, 4),
-                    "implied_volatility": round(iv_pct, 1),
-                    "iv": round(iv_pct, 1),
-                    "iv_rank": round(iv_rank, 0),
+                    # Greeks (Black-Scholes) - ALWAYS POPULATED
+                    "delta": greeks_result.delta,
+                    "delta_source": greeks_result.delta_source,
+                    "gamma": greeks_result.gamma,
+                    "theta": greeks_result.theta,
+                    "vega": greeks_result.vega,
+                    # IV fields (standardized) - ALWAYS POPULATED
+                    "iv": iv_data["iv"],
+                    "iv_pct": iv_data["iv_pct"],
+                    "implied_volatility": iv_data["iv_pct"],  # Legacy alias
+                    # IV Rank (industry standard) - ALWAYS POPULATED
+                    "iv_rank": iv_metrics.iv_rank if iv_metrics else 50.0,
+                    "iv_percentile": iv_metrics.iv_percentile if iv_metrics else 50.0,
+                    "iv_rank_source": iv_metrics.iv_rank_source if iv_metrics else "DEFAULT_NEUTRAL",
+                    "iv_samples": iv_metrics.iv_samples if iv_metrics else 0,
+                    # Economics
                     "roi_pct": round(roi_pct, 2),
                     "annualized_roi_pct": round(annualized_roi, 1),
+                    # Liquidity
                     "volume": opt.get("volume", 0),
                     "open_interest": open_interest,
+                    # Metadata
                     "type": option_type,
                     "ai_score": ai_score,
                     "source": "live",
