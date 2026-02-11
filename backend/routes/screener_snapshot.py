@@ -1003,8 +1003,8 @@ async def screen_covered_calls(
             if not is_valid:
                 continue
             
-            # LAYER 3: Enrich with Greeks and ROI
-            enriched_call = enrich_option_greeks(opt, stock_price)
+            # LAYER 3: Enrich with Greeks and ROI (using Black-Scholes + IV metrics)
+            enriched_call = enrich_option_greeks(opt, stock_price, iv_metrics)
             
             # Use enriched ROI calculation
             roi_pct = enriched_call.get("roi_pct", premium_yield)
