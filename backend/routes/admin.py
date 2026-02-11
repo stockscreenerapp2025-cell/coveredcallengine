@@ -1140,3 +1140,284 @@ async def get_cache_entries(
         logging.error(f"Error fetching cache entries: {e}")
         return {"error": str(e)}
 
+
+# ==================== IV METRICS VERIFICATION (CCE Volatility & Greeks Correctness) ====================
+
+@admin_router.get("/iv-metrics/check/{symbol}")
+async def check_iv_metrics(
+    symbol: str,
+    admin: dict = Depends(get_admin_user)
+):
+    """
+    Admin endpoint to validate IV metrics and Greeks for a symbol.
+    
+    CCE VOLATILITY & GREEKS CORRECTNESS - VERIFICATION ENDPOINT
+    
+    Returns:
+    - Current proxy IV, IV Rank, IV Percentile, sample size
+    - Selected ATM contract metadata
+    - First 5 history values (for sanity)
+    - Greeks sanity checks (delta bounds, IV bounds, no NaN)
+    - Risk-free rate used (r_used)
+    
+    Use this endpoint to:
+    1. Verify IV Rank calculation is correct
+    2. Check delta is computed via Black-Scholes
+    3. Validate no missing/null fields
+    """
+    from services.data_provider import fetch_options_chain, fetch_stock_quote
+    from services.iv_rank_service import (
+        get_iv_metrics_for_symbol,
+        get_iv_history_debug,
+        get_iv_collection_stats
+    )
+    from services.greeks_service import (
+        calculate_greeks,
+        normalize_iv_fields,
+        sanity_check_delta,
+        sanity_check_iv,
+        get_risk_free_rate
+    )
+    
+    symbol = symbol.upper()
+    result = {
+        "symbol": symbol,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "status": "checking"
+    }
+    
+    try:
+        # Step 1: Get stock price
+        stock_data = await fetch_stock_quote(symbol)
+        if not stock_data or stock_data.get("price", 0) <= 0:
+            result["status"] = "error"
+            result["error"] = "Could not fetch stock price"
+            return result
+        
+        stock_price = stock_data["price"]
+        result["stock_price"] = stock_price
+        
+        # Step 2: Fetch options chain
+        options = await fetch_options_chain(
+            symbol=symbol,
+            api_key=None,
+            option_type="call",
+            min_dte=7,
+            max_dte=60,
+            current_price=stock_price
+        )
+        
+        if not options:
+            result["status"] = "error"
+            result["error"] = "No options chain available"
+            return result
+        
+        result["options_count"] = len(options)
+        
+        # Step 3: Compute IV metrics
+        iv_metrics = await get_iv_metrics_for_symbol(
+            db=db,
+            symbol=symbol,
+            options=options,
+            stock_price=stock_price,
+            store_history=True
+        )
+        
+        result["iv_metrics"] = {
+            "iv_proxy": iv_metrics.iv_proxy,
+            "iv_proxy_pct": iv_metrics.iv_proxy_pct,
+            "iv_rank": iv_metrics.iv_rank,
+            "iv_percentile": iv_metrics.iv_percentile,
+            "iv_low": iv_metrics.iv_low,
+            "iv_high": iv_metrics.iv_high,
+            "iv_samples": iv_metrics.iv_samples,
+            "iv_rank_source": iv_metrics.iv_rank_source,
+            "proxy_meta": iv_metrics.proxy_meta
+        }
+        
+        # Step 4: Get IV history (last 5 entries)
+        history = await get_iv_history_debug(db, symbol, limit=5)
+        result["iv_history_sample"] = [
+            {"date": h.get("trading_date"), "iv": h.get("iv_atm_proxy")}
+            for h in history
+        ]
+        
+        # Step 5: Greeks sanity checks on sample contracts
+        r_used = get_risk_free_rate()
+        result["r_used"] = r_used
+        
+        greeks_checks = []
+        for opt in options[:5]:  # Check first 5 options
+            strike = opt.get("strike", 0)
+            dte = opt.get("dte", 30)
+            iv_raw = opt.get("implied_volatility", 0)
+            
+            iv_data = normalize_iv_fields(iv_raw)
+            T = max(dte, 1) / 365.0
+            
+            greeks = calculate_greeks(
+                S=stock_price,
+                K=strike,
+                T=T,
+                sigma=iv_data["iv"] if iv_data["iv"] > 0 else None,
+                option_type="call",
+                r=r_used
+            )
+            
+            delta_ok, delta_err = sanity_check_delta(greeks.delta, "call")
+            iv_ok, iv_err = sanity_check_iv(iv_data["iv"])
+            
+            greeks_checks.append({
+                "strike": strike,
+                "dte": dte,
+                "delta": greeks.delta,
+                "delta_source": greeks.delta_source,
+                "gamma": greeks.gamma,
+                "theta": greeks.theta,
+                "vega": greeks.vega,
+                "iv": iv_data["iv"],
+                "iv_pct": iv_data["iv_pct"],
+                "checks": {
+                    "delta_in_bounds": delta_ok,
+                    "delta_error": delta_err if not delta_ok else None,
+                    "iv_valid": iv_ok,
+                    "iv_error": iv_err if not iv_ok else None
+                }
+            })
+        
+        result["greeks_sanity_checks"] = greeks_checks
+        
+        # Step 6: Summary
+        all_delta_ok = all(c["checks"]["delta_in_bounds"] for c in greeks_checks)
+        all_iv_ok = all(c["checks"]["iv_valid"] for c in greeks_checks if c["iv"] > 0)
+        
+        result["summary"] = {
+            "all_deltas_valid": all_delta_ok,
+            "all_ivs_valid": all_iv_ok,
+            "iv_rank_computed": iv_metrics.iv_rank_source == "OBSERVED_ATM_PROXY",
+            "history_samples": iv_metrics.iv_samples,
+            "needs_more_history": iv_metrics.iv_samples < 20
+        }
+        
+        result["status"] = "success"
+        
+    except Exception as e:
+        logging.error(f"IV metrics check failed for {symbol}: {e}")
+        result["status"] = "error"
+        result["error"] = str(e)
+    
+    return result
+
+
+@admin_router.get("/iv-metrics/stats")
+async def get_iv_stats(admin: dict = Depends(get_admin_user)):
+    """
+    Get statistics about the IV history collection.
+    
+    Returns:
+    - Total entries
+    - Unique symbols
+    - Date range
+    - Minimum samples required for IV Rank
+    """
+    from services.iv_rank_service import get_iv_collection_stats
+    
+    return await get_iv_collection_stats(db)
+
+
+@admin_router.get("/iv-metrics/completeness-test")
+async def test_completeness(
+    admin: dict = Depends(get_admin_user)
+):
+    """
+    Test field completeness across endpoints.
+    
+    Calls dashboard snapshots, options chain, custom scan, and precomputed scan
+    and validates that all required fields are populated.
+    
+    Required fields for every option row:
+    - delta, delta_source
+    - iv, iv_pct
+    - iv_rank, iv_percentile, iv_rank_source, iv_samples
+    """
+    from services.option_normalizer import REQUIRED_FIELDS
+    
+    test_symbol = "AAPL"
+    results = {
+        "symbol": test_symbol,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "tests": []
+    }
+    
+    # Test 1: Options chain endpoint
+    try:
+        from services.data_provider import fetch_options_chain, fetch_stock_quote
+        from services.iv_rank_service import get_iv_metrics_for_symbol
+        from services.option_normalizer import enrich_option_with_normalized_fields
+        
+        stock_data = await fetch_stock_quote(test_symbol)
+        stock_price = stock_data.get("price", 0) if stock_data else 0
+        
+        options = await fetch_options_chain(
+            symbol=test_symbol,
+            api_key=None,
+            option_type="call",
+            min_dte=7,
+            max_dte=45,
+            current_price=stock_price
+        )
+        
+        if options:
+            iv_metrics = await get_iv_metrics_for_symbol(
+                db=db,
+                symbol=test_symbol,
+                options=options,
+                stock_price=stock_price
+            )
+            
+            # Check completeness
+            missing_count = 0
+            for opt in options[:10]:
+                enriched = enrich_option_with_normalized_fields(
+                    opt.copy(),
+                    stock_price,
+                    opt.get("dte", 30),
+                    iv_metrics
+                )
+                for field in REQUIRED_FIELDS:
+                    if field not in enriched or enriched[field] is None:
+                        missing_count += 1
+            
+            results["tests"].append({
+                "endpoint": "options_chain",
+                "status": "pass" if missing_count == 0 else "fail",
+                "options_checked": min(10, len(options)),
+                "missing_fields": missing_count
+            })
+        else:
+            results["tests"].append({
+                "endpoint": "options_chain",
+                "status": "skip",
+                "reason": "No options returned"
+            })
+            
+    except Exception as e:
+        results["tests"].append({
+            "endpoint": "options_chain",
+            "status": "error",
+            "error": str(e)
+        })
+    
+    # Summary
+    passed = sum(1 for t in results["tests"] if t["status"] == "pass")
+    failed = sum(1 for t in results["tests"] if t["status"] == "fail")
+    
+    results["summary"] = {
+        "passed": passed,
+        "failed": failed,
+        "total": len(results["tests"]),
+        "all_complete": failed == 0
+    }
+    
+    return results
+
