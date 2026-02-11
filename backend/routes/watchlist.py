@@ -343,6 +343,10 @@ async def _get_best_opportunity(symbol: str, api_key: str, underlying_price: flo
     
     LAYER 3 COMPLIANT: Uses snapshot data from the screener, NOT live data.
     This ensures data consistency across all pages.
+    
+    CCE VOLATILITY & GREEKS CORRECTNESS:
+    - Delta computed via Black-Scholes (not moneyness fallback)
+    - IV Rank computed using industry-standard formula
     """
     try:
         # Import snapshot service to use Layer 1/2/3 data
@@ -354,7 +358,7 @@ async def _get_best_opportunity(symbol: str, api_key: str, underlying_price: flo
         stock_snapshot, stock_error = await snapshot_service.get_stock_snapshot(symbol)
         if stock_error or not stock_snapshot:
             # Fallback: fetch fresh data but mark as non-snapshot
-            return await _get_best_opportunity_live(symbol, api_key, underlying_price)
+            return await _get_best_opportunity_live(symbol, underlying_price)
         
         # Use snapshot price as authoritative
         stock_price = stock_snapshot.get("stock_close_price") or underlying_price
@@ -370,7 +374,20 @@ async def _get_best_opportunity(symbol: str, api_key: str, underlying_price: flo
         )
         
         if call_error or not calls:
-            return await _get_best_opportunity_live(symbol, api_key, underlying_price)
+            return await _get_best_opportunity_live(symbol, underlying_price)
+        
+        # Compute IV metrics for the symbol
+        try:
+            iv_metrics = await get_iv_metrics_for_symbol(
+                db=db,
+                symbol=symbol,
+                options=calls,
+                stock_price=stock_price,
+                store_history=True
+            )
+        except Exception as e:
+            logging.warning(f"Could not compute IV metrics for {symbol}: {e}")
+            iv_metrics = None
         
         best_opp = None
         best_score = 0
@@ -382,11 +399,23 @@ async def _get_best_opportunity(symbol: str, api_key: str, underlying_price: flo
             premium = call.get("bid", 0) or call.get("premium", 0)  # BID only
             ask = call.get("ask", 0)
             open_interest = call.get("open_interest", 0)
-            iv = call.get("implied_volatility", 0)
-            delta = call.get("delta", 0)
+            iv_raw = call.get("implied_volatility", 0)
             
             if premium <= 0 or strike <= 0 or dte < 1:
                 continue
+            
+            # Normalize IV
+            iv_data = normalize_iv_fields(iv_raw)
+            
+            # Calculate delta using Black-Scholes (not moneyness fallback)
+            T = max(dte, 1) / 365.0
+            greeks_result = calculate_greeks(
+                S=stock_price,
+                K=strike,
+                T=T,
+                sigma=iv_data["iv"] if iv_data["iv"] > 0 else None,
+                option_type="call"
+            )
             
             # Calculate ROI
             roi_pct = (premium / stock_price) * 100 if stock_price > 0 else 0
@@ -395,27 +424,13 @@ async def _get_best_opportunity(symbol: str, api_key: str, underlying_price: flo
             if roi_pct < 0.3:  # Minimum 0.3% yield
                 continue
             
-            # Estimate delta if not provided
-            if delta == 0 and stock_price > 0 and strike > 0:
-                moneyness = (stock_price - strike) / stock_price
-                if moneyness < 0:  # OTM
-                    delta = max(0.05, 0.50 + moneyness * 2)
-                else:  # ITM
-                    delta = min(0.95, 0.50 + moneyness * 2)
-            
             # Determine type: Weekly (<=14 DTE) or Monthly
             option_type = "Weekly" if dte <= 14 else "Monthly"
             
-            # IV in percentage form (Layer 3 standard)
-            iv_pct = iv * 100 if iv > 0 and iv < 5 else iv
-            
-            # IV Rank calculation (Layer 3 standard: 15-80% range)
-            iv_rank = min(100, max(0, (iv_pct - 15) / 65 * 100)) if iv_pct > 0 else 0
-            
             # Calculate AI Score
             roi_score = min(roi_pct * 15, 40)
-            iv_score = min(iv_pct / 5, 20) if iv_pct > 0 else 10
-            delta_score = max(0, 20 - abs(delta - 0.35) * 50)
+            iv_score = min(iv_data["iv_pct"] / 5, 20) if iv_data["iv_pct"] > 0 else 10
+            delta_score = max(0, 20 - abs(greeks_result.delta - 0.35) * 50)
             liquidity_score = 10 if open_interest >= 500 else 5 if open_interest >= 100 else 2
             
             ai_score = round(roi_score + iv_score + delta_score + liquidity_score, 1)
@@ -436,10 +451,22 @@ async def _get_best_opportunity(symbol: str, api_key: str, underlying_price: flo
                     "bid": round(premium, 2),
                     "ask": round(ask, 2) if ask else None,
                     "spread_pct": round(spread_pct, 2),
-                    "delta": round(delta, 4),
-                    "implied_volatility": round(iv_pct, 1),  # Percentage form
-                    "iv": round(iv_pct, 1),  # Legacy field for backwards compat
-                    "iv_rank": round(iv_rank, 0),
+                    # Greeks (Black-Scholes) - ALWAYS POPULATED
+                    "delta": greeks_result.delta,
+                    "delta_source": greeks_result.delta_source,
+                    "gamma": greeks_result.gamma,
+                    "theta": greeks_result.theta,
+                    "vega": greeks_result.vega,
+                    # IV fields (standardized) - ALWAYS POPULATED
+                    "iv": iv_data["iv"],
+                    "iv_pct": iv_data["iv_pct"],
+                    "implied_volatility": iv_data["iv_pct"],  # Legacy alias
+                    # IV Rank (industry standard) - ALWAYS POPULATED
+                    "iv_rank": iv_metrics.iv_rank if iv_metrics else 50.0,
+                    "iv_percentile": iv_metrics.iv_percentile if iv_metrics else 50.0,
+                    "iv_rank_source": iv_metrics.iv_rank_source if iv_metrics else "DEFAULT_NEUTRAL",
+                    "iv_samples": iv_metrics.iv_samples if iv_metrics else 0,
+                    # Liquidity
                     "volume": call.get("volume", 0),
                     "open_interest": open_interest,
                     # ECONOMICS fields (Layer 3 contract)
@@ -455,7 +482,7 @@ async def _get_best_opportunity(symbol: str, api_key: str, underlying_price: flo
         return best_opp
     except Exception as e:
         logging.error(f"Error getting opportunity for {symbol} from snapshot: {e}")
-        return await _get_best_opportunity_live_fallback(symbol, api_key, underlying_price)
+        return await _get_best_opportunity_live(symbol, underlying_price)
 
 
 async def _get_best_opportunity_live_fallback(symbol: str, api_key: str, underlying_price: float) -> dict:
