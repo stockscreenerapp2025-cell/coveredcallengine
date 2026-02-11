@@ -263,10 +263,15 @@ class TestIVNormalization:
         assert result_low["iv"] == 0.0
         assert result_low["iv_valid"] == False
         
-        # Too high (> 5.0 is converted to decimal as percentage)
-        # 6.0 -> 0.06 which is still invalid
+        # Values > 5.0 are treated as percentages and converted to decimal
+        # 6.0 -> 0.06 (6%) which IS valid
         result_high = normalize_iv_fields(6.0)
-        assert result_high["iv_valid"] == False
+        assert result_high["iv"] == 0.06
+        assert result_high["iv_valid"] == True  # This is now valid (6% IV)
+        
+        # Really invalid: too high even after conversion (>500% -> >5.0 decimal)
+        result_very_high = normalize_iv_fields(600.0)  # 600% -> 6.0 decimal
+        assert result_very_high["iv_valid"] == False
         
         # None
         result_none = normalize_iv_fields(None)
