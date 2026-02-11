@@ -90,51 +90,32 @@ def calculate_call_price(S, K, T, r, sigma):
 
 def calculate_greeks(S, K, T, r, sigma):
     """
-    Calculate option Greeks
+    Calculate option Greeks using shared greeks_service.
+    
+    CCE VOLATILITY & GREEKS CORRECTNESS:
+    This function now delegates to the shared greeks_service for consistency.
+    
     S: Current stock price
     K: Strike price
     T: Time to expiration (in years)
-    r: Risk-free rate (default 5%)
-    sigma: Implied volatility
+    r: Risk-free rate (default from env or 4.5%)
+    sigma: Implied volatility (decimal form)
     
-    Returns: dict with delta, gamma, theta, vega
+    Returns: dict with delta, gamma, theta, vega, option_value
     """
-    if T <= 0 or sigma <= 0:
-        # At expiry or invalid inputs
-        delta = 1.0 if S > K else 0.0
-        return {
-            "delta": delta,
-            "gamma": 0,
-            "theta": 0,
-            "vega": 0,
-            "option_value": max(0, S - K)
-        }
+    # Delegate to shared Greeks service
+    greeks_result = calculate_greeks_bs(
+        S=S, K=K, T=T, sigma=sigma, option_type="call", r=r
+    )
     
-    d1, d2 = calculate_d1_d2(S, K, T, r, sigma)
-    if d1 is None:
-        return {"delta": 0, "gamma": 0, "theta": 0, "vega": 0, "option_value": 0}
-    
-    # Delta
-    delta = norm_cdf(d1)
-    
-    # Gamma
-    gamma = norm_pdf(d1) / (S * sigma * math.sqrt(T))
-    
-    # Theta (per day)
-    theta = (-(S * norm_pdf(d1) * sigma) / (2 * math.sqrt(T)) - r * K * math.exp(-r * T) * norm_cdf(d2)) / 365
-    
-    # Vega (per 1% change in IV)
-    vega = S * math.sqrt(T) * norm_pdf(d1) / 100
-    
-    # Option value
-    option_value = calculate_call_price(S, K, T, r, sigma)
-    
+    # Return in legacy format for backward compatibility
     return {
-        "delta": round(delta, 4),
-        "gamma": round(gamma, 6),
-        "theta": round(theta, 4),
-        "vega": round(vega, 4),
-        "option_value": round(option_value, 2)
+        "delta": greeks_result.delta,
+        "gamma": greeks_result.gamma,
+        "theta": greeks_result.theta,
+        "vega": greeks_result.vega,
+        "option_value": greeks_result.option_value,
+        "delta_source": greeks_result.delta_source  # New field
     }
 
 
