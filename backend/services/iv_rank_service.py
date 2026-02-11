@@ -486,7 +486,7 @@ async def get_iv_metrics_quick(
         symbol: Stock symbol
     
     Returns:
-        Dict with iv_rank, iv_percentile, iv_samples, iv_rank_source
+        Dict with iv_rank, iv_percentile, iv_samples, iv_rank_source, iv_rank_confidence
     """
     series = await get_iv_history_series(db, symbol.upper())
     
@@ -499,7 +499,9 @@ async def get_iv_metrics_quick(
             "iv_low": 0.0,
             "iv_high": 0.0,
             "iv_samples": 0,
-            "iv_rank_source": "NO_HISTORY_AVAILABLE"
+            "iv_samples_used": 0,
+            "iv_rank_source": "NO_HISTORY_AVAILABLE",
+            "iv_rank_confidence": "LOW"
         }
     
     # Use most recent as current
