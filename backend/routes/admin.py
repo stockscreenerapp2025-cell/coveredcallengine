@@ -1231,16 +1231,24 @@ async def check_iv_metrics(
             "iv_low": iv_metrics.iv_low,
             "iv_high": iv_metrics.iv_high,
             "iv_samples": iv_metrics.iv_samples,
+            "iv_samples_used": iv_metrics.iv_samples_used,
             "iv_rank_source": iv_metrics.iv_rank_source,
-            "proxy_meta": iv_metrics.proxy_meta
+            "iv_rank_confidence": iv_metrics.iv_rank_confidence,
+            "proxy_meta": iv_metrics.proxy_meta,
+            "bootstrap_info": {
+                "is_bootstrapping": iv_metrics.iv_samples < 20,
+                "shrinkage_applied": 5 <= iv_metrics.iv_samples < 20,
+                "weight_if_shrunk": round(iv_metrics.iv_samples / 20, 2) if 5 <= iv_metrics.iv_samples < 20 else None
+            }
         }
         
-        # Step 4: Get IV history (last 5 entries)
-        history = await get_iv_history_debug(db, symbol, limit=5)
+        # Step 4: Get IV history (last 10 entries for better debugging)
+        history = await get_iv_history_debug(db, symbol, limit=10)
         result["iv_history_sample"] = [
-            {"date": h.get("trading_date"), "iv": h.get("iv_atm_proxy")}
+            {"date": h.get("trading_date"), "iv": round(h.get("iv_atm_proxy", 0), 4)}
             for h in history
         ]
+        result["history_excluded_today"] = True  # Rank was computed BEFORE storing today
         
         # Step 5: Greeks sanity checks on sample contracts
         r_used = get_risk_free_rate()
