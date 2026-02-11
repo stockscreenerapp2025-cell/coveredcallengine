@@ -1,0 +1,93 @@
+{
+  "summary": "CCE Volatility & Greeks Correctness - All tests passed. 25/25 unit tests + 17/17 API tests passed. Black-Scholes delta calculation working correctly, IV fields normalized, IV Rank with neutral fallback implemented.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {
+        "endpoint": "GET /api/admin/iv-metrics/check/{symbol}",
+        "issue": "IV proxy returns 0 with 'NO_ATM_PROXY_AVAILABLE' when no options in DTE range 25-60 days have valid IV. This is expected behavior but may need more history data to compute true IV Rank.",
+        "priority": "LOW"
+      }
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iv_rank_service.py",
+    "/app/backend/tests/test_iv_greeks_api.py",
+    "/app/test_reports/pytest/pytest_iv_greeks_api.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "✓ Delta computed via Black-Scholes (delta_source='BS' or 'BS_PROXY_SIGMA'), moneyness fallback removed",
+    "✓ Delta sanity: Call delta in [0, 1], no NaN values detected",
+    "✓ IV fields normalized: iv (decimal e.g., 0.6152), iv_pct (percentage e.g., 61.5), iv_pct == iv * 100",
+    "✓ IV Rank fields present: iv_rank, iv_percentile, iv_rank_source, iv_samples on all trades",
+    "✓ IV Rank neutral fallback (50) with source='NO_ATM_PROXY_AVAILABLE' when history insufficient",
+    "✓ Risk-free rate (r_used=0.045) returned in admin endpoint",
+    "✓ Greeks sanity checks validate delta bounds and IV validity",
+    "✓ short_call object contains all required fields (delta, delta_source, iv, iv_pct, iv_rank, iv_percentile, iv_rank_source, iv_samples)",
+    "✓ No NaN values in any numeric fields across all tested trades"
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iv_greeks_api.py"
+  ],
+  "success_rate": {
+    "backend": "100% (42/42 tests passed - 25 unit + 17 API)"
+  },
+  "test_credentials": {
+    "email": "admin@premiumhunter.com",
+    "password": "admin123"
+  },
+  "seed_data_creation": "None - IV history collection is empty (new feature), will populate over time as scans run",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "CCE Volatility & Greeks Correctness feature fully implemented and tested. Key findings: 1) Black-Scholes delta calculation working (delta_source='BS'), 2) IV fields normalized correctly (iv decimal, iv_pct percentage), 3) IV Rank returns neutral (50) when history insufficient with appropriate source field, 4) All required fields populated in both flat response and short_call object, 5) IV history collection (iv_history) is empty - will populate as scans run over time.",
+  "api_verification": {
+    "GET /api/admin/iv-metrics/check/AAPL": {
+      "status": "200 OK",
+      "fields_verified": ["iv_proxy", "iv_rank", "iv_percentile", "iv_samples", "iv_rank_source", "greeks_sanity_checks", "r_used"],
+      "delta_source": "BS (Black-Scholes)",
+      "iv_rank_source": "NO_ATM_PROXY_AVAILABLE (neutral fallback)"
+    },
+    "GET /api/admin/iv-metrics/stats": {
+      "status": "200 OK",
+      "fields_verified": ["total_entries", "unique_symbols", "min_samples_required"],
+      "min_samples_required": 20
+    },
+    "GET /api/screener/covered-calls": {
+      "status": "200 OK",
+      "results_count": 14,
+      "fields_verified": ["delta", "delta_source", "iv", "iv_pct", "iv_rank", "iv_percentile", "iv_rank_source", "iv_samples"],
+      "sample_trade": {
+        "symbol": "INTC",
+        "delta": 0.3458,
+        "delta_source": "BS",
+        "iv": 0.6152,
+        "iv_pct": 61.5,
+        "iv_rank": 50,
+        "iv_rank_source": "NO_ATM_PROXY_AVAILABLE"
+      }
+    }
+  },
+  "unit_tests": {
+    "test_file": "/app/backend/tests/test_iv_rank_service.py",
+    "tests_passed": 25,
+    "tests_failed": 0,
+    "coverage": [
+      "TestIVRankCalculation: 7 tests - IV Rank formula, percentile, bounds, clamping",
+      "TestATMProxySelection: 4 tests - ATM proxy selection, DTE preference, filtering",
+      "TestGreeksService: 5 tests - Delta bounds, proxy sigma, expiry, no NaN",
+      "TestIVNormalization: 3 tests - Decimal/percentage normalization, validation",
+      "TestSanityChecks: 3 tests - Delta and IV sanity checks",
+      "TestRiskFreeRate: 3 tests - Default rate, env var, bounds validation"
+    ]
+  },
+  "mocked_apis": {
+    "has_mocked_apis": false,
+    "note": "All APIs use live Yahoo Finance data"
+  }
+}
