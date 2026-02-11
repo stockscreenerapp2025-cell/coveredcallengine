@@ -19,6 +19,9 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from utils.auth import get_current_user
 from services.data_provider import fetch_stock_quote, fetch_options_chain, calculate_dte
+from services.greeks_service import calculate_greeks, normalize_iv_fields
+from services.iv_rank_service import get_iv_metrics_for_symbol
+from database import db
 
 options_router = APIRouter(tags=["Options"])
 
