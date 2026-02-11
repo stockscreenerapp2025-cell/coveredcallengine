@@ -602,17 +602,22 @@ class SnapshotService:
         Process a single option contract row.
         
         CCE MASTER ARCHITECTURE - LAYER 1 COMPLIANT
+        CCE VOLATILITY & GREEKS CORRECTNESS - Updated to use Black-Scholes
         
         MANDATORY FIELDS IN OUTPUT:
         - bid, ask (SEPARATE - never averaged)
         - open_interest, volume
-        - implied_volatility
-        - delta (estimated for filtering)
-        - iv_rank (placeholder if not available from source)
+        - implied_volatility, iv, iv_pct
+        - delta, delta_source (Black-Scholes computed)
+        - gamma, theta, vega (Black-Scholes computed)
+        - iv_rank, iv_percentile, iv_rank_source, iv_samples
         
         CRITICAL: Stores BID and ASK separately for enforcement in scan phase.
         Rejects contracts with missing/invalid BID.
         """
+        # Import shared Greeks service for Black-Scholes calculations
+        from services.greeks_service import calculate_greeks, normalize_iv_fields
+        
         strike = row.get('strike', 0)
         bid = row.get('bid', 0) if not (hasattr(row.get('bid'), '__iter__') and len(row.get('bid', [])) == 0) else 0
         ask = row.get('ask', 0) if not (hasattr(row.get('ask'), '__iter__') and len(row.get('ask', [])) == 0) else 0
@@ -640,7 +645,21 @@ class SnapshotService:
         if isinstance(last_price, float) and math.isnan(last_price):
             last_price = 0
         
+        # Normalize IV to decimal and percentage forms
+        iv_data = normalize_iv_fields(implied_volatility)
+        
+        # Calculate Greeks using Black-Scholes (not moneyness fallback)
+        T = max(dte, 1) / 365.0
+        greeks_result = calculate_greeks(
+            S=stock_price,
+            K=float(strike) if strike else 0,
+            T=T,
+            sigma=iv_data["iv"] if iv_data["iv"] > 0 else None,
+            option_type=option_type
+        )
+        
         # LAYER 1 COMPLIANT: Full schema with all downstream fields
+        # CCE VOLATILITY & GREEKS CORRECTNESS: All fields always populated
         contract = {
             # IDENTITY
             "contract_symbol": row.get('contractSymbol', ''),
@@ -655,35 +674,25 @@ class SnapshotService:
             # LIQUIDITY (MANDATORY)
             "volume": int(volume),
             "open_interest": int(open_interest),
-            # GREEKS (MANDATORY)
-            "implied_volatility": float(implied_volatility),
-            "delta": 0.0,  # Estimated below
-            "gamma": 0.0,  # Placeholder - not available from Yahoo
-            "theta": 0.0,  # Placeholder - not available from Yahoo
-            "vega": 0.0,   # Placeholder - not available from Yahoo
-            "iv_rank": None,  # Placeholder - requires historical IV data
+            # IV FIELDS (standardized) - ALWAYS POPULATED
+            "implied_volatility": float(implied_volatility),  # Raw from Yahoo
+            "iv": iv_data["iv"],  # Normalized decimal
+            "iv_pct": iv_data["iv_pct"],  # Normalized percentage
+            # GREEKS (Black-Scholes) - ALWAYS POPULATED
+            "delta": greeks_result.delta,
+            "delta_source": greeks_result.delta_source,
+            "gamma": greeks_result.gamma,
+            "theta": greeks_result.theta,
+            "vega": greeks_result.vega,
+            # IV RANK (placeholder - computed at symbol level in scan phase)
+            "iv_rank": 50.0,  # Default neutral
+            "iv_percentile": 50.0,
+            "iv_rank_source": "DEFAULT_NEUTRAL_INGESTION",
+            "iv_samples": 0,
             # VALIDATION
             "valid": False,
             "rejection_reason": None
         }
-        
-        # ESTIMATE DELTA for filtering (Layer 3 will use this)
-        if stock_price > 0 and strike > 0:
-            if option_type == "call":
-                # Call delta estimation based on moneyness
-                moneyness = (stock_price - strike) / stock_price
-                if moneyness > 0:  # ITM
-                    contract["delta"] = min(0.95, 0.50 + moneyness * 2)
-                else:  # OTM
-                    contract["delta"] = max(0.05, 0.50 + moneyness * 2)
-            else:  # put
-                moneyness = (strike - stock_price) / stock_price
-                if moneyness > 0:  # ITM
-                    contract["delta"] = max(-0.95, -0.50 - moneyness * 2)
-                else:  # OTM
-                    contract["delta"] = min(-0.05, -0.50 - moneyness * 2)
-            
-            contract["delta"] = round(contract["delta"], 4)
         
         # VALIDATION: BID must exist and be > 0 for valid contract
         if contract["bid"] <= 0:
