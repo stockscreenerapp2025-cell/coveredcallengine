@@ -435,12 +435,14 @@ def enrich_option_greeks(
         enriched["iv_rank"] = iv_metrics.iv_rank
         enriched["iv_percentile"] = iv_metrics.iv_percentile
         enriched["iv_rank_source"] = iv_metrics.iv_rank_source
+        enriched["iv_rank_confidence"] = iv_metrics.iv_rank_confidence
         enriched["iv_samples"] = iv_metrics.iv_samples
     else:
         # No metrics provided - use neutral defaults
         enriched["iv_rank"] = 50.0
         enriched["iv_percentile"] = 50.0
         enriched["iv_rank_source"] = "DEFAULT_NEUTRAL_NO_METRICS"
+        enriched["iv_rank_confidence"] = "LOW"
         enriched["iv_samples"] = 0
     
     # ==========================================================================
