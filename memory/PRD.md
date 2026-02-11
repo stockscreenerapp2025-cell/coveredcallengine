@@ -121,7 +121,7 @@ PUBLIC_APP_URL=https://your-domain.com
 
 ## CCE Volatility & Greeks Correctness - COMPLETED 2026-02-11
 
-### Status: ✅ COMPLETE
+### Status: ✅ COMPLETE (with Bootstrap Fix 2026-02-11)
 
 ### Objective:
 Standardize IV and Delta calculations across all endpoints using industry-standard formulas. Remove inaccurate moneyness-based delta fallbacks. Implement true IV Rank and IV Percentile using historical IV proxy data.
@@ -137,12 +137,14 @@ Standardize IV and Delta calculations across all endpoints using industry-standa
    - `iv_pct` = percentage form (e.g., 30.0)
    - Invalid IV (< 0.01 or > 5.0) rejected
 
-3. ✅ **Industry-Standard IV Rank** - True historical calculation
+3. ✅ **Industry-Standard IV Rank** - True historical calculation with bootstrap
    - Formula: `iv_rank = 100 * (iv_current - iv_low) / (iv_high - iv_low)`
-   - Requires 20+ historical samples for true calculation
-   - Neutral fallback (50) when insufficient history
+   - **Bootstrap behavior to reduce 50/100 clustering:**
+     - < 5 samples: neutral 50, LOW confidence
+     - 5-19 samples: shrinkage toward 50 (`rank = 50 + w*(raw-50)` where w=samples/20), MEDIUM confidence
+     - >= 20 samples: true rank, MEDIUM/HIGH confidence
    
-4. ✅ **IV Percentile** - Distribution-based metric
+4. ✅ **IV Percentile** - Distribution-based metric with same bootstrap
    - Formula: `iv_percentile = 100 * count(iv_hist < iv_current) / N`
    
 5. ✅ **IV History Storage** - New collection with TTL
@@ -150,6 +152,10 @@ Standardize IV and Delta calculations across all endpoints using industry-standa
    - Stores daily ATM proxy IV per symbol
    - TTL: 450 days auto-expiry
    - Indexes: unique (symbol, trading_date)
+
+6. ✅ **Computation Order Fix** - Prevent self-teaching
+   - Rank is computed BEFORE storing today's value
+   - Prevents artificial rank=100 when first encountering a symbol
 
 ### API Response Fields (All endpoints):
 | Field | Type | Description |
@@ -162,20 +168,21 @@ Standardize IV and Delta calculations across all endpoints using industry-standa
 | iv_rank | float | Industry-standard IV Rank (0-100) |
 | iv_percentile | float | IV Percentile (0-100) |
 | iv_rank_source | string | Source/quality indicator |
+| iv_rank_confidence | string | "LOW", "MEDIUM", "HIGH" |
 | iv_samples | int | Number of historical samples used |
 
 ### Files Created:
 - `/backend/services/greeks_service.py` - Black-Scholes Greeks calculation
-- `/backend/services/iv_rank_service.py` - IV history and rank/percentile
+- `/backend/services/iv_rank_service.py` - IV history and rank/percentile with bootstrap
 - `/backend/services/option_normalizer.py` - Shared field normalization helper
-- `/backend/tests/test_iv_rank_service.py` - 25 unit tests
+- `/backend/tests/test_iv_rank_service.py` - 28 unit tests
 
 ### Files Modified:
 - `/backend/routes/screener_snapshot.py` - Custom scan with IV metrics
 - `/backend/routes/options.py` - Options chain endpoint with normalized fields
 - `/backend/routes/watchlist.py` - Watchlist with IV metrics integration
 - `/backend/routes/simulator.py` - Delegated Greeks to shared service
-- `/backend/routes/admin.py` - IV metrics verification endpoints
+- `/backend/routes/admin.py` - IV metrics verification endpoints with bootstrap info
 - `/backend/services/precomputed_scans.py` - Black-Scholes delta
 - `/backend/services/snapshot_service.py` - Ingestion + retrieval with B-S Greeks
 - `/backend/server.py` - IV history index creation at startup
@@ -190,7 +197,7 @@ Standardize IV and Delta calculations across all endpoints using industry-standa
 7. **GET /api/snapshots/leaps/{symbol}** - LEAPS snapshots with B-S Greeks
 
 ### Admin Verification Endpoints:
-- `GET /api/admin/iv-metrics/check/{symbol}` - Full IV/Greeks sanity check
+- `GET /api/admin/iv-metrics/check/{symbol}` - Full IV/Greeks sanity check with bootstrap info
 - `GET /api/admin/iv-metrics/stats` - IV history collection statistics
 - `GET /api/admin/iv-metrics/completeness-test` - Field completeness validation
 
