@@ -869,6 +869,7 @@ class SnapshotService:
                 continue
             
             # Return contract with BID as the premium (SELL leg)
+            # CCE VOLATILITY & GREEKS: All fields populated from ingestion
             valid_calls.append({
                 "contract_symbol": call.get("contract_symbol"),
                 "strike": strike,
@@ -877,9 +878,24 @@ class SnapshotService:
                 "premium": bid,  # BID ONLY for SELL
                 "bid": bid,
                 "ask": call.get("ask", 0),
+                # Greeks (Black-Scholes) - from ingestion
+                "delta": call.get("delta", 0.0),
+                "delta_source": call.get("delta_source", "UNKNOWN"),
+                "gamma": call.get("gamma", 0.0),
+                "theta": call.get("theta", 0.0),
+                "vega": call.get("vega", 0.0),
+                # IV fields (standardized) - from ingestion
+                "iv": call.get("iv", 0.0),
+                "iv_pct": call.get("iv_pct", 0.0),
+                "implied_volatility": call.get("implied_volatility", 0),  # Legacy
+                # IV Rank (from ingestion - defaults)
+                "iv_rank": call.get("iv_rank", 50.0),
+                "iv_percentile": call.get("iv_percentile", 50.0),
+                "iv_rank_source": call.get("iv_rank_source", "DEFAULT_NEUTRAL"),
+                "iv_samples": call.get("iv_samples", 0),
+                # Liquidity
                 "volume": call.get("volume", 0),
                 "open_interest": call.get("open_interest", 0),
-                "implied_volatility": call.get("implied_volatility", 0),
                 "stock_price": stock_price
             })
         
