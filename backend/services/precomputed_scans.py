@@ -698,12 +698,21 @@ class PrecomputedScanService:
                                         except Exception:
                                             pass
                                     
-                                    moneyness = (strike - current_price) / current_price
-                                    if moneyness <= 0:
-                                        est_delta = 0.55 + abs(moneyness) * 0.5
-                                    else:
-                                        est_delta = 0.50 - moneyness * 3
-                                    est_delta = max(0.10, min(0.90, est_delta))
+                                    # Calculate delta using Black-Scholes
+                                    # Note: Polygon doesn't provide IV, so we use proxy sigma
+                                    from services.greeks_service import calculate_greeks
+                                    
+                                    T = max(dte, 1) / 365.0
+                                    greeks_result = calculate_greeks(
+                                        S=current_price,
+                                        K=strike,
+                                        T=T,
+                                        sigma=None,  # Will use proxy sigma
+                                        option_type="call"
+                                    )
+                                    
+                                    est_delta = greeks_result.delta
+                                    delta_source = greeks_result.delta_source
                                     
                                     if est_delta < delta_min or est_delta > delta_max:
                                         return None
@@ -733,10 +742,18 @@ class PrecomputedScanService:
                                         "dte": dte,
                                         "premium": close_price,
                                         "premium_yield": premium_yield,
-                                        "delta": round(est_delta, 3),
+                                        # Greeks (Black-Scholes with proxy sigma)
+                                        "delta": round(est_delta, 4),
+                                        "delta_source": delta_source,
+                                        "gamma": greeks_result.gamma,
+                                        "theta": greeks_result.theta,
+                                        "vega": greeks_result.vega,
+                                        # IV (not available from Polygon basic)
+                                        "iv": 0.0,
+                                        "iv_pct": 0.0,
+                                        # Liquidity
                                         "volume": r.get("v", 0),
                                         "open_interest": 0,
-                                        "iv": 0.30,
                                         "vwap": r.get("vw", 0)
                                     }
                         except Exception as e:
