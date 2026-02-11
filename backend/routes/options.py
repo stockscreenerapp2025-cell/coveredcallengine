@@ -86,31 +86,69 @@ async def get_options_chain(
         )
         
         if options and len(options) > 0:
-            # Transform to expected format
+            # Compute IV metrics for the symbol (industry-standard IV Rank)
+            try:
+                iv_metrics = await get_iv_metrics_for_symbol(
+                    db=db,
+                    symbol=symbol,
+                    options=options,
+                    stock_price=underlying_price,
+                    store_history=True
+                )
+            except Exception as e:
+                logging.warning(f"Could not compute IV metrics for {symbol}: {e}")
+                iv_metrics = None
+            
+            # Transform to expected format with proper Greeks
             transformed_options = []
             for opt in options:
                 # Filter by specific expiry if provided
                 if expiry and opt.get("expiry") != expiry:
                     continue
-                    
+                
+                # Calculate Greeks using Black-Scholes
+                dte = opt.get("dte", 30)
+                strike = opt.get("strike", 0)
+                iv_raw = opt.get("implied_volatility", 0)
+                iv_data = normalize_iv_fields(iv_raw)
+                T = max(dte, 1) / 365.0
+                
+                greeks_result = calculate_greeks(
+                    S=underlying_price,
+                    K=strike,
+                    T=T,
+                    sigma=iv_data["iv"] if iv_data["iv"] > 0 else None,
+                    option_type="call"
+                )
+                
                 transformed_options.append({
                     "symbol": opt.get("contract_ticker", ""),
                     "underlying": symbol,
-                    "strike": opt.get("strike", 0),
+                    "strike": strike,
                     "expiry": opt.get("expiry", ""),
-                    "dte": opt.get("dte", 0),
+                    "dte": dte,
                     "type": opt.get("type", "call"),
                     "bid": opt.get("bid", 0),
                     "ask": opt.get("ask", 0),
                     "last": opt.get("close", 0),
-                    "delta": opt.get("delta", 0),
-                    "gamma": opt.get("gamma", 0),
-                    "theta": opt.get("theta", 0),
-                    "vega": opt.get("vega", 0),
-                    "iv": opt.get("implied_volatility", 0),
+                    # Greeks (Black-Scholes) - ALWAYS POPULATED
+                    "delta": greeks_result.delta,
+                    "delta_source": greeks_result.delta_source,
+                    "gamma": greeks_result.gamma,
+                    "theta": greeks_result.theta,
+                    "vega": greeks_result.vega,
+                    # IV fields (standardized) - ALWAYS POPULATED
+                    "iv": iv_data["iv"],
+                    "iv_pct": iv_data["iv_pct"],
+                    # IV Rank (industry standard) - ALWAYS POPULATED
+                    "iv_rank": iv_metrics.iv_rank if iv_metrics else 50.0,
+                    "iv_percentile": iv_metrics.iv_percentile if iv_metrics else 50.0,
+                    "iv_rank_source": iv_metrics.iv_rank_source if iv_metrics else "DEFAULT_NEUTRAL",
+                    "iv_samples": iv_metrics.iv_samples if iv_metrics else 0,
+                    # Liquidity
                     "volume": opt.get("volume", 0),
                     "open_interest": opt.get("open_interest", 0),
-                    "break_even": opt.get("strike", 0) + opt.get("ask", 0) if opt.get("type") == "call" else opt.get("strike", 0) - opt.get("ask", 0),
+                    "break_even": strike + opt.get("ask", 0) if opt.get("type") == "call" else strike - opt.get("ask", 0),
                 })
             
             if transformed_options:
@@ -119,6 +157,13 @@ async def get_options_chain(
                     "symbol": symbol,
                     "stock_price": underlying_price,
                     "options": transformed_options,
+                    # Symbol-level IV metrics
+                    "iv_proxy": iv_metrics.iv_proxy if iv_metrics else 0.0,
+                    "iv_proxy_pct": iv_metrics.iv_proxy_pct if iv_metrics else 0.0,
+                    "iv_rank": iv_metrics.iv_rank if iv_metrics else 50.0,
+                    "iv_percentile": iv_metrics.iv_percentile if iv_metrics else 50.0,
+                    "iv_rank_source": iv_metrics.iv_rank_source if iv_metrics else "DEFAULT_NEUTRAL",
+                    "iv_samples": iv_metrics.iv_samples if iv_metrics else 0,
                     "source": options[0].get("source", "yahoo") if options else "yahoo",
                     "is_live": True
                 }
