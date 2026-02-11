@@ -69,6 +69,10 @@ async def _get_best_opportunity_live(symbol: str, stock_price: float = None) -> 
     DATA RULES COMPLIANT:
     - Options chain fetched LIVE from Yahoo
     - Stock price can be provided or fetched LIVE
+    
+    CCE VOLATILITY & GREEKS CORRECTNESS:
+    - Delta computed via Black-Scholes (not moneyness fallback)
+    - IV Rank computed from historical ATM proxy
     """
     try:
         # Get LIVE stock price if not provided
@@ -91,6 +95,19 @@ async def _get_best_opportunity_live(symbol: str, stock_price: float = None) -> 
         if not calls:
             return None
         
+        # Compute IV metrics for the symbol (industry-standard IV Rank)
+        try:
+            iv_metrics = await get_iv_metrics_for_symbol(
+                db=db,
+                symbol=symbol,
+                options=calls,
+                stock_price=stock_price,
+                store_history=True
+            )
+        except Exception as e:
+            logging.warning(f"Could not compute IV metrics for {symbol}: {e}")
+            iv_metrics = None
+        
         best_opp = None
         best_score = 0
         
@@ -101,7 +118,7 @@ async def _get_best_opportunity_live(symbol: str, stock_price: float = None) -> 
             bid = call.get("bid", 0)
             ask = call.get("ask", 0)
             open_interest = call.get("open_interest", 0)
-            iv = call.get("implied_volatility", 0)
+            iv_raw = call.get("implied_volatility", 0)
             
             # PRICING RULES - SELL leg (covered call):
             # - Use BID only
@@ -119,12 +136,25 @@ async def _get_best_opportunity_live(symbol: str, stock_price: float = None) -> 
             if strike <= stock_price * 0.98 or strike > stock_price * 1.15:
                 continue
             
+            # Normalize IV
+            iv_data = normalize_iv_fields(iv_raw)
+            
+            # Calculate delta using Black-Scholes (not moneyness fallback)
+            T = max(dte, 1) / 365.0
+            greeks_result = calculate_greeks(
+                S=stock_price,
+                K=strike,
+                T=T,
+                sigma=iv_data["iv"] if iv_data["iv"] > 0 else None,
+                option_type="call"
+            )
+            
             # Calculate ROI
             roi_pct = (premium / stock_price) * 100 if stock_price > 0 else 0
             roi_annualized = (roi_pct * 365 / dte) if dte > 0 else 0
             
             # Simple scoring: ROI + IV consideration
-            score = roi_pct * 2 + (iv * 10 if iv < 1 else iv / 10)
+            score = roi_pct * 2 + (iv_data["iv_pct"] * 0.1 if iv_data["iv_pct"] else 0)
             
             if score > best_score:
                 best_score = score
@@ -139,7 +169,21 @@ async def _get_best_opportunity_live(symbol: str, stock_price: float = None) -> 
                     "stock_price": round(stock_price, 2),
                     "roi_pct": round(roi_pct, 2),
                     "roi_annualized": round(roi_annualized, 1),
-                    "iv": round(iv * 100 if iv < 1 else iv, 1),
+                    # Greeks (Black-Scholes) - ALWAYS POPULATED
+                    "delta": greeks_result.delta,
+                    "delta_source": greeks_result.delta_source,
+                    "gamma": greeks_result.gamma,
+                    "theta": greeks_result.theta,
+                    "vega": greeks_result.vega,
+                    # IV fields (standardized) - ALWAYS POPULATED
+                    "iv": iv_data["iv"],
+                    "iv_pct": iv_data["iv_pct"],
+                    # IV Rank (industry standard) - ALWAYS POPULATED
+                    "iv_rank": iv_metrics.iv_rank if iv_metrics else 50.0,
+                    "iv_percentile": iv_metrics.iv_percentile if iv_metrics else 50.0,
+                    "iv_rank_source": iv_metrics.iv_rank_source if iv_metrics else "DEFAULT_NEUTRAL",
+                    "iv_samples": iv_metrics.iv_samples if iv_metrics else 0,
+                    # Liquidity
                     "open_interest": open_interest,
                     "data_source": "yahoo_live"
                 }
