@@ -469,13 +469,6 @@ async def get_iv_metrics_for_symbol(
         iv_rank_confidence=metrics["iv_rank_confidence"],
         iv_samples_used=metrics["iv_samples_used"]
     )
-        iv_percentile=metrics["iv_percentile"],
-        iv_low=metrics["iv_low"],
-        iv_high=metrics["iv_high"],
-        iv_samples=metrics["iv_samples"],
-        iv_rank_source=metrics["iv_rank_source"],
-        proxy_meta=proxy_meta
-    )
 
 
 async def get_iv_metrics_quick(
