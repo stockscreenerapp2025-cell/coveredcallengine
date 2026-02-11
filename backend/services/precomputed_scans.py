@@ -1429,10 +1429,23 @@ class PrecomputedScanService:
                             if strike < current_price * 0.5:
                                 continue  # Too deep ITM
                             
-                            # Estimate delta for ITM calls
-                            moneyness = (current_price - strike) / current_price
-                            est_delta = 0.50 + moneyness * 2
-                            est_delta = max(0.50, min(0.95, est_delta))
+                            # Calculate delta using Black-Scholes
+                            from services.greeks_service import calculate_greeks, normalize_iv_fields
+                            
+                            iv_raw = row.get('impliedVolatility', 0)
+                            iv_data = normalize_iv_fields(iv_raw)
+                            T = max(dte, 1) / 365.0
+                            
+                            greeks_result = calculate_greeks(
+                                S=current_price,
+                                K=float(strike),
+                                T=T,
+                                sigma=iv_data["iv"] if iv_data["iv"] > 0 else None,
+                                option_type="call"
+                            )
+                            
+                            est_delta = greeks_result.delta
+                            delta_source = greeks_result.delta_source
                             
                             if est_delta < delta_min or est_delta > delta_max:
                                 continue
@@ -1453,7 +1466,6 @@ class PrecomputedScanService:
                             intrinsic = max(0, current_price - strike)
                             extrinsic = premium - intrinsic
                             
-                            iv = row.get('impliedVolatility', 0)
                             oi = row.get('openInterest', 0)
                             
                             leaps.append({
