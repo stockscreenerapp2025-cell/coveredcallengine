@@ -1097,7 +1097,19 @@ async def screen_pmcc(
                     rejected_symbols.append({"symbol": symbol, "reason": "No price data"})
                     continue
                 
-                current_price = stock_data["price"]
+                # ========== MARKET-STATE AWARE UNDERLYING PRICE ==========
+                # During OPEN: Use live quote for consistency with live BID/ASK
+                # During CLOSED: Use snapshot (previous close)
+                if use_live_price:
+                    live_quote = await fetch_live_stock_quote(symbol.upper(), api_key)
+                    if live_quote and live_quote.get("price", 0) > 0:
+                        current_price = live_quote["price"]
+                    else:
+                        # Fallback to snapshot if live fails
+                        current_price = stock_data["price"]
+                else:
+                    current_price = stock_data["price"]
+                
                 avg_volume = stock_data.get("avg_volume", 0) or 0
                 market_cap = stock_data.get("market_cap", 0) or 0
                 earnings_date = stock_data.get("earnings_date")
