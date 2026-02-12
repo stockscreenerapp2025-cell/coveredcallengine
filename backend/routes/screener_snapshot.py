@@ -2115,3 +2115,67 @@ async def get_snapshot_health():
         "scan_will_succeed": snapshots_valid == symbols_total,
         "timestamp": datetime.now(timezone.utc).isoformat()
     }
+
+
+# ============================================================
+# TEST ENDPOINT: Simulate OPEN market for verification
+# ADMIN ONLY - Remove after verification
+# ============================================================
+@screener_router.get("/test-open-market")
+async def test_open_market_simulation(
+    endpoint: str = Query("covered-calls", description="Endpoint to test: covered-calls or pmcc"),
+    user: dict = Depends(get_current_user)
+):
+    """
+    TEMPORARY TEST ENDPOINT - Simulates market_state=OPEN for verification.
+    Returns a single symbol result with LIVE pricing metadata.
+    """
+    from services.data_provider import fetch_live_stock_quote, fetch_options_chain
+    
+    test_symbol = "INTC"
+    
+    # Force LIVE price fetch (simulating OPEN market)
+    live_quote = await fetch_live_stock_quote(test_symbol, None)
+    underlying_price = live_quote.get("price", 0) if live_quote else 0
+    
+    # Fetch options with the LIVE price
+    options = await fetch_options_chain(
+        symbol=test_symbol,
+        api_key=None,
+        option_type="call",
+        max_dte=45,
+        min_dte=7,
+        current_price=underlying_price
+    )
+    
+    # Find first option with valid BID
+    sample_option = None
+    for opt in (options or []):
+        if opt.get("bid", 0) > 0:
+            sample_option = opt
+            break
+    
+    return {
+        "test_mode": "SIMULATED_OPEN_MARKET",
+        "endpoint_tested": endpoint,
+        "symbol": test_symbol,
+        "market_state": "OPEN",
+        "underlying_price_source": "LIVE",
+        "underlying_price": underlying_price,
+        "live_quote_details": {
+            "price": live_quote.get("price") if live_quote else None,
+            "source": live_quote.get("source") if live_quote else None
+        },
+        "sample_option": {
+            "strike": sample_option.get("strike") if sample_option else None,
+            "expiry": sample_option.get("expiry") if sample_option else None,
+            "bid": sample_option.get("bid") if sample_option else None,
+            "ask": sample_option.get("ask") if sample_option else None,
+            "dte": sample_option.get("dte") if sample_option else None
+        } if sample_option else None,
+        "pricing_rule": "BID_ONLY" if endpoint == "covered-calls" else {
+            "long_leg": "ASK_ONLY",
+            "short_leg": "BID_ONLY"
+        },
+        "note": "This simulates what the response would look like during market OPEN hours (9:30 AM - 4:00 PM ET)"
+    }
