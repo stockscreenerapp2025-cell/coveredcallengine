@@ -631,6 +631,13 @@ async def get_dashboard_opportunities(
     }
     
     try:
+        # ========== MARKET-STATE AWARE PRICING ==========
+        current_market_state = get_market_state()
+        use_live_price = (current_market_state == "OPEN")
+        underlying_price_source = "LIVE" if use_live_price else "LAST_CLOSE"
+        
+        logging.info(f"Dashboard CC: market_state={current_market_state}, price_source={underlying_price_source}")
+        
         # Extended symbol list for Dashboard (broader price range $15-$500)
         symbols_to_scan = [
             # Tech - various price ranges
@@ -676,7 +683,7 @@ async def get_dashboard_opportunities(
             batch_size=10
         )
         
-        cache_stats = {"hits": 0, "misses": 0, "symbols_processed": 0}
+        cache_stats = {"hits": 0, "misses": 0, "symbols_processed": 0, "bid_rejected": 0}
         
         for symbol in symbols_to_scan[:60]:  # Scan up to 60 symbols
             try:
