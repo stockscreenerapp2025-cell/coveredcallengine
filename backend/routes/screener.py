@@ -1379,7 +1379,11 @@ async def screen_pmcc(
             "bias_weight": bias_weight,
             "passed_filters": passed_filter_count,
             "data_source": "yahoo_cached",  # PHASE 2: Updated source
-            "snapshot_cache_stats": cache_stats  # PHASE 2: Include cache stats
+            "snapshot_cache_stats": cache_stats,  # PHASE 2: Include cache stats
+            # ========== PRICE SYNC METADATA ==========
+            "market_state": current_market_state,
+            "underlying_price_source": underlying_price_source,
+            "pricing_rule": "BID_ASK_ONLY"
         }
         await funcs['set_cached_data'](cache_key, result)
         return result
