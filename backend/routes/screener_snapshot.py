@@ -871,14 +871,29 @@ async def screen_covered_calls(
                     cache_stats["misses"] += 1
                 
                 if quote.get("price") and quote.get("price") > 0:
+                    # ========== MARKET-STATE AWARE UNDERLYING PRICE ==========
+                    # During OPEN: Use live quote for consistency with live BID/ASK
+                    # During CLOSED: Use snapshot (previous close)
+                    if use_live_price:
+                        live_quote = await fetch_live_stock_quote(symbol.upper(), None)
+                        if live_quote and live_quote.get("price", 0) > 0:
+                            final_price = live_quote["price"]
+                            price_source = "yahoo_live"
+                        else:
+                            final_price = quote["price"]
+                            price_source = "yahoo_cached" if snapshot.get("from_cache") else "yahoo_live"
+                    else:
+                        final_price = quote["price"]
+                        price_source = "yahoo_cached" if snapshot.get("from_cache") else "yahoo_live"
+                    
                     stock_data[symbol] = {
-                        "stock_price": quote["price"],
+                        "stock_price": final_price,
                         "trade_date": quote.get("close_date"),  # Date of the close price
                         "market_cap": quote.get("market_cap"),
                         "avg_volume": quote.get("avg_volume"),
                         "earnings_date": quote.get("earnings_date"),
                         "analyst_rating": quote.get("analyst_rating"),
-                        "source": "yahoo_cached" if snapshot.get("from_cache") else "yahoo_live"
+                        "source": price_source
                     }
                     symbols_with_stock_data.append(symbol)
         except Exception as e:
