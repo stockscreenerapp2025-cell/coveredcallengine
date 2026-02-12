@@ -824,6 +824,13 @@ async def screen_covered_calls(
     eod_contract = get_eod_contract()
     snapshot_service = get_snapshot_service()
     
+    # ========== MARKET-STATE AWARE PRICING ==========
+    current_market_state = get_market_state()
+    use_live_price = (current_market_state == "OPEN")
+    underlying_price_source = "LIVE" if use_live_price else "LAST_CLOSE"
+    
+    logging.info(f"CC Screener: market_state={current_market_state}, price_source={underlying_price_source}")
+    
     # LAYER 3: Determine DTE range based on mode
     if min_dte is None or max_dte is None:
         auto_min_dte, auto_max_dte = get_dte_range(dte_mode)
