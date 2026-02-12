@@ -1869,7 +1869,12 @@ async def screen_pmcc(
         "options_chain_source": "yahoo_live",
         "layer": 3,
         "architecture": "PMCC_ISOLATED_FROM_CC",
-        "live_data_used": True
+        "live_data_used": True,
+        "snapshot_cache_stats": cache_stats,
+        # ========== PRICE SYNC METADATA ==========
+        "market_state": current_market_state,
+        "underlying_price_source": underlying_price_source,
+        "pricing_rule": "BID_ASK_ONLY"
     }
 
 
