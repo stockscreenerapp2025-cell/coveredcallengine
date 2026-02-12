@@ -42,7 +42,9 @@ from utils.auth import get_current_user
 from services.data_provider import (
     fetch_options_chain,
     fetch_stock_quote,
+    fetch_live_stock_quote,
     is_market_closed as data_provider_market_closed,
+    get_market_state,
     # PHASE 2: Import cache-first functions
     get_symbol_snapshot,
     get_symbol_snapshots_batch
