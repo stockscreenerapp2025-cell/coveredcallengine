@@ -1211,16 +1211,15 @@ async def screen_pmcc(
                     strike = opt.get("strike", 0)
                     open_interest = opt.get("open_interest", 0) or 0
                     
-                    # PHASE 3: Use BID price for SELL legs (PMCC short call)
+                    # ========== STRICT BID-ONLY PRICING FOR SELL LEG ==========
+                    # PMCC short call SELL leg: REQUIRE BID > 0, reject if missing/0
                     bid_price = opt.get("bid", 0) or 0
-                    close_price = opt.get("close", 0) or opt.get("vwap", 0) or 0
                     
-                    if bid_price > 0:
-                        premium = bid_price
-                    elif close_price > 0:
-                        premium = close_price
-                    else:
-                        continue
+                    if bid_price <= 0:
+                        cache_stats["bid_rejected"] += 1
+                        continue  # REJECT: No bid price available
+                    
+                    premium = bid_price
                     
                     # DATA QUALITY FILTER: Skip very low OI
                     if open_interest < 5:  # Relaxed from 10 to 5
