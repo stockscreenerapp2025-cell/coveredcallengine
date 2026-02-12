@@ -10,82 +10,97 @@ from the last regular trading session.
 
 RULES:
 1. Store "last valid quote" during market hours when BID/ASK are non-zero
-2. After hours, use cached quotes with proper timestamps
+2. After-hours, use cached quotes with proper timestamps
 3. All prices marked with:
    - quote_source: "LAST_MARKET_SESSION" or "LIVE"
    - quote_timestamp: When the quote was captured
    - quote_age_hours: How old the quote is
 
-FORBIDDEN:
-- lastPrice fallbacks
-- mid calculation
-- synthetic prices
-- previousClose for options
+NOTE (Feb 2026 hardening):
+- Time logic is America/New_York (ET) aware.
+- We treat the "session lock" timestamp as 16:05 ET (not 16:00) to avoid
+  edge cases where late prints/updates arrive right after 4:00.
+- We do NOT block execution outside market hours; we only switch quote selection.
 """
 
 import logging
-from datetime import datetime, timezone, timedelta
-from typing import Dict, Any, Optional, List, Tuple
-import pytz
+from datetime import datetime, timezone, timedelta, date
+from typing import Dict, Any, Optional, Tuple
+from zoneinfo import ZoneInfo
 
 logger = logging.getLogger(__name__)
 
+NY = ZoneInfo("America/New_York")
+
+
+def _now_et() -> datetime:
+    return datetime.now(NY)
+
+
+def _is_weekend(d: date) -> bool:
+    return d.weekday() >= 5
+
+
+def _is_market_open(now_et: datetime) -> bool:
+    if _is_weekend(now_et.date()):
+        return False
+    minutes = now_et.hour * 60 + now_et.minute
+    open_m = 9 * 60 + 30
+    close_m = 16 * 60
+    return open_m <= minutes < close_m
+
+
+def _session_lock_time_et(now_et: datetime) -> datetime:
+    """
+    Lock time for the 'final synced' session snapshot: 16:05 ET.
+    """
+    return now_et.replace(hour=16, minute=5, second=0, microsecond=0)
+
 
 class OptionQuoteCache:
-    """
-    Manages option quote caching for after-hours screening.
-    
-    Stores valid BID/ASK quotes during market hours and
-    provides them with proper timestamps during after-hours.
-    """
-    
     def __init__(self, db):
         self.db = db
-        self._eastern = pytz.timezone('US/Eastern')
-    
+
     def is_market_open(self) -> bool:
-        """Check if NYSE is currently open (9:30 AM - 4:00 PM ET, Mon-Fri)"""
-        now = datetime.now(self._eastern)
-        
-        # Check weekday (0=Monday, 4=Friday)
-        if now.weekday() > 4:
-            return False
-        
-        # Check time (9:30 AM - 4:00 PM ET)
-        market_open = now.replace(hour=9, minute=30, second=0, microsecond=0)
-        market_close = now.replace(hour=16, minute=0, second=0, microsecond=0)
-        
-        return market_open <= now <= market_close
-    
+        return _is_market_open(_now_et())
+
     def get_market_session_info(self) -> Dict[str, Any]:
-        """Get current market session information"""
-        now = datetime.now(self._eastern)
-        is_open = self.is_market_open()
-        
-        # Find last trading day's close time
-        last_close = now.replace(hour=16, minute=0, second=0, microsecond=0)
-        
-        if now.weekday() > 4:  # Weekend
-            # Go back to Friday 4 PM
+        now = _now_et()
+        is_open = _is_market_open(now)
+
+        # Compute last lock time (16:05 ET) for the most recent trading day
+        last_lock = _session_lock_time_et(now)
+
+        # Weekend -> previous Friday
+        if _is_weekend(now.date()):
+            # Sat (5) -> back 1 day, Sun (6) -> back 2 days to Friday
             days_back = now.weekday() - 4
-            last_close = last_close - timedelta(days=days_back)
-        elif now.hour < 16 or (not is_open and now.hour >= 16):
-            # Before today's close or after hours
-            if now.weekday() == 0 and now.hour < 9:  # Monday early morning
-                last_close = last_close - timedelta(days=3)  # Friday
-            elif now.hour < 9 or (now.hour == 9 and now.minute < 30):
-                # Before today's open
-                last_close = last_close - timedelta(days=1)
-                if last_close.weekday() > 4:
-                    last_close = last_close - timedelta(days=last_close.weekday() - 4)
-        
+            last_lock = last_lock - timedelta(days=days_back)
+
+        # If it's before today's lock time, use previous trading day's lock
+        if now < last_lock:
+            # Monday morning -> go back to Friday lock
+            if now.weekday() == 0:
+                last_lock = last_lock - timedelta(days=3)
+            else:
+                last_lock = last_lock - timedelta(days=1)
+                # If we rolled into weekend, roll back to Friday
+                if last_lock.weekday() == 6:
+                    last_lock = last_lock - timedelta(days=2)
+                elif last_lock.weekday() == 5:
+                    last_lock = last_lock - timedelta(days=1)
+
+        hours_since_close = 0.0
+        if not is_open:
+            hours_since_close = max(0.0, (now - last_lock).total_seconds() / 3600.0)
+
         return {
             "is_open": is_open,
-            "current_time_et": now.strftime("%Y-%m-%d %H:%M:%S ET"),
-            "last_close_time": last_close.strftime("%Y-%m-%d %H:%M:%S ET"),
-            "hours_since_close": (now - last_close).total_seconds() / 3600 if not is_open else 0
+            "current_time_et": now.isoformat(),
+            "last_close_time_et": last_lock.isoformat(),
+            "hours_since_close": hours_since_close,
         }
-    
+
     async def cache_valid_quote(
         self,
         contract_symbol: str,
@@ -96,188 +111,106 @@ class OptionQuoteCache:
         ask: float,
         dte: int
     ) -> bool:
-        """
-        Cache a valid quote during market hours.
-        
-        Only caches if:
-        - Market is open
-        - BID > 0 (for SELL eligibility)
-        - ASK > 0 (for BUY eligibility)
-        
-        Returns True if quote was cached.
-        """
         if not self.is_market_open():
             return False
-        
-        if bid <= 0 and ask <= 0:
+        if (bid or 0) <= 0 and (ask or 0) <= 0:
             return False
-        
-        now = datetime.now(timezone.utc)
-        session_date = datetime.now(self._eastern).strftime("%Y-%m-%d")
-        
+
+        now_utc = datetime.now(timezone.utc)
+        session_date = _now_et().date().isoformat()
+
         quote_doc = {
             "contract_symbol": contract_symbol,
-            "symbol": symbol,
+            "symbol": symbol.upper(),
             "strike": strike,
             "expiry": expiry,
             "dte": dte,
-            "bid": bid if bid > 0 else None,
-            "ask": ask if ask > 0 else None,
-            "quote_timestamp": now,
+            "bid": bid if (bid or 0) > 0 else None,
+            "ask": ask if (ask or 0) > 0 else None,
+            "quote_timestamp": now_utc,
             "session_date": session_date,
-            "quote_source": "LIVE"
+            "quote_source": "LIVE",
         }
-        
-        # Upsert by contract symbol
+
         await self.db.option_quote_cache.update_one(
             {"contract_symbol": contract_symbol},
             {"$set": quote_doc},
             upsert=True
         )
-        
         return True
-    
-    async def get_cached_quote(
-        self,
-        contract_symbol: str
-    ) -> Optional[Dict[str, Any]]:
-        """
-        Get cached quote for a contract.
-        
-        Returns quote with:
-        - quote_source: "LAST_MARKET_SESSION"
-        - quote_timestamp: When captured
-        - quote_age_hours: How old
-        """
-        quote = await self.db.option_quote_cache.find_one(
-            {"contract_symbol": contract_symbol},
-            {"_id": 0}
-        )
-        
+
+    async def get_cached_quote(self, contract_symbol: str) -> Optional[Dict[str, Any]]:
+        quote = await self.db.option_quote_cache.find_one({"contract_symbol": contract_symbol}, {"_id": 0})
         if not quote:
             return None
-        
-        # Calculate quote age
-        quote_time = quote.get("quote_timestamp")
-        if quote_time:
+
+        qt = quote.get("quote_timestamp")
+        if qt:
             now = datetime.now(timezone.utc)
-            age_hours = (now - quote_time).total_seconds() / 3600
-            quote["quote_age_hours"] = round(age_hours, 1)
-        
-        # Mark as last market session if market is closed
+            quote["quote_age_hours"] = round((now - qt).total_seconds() / 3600.0, 1)
+
         if not self.is_market_open():
             quote["quote_source"] = "LAST_MARKET_SESSION"
-        
+
         return quote
-    
+
     async def get_valid_quote_for_sell(
         self,
         contract_symbol: str,
         live_bid: float = None,
         live_ask: float = None
     ) -> Tuple[Optional[float], str, Optional[str]]:
-        """
-        Get valid BID for SELL leg.
-        
-        Returns: (bid_price, quote_source, quote_timestamp)
-        
-        Priority:
-        1. Live BID if > 0 and market open
-        2. Cached BID from last market session
-        """
         is_open = self.is_market_open()
-        
-        # If market open and live BID available, use it
         if is_open and live_bid and live_bid > 0:
             return live_bid, "LIVE", datetime.now(timezone.utc).isoformat()
-        
-        # Try cached quote
+
         cached = await self.get_cached_quote(contract_symbol)
         if cached and cached.get("bid") and cached["bid"] > 0:
-            return (
-                cached["bid"],
-                "LAST_MARKET_SESSION",
-                cached.get("quote_timestamp", "").isoformat() if cached.get("quote_timestamp") else None
-            )
-        
-        # No valid BID available
+            ts = cached.get("quote_timestamp")
+            return cached["bid"], "LAST_MARKET_SESSION", ts.isoformat() if ts else None
+
         return None, "NO_VALID_BID", None
-    
+
     async def get_valid_quote_for_buy(
         self,
         contract_symbol: str,
         live_ask: float = None,
         live_bid: float = None
     ) -> Tuple[Optional[float], str, Optional[str]]:
-        """
-        Get valid ASK for BUY leg.
-        
-        Returns: (ask_price, quote_source, quote_timestamp)
-        
-        Priority:
-        1. Live ASK if > 0 and market open
-        2. Cached ASK from last market session
-        """
         is_open = self.is_market_open()
-        
-        # If market open and live ASK available, use it
         if is_open and live_ask and live_ask > 0:
             return live_ask, "LIVE", datetime.now(timezone.utc).isoformat()
-        
-        # Try cached quote
+
         cached = await self.get_cached_quote(contract_symbol)
         if cached and cached.get("ask") and cached["ask"] > 0:
-            return (
-                cached["ask"],
-                "LAST_MARKET_SESSION",
-                cached.get("quote_timestamp", "").isoformat() if cached.get("quote_timestamp") else None
-            )
-        
-        # No valid ASK available
+            ts = cached.get("quote_timestamp")
+            return cached["ask"], "LAST_MARKET_SESSION", ts.isoformat() if ts else None
+
         return None, "NO_VALID_ASK", None
-    
+
     async def cleanup_old_quotes(self, max_age_hours: int = 72) -> int:
-        """
-        Remove quotes older than max_age_hours.
-        
-        Default 72 hours allows weekend data to persist until Monday.
-        """
         cutoff = datetime.now(timezone.utc) - timedelta(hours=max_age_hours)
-        
-        result = await self.db.option_quote_cache.delete_many({
-            "quote_timestamp": {"$lt": cutoff}
-        })
-        
+        result = await self.db.option_quote_cache.delete_many({"quote_timestamp": {"$lt": cutoff}})
         return result.deleted_count
-    
+
     async def get_cache_stats(self) -> Dict[str, Any]:
-        """Get statistics about the quote cache"""
         total = await self.db.option_quote_cache.count_documents({})
-        
-        # Count by session date
         pipeline = [
             {"$group": {"_id": "$session_date", "count": {"$sum": 1}}},
             {"$sort": {"_id": -1}},
-            {"$limit": 5}
+            {"$limit": 5},
         ]
-        
         by_date = await self.db.option_quote_cache.aggregate(pipeline).to_list(5)
-        
-        market_info = self.get_market_session_info()
-        
         return {
             "total_cached_quotes": total,
             "quotes_by_session_date": {d["_id"]: d["count"] for d in by_date},
-            "market_status": market_info
+            "market_status": self.get_market_session_info(),
         }
 
 
-# Singleton instance
 _quote_cache_instance = None
 
-
 def get_quote_cache(db) -> OptionQuoteCache:
-    """Get or create the quote cache singleton"""
     global _quote_cache_instance
     if _quote_cache_instance is None:
         _quote_cache_instance = OptionQuoteCache(db)

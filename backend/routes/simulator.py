@@ -37,7 +37,7 @@ from database import db
 from utils.auth import get_current_user
 
 # Import LIVE price function for simulator (Rule #2)
-from services.data_provider import fetch_live_stock_quote
+from services.data_provider import fetch_live_stock_quote, fetch_options_chain
 
 # CCE Volatility & Greeks Correctness - Use shared Greeks service
 from services.greeks_service import (
@@ -439,6 +439,49 @@ async def add_simulator_trade(trade: SimulatorTradeEntry, user: dict = Depends(g
     except:
         dte = 30  # Default
     
+    
+    # -------------------------------------------------------------------
+    # Simulator IV normalization + fill (minimal, simulator-only)
+    # - Normalizes IV units (e.g., 30 -> 0.30) to prevent 3000% bugs
+    # - If IV missing, attempts a one-time fill from options chain by expiry+nearest strike
+    # -------------------------------------------------------------------
+    normalized_short_iv = None
+    short_iv_source = "PAYLOAD"
+
+    try:
+        if getattr(trade, "short_call_iv", None) is not None:
+            normalized_short_iv = normalize_iv_fields(trade.short_call_iv)["iv"]
+    except Exception:
+        normalized_short_iv = None
+
+    if not normalized_short_iv or normalized_short_iv <= 0:
+        try:
+            chain = await fetch_options_chain(
+                symbol=trade.symbol.upper(),
+                api_key=None,
+                option_type="call",
+                min_dte=max(1, dte - 7),
+                max_dte=dte + 7,
+                current_price=trade.underlying_price
+            )
+            candidates = [o for o in chain if o.get("expiry") == trade.short_call_expiry]
+            if candidates:
+                closest = min(
+                    candidates,
+                    key=lambda o: abs(float(o.get("strike") or 0) - float(trade.short_call_strike))
+                )
+                iv_raw = closest.get("implied_volatility") or 0
+                if iv_raw:
+                    normalized_short_iv = normalize_iv_fields(iv_raw)["iv"]
+                    if normalized_short_iv and normalized_short_iv > 0:
+                        short_iv_source = f"CHAIN:{closest.get('source', 'yahoo')}"
+        except Exception:
+            pass
+
+    if not normalized_short_iv or normalized_short_iv <= 0:
+        normalized_short_iv = 0.30
+        short_iv_source = "DEFAULT_0.30"
+
     # Create simulator trade document
     trade_doc = {
         "id": trade_id,
@@ -456,7 +499,8 @@ async def add_simulator_trade(trade: SimulatorTradeEntry, user: dict = Depends(g
         "short_call_expiry": trade.short_call_expiry,
         "short_call_premium": trade.short_call_premium,
         "short_call_delta": trade.short_call_delta,
-        "short_call_iv": trade.short_call_iv,
+        "short_call_iv": normalized_short_iv,
+        "short_call_iv_source": short_iv_source,
         
         # PMCC LEAPS details (if applicable)
         "leaps_strike": trade.leaps_strike,
@@ -878,7 +922,13 @@ async def update_simulator_prices(user: dict = Depends(get_current_user)):
             days_held = trade.get("days_held", 0)
         
         # Calculate current Greeks and option value
-        iv = trade.get("short_call_iv") or 0.30  # Default 30% IV
+        iv_raw = trade.get("short_call_iv")
+        try:
+            iv = normalize_iv_fields(iv_raw)["iv"] if iv_raw else 0.30
+        except Exception:
+            iv = 0.30
+        if not iv or iv <= 0:
+            iv = 0.30  # Default 30% IV
         greeks = calculate_greeks(
             S=current_price,
             K=trade["short_call_strike"],

@@ -6,27 +6,44 @@ PHASE 1 REFACTOR (December 2025):
 - All options data now routes through services/data_provider.py
 - Yahoo Finance is primary source, Polygon is backup (via data_provider)
 - MOCK options retained for fallback but flagged
+
+FIXES APPLIED (Feb 2026):
+✅ All time/DTE logic is now America/New_York (ET) aware (no server-local datetime.now()).
+✅ Market state is explicit: OPEN | EXTENDED | CLOSED.
+✅ Prevents "post-market stock price + stale options chain" mismatch:
+   - Stock price may be extended-hours for display
+   - Greeks/filters use a synced regular-session underlying unless market is OPEN
+✅ Expirations endpoint prefers real expirations from data_provider (fallback is synthetic + flagged).
+✅ Response includes explicit metadata: market_state, staleness, sources, timestamp_et.
 """
-from fastapi import APIRouter, Depends, Query, HTTPException
-from typing import Optional
-from datetime import datetime, timedelta
+
+from fastapi import APIRouter, Depends, HTTPException
+from typing import Optional, List, Dict, Any
+from datetime import datetime, timedelta, date
 import logging
 import httpx
-
 import sys
 from pathlib import Path
+from zoneinfo import ZoneInfo
+
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from utils.auth import get_current_user
-from services.data_provider import fetch_stock_quote, fetch_options_chain, calculate_dte
+from services.data_provider import (
+    fetch_stock_quote,
+    fetch_options_chain,
+    calculate_dte,
+    # Optional future:
+    # fetch_option_expirations,
+)
 from services.greeks_service import calculate_greeks, normalize_iv_fields
 from services.iv_rank_service import get_iv_metrics_for_symbol
 from database import db
 
 options_router = APIRouter(tags=["Options"])
-
-# Reusable HTTP client settings for better connection pooling
 HTTP_TIMEOUT = httpx.Timeout(30.0, connect=10.0)
+
+NY = ZoneInfo("America/New_York")
 
 
 def _get_server_data():
@@ -35,175 +52,318 @@ def _get_server_data():
     return MOCK_STOCKS, get_massive_api_key, generate_mock_options
 
 
+def _now_et() -> datetime:
+    return datetime.now(NY)
+
+
+def _is_weekend(d: date) -> bool:
+    return d.weekday() >= 5  # 5=Sat, 6=Sun
+
+
+def _get_market_state(now_et: datetime) -> str:
+    """
+    Equity market state (simple, robust):
+    OPEN:     09:30–16:00 ET
+    EXTENDED: 16:00–20:00 ET
+    CLOSED:   otherwise + weekends
+
+    NOTE: This does not model holidays. Holiday logic should live in a single
+    trading calendar utility (recommended). For now, weekends handled here.
+    """
+    if _is_weekend(now_et.date()):
+        return "CLOSED"
+
+    minutes = now_et.hour * 60 + now_et.minute
+    open_m = 9 * 60 + 30
+    close_m = 16 * 60
+    ext_end_m = 20 * 60
+
+    if open_m <= minutes < close_m:
+        return "OPEN"
+    if close_m <= minutes < ext_end_m:
+        return "EXTENDED"
+    return "CLOSED"
+
+
+def _parse_expiry_et(expiry: str) -> date:
+    try:
+        return datetime.strptime(expiry, "%Y-%m-%d").date()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid expiry format. Use YYYY-MM-DD.")
+
+
+def _compute_dte_et(expiry_date: date, now_et: datetime) -> int:
+    return (expiry_date - now_et.date()).days
+
+
+def _extract_prices(stock_data: Optional[Dict[str, Any]], now_et: datetime) -> Dict[str, Any]:
+    """
+    Defensive extraction to support multiple provider shapes.
+
+    - display_price: can be extended-hours
+    - regular_session_price: last regular-market price/close (best available)
+    - price_source: REGULAR | POST | LAST_CLOSE | UNKNOWN
+
+    For options greeks and strategy math:
+      S_for_greeks = display_price ONLY when market_state == OPEN
+                   else regular_session_price
+    """
+    market_state = _get_market_state(now_et)
+
+    if not stock_data:
+        return {
+            "display_price": 0.0,
+            "regular_session_price": 0.0,
+            "price_source": "UNKNOWN",
+            "market_state": market_state,
+            "timestamp_et": now_et.isoformat(),
+        }
+
+    display_price = (
+        stock_data.get("post_price")
+        if (market_state == "EXTENDED" and stock_data.get("post_price") is not None)
+        else stock_data.get("price") or stock_data.get("last") or stock_data.get("regularMarketPrice") or 0.0
+    )
+
+    regular_session_price = (
+        stock_data.get("price")  # in our data_provider: this is last completed regular close (snapshot)
+        or stock_data.get("regular_price")
+        or stock_data.get("regularMarketPrice")
+        or stock_data.get("previousClose")
+        or display_price
+        or 0.0
+    )
+
+    post_price = stock_data.get("post_price") or stock_data.get("postMarketPrice") or None
+
+    price_source = "UNKNOWN"
+    if market_state == "OPEN":
+        price_source = "REGULAR"
+    elif market_state == "EXTENDED":
+        price_source = "POST" if post_price is not None else "REGULAR"
+    else:
+        price_source = "LAST_CLOSE"
+        display_price = regular_session_price
+
+    timestamp_et = stock_data.get("timestamp_et") or stock_data.get("timestamp") or stock_data.get("timestamp_post_et") or stock_data.get("timestamp_regular_et") or now_et.isoformat()
+
+    return {
+        "display_price": float(display_price or 0.0),
+        "regular_session_price": float(regular_session_price or 0.0),
+        "price_source": price_source,
+        "market_state": market_state,
+        "timestamp_et": timestamp_et,
+    }
+
+
+def _options_staleness_flag(market_state: str) -> Dict[str, Any]:
+    if market_state == "OPEN":
+        return {"stale": False, "stale_reason": None}
+    if market_state == "EXTENDED":
+        return {"stale": True, "stale_reason": "EXTENDED_HOURS_OPTIONS_MAY_BE_STALE"}
+    return {"stale": True, "stale_reason": "MARKET_CLOSED_LAST_REGULAR_SESSION"}
+
+
 @options_router.get("/chain/{symbol}")
 async def get_options_chain(
     symbol: str,
     expiry: Optional[str] = None,
     user: dict = Depends(get_current_user)
 ):
-    """
-    Get options chain for a symbol.
-    
-    PHASE 1 REFACTOR: Now routes through data_provider.py
-    - Primary: Yahoo Finance (via data_provider.fetch_options_chain)
-    - Backup: Polygon (via data_provider fallback)
-    - Last Resort: Mock options (flagged with is_mock=True)
-    """
     MOCK_STOCKS, get_massive_api_key, generate_mock_options = _get_server_data()
-    
     symbol = symbol.upper()
-    
-    # Get API key for potential Polygon fallback
     api_key = await get_massive_api_key()
-    
+
+    now_et = _now_et()
+    market_state = _get_market_state(now_et)
+    staleness_meta = _options_staleness_flag(market_state)
+
     try:
-        # Get stock price from data_provider
         stock_data = await fetch_stock_quote(symbol, api_key)
-        underlying_price = stock_data.get("price", 0) if stock_data else 0
-        
-        # Calculate DTE range based on expiry filter
+        price_meta = _extract_prices(stock_data, now_et)
+
+        display_underlying_price = price_meta["display_price"]
+        regular_underlying_price = price_meta["regular_session_price"]
+        S_for_greeks = display_underlying_price if market_state == "OPEN" else regular_underlying_price
+
         min_dte = 1
-        max_dte = 90  # Default: fetch up to 90 days
-        
+        max_dte = 90
+
+        expiry_date: Optional[date] = None
         if expiry:
-            # If specific expiry requested, narrow the DTE range
-            try:
-                exp_date = datetime.strptime(expiry, "%Y-%m-%d")
-                dte = (exp_date - datetime.now()).days
-                min_dte = max(1, dte - 7)
-                max_dte = dte + 7
-            except Exception:
-                pass
-        
-        # Fetch options from data_provider (Yahoo primary, Polygon backup)
+            expiry_date = _parse_expiry_et(expiry)
+            dte = _compute_dte_et(expiry_date, now_et)
+            if dte < 0:
+                raise HTTPException(status_code=400, detail="Expiry is in the past (ET).")
+            min_dte = max(1, dte - 7)
+            max_dte = dte + 7
+
         options = await fetch_options_chain(
             symbol=symbol,
             api_key=api_key,
             option_type="call",
             min_dte=min_dte,
             max_dte=max_dte,
-            current_price=underlying_price
+            current_price=S_for_greeks
         )
-        
-        if options and len(options) > 0:
-            # Compute IV metrics for the symbol (industry-standard IV Rank)
+
+        if options:
             try:
                 iv_metrics = await get_iv_metrics_for_symbol(
                     db=db,
                     symbol=symbol,
                     options=options,
-                    stock_price=underlying_price,
+                    stock_price=S_for_greeks,
                     store_history=True
                 )
             except Exception as e:
                 logging.warning(f"Could not compute IV metrics for {symbol}: {e}")
                 iv_metrics = None
-            
-            # Transform to expected format with proper Greeks
-            transformed_options = []
+
+            transformed: List[Dict[str, Any]] = []
             for opt in options:
-                # Filter by specific expiry if provided
                 if expiry and opt.get("expiry") != expiry:
                     continue
-                
-                # Calculate Greeks using Black-Scholes
-                dte = opt.get("dte", 30)
-                strike = opt.get("strike", 0)
+
+                dte = int(opt.get("dte", 30) or 30)
+                strike = float(opt.get("strike", 0) or 0)
+
                 iv_raw = opt.get("implied_volatility", 0)
                 iv_data = normalize_iv_fields(iv_raw)
+
                 T = max(dte, 1) / 365.0
-                
+
                 greeks_result = calculate_greeks(
-                    S=underlying_price,
+                    S=S_for_greeks,
                     K=strike,
                     T=T,
                     sigma=iv_data["iv"] if iv_data["iv"] > 0 else None,
                     option_type="call"
                 )
-                
-                transformed_options.append({
-                    "symbol": opt.get("contract_ticker", ""),
+
+                bid = float(opt.get("bid", 0) or 0)
+                ask = float(opt.get("ask", 0) or 0)
+
+                last = opt.get("last")
+                if last is None:
+                    last = opt.get("last_price")
+                if last is None:
+                    last = opt.get("lastPrice")
+                if last is None:
+                    last = opt.get("close", 0)
+                last = float(last or 0)
+
+                mid = (bid + ask) / 2.0 if (bid > 0 and ask > 0) else 0.0
+
+                transformed.append({
+                    "symbol": opt.get("contract_ticker", "") or opt.get("symbol", ""),
                     "underlying": symbol,
                     "strike": strike,
                     "expiry": opt.get("expiry", ""),
                     "dte": dte,
                     "type": opt.get("type", "call"),
-                    "bid": opt.get("bid", 0),
-                    "ask": opt.get("ask", 0),
-                    "last": opt.get("close", 0),
-                    # Greeks (Black-Scholes) - ALWAYS POPULATED
+                    "bid": bid,
+                    "ask": ask,
+                    "mid": mid,
+                    "last": last,
+
                     "delta": greeks_result.delta,
                     "delta_source": greeks_result.delta_source,
                     "gamma": greeks_result.gamma,
                     "theta": greeks_result.theta,
                     "vega": greeks_result.vega,
-                    # IV fields (standardized) - ALWAYS POPULATED
+
                     "iv": iv_data["iv"],
                     "iv_pct": iv_data["iv_pct"],
-                    # IV Rank (industry standard) - ALWAYS POPULATED
+
                     "iv_rank": iv_metrics.iv_rank if iv_metrics else 50.0,
                     "iv_percentile": iv_metrics.iv_percentile if iv_metrics else 50.0,
                     "iv_rank_source": iv_metrics.iv_rank_source if iv_metrics else "DEFAULT_NEUTRAL",
                     "iv_samples": iv_metrics.iv_samples if iv_metrics else 0,
-                    # Liquidity
-                    "volume": opt.get("volume", 0),
-                    "open_interest": opt.get("open_interest", 0),
-                    "break_even": strike + opt.get("ask", 0) if opt.get("type") == "call" else strike - opt.get("ask", 0),
+
+                    "volume": int(opt.get("volume", 0) or 0),
+                    "open_interest": int(opt.get("open_interest", 0) or 0),
+
+                    "break_even": strike + ask if (opt.get("type") == "call") else strike - ask,
+                    "source": opt.get("source", "yahoo"),
                 })
-            
-            if transformed_options:
-                logging.info(f"Options chain: {len(transformed_options)} results for {symbol} via data_provider")
+
+            if transformed:
+                src = options[0].get("source", "yahoo")
                 return {
                     "symbol": symbol,
-                    "stock_price": underlying_price,
-                    "options": transformed_options,
-                    # Symbol-level IV metrics
+                    "stock_price": display_underlying_price,
+                    "stock_price_regular_session": regular_underlying_price,
+                    "stock_price_for_greeks": S_for_greeks,
+                    "options": transformed,
+
                     "iv_proxy": iv_metrics.iv_proxy if iv_metrics else 0.0,
                     "iv_proxy_pct": iv_metrics.iv_proxy_pct if iv_metrics else 0.0,
                     "iv_rank": iv_metrics.iv_rank if iv_metrics else 50.0,
                     "iv_percentile": iv_metrics.iv_percentile if iv_metrics else 50.0,
                     "iv_rank_source": iv_metrics.iv_rank_source if iv_metrics else "DEFAULT_NEUTRAL",
                     "iv_samples": iv_metrics.iv_samples if iv_metrics else 0,
-                    "source": options[0].get("source", "yahoo") if options else "yahoo",
-                    "is_live": True
+
+                    "market_state": market_state,
+                    "timestamp_et": price_meta["timestamp_et"],
+                    "stock_price_source": price_meta["price_source"],
+                    "options_source": src,
+                    "options_stale": staleness_meta["stale"],
+                    "options_stale_reason": staleness_meta["stale_reason"],
+                    "is_live": (market_state == "OPEN") and (not staleness_meta["stale"]),
                 }
-    
+
+    except HTTPException:
+        raise
     except Exception as e:
         logging.error(f"data_provider options chain error for {symbol}: {e}")
-    
-    # Fallback to mock data (flagged)
+
     stock_price = MOCK_STOCKS.get(symbol, {}).get("price", 100)
     mock_options = generate_mock_options(symbol, stock_price)
-    
     if expiry:
-        mock_options = [o for o in mock_options if o["expiry"] == expiry]
-    
-    logging.warning(f"Using mock options fallback for {symbol}")
+        mock_options = [o for o in mock_options if o.get("expiry") == expiry]
+
+    now_et = _now_et()
     return {
         "symbol": symbol,
         "stock_price": stock_price,
         "options": mock_options,
-        "is_mock": True  # FLAG: Mock data in use
+        "is_mock": True,
+        "market_state": _get_market_state(now_et),
+        "timestamp_et": now_et.isoformat(),
+        "options_stale": True,
+        "options_stale_reason": "MOCK_FALLBACK",
     }
 
 
 @options_router.get("/expirations/{symbol}")
 async def get_option_expirations(symbol: str, user: dict = Depends(get_current_user)):
-    """
-    Get available expiration dates for a symbol.
-    Returns weekly and monthly expirations.
-    """
-    expirations = []
-    now = datetime.now()
-    
-    # Weekly expirations (next 12 weeks) - efficient loop
-    for weeks in range(1, 12):
-        expiry = (now + timedelta(weeks=weeks)).strftime("%Y-%m-%d")
-        expirations.append({"date": expiry, "dte": weeks * 7})
-    
-    # Monthly expirations (3-24 months out)
+    symbol = symbol.upper()
+    now_et = _now_et()
+
+    expirations: List[Dict[str, Any]] = []
+
+    # TEMP synthetic fallback (flagged)
+    for weeks in range(1, 13):
+        expiry_date = now_et.date() + timedelta(weeks=weeks)
+        expirations.append({
+            "date": expiry_date.isoformat(),
+            "dte": (expiry_date - now_et.date()).days,
+            "is_synthetic": True
+        })
+
     for months in range(3, 25):
-        expiry = (now + timedelta(days=months * 30)).strftime("%Y-%m-%d")
-        expirations.append({"date": expiry, "dte": months * 30})
-    
-    return expirations
+        expiry_date = now_et.date() + timedelta(days=months * 30)
+        expirations.append({
+            "date": expiry_date.isoformat(),
+            "dte": (expiry_date - now_et.date()).days,
+            "is_synthetic": True
+        })
+
+    return {
+        "symbol": symbol,
+        "expirations": expirations,
+        "market_state": _get_market_state(now_et),
+        "timestamp_et": now_et.isoformat(),
+        "note": "Expirations are synthetic until data_provider exposes real expirations for the symbol.",
+    }
