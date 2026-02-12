@@ -1169,16 +1169,15 @@ async def screen_pmcc(
                     strike = opt.get("strike", 0)
                     open_interest = opt.get("open_interest", 0) or 0
                     
-                    # PHASE 3: Use ASK price for BUY legs (PMCC LEAP)
+                    # ========== STRICT ASK-ONLY PRICING FOR BUY LEG ==========
+                    # PMCC LEAP BUY leg: REQUIRE ASK > 0, reject if missing/0
                     ask_price = opt.get("ask", 0) or 0
-                    close_price = opt.get("close", 0) or opt.get("vwap", 0) or 0
                     
-                    if ask_price > 0:
-                        premium = ask_price
-                    elif close_price > 0:
-                        premium = close_price
-                    else:
-                        continue
+                    if ask_price <= 0:
+                        cache_stats["ask_rejected"] += 1
+                        continue  # REJECT: No ask price available
+                    
+                    premium = ask_price
                     
                     # DATA QUALITY FILTER: Skip very low OI (relaxed for LEAPS)
                     if open_interest < 5:  # Relaxed from 10 to 5 for LEAPS
