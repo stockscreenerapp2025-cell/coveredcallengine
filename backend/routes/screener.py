@@ -968,7 +968,11 @@ async def get_dashboard_opportunities(
             "bias_weight": bias_weight,
             "filters_applied": DASHBOARD_FILTERS,
             "data_source": "yahoo_cached",  # PHASE 2: Updated source
-            "snapshot_cache_stats": cache_stats  # PHASE 2: Include cache stats
+            "snapshot_cache_stats": cache_stats,  # PHASE 2: Include cache stats
+            # ========== PRICE SYNC METADATA ==========
+            "market_state": current_market_state,
+            "underlying_price_source": underlying_price_source,
+            "pricing_rule": "BID_ONLY"
         }
         await funcs['set_cached_data'](cache_key, result)
         return result
