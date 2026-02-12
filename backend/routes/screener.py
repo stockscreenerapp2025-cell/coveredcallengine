@@ -357,6 +357,7 @@ async def screen_covered_calls(
                             pass
                 
                 # PHASE 2: Get options from snapshot if available, otherwise fetch
+                # Always pass the SAME underlying_price to ensure stock/options alignment
                 options_results = snapshot.get("options_data")
                 
                 if not options_results:
@@ -367,7 +368,6 @@ async def screen_covered_calls(
                 
                 if not options_results:
                     logging.debug(f"No options data for {symbol}")
-                    continue
                     continue
                 
                 for opt in options_results:
@@ -401,23 +401,16 @@ async def screen_covered_calls(
                     if not is_etf and (estimated_delta < min_delta or estimated_delta > max_delta):
                         continue
                     
-                    # PHASE 1 FIX: Use BID price for SELL legs (Covered Call)
-                    # Fallback chain: bid -> close -> vwap (bid preferred)
+                    # ========== STRICT BID-ONLY PRICING (NO FALLBACK) ==========
+                    # Covered Call SELL leg: REQUIRE BID > 0, reject if missing/0
                     bid_price = opt.get("bid", 0) or 0
-                    close_price = opt.get("close", 0) or opt.get("vwap", 0) or 0
                     
-                    # Use BID if available and reasonable, otherwise fallback to close
-                    if bid_price > 0:
-                        premium = bid_price
-                        premium_source = "bid"
-                    elif close_price > 0:
-                        premium = close_price
-                        premium_source = "close"
-                    else:
-                        continue
+                    if bid_price <= 0:
+                        cache_stats["bid_rejected"] += 1
+                        continue  # REJECT: No bid price available
                     
-                    if premium <= 0:
-                        continue
+                    premium = bid_price
+                    premium_source = "bid"
                     
                     # PHASE 2: Validate trade structure BEFORE scoring
                     expiry = opt.get("expiry", "")
