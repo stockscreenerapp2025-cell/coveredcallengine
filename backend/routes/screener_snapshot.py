@@ -48,7 +48,9 @@ from utils.auth import get_current_user
 from services.data_provider import (
     fetch_options_chain, 
     fetch_stock_quote, 
+    fetch_live_stock_quote,
     fetch_options_with_cache,
+    get_market_state,
     # PHASE 2: Import cache-first functions
     get_symbol_snapshot,
     get_symbol_snapshots_batch,
