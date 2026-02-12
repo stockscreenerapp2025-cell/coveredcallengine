@@ -1247,7 +1247,11 @@ async def screen_covered_calls(
         "spread_threshold": f"{MAX_SPREAD_PCT}%",
         "architecture": "YAHOO_SINGLE_SOURCE_OF_TRUTH",
         "live_data_used": True,
-        "snapshot_cache_stats": cache_stats  # PHASE 2: Include cache stats
+        "snapshot_cache_stats": cache_stats,  # PHASE 2: Include cache stats
+        # ========== PRICE SYNC METADATA ==========
+        "market_state": current_market_state,
+        "underlying_price_source": underlying_price_source,
+        "pricing_rule": "BID_ONLY"
     }
 
 
