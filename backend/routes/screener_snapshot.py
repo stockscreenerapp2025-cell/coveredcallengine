@@ -994,12 +994,12 @@ async def screen_covered_calls(
             quote_timestamp = opt.get("quote_timestamp", "")
             quote_age_hours = opt.get("quote_age_hours", 0)
             
-            # PRICING RULES - SELL leg (short call):
-            # - Use BID only
-            # - If BID is None, 0, or missing → reject the contract
-            # - Never use: lastPrice, mid, ASK, theoretical price
+            # ========== STRICT BID-ONLY PRICING (NO FALLBACK) ==========
+            # SELL leg (short call): REQUIRE BID > 0, reject if missing/0
+            # Never use: lastPrice, mid, ASK, close, vwap, theoretical price
             if not bid or bid <= 0:
-                continue  # Reject - no valid BID for SELL leg
+                cache_stats["bid_rejected"] += 1
+                continue  # REJECT: No valid BID for SELL leg
             
             premium = bid  # SELL leg uses BID only
             
