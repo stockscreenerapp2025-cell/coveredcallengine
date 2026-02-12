@@ -1024,6 +1024,14 @@ async def screen_pmcc(
         return {"opportunities": [], "total": 0, "message": "API key required for PMCC screening", "is_mock": True}
     
     try:
+        # ========== MARKET-STATE AWARE PRICING ==========
+        # Determine market state once for the entire scan
+        current_market_state = get_market_state()
+        use_live_price = (current_market_state == "OPEN")
+        underlying_price_source = "LIVE" if use_live_price else "LAST_CLOSE"
+        
+        logging.info(f"PMCC Screener: market_state={current_market_state}, price_source={underlying_price_source}")
+        
         # Extended symbol list including ETFs for Phase 5
         symbols_to_scan = [
             # Tech - various price ranges
@@ -1062,7 +1070,7 @@ async def screen_pmcc(
             batch_size=10
         )
         
-        cache_stats = {"hits": 0, "misses": 0, "symbols_processed": 0}
+        cache_stats = {"hits": 0, "misses": 0, "symbols_processed": 0, "ask_rejected": 0, "bid_rejected": 0}
         
         for symbol in symbols_to_scan:
             try:
