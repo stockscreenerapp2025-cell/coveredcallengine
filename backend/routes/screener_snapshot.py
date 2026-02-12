@@ -844,7 +844,7 @@ async def screen_covered_calls(
     symbols_with_stock_data = []
     
     # PHASE 2: Track cache performance
-    cache_stats = {"hits": 0, "misses": 0, "symbols_processed": 0}
+    cache_stats = {"hits": 0, "misses": 0, "symbols_processed": 0, "bid_rejected": 0}
     
     # PHASE 2: Batch fetch snapshots with cache-first approach
     snapshots = await get_symbol_snapshots_batch(
@@ -1300,7 +1300,7 @@ async def screen_pmcc(
     PHASE 2: Uses cache-first approach for stock data
     """
     # PHASE 2: Track cache performance
-    cache_stats = {"hits": 0, "misses": 0, "symbols_processed": 0}
+    cache_stats = {"hits": 0, "misses": 0, "symbols_processed": 0, "bid_rejected": 0}
     
     # PHASE 2: Batch fetch snapshots with cache-first approach
     snapshots = await get_symbol_snapshots_batch(
