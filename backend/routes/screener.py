@@ -561,7 +561,11 @@ async def screen_covered_calls(
             "market_bias": market_sentiment.get("bias", "neutral"),
             "bias_weight": bias_weight,
             "data_source": "yahoo_cached",  # PHASE 2: Updated data source
-            "snapshot_cache_stats": cache_stats  # PHASE 2: Include cache stats
+            "snapshot_cache_stats": cache_stats,  # PHASE 2: Include cache stats
+            # ========== PRICE SYNC METADATA ==========
+            "market_state": current_market_state,
+            "underlying_price_source": underlying_price_source,
+            "pricing_rule": "BID_ONLY"
         }
         await funcs['set_cached_data'](cache_key, result)
         return result
