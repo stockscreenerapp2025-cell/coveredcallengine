@@ -794,10 +794,11 @@ async def get_dashboard_opportunities(
                         expiry = opt.get("expiry", "")
                         open_interest = opt.get("open_interest", 0) or 0
                         
-                        # BID-ONLY pricing (Phase 3 rule)
+                        # ========== STRICT BID-ONLY PRICING (NO FALLBACK) ==========
                         bid_price = opt.get("bid", 0) or 0
                         
                         if bid_price <= 0:
+                            cache_stats["bid_rejected"] += 1
                             continue  # REJECT: No bid price
                         
                         premium = bid_price
