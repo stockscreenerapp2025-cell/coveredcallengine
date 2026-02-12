@@ -1318,8 +1318,15 @@ async def screen_pmcc(
     
     PHASE 2: Uses cache-first approach for stock data
     """
+    # ========== MARKET-STATE AWARE PRICING ==========
+    current_market_state = get_market_state()
+    use_live_price = (current_market_state == "OPEN")
+    underlying_price_source = "LIVE" if use_live_price else "LAST_CLOSE"
+    
+    logging.info(f"PMCC Screener: market_state={current_market_state}, price_source={underlying_price_source}")
+    
     # PHASE 2: Track cache performance
-    cache_stats = {"hits": 0, "misses": 0, "symbols_processed": 0, "bid_rejected": 0}
+    cache_stats = {"hits": 0, "misses": 0, "symbols_processed": 0, "ask_rejected": 0, "bid_rejected": 0}
     
     # PHASE 2: Batch fetch snapshots with cache-first approach
     snapshots = await get_symbol_snapshots_batch(
@@ -1350,7 +1357,19 @@ async def screen_pmcc(
                     cache_stats["misses"] += 1
                 
                 if quote.get("price") and quote.get("price") > 0:
-                    stock_price = quote["price"]
+                    # ========== MARKET-STATE AWARE UNDERLYING PRICE ==========
+                    if use_live_price:
+                        live_quote = await fetch_live_stock_quote(symbol.upper(), None)
+                        if live_quote and live_quote.get("price", 0) > 0:
+                            stock_price = live_quote["price"]
+                            price_source = "yahoo_live"
+                        else:
+                            stock_price = quote["price"]
+                            price_source = "yahoo_cached" if snapshot.get("from_cache") else "yahoo_live"
+                    else:
+                        stock_price = quote["price"]
+                        price_source = "yahoo_cached" if snapshot.get("from_cache") else "yahoo_live"
+                    
                     is_etf = symbol in ETF_SYMBOLS
                     
                     # PMCC-specific price filter (different from CC)
@@ -1366,7 +1385,7 @@ async def screen_pmcc(
                         "market_cap": quote.get("market_cap"),
                         "analyst_rating": quote.get("analyst_rating"),
                         "is_etf": is_etf,
-                        "source": "yahoo_cached" if snapshot.get("from_cache") else "yahoo_live"
+                        "source": price_source
                     }
                     symbols_with_stock_data.append(symbol)
         except Exception as e:
