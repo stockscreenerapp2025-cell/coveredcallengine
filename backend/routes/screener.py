@@ -233,6 +233,14 @@ async def screen_covered_calls(
     try:
         opportunities = []
         
+        # ========== MARKET-STATE AWARE PRICING ==========
+        # Determine market state once for the entire scan
+        current_market_state = get_market_state()
+        use_live_price = (current_market_state == "OPEN")
+        underlying_price_source = "LIVE" if use_live_price else "LAST_CLOSE"
+        
+        logging.info(f"CC Screener: market_state={current_market_state}, price_source={underlying_price_source}")
+        
         # Symbol lists for scanning
         tier1_symbols = [
             "INTC", "AMD", "BAC", "WFC", "C", "F", "GM", "T", "VZ",
@@ -280,7 +288,7 @@ async def screen_covered_calls(
             batch_size=10
         )
         
-        cache_stats = {"hits": 0, "misses": 0, "symbols_processed": 0}
+        cache_stats = {"hits": 0, "misses": 0, "symbols_processed": 0, "bid_rejected": 0}
         
         for symbol in symbols_to_scan:
             try:
