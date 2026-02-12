@@ -1874,7 +1874,10 @@ async def screen_pmcc(
         # ========== PRICE SYNC METADATA ==========
         "market_state": current_market_state,
         "underlying_price_source": underlying_price_source,
-        "pricing_rule": "BID_ASK_ONLY"
+        "pricing_rules": {
+            "long_leg": "ASK_ONLY",
+            "short_leg": "BID_ONLY"
+        }
     }
 
 
