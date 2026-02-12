@@ -311,7 +311,19 @@ async def screen_covered_calls(
                 if not stock_data or stock_data.get("price", 0) == 0:
                     continue
                 
-                underlying_price = stock_data["price"]
+                # ========== MARKET-STATE AWARE UNDERLYING PRICE ==========
+                # During OPEN: Use live quote for consistency with live BID/ASK
+                # During CLOSED: Use snapshot (previous close)
+                if use_live_price:
+                    live_quote = await fetch_live_stock_quote(symbol.upper(), api_key)
+                    if live_quote and live_quote.get("price", 0) > 0:
+                        underlying_price = live_quote["price"]
+                    else:
+                        # Fallback to snapshot if live fails
+                        underlying_price = stock_data["price"]
+                else:
+                    underlying_price = stock_data["price"]
+                
                 analyst_rating = stock_data.get("analyst_rating")
                 avg_volume = stock_data.get("avg_volume", 0) or 0
                 market_cap = stock_data.get("market_cap", 0) or 0
