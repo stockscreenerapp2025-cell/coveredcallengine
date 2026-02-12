@@ -1460,9 +1460,14 @@ async def screen_pmcc(
             bid = opt.get("bid", 0)
             dte = opt.get("dte", 0)
             
-            # PMCC RULE: Both BID and ASK must be > 0
-            if not bid or bid <= 0 or not ask or ask <= 0:
-                continue
+            # ========== STRICT ASK-ONLY PRICING FOR BUY LEG ==========
+            # PMCC LEAP BUY leg: REQUIRE ASK > 0, reject if missing/0
+            # BID also required for spread validation
+            if not ask or ask <= 0:
+                cache_stats["ask_rejected"] += 1
+                continue  # REJECT: No valid ASK for BUY leg
+            if not bid or bid <= 0:
+                continue  # Reject - need both for spread validation
             
             # PMCC RULE: Expiry must be 12-24 months (365-730 days)
             if dte < min_leap_dte:
