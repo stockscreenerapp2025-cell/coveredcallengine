@@ -707,7 +707,16 @@ async def get_dashboard_opportunities(
                     rejected_symbols.append({"symbol": symbol, "reason": "No price data"})
                     continue
                 
-                current_price = stock_data["price"]
+                # ========== MARKET-STATE AWARE UNDERLYING PRICE ==========
+                if use_live_price:
+                    live_quote = await fetch_live_stock_quote(symbol.upper(), api_key)
+                    if live_quote and live_quote.get("price", 0) > 0:
+                        current_price = live_quote["price"]
+                    else:
+                        current_price = stock_data["price"]
+                else:
+                    current_price = stock_data["price"]
+                
                 analyst_rating = stock_data.get("analyst_rating")
                 avg_volume = stock_data.get("avg_volume", 0) or 0
                 market_cap = stock_data.get("market_cap", 0) or 0
