@@ -103,7 +103,12 @@ const Admin = () => {
     stripe_webhook_secret: '',
     stripe_secret_key: '',
     resend_api_key: '',
-    sender_email: ''
+    sender_email: '',
+    paypal_enabled: true,
+    paypal_mode: 'sandbox',
+    paypal_api_username: '',
+    paypal_api_password: '',
+    paypal_api_signature: ''
   });
   const [integrationStatus, setIntegrationStatus] = useState(null);
   const [savingIntegration, setSavingIntegration] = useState(false);
@@ -119,6 +124,8 @@ const Admin = () => {
   const [showStripeWebhook, setShowStripeWebhook] = useState(false);
   const [showStripeSecret, setShowStripeSecret] = useState(false);
   const [showResendKey, setShowResendKey] = useState(false);
+  const [showPayPalPassword, setShowPayPalPassword] = useState(false);
+  const [showPayPalSignature, setShowPayPalSignature] = useState(false);
   
   // Email Automation
   const [emailTemplates, setEmailTemplates] = useState([]);
