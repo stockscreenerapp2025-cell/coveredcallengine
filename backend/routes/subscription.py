@@ -144,15 +144,30 @@ async def get_subscription_links():
     """
     Public endpoint for Pricing page to fetch payment links.
     Returns PayPal hosted links from admin_settings.
+    Schema must match frontend Pricing.js expectations.
     """
+    # Default schema with null values
+    default_links = {
+        "basic_monthly_link": None,
+        "basic_yearly_link": None,
+        "standard_monthly_link": None,
+        "standard_yearly_link": None,
+        "premium_monthly_link": None,
+        "premium_yearly_link": None,
+    }
+    
     settings = await db.admin_settings.find_one({"type": "paypal_links"}, {"_id": 0})
     if not settings:
-        return {}
+        return default_links
     
     # Determine which links to return based on mode
     paypal_settings = await db.admin_settings.find_one({"type": "paypal_settings"}, {"_id": 0})
     mode = paypal_settings.get("mode", "sandbox") if paypal_settings else "sandbox"
     
     if mode == "live":
-        return settings.get("live_links", {})
-    return settings.get("sandbox_links", {})
+        configured_links = settings.get("live_links", {})
+    else:
+        configured_links = settings.get("sandbox_links", {})
+    
+    # Merge configured links with defaults (preserving null for unconfigured)
+    return {**default_links, **configured_links}
