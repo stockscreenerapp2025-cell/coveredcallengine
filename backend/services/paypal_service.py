@@ -351,6 +351,36 @@ class PayPalService:
             "error": result.get("L_LONGMESSAGE0", "Unknown error")
         }
     
+    async def verify_ipn(self, data: Dict[str, Any]) -> bool:
+        """
+        Verify IPN notification with PayPal.
+        
+        Re-posts the IPN data to PayPal with cmd=_notify-validate.
+        Returns True if PayPal responds with 'VERIFIED', False otherwise.
+        """
+        try:
+            # Build verification request
+            verify_params = dict(data)
+            verify_params["cmd"] = "_notify-validate"
+            
+            # Use the appropriate endpoint based on mode
+            verify_url = self.redirect_url  # sandbox or live
+            
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                response = await client.post(
+                    verify_url,
+                    data=verify_params,
+                    headers={"Content-Type": "application/x-www-form-urlencoded"}
+                )
+                
+                verified = response.text.strip() == "VERIFIED"
+                logger.info(f"[PayPal IPN] Verification result: {response.text.strip()}, verified={verified}")
+                return verified
+                
+        except Exception as e:
+            logger.error(f"[PayPal IPN] Verification error: {e}")
+            return False
+    
     async def process_ipn(self, raw_post_data: bytes) -> Dict[str, Any]:
         """
         Process PayPal IPN (Instant Payment Notification)
