@@ -2168,6 +2168,24 @@ const Admin = () => {
                 </div>
               </CardContent>
             </Card>
+            <Card className={`glass-card border-l-4 ${integrationStatus?.paypal?.configured ? 'border-emerald-500' : 'border-yellow-500'}`}>
+              <CardContent className="p-4">
+                <div className="flex items-center gap-3">
+                  {integrationStatus?.paypal?.configured ? (
+                    <CheckCircle className="w-8 h-8 text-emerald-400" />
+                  ) : (
+                    <XCircle className="w-8 h-8 text-yellow-400" />
+                  )}
+                  <div>
+                    <p className="font-medium text-white">PayPal Subscriptions</p>
+                    <p className="text-xs text-zinc-500">
+                      {integrationStatus?.paypal?.configured ? 'Configured' : 'Not configured'}
+                      {integrationStatus?.paypal?.mode ? ` • ${integrationStatus.paypal.mode.toUpperCase()}` : ''}
+                    </p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
           </div>
           
           {/* Stripe Settings */}
