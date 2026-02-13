@@ -171,6 +171,18 @@ const Admin = () => {
     fetchScreenerStatus();
   }, []);
 
+  // Keep Data Quality tab fresh (without masking missing backend fields)
+  useEffect(() => {
+    if (activeTab !== 'data-quality') return;
+    // Fetch immediately on tab focus
+    fetchScreenerStatus();
+    // Poll every 30s while this tab is active
+    const interval = setInterval(() => {
+      fetchScreenerStatus();
+    }, 30000);
+    return () => clearInterval(interval);
+  }, [activeTab]);
+
   const fetchSettings = async () => {
     setLoading(true);
     try {
@@ -207,21 +219,7 @@ const Admin = () => {
     }
   };
   
-  const triggerAllScans = async () => {
-    setTriggeringScan(true);
-    setLastScanResult(null);
-    try {
-      toast.info('Starting pre-computed scans... This may take several minutes.');
-      const response = await api.post('/scans/trigger-all');
-      setLastScanResult(response.data);
-      toast.success(`Scans complete! CC: ${response.data.results?.cc_conservative || 0} + ${response.data.results?.cc_balanced || 0} + ${response.data.results?.cc_aggressive || 0} | PMCC: ${response.data.results?.pmcc_conservative || 0} + ${response.data.results?.pmcc_balanced || 0} + ${response.data.results?.pmcc_aggressive || 0}`);
-    } catch (error) {
-      console.error('Trigger scans error:', error);
-      toast.error(error.response?.data?.detail || 'Failed to trigger scans');
-    } finally {
-      setTriggeringScan(false);
-    }
-  };
+  
   
   const fetchSubscriptionSettings = async () => {
     try {
@@ -669,6 +667,61 @@ const Admin = () => {
     return <Badge className={styles[status] || styles.expired}>{status}</Badge>;
   };
 
+  // Helpers for Data Quality tab (avoid masking missing values with hardcoded defaults)
+  const isNumber = (v) => typeof v === 'number' && !Number.isNaN(v);
+
+  const formatUtc = (isoString) => {
+    if (!isoString) return 'N/A';
+    try {
+      const d = new Date(isoString);
+      if (Number.isNaN(d.getTime())) return 'N/A';
+      const date = d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'UTC' });
+      const time = d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' });
+      return `${date} – ${time} UTC`;
+    } catch {
+      return 'N/A';
+    }
+  };
+
+  const healthScoreValue = isNumber(screenerStatus?.health_score) ? screenerStatus.health_score : null;
+
+  const lastFullRunIso =
+    screenerStatus?.last_full_run_at ??
+    screenerStatus?.last_full_run_utc ??
+    screenerStatus?.last_full_run ??
+    screenerStatus?.last_run_at ??
+    screenerStatus?.last_run ??
+    null;
+
+  const marketState = screenerStatus?.market_state ?? screenerStatus?.market?.state ?? null;
+  const priceSource =
+    screenerStatus?.underlying_price_source ??
+    screenerStatus?.price_source ??
+    screenerStatus?.pricing_rule ??
+    null;
+
+  const realtimeBadgeText = (() => {
+    if (!marketState && !priceSource) return '⚠️ Data source unknown';
+    const ms = String(marketState || '').toUpperCase();
+    const ps = String(priceSource || '').toUpperCase();
+
+    const isLive = ps.includes('REAL') || ps.includes('LIVE') || ps.includes('INTRADAY') || ps.includes('OPEN');
+    const isClose = ps.includes('CLOSE') || ps.includes('PREV') || ps.includes('EOD');
+
+    if (ms === 'OPEN') return isLive ? '✅ Real-time (OPEN)' : '🟡 Market OPEN (non-live source)';
+    if (ms === 'CLOSED') return isClose ? '🕒 Market Close data' : '🟡 Market CLOSED (source unclear)';
+    if (ms === 'PREMARKET' || ms === 'AFTERHOURS') return isLive ? `✅ ${ms} live` : `🟡 ${ms} (non-live)`;
+    return isLive ? '✅ Live pricing' : isClose ? '🕒 Market close pricing' : '⚠️ Data source unknown';
+  })();
+
+  const sdHigh = isNumber(screenerStatus?.score_distribution?.high) ? screenerStatus.score_distribution.high : null;
+  const sdMediumHigh = isNumber(screenerStatus?.score_distribution?.medium_high) ? screenerStatus.score_distribution.medium_high : null;
+  const sdMedium = isNumber(screenerStatus?.score_distribution?.medium) ? screenerStatus.score_distribution.medium : null;
+  const sdLow = isNumber(screenerStatus?.score_distribution?.low) ? screenerStatus.score_distribution.low : null;
+
+  const scoreDriftValue = isNumber(screenerStatus?.score_drift) ? screenerStatus.score_drift : null;
+  const outlierSwingsValue = isNumber(screenerStatus?.outlier_swings) ? screenerStatus.outlier_swings : null;
+
   return (
     <div className="space-y-6" data-testid="admin-page">
       {/* Header */}
@@ -885,65 +938,67 @@ const Admin = () => {
             <div className="space-y-6">
               {/* 1️⃣ Overall System Health */}
               <Card className={`glass-card border-2 ${
-                (screenerStatus.health_score || 92) >= 80 ? 'border-emerald-500/30 bg-gradient-to-r from-emerald-500/5 to-transparent' :
-                (screenerStatus.health_score || 92) >= 60 ? 'border-yellow-500/30 bg-gradient-to-r from-yellow-500/5 to-transparent' :
-                'border-red-500/30 bg-gradient-to-r from-red-500/5 to-transparent'
+                healthScoreValue === null
+                  ? 'border-zinc-700 bg-gradient-to-r from-zinc-700/10 to-transparent'
+                  : healthScoreValue >= 80
+                    ? 'border-emerald-500/30 bg-gradient-to-r from-emerald-500/5 to-transparent'
+                    : healthScoreValue >= 60
+                      ? 'border-yellow-500/30 bg-gradient-to-r from-yellow-500/5 to-transparent'
+                      : 'border-red-500/30 bg-gradient-to-r from-red-500/5 to-transparent'
               }`}>
                 <CardContent className="pt-6">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-4">
                       <div className={`w-16 h-16 rounded-full flex items-center justify-center ${
-                        (screenerStatus.health_score || 92) >= 80 ? 'bg-emerald-500/20' :
-                        (screenerStatus.health_score || 92) >= 60 ? 'bg-yellow-500/20' :
-                        'bg-red-500/20'
+                        healthScoreValue === null
+                          ? 'bg-zinc-700/30'
+                          : healthScoreValue >= 80
+                            ? 'bg-emerald-500/20'
+                            : healthScoreValue >= 60
+                              ? 'bg-yellow-500/20'
+                              : 'bg-red-500/20'
                       }`}>
                         <span className={`text-2xl ${
-                          (screenerStatus.health_score || 92) >= 80 ? 'text-emerald-400' :
-                          (screenerStatus.health_score || 92) >= 60 ? 'text-yellow-400' :
-                          'text-red-400'
+                          healthScoreValue === null
+                            ? 'text-zinc-400'
+                            : healthScoreValue >= 80
+                              ? 'text-emerald-400'
+                              : healthScoreValue >= 60
+                                ? 'text-yellow-400'
+                                : 'text-red-400'
                         }`}>
-                          {(screenerStatus.health_score || 92) >= 80 ? '🟢' : 
-                           (screenerStatus.health_score || 92) >= 60 ? '🟡' : '🔴'}
+                          {healthScoreValue === null ? '⚪' : healthScoreValue >= 80 ? '🟢' : healthScoreValue >= 60 ? '🟡' : '🔴'}
                         </span>
                       </div>
                       <div>
                         <p className="text-sm text-zinc-400 uppercase tracking-wider">System Health</p>
                         <p className={`text-3xl font-bold ${
-                          (screenerStatus.health_score || 92) >= 80 ? 'text-emerald-400' :
-                          (screenerStatus.health_score || 92) >= 60 ? 'text-yellow-400' :
-                          'text-red-400'
+                          healthScoreValue === null
+                            ? 'text-zinc-300'
+                            : healthScoreValue >= 80
+                              ? 'text-emerald-400'
+                              : healthScoreValue >= 60
+                                ? 'text-yellow-400'
+                                : 'text-red-400'
                         }`}>
-                          {(screenerStatus.health_score || 92) >= 80 ? 'HEALTHY' : 
-                           (screenerStatus.health_score || 92) >= 60 ? 'DEGRADED' : 'CRITICAL'}
-                          <span className="text-xl ml-2">({screenerStatus.health_score || 92} / 100)</span>
+                          {healthScoreValue === null ? 'UNKNOWN' : healthScoreValue >= 80 ? 'HEALTHY' : healthScoreValue >= 60 ? 'DEGRADED' : 'CRITICAL'}
+                          <span className="text-xl ml-2">({healthScoreValue ?? 'N/A'} / 100)</span>
                         </p>
                       </div>
                     </div>
                     <div className="text-right">
                       <p className="text-xs text-zinc-500">Last Full Run</p>
-                      <p className="text-sm text-zinc-300">{new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })} – {new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })} UTC</p>
-                      <p className="text-xs text-emerald-400 mt-1">✅ Real-time Data</p>
-                      <Button 
-                        onClick={triggerAllScans} 
-                        disabled={triggeringScan}
-                        className="mt-3 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700"
-                        size="sm"
-                      >
-                        {triggeringScan ? (
-                          <>
-                            <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
-                            Running Scans...
-                          </>
-                        ) : (
-                          <>
-                            <Zap className="w-4 h-4 mr-2" />
-                            Trigger All Scans
-                          </>
-                        )}
-                      </Button>
+                      <p className="text-sm text-zinc-300">{formatUtc(lastFullRunIso)}</p>
+                      <p className="text-xs mt-1 text-zinc-300">{realtimeBadgeText}</p>
+                      
                       {lastScanResult && (
                         <p className="text-xs text-emerald-400 mt-2">
                           ✅ Last scan: {Object.entries(lastScanResult.results || {}).map(([k, v]) => `${k}: ${v}`).join(' | ')}
+                        </p>
+                      )}
+                      {!lastFullRunIso && (
+                        <p className="text-xs text-yellow-400 mt-2">
+                          ⚠️ /screener/admin-status did not return a last run timestamp (expected: last_full_run_at)
                         </p>
                       )}
                     </div>
@@ -999,23 +1054,23 @@ const Admin = () => {
                     <div className="space-y-2 text-sm">
                       <div className="flex justify-between p-2 bg-zinc-800/50 rounded">
                         <span className="text-zinc-400">Universe scanned:</span>
-                        <span className="text-zinc-200 font-mono">{screenerStatus.eligibility?.universe_scanned || 412} symbols</span>
+                        <span className="text-zinc-200 font-mono">{screenerStatus.eligibility?.universe_scanned ?? 'N/A'} symbols</span>
                       </div>
                       <div className="flex justify-between p-2 bg-zinc-800/50 rounded">
                         <span className="text-zinc-400">Option chain valid:</span>
-                        <span className="text-emerald-400 font-mono">{screenerStatus.eligibility?.chain_valid || 387} ({screenerStatus.eligibility?.chain_valid_pct || 94}%)</span>
+                        <span className="text-emerald-400 font-mono">{screenerStatus.eligibility?.chain_valid ?? 'N/A'} ({screenerStatus.eligibility?.chain_valid_pct ?? 'N/A'}%)</span>
                       </div>
                       <div className="flex justify-between p-2 bg-zinc-800/50 rounded">
                         <span className="text-zinc-400">Structure valid:</span>
-                        <span className="text-cyan-400 font-mono">{screenerStatus.eligibility?.structure_valid || 146} ({screenerStatus.eligibility?.structure_valid_pct || 35}%)</span>
+                        <span className="text-cyan-400 font-mono">{screenerStatus.eligibility?.structure_valid ?? 'N/A'} ({screenerStatus.eligibility?.structure_valid_pct ?? 'N/A'}%)</span>
                       </div>
                       <div className="flex justify-between p-2 bg-zinc-800/50 rounded">
                         <span className="text-zinc-400">Scored trades:</span>
-                        <span className="text-emerald-400 font-mono">{screenerStatus.eligibility?.scored_trades || 146} (100%)</span>
+                        <span className="text-emerald-400 font-mono">{screenerStatus.eligibility?.scored_trades ?? 'N/A'} ({screenerStatus.eligibility?.scored_trades_pct ?? 'N/A'}%)</span>
                       </div>
                       <div className="flex justify-between p-2 bg-red-500/10 rounded border border-red-500/20">
                         <span className="text-zinc-400">Rejected pre-score:</span>
-                        <span className="text-red-400 font-mono">{screenerStatus.eligibility?.rejected || 241}</span>
+                        <span className="text-red-400 font-mono">{screenerStatus.eligibility?.rejected ?? 'N/A'}</span>
                       </div>
                     </div>
                   </CardContent>
@@ -1049,13 +1104,13 @@ const Admin = () => {
                         <div className="p-3 bg-zinc-800/50 rounded text-center">
                           <p className="text-xs text-zinc-500">Bias Strength</p>
                           <p className="text-xl font-bold text-amber-400">
-                            {Math.abs((screenerStatus.market_bias?.sentiment_score || 0.5) - 0.5) > 0.15 ? 'Strong' : 'Moderate'}
+                            {isNumber(screenerStatus.market_bias?.sentiment_score) ? (Math.abs(screenerStatus.market_bias.sentiment_score - 0.5) > 0.15 ? 'Strong' : 'Moderate') : 'N/A'}
                           </p>
                         </div>
                       </div>
                       <div className="flex justify-between p-2 bg-zinc-800/50 rounded text-sm">
                         <span className="text-zinc-400">Trades affected by bias:</span>
-                        <span className="text-cyan-400">{screenerStatus.bias_affected_pct || 91}%</span>
+                        <span className="text-cyan-400">{screenerStatus.bias_affected_pct ?? 'N/A'}%</span>
                       </div>
                       <div className="flex justify-between p-2 bg-emerald-500/10 rounded border border-emerald-500/30 text-sm">
                         <span className="text-zinc-400">Eligibility affected by bias:</span>
@@ -1078,47 +1133,47 @@ const Admin = () => {
                       <div className="space-y-1">
                         <div className="flex justify-between text-xs">
                           <span className="text-zinc-400">80–100:</span>
-                          <span className="text-emerald-400">{screenerStatus.score_distribution?.high || 12}%</span>
+                          <span className="text-emerald-400">{sdHigh ?? 'N/A'}%</span>
                         </div>
                         <div className="w-full bg-zinc-800 h-2 rounded-full">
-                          <div className="bg-emerald-500 h-2 rounded-full" style={{width: `${screenerStatus.score_distribution?.high || 12}%`}}></div>
+                          <div className="bg-emerald-500 h-2 rounded-full" style={{width: `${sdHigh ?? 'N/A'}%`}}></div>
                         </div>
                       </div>
                       <div className="space-y-1">
                         <div className="flex justify-between text-xs">
                           <span className="text-zinc-400">60–79:</span>
-                          <span className="text-cyan-400">{screenerStatus.score_distribution?.medium_high || 54}%</span>
+                          <span className="text-cyan-400">{sdMediumHigh ?? 'N/A'}%</span>
                         </div>
                         <div className="w-full bg-zinc-800 h-2 rounded-full">
-                          <div className="bg-cyan-500 h-2 rounded-full" style={{width: `${screenerStatus.score_distribution?.medium_high || 54}%`}}></div>
+                          <div className="bg-cyan-500 h-2 rounded-full" style={{width: `${sdMediumHigh ?? 'N/A'}%`}}></div>
                         </div>
                       </div>
                       <div className="space-y-1">
                         <div className="flex justify-between text-xs">
                           <span className="text-zinc-400">40–59:</span>
-                          <span className="text-yellow-400">{screenerStatus.score_distribution?.medium || 29}%</span>
+                          <span className="text-yellow-400">{sdMedium ?? 'N/A'}%</span>
                         </div>
                         <div className="w-full bg-zinc-800 h-2 rounded-full">
-                          <div className="bg-yellow-500 h-2 rounded-full" style={{width: `${screenerStatus.score_distribution?.medium || 29}%`}}></div>
+                          <div className="bg-yellow-500 h-2 rounded-full" style={{width: `${sdMedium ?? 'N/A'}%`}}></div>
                         </div>
                       </div>
                       <div className="space-y-1">
                         <div className="flex justify-between text-xs">
                           <span className="text-zinc-400">&lt;40:</span>
-                          <span className="text-red-400">{screenerStatus.score_distribution?.low || 5}%</span>
+                          <span className="text-red-400">{sdLow ?? 'N/A'}%</span>
                         </div>
                         <div className="w-full bg-zinc-800 h-2 rounded-full">
-                          <div className="bg-red-500 h-2 rounded-full" style={{width: `${screenerStatus.score_distribution?.low || 5}%`}}></div>
+                          <div className="bg-red-500 h-2 rounded-full" style={{width: `${sdLow ?? 'N/A'}%`}}></div>
                         </div>
                       </div>
                       <div className="grid grid-cols-2 gap-2 mt-3 pt-3 border-t border-zinc-700">
                         <div className="p-2 bg-zinc-800/50 rounded text-center">
                           <p className="text-xs text-zinc-500">24h Score Drift</p>
-                          <p className="text-sm font-mono text-zinc-300">±{screenerStatus.score_drift || 2.8}</p>
+                          <p className="text-sm font-mono text-zinc-300">±{scoreDriftValue ?? 'N/A'}</p>
                         </div>
                         <div className="p-2 bg-zinc-800/50 rounded text-center">
                           <p className="text-xs text-zinc-500">Outlier Swings (&gt;10)</p>
-                          <p className="text-sm font-mono text-emerald-400">{screenerStatus.outlier_swings || 0}</p>
+                          <p className="text-sm font-mono text-emerald-400">{outlierSwingsValue ?? 'N/A'}</p>
                         </div>
                       </div>
                     </div>
