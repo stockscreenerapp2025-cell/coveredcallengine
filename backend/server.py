@@ -1248,6 +1248,7 @@ api_router.include_router(support_router)
 api_router.include_router(invitation_router)
 api_router.include_router(scans_router)  # Pre-computed scans
 api_router.include_router(ai_wallet_router)  # AI Wallet: Token purchases & balance
+api_router.include_router(paypal_router, prefix="/paypal")  # PayPal Express Checkout
 app.include_router(snapshot_router)  # PHASE 1: Snapshot management (legacy - no prefix)
 # ADR-001: EOD Market Close Price Contract
 app.include_router(eod_router)  # Canonical EOD data (no prefix - already has /api/eod)
