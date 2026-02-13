@@ -94,6 +94,11 @@ async def create_checkout(payload: CreateCheckoutRequest, user: dict = Depends(g
     
     Pricing is DB-driven (admin_settings.type="pricing_config") with fallback to hardcoded.
     """
+    # Check if PayPal is enabled
+    paypal_settings = await db.admin_settings.find_one({"type": "paypal_settings"}, {"_id": 0})
+    if not paypal_settings or not paypal_settings.get("enabled", False):
+        raise HTTPException(status_code=400, detail="PayPal payments are not enabled")
+    
     plan_id = payload.plan_id.lower().strip()
     billing_cycle = payload.billing_cycle.lower().strip()
 
