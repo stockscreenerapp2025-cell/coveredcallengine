@@ -190,6 +190,9 @@ const PMCC = () => {
       // Normalize the data first
       const norm = normalizeOpp(simulateOpp);
       
+      const shortIvPct = norm.short_iv || 0;
+      const shortIvDecimal = shortIvPct > 1 ? shortIvPct / 100 : shortIvPct;
+
       // PMCC data uses leaps_cost (total cost) - convert to per-share premium for backend
       const leapsPremiumPerShare = norm.leaps_cost ? norm.leaps_cost / 100 : norm.leaps_premium;
       
@@ -201,13 +204,14 @@ const PMCC = () => {
         short_call_expiry: norm.short_expiry || norm.leaps_expiry, // Fallback
         short_call_premium: norm.short_premium,
         short_call_delta: norm.short_delta,
-        short_call_iv: norm.short_iv,
+        short_call_iv: shortIvDecimal,
         leaps_strike: norm.leaps_strike,
         leaps_expiry: norm.leaps_expiry,
         leaps_premium: leapsPremiumPerShare,
         leaps_delta: norm.leaps_delta,
         contracts: simulateContracts,
         scan_parameters: {
+            short_iv_pct: shortIvPct,
           score: norm.score,
           net_debit: norm.net_debit,
           max_profit: norm.max_profit,

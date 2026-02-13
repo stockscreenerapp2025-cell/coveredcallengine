@@ -18,7 +18,7 @@ import pytest
 import requests
 import os
 
-BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', 'https://sync-price-chain.preview.emergentagent.com')
+BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', 'https://payment-gateway-367.preview.emergentagent.com')
 
 TEST_EMAIL = "admin@premiumhunter.com"
 TEST_PASSWORD = "admin123"

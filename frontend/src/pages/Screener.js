@@ -290,6 +290,7 @@ const Screener = () => {
       const params = { bypass_cache: bypassCache };
       
       if (roiFilters.minRoi !== '' && roiFilters.minRoi !== undefined) params.min_roi = roiFilters.minRoi;
+      if (expirationFilters.minDte !== '' && expirationFilters.minDte !== undefined) params.min_dte = expirationFilters.minDte;
       if (expirationFilters.maxDte !== '' && expirationFilters.maxDte !== undefined) params.max_dte = expirationFilters.maxDte;
       if (greeksFilters.minDelta !== '' && greeksFilters.minDelta !== undefined) params.min_delta = greeksFilters.minDelta;
       if (greeksFilters.maxDelta !== '' && greeksFilters.maxDelta !== undefined) params.max_delta = greeksFilters.maxDelta;
