@@ -2044,6 +2044,10 @@ async def get_admin_status(user: dict = Depends(get_current_user)):
     # Get market state
     current_market_state = get_market_state()
     
+    # Normalize market state for frontend compatibility
+    if current_market_state == "EXTENDED":
+        current_market_state = "AFTERHOURS"
+    
     # Determine price source based on market state
     if current_market_state == "OPEN":
         price_source = "LIVE"
