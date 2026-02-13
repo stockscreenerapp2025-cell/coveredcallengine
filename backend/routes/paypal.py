@@ -332,7 +332,6 @@ async def paypal_ipn(request: Request):
         subscription["status"] = "active"
         subscription["payment_status"] = "succeeded"
         subscription["last_payment_at"] = now.isoformat()
-        subscription["access_active"] = True
 
         cycle = subscription.get("billing_cycle", subscription.get("plan", "monthly"))
         subscription["billing_cycle"] = cycle
@@ -342,12 +341,16 @@ async def paypal_ipn(request: Request):
             {"_id": user_doc["_id"]},
             {"$set": {"subscription": subscription, "access_active": True, "updated_at": now.isoformat()}}
         )
+        logger.info(f"[PayPal IPN] Payment succeeded for profile={profile_id}, user={user_doc.get('email')}, access_active=True")
 
         # Trigger automation emails (payment succeeded / renewed)
         try:
             automation = EmailAutomationService(db)
             await automation.initialize()
+            # Trigger both events - existing rules may be set up for either
             await automation.trigger_event("subscription_payment_succeeded", user_doc, subscription=subscription)
+            await automation.trigger_event("subscription_renewed", user_doc, subscription=subscription)
+            logger.info(f"[PayPal IPN] Triggered subscription_renewed email automation for {user_doc.get('email')}")
         except Exception as e:
             logger.error(f"Email automation trigger (payment_succeeded) failed: {e}")
 
@@ -360,12 +363,14 @@ async def paypal_ipn(request: Request):
             {"_id": user_doc["_id"]},
             {"$set": {"subscription": subscription, "access_active": False, "updated_at": now.isoformat()}}
         )
+        logger.info(f"[PayPal IPN] Payment FAILED for profile={profile_id}, user={user_doc.get('email')}, access_active=False")
 
         # Trigger automation emails (payment failed)
         try:
             automation = EmailAutomationService(db)
             await automation.initialize()
             await automation.trigger_event("subscription_payment_failed", user_doc, subscription=subscription)
+            logger.info(f"[PayPal IPN] Triggered subscription_payment_failed email automation for {user_doc.get('email')}")
         except Exception as e:
             logger.error(f"Email automation trigger (payment_failed) failed: {e}")
 
@@ -378,12 +383,14 @@ async def paypal_ipn(request: Request):
             {"_id": user_doc["_id"]},
             {"$set": {"subscription": subscription, "access_active": False, "updated_at": now.isoformat()}}
         )
+        logger.info(f"[PayPal IPN] Subscription CANCELLED for profile={profile_id}, user={user_doc.get('email')}, access_active=False")
 
         # Trigger automation emails (subscription cancelled)
         try:
             automation = EmailAutomationService(db)
             await automation.initialize()
             await automation.trigger_event("subscription_cancelled", user_doc, subscription=subscription)
+            logger.info(f"[PayPal IPN] Triggered subscription_cancelled email automation for {user_doc.get('email')}")
         except Exception as e:
             logger.error(f"Email automation trigger (cancelled) failed: {e}")
 
