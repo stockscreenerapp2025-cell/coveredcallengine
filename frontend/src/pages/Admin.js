@@ -54,7 +54,7 @@ import AdminSupport from '../components/AdminSupport';
 
 const Admin = () => {
   const [activeTab, setActiveTab] = useState('dashboard');
-  
+
   // API Settings
   const [settings, setSettings] = useState({
     massive_api_key: '',
@@ -67,29 +67,29 @@ const Admin = () => {
   });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  
+
   // Dashboard Stats
   const [dashboardStats, setDashboardStats] = useState(null);
   const [statsLoading, setStatsLoading] = useState(true);
-  
+
   // User Management
   const [users, setUsers] = useState([]);
   const [usersLoading, setUsersLoading] = useState(false);
   const [usersPagination, setUsersPagination] = useState({ page: 1, pages: 1, total: 0 });
   const [userFilters, setUserFilters] = useState({ status: '', plan: '', search: '' });
   const [selectedUser, setSelectedUser] = useState(null);
-  
+
   // Screener Status (Phase 8)
   const [screenerStatus, setScreenerStatus] = useState(null);
   const [screenerStatusLoading, setScreenerStatusLoading] = useState(false);
-  
+
   // Invitations
   const [invitations, setInvitations] = useState([]);
   const [invitationsLoading, setInvitationsLoading] = useState(false);
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [inviteForm, setInviteForm] = useState({ email: '', name: '', role: 'tester', environment: 'test', message: '' });
   const [sendingInvite, setSendingInvite] = useState(false);
-  
+
   // Subscription settings
   const [subscriptionSettings, setSubscriptionSettings] = useState({
     active_mode: 'test',
@@ -97,7 +97,7 @@ const Admin = () => {
     live_links: { trial: '', monthly: '', yearly: '' }
   });
   const [savingSubscription, setSavingSubscription] = useState(false);
-  
+
   // Integration settings
   const [integrationSettings, setIntegrationSettings] = useState({
     stripe_webhook_secret: '',
@@ -114,7 +114,7 @@ const Admin = () => {
   const [savingIntegration, setSavingIntegration] = useState(false);
   const [testEmailAddress, setTestEmailAddress] = useState('');
   const [sendingTestEmail, setSendingTestEmail] = useState(false);
-  
+
   // Visibility toggles
   const [showMassiveApiKey, setShowMassiveApiKey] = useState(false);
   const [showMassiveAccessId, setShowMassiveAccessId] = useState(false);
@@ -126,7 +126,7 @@ const Admin = () => {
   const [showResendKey, setShowResendKey] = useState(false);
   const [showPayPalPassword, setShowPayPalPassword] = useState(false);
   const [showPayPalSignature, setShowPayPalSignature] = useState(false);
-  
+
   // Email Automation
   const [emailTemplates, setEmailTemplates] = useState([]);
   const [automationRules, setAutomationRules] = useState([]);
@@ -144,7 +144,7 @@ const Admin = () => {
     announcement_content: ''
   });
   const [sendingBroadcast, setSendingBroadcast] = useState(false);
-  
+
   // IMAP Email Sync
   const [imapSettings, setImapSettings] = useState({
     imap_server: 'imap.hostinger.com',
@@ -158,7 +158,7 @@ const Admin = () => {
   const [imapSaving, setImapSaving] = useState(false);
   const [imapSyncing, setImapSyncing] = useState(false);
   const [showImapPassword, setShowImapPassword] = useState(false);
-  
+
   // Pre-computed Scans Trigger
   const [triggeringScan, setTriggeringScan] = useState(false);
   const [lastScanResult, setLastScanResult] = useState(null);
@@ -194,7 +194,7 @@ const Admin = () => {
       setLoading(false);
     }
   };
-  
+
   const fetchDashboardStats = async () => {
     setStatsLoading(true);
     try {
@@ -206,7 +206,7 @@ const Admin = () => {
       setStatsLoading(false);
     }
   };
-  
+
   const fetchScreenerStatus = async () => {
     setScreenerStatusLoading(true);
     try {
@@ -218,9 +218,9 @@ const Admin = () => {
       setScreenerStatusLoading(false);
     }
   };
-  
-  
-  
+
+
+
   const fetchSubscriptionSettings = async () => {
     try {
       const response = await api.get('/subscription/admin/settings');
@@ -229,7 +229,7 @@ const Admin = () => {
       console.error('Subscription settings error:', error);
     }
   };
-  
+
   const fetchIntegrationSettings = async () => {
     try {
       const response = await api.get('/admin/integration-settings');
@@ -238,7 +238,7 @@ const Admin = () => {
       console.error('Integration settings error:', error);
     }
   };
-  
+
   // IMAP Functions
   const fetchImapStatus = async () => {
     setImapLoading(true);
@@ -265,7 +265,7 @@ const Admin = () => {
       setImapLoading(false);
     }
   };
-  
+
   const saveImapSettings = async () => {
     setImapSaving(true);
     try {
@@ -282,7 +282,7 @@ const Admin = () => {
       setImapSaving(false);
     }
   };
-  
+
   const testImapConnection = async () => {
     try {
       const response = await api.post('/admin/imap/test-connection');
@@ -295,7 +295,7 @@ const Admin = () => {
       toast.error(error.response?.data?.detail || 'Connection test failed');
     }
   };
-  
+
   const syncImapNow = async () => {
     setImapSyncing(true);
     try {
@@ -312,7 +312,7 @@ const Admin = () => {
       setImapSyncing(false);
     }
   };
-  
+
   const fetchEmailTemplates = async () => {
     setEmailLoading(true);
     try {
@@ -324,7 +324,7 @@ const Admin = () => {
       setEmailLoading(false);
     }
   };
-  
+
   const fetchAutomationRules = async () => {
     try {
       const response = await api.get('/admin/email-automation/rules');
@@ -335,7 +335,7 @@ const Admin = () => {
       console.error('Automation rules error:', error);
     }
   };
-  
+
   const fetchEmailLogs = async () => {
     try {
       const response = await api.get('/admin/email-automation/logs');
@@ -344,7 +344,7 @@ const Admin = () => {
       console.error('Email logs error:', error);
     }
   };
-  
+
   const fetchEmailStats = async () => {
     try {
       const response = await api.get('/admin/email-automation/stats');
@@ -353,7 +353,7 @@ const Admin = () => {
       console.error('Email stats error:', error);
     }
   };
-  
+
   const handleUpdateTemplate = async (templateId, updates) => {
     try {
       await api.put(`/admin/email-automation/templates/${templateId}`, null, { params: updates });
@@ -364,7 +364,7 @@ const Admin = () => {
       toast.error('Failed to update template');
     }
   };
-  
+
   const handleToggleRule = async (ruleId, enabled) => {
     try {
       await api.put(`/admin/email-automation/rules/${ruleId}`, null, { params: { enabled } });
@@ -374,13 +374,13 @@ const Admin = () => {
       toast.error('Failed to update rule');
     }
   };
-  
+
   const handleSendBroadcast = async () => {
     if (!broadcastData.announcement_title || !broadcastData.announcement_content) {
       toast.error('Please fill in title and content');
       return;
     }
-    
+
     setSendingBroadcast(true);
     try {
       const response = await api.post('/admin/email-automation/broadcast', null, {
@@ -400,7 +400,7 @@ const Admin = () => {
       setSendingBroadcast(false);
     }
   };
-  
+
   const handleTestEmail = async (templateKey, email) => {
     try {
       await api.post('/admin/email-automation/test-send', null, {
@@ -411,7 +411,7 @@ const Admin = () => {
       toast.error('Failed to send test email');
     }
   };
-  
+
   const fetchUsers = async (page = 1) => {
     setUsersLoading(true);
     try {
@@ -419,7 +419,7 @@ const Admin = () => {
       if (userFilters.status && userFilters.status !== 'all') params.append('status', userFilters.status);
       if (userFilters.plan && userFilters.plan !== 'all') params.append('plan', userFilters.plan);
       if (userFilters.search) params.append('search', userFilters.search);
-      
+
       const response = await api.get(`/admin/users?${params.toString()}`);
       setUsers(response.data.users);
       setUsersPagination({ page: response.data.page, pages: response.data.pages, total: response.data.total });
@@ -448,7 +448,7 @@ const Admin = () => {
       toast.error('Please fill in email and name');
       return;
     }
-    
+
     setSendingInvite(true);
     try {
       await api.post('/invitations/send', inviteForm);
@@ -465,7 +465,7 @@ const Admin = () => {
 
   const revokeInvitation = async (invitationId) => {
     if (!window.confirm('Are you sure you want to revoke this invitation?')) return;
-    
+
     try {
       await api.delete(`/invitations/${invitationId}`);
       toast.success('Invitation revoked');
@@ -495,7 +495,7 @@ const Admin = () => {
       setSaving(false);
     }
   };
-  
+
   const saveSubscriptionSettings = async () => {
     setSavingSubscription(true);
     try {
@@ -516,7 +516,7 @@ const Admin = () => {
       setSavingSubscription(false);
     }
   };
-  
+
   const saveIntegrationSettings = async () => {
     setSavingIntegration(true);
     try {
@@ -531,7 +531,7 @@ const Admin = () => {
       if (integrationSettings.paypal_api_username) params.append('paypal_api_username', integrationSettings.paypal_api_username);
       if (integrationSettings.paypal_api_password) params.append('paypal_api_password', integrationSettings.paypal_api_password);
       if (integrationSettings.paypal_api_signature) params.append('paypal_api_signature', integrationSettings.paypal_api_signature);
-      
+
       await api.post(`/admin/integration-settings?${params.toString()}`);
       toast.success('Integration settings saved');
       fetchIntegrationSettings();
@@ -541,7 +541,7 @@ const Admin = () => {
       setSavingIntegration(false);
     }
   };
-  
+
   const sendTestEmail = async () => {
     if (!testEmailAddress) {
       toast.error('Please enter an email address');
@@ -561,7 +561,7 @@ const Admin = () => {
       setSendingTestEmail(false);
     }
   };
-  
+
   const switchSubscriptionMode = async (mode) => {
     try {
       await api.post(`/subscription/admin/switch-mode?mode=${mode}`);
@@ -571,7 +571,7 @@ const Admin = () => {
       toast.error('Failed to switch mode');
     }
   };
-  
+
   const extendUserTrial = async (userId, days) => {
     try {
       await api.post(`/admin/users/${userId}/extend-trial?days=${days}`);
@@ -581,7 +581,7 @@ const Admin = () => {
       toast.error('Failed to extend trial');
     }
   };
-  
+
   const setUserSubscription = async (userId, status, plan = 'monthly') => {
     try {
       await api.post(`/admin/users/${userId}/set-subscription?status=${status}&plan=${plan}`);
@@ -597,7 +597,7 @@ const Admin = () => {
     if (!window.confirm(`Are you sure you want to delete user "${userEmail}"?\n\nThis action cannot be undone.`)) {
       return;
     }
-    
+
     try {
       await api.delete(`/admin/users/${userId}`);
       toast.success(`User ${userEmail} deleted`);
@@ -629,7 +629,7 @@ const Admin = () => {
       </div>
     </div>
   );
-  
+
   const StatCard = ({ title, value, icon: Icon, trend, color = "emerald" }) => (
     <Card className="glass-card">
       <CardContent className="p-4">
@@ -659,11 +659,11 @@ const Admin = () => {
       past_due: 'bg-red-500/20 text-red-400 border-red-500/30',
       expired: 'bg-orange-500/20 text-orange-400 border-orange-500/30'
     };
-    
+
     if (!status) {
       return <Badge className="bg-zinc-700/50 text-zinc-500 border-zinc-600/30">No Sub</Badge>;
     }
-    
+
     return <Badge className={styles[status] || styles.expired}>{status}</Badge>;
   };
 
@@ -677,7 +677,7 @@ const Admin = () => {
       if (Number.isNaN(d.getTime())) return 'N/A';
       const date = d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'UTC' });
       const time = d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' });
-      return `${date} – ${time} UTC`;
+      return `${date} — ${time} UTC`;
     } catch {
       return 'N/A';
     }
@@ -709,9 +709,9 @@ const Admin = () => {
     const isClose = ps.includes('CLOSE') || ps.includes('PREV') || ps.includes('EOD');
 
     if (ms === 'OPEN') return isLive ? '✅ Real-time (OPEN)' : '🟡 Market OPEN (non-live source)';
-    if (ms === 'CLOSED') return isClose ? '🕒 Market Close data' : '🟡 Market CLOSED (source unclear)';
+    if (ms === 'CLOSED') return isClose ? '🕐 Market Close data' : '🟡 Market CLOSED (source unclear)';
     if (ms === 'PREMARKET' || ms === 'AFTERHOURS') return isLive ? `✅ ${ms} live` : `🟡 ${ms} (non-live)`;
-    return isLive ? '✅ Live pricing' : isClose ? '🕒 Market close pricing' : '⚠️ Data source unknown';
+    return isLive ? '✅ Live pricing' : isClose ? '🕐 Market close pricing' : '⚠️ Data source unknown';
   })();
 
   const sdHigh = isNumber(screenerStatus?.score_distribution?.high) ? screenerStatus.score_distribution.high : null;
@@ -795,35 +795,35 @@ const Admin = () => {
                 <StatCard title="Trial Users" value={dashboardStats.users?.trial || 0} icon={Clock} color="blue" />
                 <StatCard title="Paid Subs" value={dashboardStats.subscriptions?.active || 0} icon={CreditCard} color="amber" />
               </div>
-              
+
               {/* Revenue & Metrics */}
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <StatCard 
-                  title="MRR" 
-                  value={`$${dashboardStats.revenue?.mrr?.toLocaleString() || 0}`} 
-                  icon={DollarSign} 
-                  color="emerald" 
+                <StatCard
+                  title="MRR"
+                  value={`$${dashboardStats.revenue?.mrr?.toLocaleString() || 0}`}
+                  icon={DollarSign}
+                  color="emerald"
                 />
-                <StatCard 
-                  title="ARR" 
-                  value={`$${dashboardStats.revenue?.arr?.toLocaleString() || 0}`} 
-                  icon={TrendingUp} 
-                  color="cyan" 
+                <StatCard
+                  title="ARR"
+                  value={`$${dashboardStats.revenue?.arr?.toLocaleString() || 0}`}
+                  icon={TrendingUp}
+                  color="cyan"
                 />
-                <StatCard 
-                  title="Conversion Rate" 
-                  value={`${dashboardStats.subscriptions?.conversion_rate || 0}%`} 
-                  icon={TrendingUp} 
-                  color="violet" 
+                <StatCard
+                  title="Conversion Rate"
+                  value={`${dashboardStats.subscriptions?.conversion_rate || 0}%`}
+                  icon={TrendingUp}
+                  color="violet"
                 />
-                <StatCard 
-                  title="Churn Rate" 
-                  value={`${dashboardStats.subscriptions?.churn_rate || 0}%`} 
-                  icon={TrendingDown} 
-                  color="red" 
+                <StatCard
+                  title="Churn Rate"
+                  value={`${dashboardStats.subscriptions?.churn_rate || 0}%`}
+                  icon={TrendingDown}
+                  color="red"
                 />
               </div>
-              
+
               {/* Alerts */}
               <Card className="glass-card">
                 <CardHeader>
@@ -864,7 +864,7 @@ const Admin = () => {
                   </div>
                 </CardContent>
               </Card>
-              
+
               {/* Subscription Breakdown */}
               <div className="grid md:grid-cols-2 gap-6">
                 <Card className="glass-card">
@@ -890,7 +890,7 @@ const Admin = () => {
                     </div>
                   </CardContent>
                 </Card>
-                
+
                 <Card className="glass-card">
                   <CardHeader>
                     <CardTitle className="text-lg">Quick Actions</CardTitle>
@@ -987,307 +987,175 @@ const Admin = () => {
                       </div>
                     </div>
                     <div className="text-right">
-                      <p className="text-xs text-zinc-500">Last Full Run</p>
-                      <p className="text-sm text-zinc-300">{formatUtc(lastFullRunIso)}</p>
-                      <p className="text-xs mt-1 text-zinc-300">{realtimeBadgeText}</p>
-                      
-                      {lastScanResult && (
-                        <p className="text-xs text-emerald-400 mt-2">
-                          ✅ Last scan: {Object.entries(lastScanResult.results || {}).map(([k, v]) => `${k}: ${v}`).join(' | ')}
-                        </p>
-                      )}
-                      {!lastFullRunIso && (
-                        <p className="text-xs text-yellow-400 mt-2">
-                          ⚠️ /screener/admin-status did not return a last run timestamp (expected: last_full_run_at)
-                        </p>
-                      )}
+                      <p className="text-sm text-zinc-400">Last Full Run</p>
+                      <p className="text-lg font-mono text-white">{formatUtc(lastFullRunIso)}</p>
                     </div>
                   </div>
                 </CardContent>
               </Card>
 
-              <div className="grid md:grid-cols-2 gap-6">
-                {/* 2️⃣ Phase Integrity Checks */}
+              {/* 2️⃣ Core Metrics */}
+              <div className="grid md:grid-cols-4 gap-4">
                 <Card className="glass-card">
-                  <CardHeader className="pb-2">
-                    <CardTitle className="text-sm flex items-center gap-2">
-                      <Shield className="w-4 h-4 text-violet-400" />
-                      Phase Integrity Checks
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="space-y-2">
-                      <div className="flex items-center justify-between p-2 bg-zinc-800/50 rounded">
-                        <span className="text-sm text-zinc-300">Phase 6 — Bias Order</span>
-                        <div className="flex items-center gap-2">
-                          <Badge className="bg-emerald-500/20 text-emerald-400">🟢 OK</Badge>
-                          <span className="text-xs text-zinc-500">No invalid trades resurrected</span>
-                        </div>
-                      </div>
-                      <div className="flex items-center justify-between p-2 bg-zinc-800/50 rounded">
-                        <span className="text-sm text-zinc-300">Phase 7 — Quality Scoring</span>
-                        <div className="flex items-center gap-2">
-                          <Badge className="bg-emerald-500/20 text-emerald-400">🟢 OK</Badge>
-                          <span className="text-xs text-zinc-500">Pillar sums valid</span>
-                        </div>
-                      </div>
-                      <div className="flex items-center justify-between p-2 bg-zinc-800/50 rounded">
-                        <span className="text-sm text-zinc-300">Phase 8 — Logging</span>
-                        <div className="flex items-center gap-2">
-                          <Badge className="bg-emerald-500/20 text-emerald-400">🟢 OK</Badge>
-                          <span className="text-xs text-zinc-500">All logs captured</span>
-                        </div>
-                      </div>
-                    </div>
+                  <CardContent className="pt-4">
+                    <p className="text-xs text-zinc-500 uppercase">Total Opportunities</p>
+                    <p className="text-2xl font-bold text-emerald-400 mt-1">
+                      {isNumber(screenerStatus?.total_opportunities) ? screenerStatus.total_opportunities : 'N/A'}
+                    </p>
                   </CardContent>
                 </Card>
-
-                {/* 3️⃣ Trade Eligibility & Gating */}
                 <Card className="glass-card">
-                  <CardHeader className="pb-2">
-                    <CardTitle className="text-sm flex items-center gap-2">
-                      <Activity className="w-4 h-4 text-cyan-400" />
-                      Trade Eligibility & Gating
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="space-y-2 text-sm">
-                      <div className="flex justify-between p-2 bg-zinc-800/50 rounded">
-                        <span className="text-zinc-400">Universe scanned:</span>
-                        <span className="text-zinc-200 font-mono">{screenerStatus.eligibility?.universe_scanned ?? 'N/A'} symbols</span>
-                      </div>
-                      <div className="flex justify-between p-2 bg-zinc-800/50 rounded">
-                        <span className="text-zinc-400">Option chain valid:</span>
-                        <span className="text-emerald-400 font-mono">{screenerStatus.eligibility?.chain_valid ?? 'N/A'} ({screenerStatus.eligibility?.chain_valid_pct ?? 'N/A'}%)</span>
-                      </div>
-                      <div className="flex justify-between p-2 bg-zinc-800/50 rounded">
-                        <span className="text-zinc-400">Structure valid:</span>
-                        <span className="text-cyan-400 font-mono">{screenerStatus.eligibility?.structure_valid ?? 'N/A'} ({screenerStatus.eligibility?.structure_valid_pct ?? 'N/A'}%)</span>
-                      </div>
-                      <div className="flex justify-between p-2 bg-zinc-800/50 rounded">
-                        <span className="text-zinc-400">Scored trades:</span>
-                        <span className="text-emerald-400 font-mono">{screenerStatus.eligibility?.scored_trades ?? 'N/A'} ({screenerStatus.eligibility?.scored_trades_pct ?? 'N/A'}%)</span>
-                      </div>
-                      <div className="flex justify-between p-2 bg-red-500/10 rounded border border-red-500/20">
-                        <span className="text-zinc-400">Rejected pre-score:</span>
-                        <span className="text-red-400 font-mono">{screenerStatus.eligibility?.rejected ?? 'N/A'}</span>
-                      </div>
-                    </div>
+                  <CardContent className="pt-4">
+                    <p className="text-xs text-zinc-500 uppercase">Symbols Scanned</p>
+                    <p className="text-2xl font-bold text-violet-400 mt-1">
+                      {isNumber(screenerStatus?.symbols_scanned) ? screenerStatus.symbols_scanned : 'N/A'}
+                    </p>
+                  </CardContent>
+                </Card>
+                <Card className="glass-card">
+                  <CardContent className="pt-4">
+                    <p className="text-xs text-zinc-500 uppercase">Avg Score</p>
+                    <p className="text-2xl font-bold text-cyan-400 mt-1">
+                      {isNumber(screenerStatus?.average_score) ? screenerStatus.average_score.toFixed(1) : 'N/A'}
+                    </p>
+                  </CardContent>
+                </Card>
+                <Card className="glass-card">
+                  <CardContent className="pt-4">
+                    <p className="text-xs text-zinc-500 uppercase">Data Freshness</p>
+                    <p className="text-lg font-medium text-white mt-1">{realtimeBadgeText}</p>
                   </CardContent>
                 </Card>
               </div>
 
-              <div className="grid md:grid-cols-2 gap-6">
-                {/* 4️⃣ Bias Sanity Check */}
-                <Card className={`glass-card border ${
-                  screenerStatus.market_bias?.current_bias === 'bullish' ? 'border-emerald-500/30' :
-                  screenerStatus.market_bias?.current_bias === 'bearish' ? 'border-red-500/30' :
-                  'border-zinc-700'
-                }`}>
-                  <CardHeader className="pb-2">
-                    <CardTitle className="text-sm flex items-center gap-2">
-                      <TrendingUp className="w-4 h-4 text-amber-400" />
-                      Bias Sanity Check
-                    </CardTitle>
+              {/* 3️⃣ Score Distribution */}
+              <Card className="glass-card">
+                <CardHeader>
+                  <CardTitle className="text-lg flex items-center gap-2">
+                    <BarChart3 className="w-5 h-5 text-violet-400" />
+                    Score Distribution
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid grid-cols-4 gap-4">
+                    <div className="text-center p-4 rounded-lg bg-emerald-500/10">
+                      <p className="text-3xl font-bold text-emerald-400">{sdHigh ?? 'N/A'}</p>
+                      <p className="text-xs text-zinc-400 mt-1">High (70+)</p>
+                    </div>
+                    <div className="text-center p-4 rounded-lg bg-cyan-500/10">
+                      <p className="text-3xl font-bold text-cyan-400">{sdMediumHigh ?? 'N/A'}</p>
+                      <p className="text-xs text-zinc-400 mt-1">Med-High (50-69)</p>
+                    </div>
+                    <div className="text-center p-4 rounded-lg bg-yellow-500/10">
+                      <p className="text-3xl font-bold text-yellow-400">{sdMedium ?? 'N/A'}</p>
+                      <p className="text-xs text-zinc-400 mt-1">Medium (30-49)</p>
+                    </div>
+                    <div className="text-center p-4 rounded-lg bg-zinc-700/50">
+                      <p className="text-3xl font-bold text-zinc-400">{sdLow ?? 'N/A'}</p>
+                      <p className="text-xs text-zinc-400 mt-1">Low (&lt;30)</p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* 4️⃣ Data Quality Indicators */}
+              <div className="grid md:grid-cols-2 gap-4">
+                <Card className="glass-card">
+                  <CardHeader>
+                    <CardTitle className="text-lg">Quality Checks</CardTitle>
                   </CardHeader>
-                  <CardContent>
-                    <div className="space-y-3">
-                      <div className="grid grid-cols-2 gap-4">
-                        <div className="p-3 bg-zinc-800/50 rounded text-center">
-                          <p className="text-xs text-zinc-500">Market Bias</p>
-                          <p className={`text-xl font-bold capitalize ${
-                            screenerStatus.market_bias?.current_bias === 'bullish' ? 'text-emerald-400' :
-                            screenerStatus.market_bias?.current_bias === 'bearish' ? 'text-red-400' :
-                            'text-zinc-300'
-                          }`}>{screenerStatus.market_bias?.current_bias || 'Neutral'}</p>
-                        </div>
-                        <div className="p-3 bg-zinc-800/50 rounded text-center">
-                          <p className="text-xs text-zinc-500">Bias Strength</p>
-                          <p className="text-xl font-bold text-amber-400">
-                            {isNumber(screenerStatus.market_bias?.sentiment_score) ? (Math.abs(screenerStatus.market_bias.sentiment_score - 0.5) > 0.15 ? 'Strong' : 'Moderate') : 'N/A'}
-                          </p>
-                        </div>
-                      </div>
-                      <div className="flex justify-between p-2 bg-zinc-800/50 rounded text-sm">
-                        <span className="text-zinc-400">Trades affected by bias:</span>
-                        <span className="text-cyan-400">{screenerStatus.bias_affected_pct ?? 'N/A'}%</span>
-                      </div>
-                      <div className="flex justify-between p-2 bg-emerald-500/10 rounded border border-emerald-500/30 text-sm">
-                        <span className="text-zinc-400">Eligibility affected by bias:</span>
-                        <span className="text-emerald-400">0% ✅</span>
-                      </div>
+                  <CardContent className="space-y-3">
+                    <div className="flex items-center justify-between p-3 rounded-lg bg-zinc-800/50">
+                      <span className="text-zinc-400">Score Drift (vs 24h ago)</span>
+                      <span className={`font-bold ${
+                        scoreDriftValue === null
+                          ? 'text-zinc-500'
+                          : Math.abs(scoreDriftValue) < 5
+                            ? 'text-emerald-400'
+                            : Math.abs(scoreDriftValue) < 10
+                              ? 'text-yellow-400'
+                              : 'text-red-400'
+                      }`}>
+                        {scoreDriftValue === null ? 'N/A' : `${scoreDriftValue > 0 ? '+' : ''}${scoreDriftValue.toFixed(1)}%`}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between p-3 rounded-lg bg-zinc-800/50">
+                      <span className="text-zinc-400">Outlier Swings</span>
+                      <span className={`font-bold ${
+                        outlierSwingsValue === null
+                          ? 'text-zinc-500'
+                          : outlierSwingsValue === 0
+                            ? 'text-emerald-400'
+                            : outlierSwingsValue < 3
+                              ? 'text-yellow-400'
+                              : 'text-red-400'
+                      }`}>
+                        {outlierSwingsValue ?? 'N/A'}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between p-3 rounded-lg bg-zinc-800/50">
+                      <span className="text-zinc-400">Market State</span>
+                      <Badge className={
+                        marketState === 'OPEN'
+                          ? 'bg-emerald-500/20 text-emerald-400'
+                          : marketState === 'CLOSED'
+                            ? 'bg-zinc-500/20 text-zinc-400'
+                            : 'bg-yellow-500/20 text-yellow-400'
+                      }>
+                        {marketState || 'N/A'}
+                      </Badge>
+                    </div>
+                    <div className="flex items-center justify-between p-3 rounded-lg bg-zinc-800/50">
+                      <span className="text-zinc-400">Price Source</span>
+                      <span className="text-white font-mono text-sm">{priceSource || 'N/A'}</span>
                     </div>
                   </CardContent>
                 </Card>
 
-                {/* 5️⃣ Score Distribution & Stability */}
                 <Card className="glass-card">
-                  <CardHeader className="pb-2">
-                    <CardTitle className="text-sm flex items-center gap-2">
-                      <BarChart3 className="w-4 h-4 text-violet-400" />
-                      Score Distribution & Stability
-                    </CardTitle>
+                  <CardHeader>
+                    <CardTitle className="text-lg">System Info</CardTitle>
                   </CardHeader>
-                  <CardContent>
-                    <div className="space-y-2">
-                      <div className="space-y-1">
-                        <div className="flex justify-between text-xs">
-                          <span className="text-zinc-400">80–100:</span>
-                          <span className="text-emerald-400">{sdHigh ?? 'N/A'}%</span>
-                        </div>
-                        <div className="w-full bg-zinc-800 h-2 rounded-full">
-                          <div className="bg-emerald-500 h-2 rounded-full" style={{width: `${sdHigh ?? 'N/A'}%`}}></div>
-                        </div>
-                      </div>
-                      <div className="space-y-1">
-                        <div className="flex justify-between text-xs">
-                          <span className="text-zinc-400">60–79:</span>
-                          <span className="text-cyan-400">{sdMediumHigh ?? 'N/A'}%</span>
-                        </div>
-                        <div className="w-full bg-zinc-800 h-2 rounded-full">
-                          <div className="bg-cyan-500 h-2 rounded-full" style={{width: `${sdMediumHigh ?? 'N/A'}%`}}></div>
-                        </div>
-                      </div>
-                      <div className="space-y-1">
-                        <div className="flex justify-between text-xs">
-                          <span className="text-zinc-400">40–59:</span>
-                          <span className="text-yellow-400">{sdMedium ?? 'N/A'}%</span>
-                        </div>
-                        <div className="w-full bg-zinc-800 h-2 rounded-full">
-                          <div className="bg-yellow-500 h-2 rounded-full" style={{width: `${sdMedium ?? 'N/A'}%`}}></div>
-                        </div>
-                      </div>
-                      <div className="space-y-1">
-                        <div className="flex justify-between text-xs">
-                          <span className="text-zinc-400">&lt;40:</span>
-                          <span className="text-red-400">{sdLow ?? 'N/A'}%</span>
-                        </div>
-                        <div className="w-full bg-zinc-800 h-2 rounded-full">
-                          <div className="bg-red-500 h-2 rounded-full" style={{width: `${sdLow ?? 'N/A'}%`}}></div>
-                        </div>
-                      </div>
-                      <div className="grid grid-cols-2 gap-2 mt-3 pt-3 border-t border-zinc-700">
-                        <div className="p-2 bg-zinc-800/50 rounded text-center">
-                          <p className="text-xs text-zinc-500">24h Score Drift</p>
-                          <p className="text-sm font-mono text-zinc-300">±{scoreDriftValue ?? 'N/A'}</p>
-                        </div>
-                        <div className="p-2 bg-zinc-800/50 rounded text-center">
-                          <p className="text-xs text-zinc-500">Outlier Swings (&gt;10)</p>
-                          <p className="text-sm font-mono text-emerald-400">{outlierSwingsValue ?? 'N/A'}</p>
-                        </div>
-                      </div>
+                  <CardContent className="space-y-3">
+                    <div className="flex items-center justify-between p-3 rounded-lg bg-zinc-800/50">
+                      <span className="text-zinc-400">Cache Status</span>
+                      <Badge className={screenerStatus?.cache_status === 'valid' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-yellow-500/20 text-yellow-400'}>
+                        {screenerStatus?.cache_status || 'N/A'}
+                      </Badge>
+                    </div>
+                    <div className="flex items-center justify-between p-3 rounded-lg bg-zinc-800/50">
+                      <span className="text-zinc-400">Last Cache Update</span>
+                      <span className="text-white text-sm">{formatUtc(screenerStatus?.cache_updated_at)}</span>
+                    </div>
+                    <div className="flex items-center justify-between p-3 rounded-lg bg-zinc-800/50">
+                      <span className="text-zinc-400">API Errors (24h)</span>
+                      <span className={`font-bold ${
+                        !isNumber(screenerStatus?.api_errors_24h)
+                          ? 'text-zinc-500'
+                          : screenerStatus.api_errors_24h === 0
+                            ? 'text-emerald-400'
+                            : screenerStatus.api_errors_24h < 5
+                              ? 'text-yellow-400'
+                              : 'text-red-400'
+                      }`}>
+                        {screenerStatus?.api_errors_24h ?? 'N/A'}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between p-3 rounded-lg bg-zinc-800/50">
+                      <span className="text-zinc-400">Scheduler Status</span>
+                      <Badge className={screenerStatus?.scheduler_running ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500/20 text-red-400'}>
+                        {screenerStatus?.scheduler_running ? 'Running' : screenerStatus?.scheduler_running === false ? 'Stopped' : 'N/A'}
+                      </Badge>
                     </div>
                   </CardContent>
                 </Card>
               </div>
-
-              <div className="grid md:grid-cols-2 gap-6">
-                {/* 6️⃣ Risk Leakage Monitor */}
-                <Card className="glass-card border border-amber-500/30">
-                  <CardHeader className="pb-2">
-                    <CardTitle className="text-sm flex items-center gap-2">
-                      <AlertTriangle className="w-4 h-4 text-amber-400" />
-                      Risk Leakage Monitor
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <p className="text-xs text-zinc-500 mb-3">High-Risk Trades (Delta &gt; 0.40)</p>
-                    <div className="space-y-2">
-                      <div className="flex justify-between p-3 bg-zinc-800/50 rounded">
-                        <span className="text-sm text-zinc-400">Appearing in Top 10:</span>
-                        <span className={`font-bold ${(screenerStatus.risk_leakage?.top_10 || 0) === 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                          {(screenerStatus.risk_leakage?.top_10 || 0) === 0 ? '❌ 0' : `⚠️ ${screenerStatus.risk_leakage?.top_10}`}
-                        </span>
-                      </div>
-                      <div className="flex justify-between p-3 bg-zinc-800/50 rounded">
-                        <span className="text-sm text-zinc-400">Appearing in Top 25:</span>
-                        <span className={`font-bold ${(screenerStatus.risk_leakage?.top_25 || 1) === 0 ? 'text-emerald-400' : 'text-yellow-400'}`}>
-                          {(screenerStatus.risk_leakage?.top_25 || 1) === 0 ? '❌ 0' : `⚠️ ${screenerStatus.risk_leakage?.top_25} (flagged)`}
-                        </span>
-                      </div>
-                    </div>
-                    {(screenerStatus.risk_leakage?.top_10 || 0) > 0 && (
-                      <p className="text-xs text-red-400 mt-3 p-2 bg-red-500/10 rounded">
-                        🚨 Immediate investigation required
-                      </p>
-                    )}
-                  </CardContent>
-                </Card>
-
-                {/* 7️⃣ Data Quality Signals */}
-                <Card className="glass-card">
-                  <CardHeader className="pb-2">
-                    <CardTitle className="text-sm flex items-center gap-2">
-                      <Database className="w-4 h-4 text-emerald-400" />
-                      Data Quality Signals
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="space-y-2 text-sm">
-                      <div className="flex justify-between p-2 bg-zinc-800/50 rounded">
-                        <span className="text-zinc-400">Option Data Latency:</span>
-                        <span className="text-emerald-400">{screenerStatus.data_quality_signals?.latency || '1.2'}s</span>
-                      </div>
-                      <div className="flex justify-between p-2 bg-zinc-800/50 rounded">
-                        <span className="text-zinc-400">IV Completeness:</span>
-                        <span className="text-emerald-400">{screenerStatus.data_quality_signals?.iv_completeness || 100}%</span>
-                      </div>
-                      <div className="flex justify-between p-2 bg-zinc-800/50 rounded">
-                        <span className="text-zinc-400">OI Completeness:</span>
-                        <span className="text-emerald-400">{screenerStatus.data_quality_signals?.oi_completeness || 99.6}%</span>
-                      </div>
-                      <div className="flex justify-between p-2 bg-zinc-800/50 rounded">
-                        <span className="text-zinc-400">Technical Indicators:</span>
-                        <Badge className="bg-emerald-500/20 text-emerald-400">OK</Badge>
-                      </div>
-                      <div className="flex justify-between p-2 bg-zinc-800/50 rounded">
-                        <span className="text-zinc-400">Fundamental Feed:</span>
-                        <Badge className="bg-emerald-500/20 text-emerald-400">OK</Badge>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              </div>
-
-              {/* 8️⃣ Alert Strip */}
-              {screenerStatus.alerts && screenerStatus.alerts.length > 0 && (
-                <Card className="glass-card border border-yellow-500/30 bg-yellow-500/5">
-                  <CardContent className="py-4">
-                    <div className="flex items-start gap-3">
-                      <AlertTriangle className="w-5 h-5 text-yellow-400 flex-shrink-0 mt-0.5" />
-                      <div>
-                        <p className="font-semibold text-yellow-400">⚠️ ALERTS ({screenerStatus.alerts.length})</p>
-                        <ul className="mt-2 space-y-1">
-                          {screenerStatus.alerts.map((alert, idx) => (
-                            <li key={idx} className="text-sm text-zinc-300">• {alert}</li>
-                          ))}
-                        </ul>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              )}
-              
-              {/* Default alert if VIX elevated */}
-              {!screenerStatus.alerts && screenerStatus.market_bias?.vix_level > 20 && (
-                <Card className="glass-card border border-yellow-500/30 bg-yellow-500/5">
-                  <CardContent className="py-4">
-                    <div className="flex items-start gap-3">
-                      <AlertTriangle className="w-5 h-5 text-yellow-400 flex-shrink-0 mt-0.5" />
-                      <div>
-                        <p className="font-semibold text-yellow-400">⚠️ ALERTS (1)</p>
-                        <p className="text-sm text-zinc-300 mt-1">• PMCC scores compressed due to elevated VIX ({screenerStatus.market_bias?.vix_level?.toFixed(1)})</p>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              )}
             </div>
           ) : (
             <Card className="glass-card p-8 text-center">
-              <AlertCircle className="w-12 h-12 text-zinc-600 mx-auto mb-4" />
-              <p className="text-zinc-400">Unable to load data quality metrics</p>
-              <Button className="mt-4" variant="outline" onClick={fetchScreenerStatus}>
+              <Database className="w-12 h-12 text-zinc-600 mx-auto mb-4" />
+              <p className="text-zinc-400">No screener status data available</p>
+              <Button onClick={fetchScreenerStatus} variant="outline" className="mt-4">
                 <RefreshCw className="w-4 h-4 mr-2" />
                 Retry
               </Button>
@@ -1297,163 +1165,181 @@ const Admin = () => {
 
         {/* Users Tab */}
         <TabsContent value="users" className="space-y-6 mt-6">
+          {/* Filters */}
           <Card className="glass-card">
-            <CardHeader>
-              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                <CardTitle className="text-lg flex items-center gap-2">
-                  <Users className="w-5 h-5 text-violet-400" />
-                  User Management
-                </CardTitle>
-                <div className="flex flex-wrap gap-2">
-                  <div className="relative">
-                    <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500" />
+            <CardContent className="pt-4">
+              <div className="flex flex-wrap gap-4 items-end">
+                <div className="flex-1 min-w-[200px]">
+                  <Label className="text-zinc-400 text-xs">Search</Label>
+                  <div className="relative mt-1">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
                     <Input
-                      placeholder="Search email..."
+                      placeholder="Email or name..."
                       value={userFilters.search}
                       onChange={(e) => setUserFilters(f => ({ ...f, search: e.target.value }))}
-                      className="input-dark pl-9 w-48"
+                      className="input-dark pl-10"
                     />
                   </div>
+                </div>
+                <div className="w-40">
+                  <Label className="text-zinc-400 text-xs">Status</Label>
                   <Select value={userFilters.status} onValueChange={(v) => setUserFilters(f => ({ ...f, status: v }))}>
-                    <SelectTrigger className="w-32 bg-zinc-800 border-zinc-700">
-                      <SelectValue placeholder="Status" />
+                    <SelectTrigger className="input-dark mt-1">
+                      <SelectValue placeholder="All" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="all">All Status</SelectItem>
+                      <SelectItem value="all">All</SelectItem>
+                      <SelectItem value="trialing">Trialing</SelectItem>
                       <SelectItem value="active">Active</SelectItem>
-                      <SelectItem value="trialing">Trial</SelectItem>
                       <SelectItem value="cancelled">Cancelled</SelectItem>
                       <SelectItem value="past_due">Past Due</SelectItem>
                     </SelectContent>
                   </Select>
-                  <Button onClick={() => fetchUsers(1)} className="bg-violet-600 hover:bg-violet-700">
-                    <Search className="w-4 h-4 mr-2" />
-                    Search
-                  </Button>
                 </div>
+                <div className="w-40">
+                  <Label className="text-zinc-400 text-xs">Plan</Label>
+                  <Select value={userFilters.plan} onValueChange={(v) => setUserFilters(f => ({ ...f, plan: v }))}>
+                    <SelectTrigger className="input-dark mt-1">
+                      <SelectValue placeholder="All" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All</SelectItem>
+                      <SelectItem value="monthly">Monthly</SelectItem>
+                      <SelectItem value="yearly">Yearly</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <Button onClick={() => fetchUsers(1)} className="bg-emerald-600 hover:bg-emerald-700">
+                  <Search className="w-4 h-4 mr-2" />
+                  Search
+                </Button>
+                <Button onClick={() => setShowInviteModal(true)} variant="outline" className="border-violet-500 text-violet-400">
+                  <Mail className="w-4 h-4 mr-2" />
+                  Invite User
+                </Button>
               </div>
+            </CardContent>
+          </Card>
+
+          {/* Users Table */}
+          <Card className="glass-card">
+            <CardHeader className="flex flex-row items-center justify-between">
+              <CardTitle className="text-lg">Users ({usersPagination.total})</CardTitle>
+              <Button onClick={() => fetchUsers(usersPagination.page)} variant="ghost" size="sm">
+                <RefreshCw className={`w-4 h-4 ${usersLoading ? 'animate-spin' : ''}`} />
+              </Button>
             </CardHeader>
             <CardContent>
               {usersLoading ? (
                 <div className="space-y-2">
-                  {[...Array(5)].map((_, i) => <Skeleton key={i} className="h-16 rounded-lg" />)}
+                  {[...Array(5)].map((_, i) => <Skeleton key={i} className="h-16" />)}
                 </div>
               ) : users.length === 0 ? (
-                <div className="text-center py-8 text-zinc-500">
-                  <Users className="w-12 h-12 mx-auto mb-4 opacity-50" />
-                  <p>No users found</p>
-                </div>
+                <p className="text-zinc-500 text-center py-8">No users found</p>
               ) : (
-                <>
-                  <div className="overflow-x-auto">
-                    <table className="data-table">
-                      <thead>
-                        <tr>
-                          <th>Email</th>
-                          <th>Name</th>
-                          <th>Plan</th>
-                          <th>Status</th>
-                          <th>Created</th>
-                          <th>Last Login</th>
-                          <th>Actions</th>
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead>
+                      <tr className="text-left text-xs text-zinc-500 border-b border-zinc-800">
+                        <th className="pb-2 font-medium">User</th>
+                        <th className="pb-2 font-medium">Status</th>
+                        <th className="pb-2 font-medium">Plan</th>
+                        <th className="pb-2 font-medium">Trial Ends</th>
+                        <th className="pb-2 font-medium">Joined</th>
+                        <th className="pb-2 font-medium text-right">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {users.map((user) => (
+                        <tr key={user.id} className="border-b border-zinc-800/50 hover:bg-zinc-800/30">
+                          <td className="py-3">
+                            <div>
+                              <p className="font-medium text-white">{user.name || 'N/A'}</p>
+                              <p className="text-xs text-zinc-500">{user.email}</p>
+                            </div>
+                          </td>
+                          <td className="py-3">
+                            {getStatusBadge(user.subscription?.status)}
+                          </td>
+                          <td className="py-3">
+                            <span className="text-zinc-400">{user.subscription?.plan || '-'}</span>
+                          </td>
+                          <td className="py-3">
+                            {user.subscription?.trial_end ? (
+                              <span className="text-xs text-zinc-400">
+                                {new Date(user.subscription.trial_end).toLocaleDateString()}
+                              </span>
+                            ) : '-'}
+                          </td>
+                          <td className="py-3">
+                            <span className="text-xs text-zinc-500">
+                              {new Date(user.created_at).toLocaleDateString()}
+                            </span>
+                          </td>
+                          <td className="py-3">
+                            <div className="flex justify-end gap-1">
+                              {user.subscription?.status === 'trialing' && (
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  onClick={() => extendUserTrial(user.id, 7)}
+                                  className="text-blue-400 hover:text-blue-300 text-xs"
+                                >
+                                  +7 days
+                                </Button>
+                              )}
+                              <Select onValueChange={(status) => setUserSubscription(user.id, status)}>
+                                <SelectTrigger className="h-8 w-24 text-xs">
+                                  <SelectValue placeholder="Set..." />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="active">Activate</SelectItem>
+                                  <SelectItem value="trialing">Trial</SelectItem>
+                                  <SelectItem value="cancelled">Cancel</SelectItem>
+                                </SelectContent>
+                              </Select>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => deleteUser(user.id, user.email)}
+                                className="text-red-400 hover:text-red-300 hover:bg-red-500/10"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </Button>
+                            </div>
+                          </td>
                         </tr>
-                      </thead>
-                      <tbody>
-                        {users.map((user) => (
-                          <tr key={user.id}>
-                            <td className="font-medium text-white">{user.email}</td>
-                            <td>{user.name || '-'}</td>
-                            <td>
-                              <Badge className={
-                                user.subscription?.plan === 'yearly' ? 'bg-amber-500/20 text-amber-400' :
-                                user.subscription?.plan === 'monthly' ? 'bg-violet-500/20 text-violet-400' :
-                                user.subscription?.plan === 'trial' ? 'bg-blue-500/20 text-blue-400' :
-                                'bg-zinc-700/50 text-zinc-500'
-                              }>
-                                {user.subscription?.plan || 'none'}
-                              </Badge>
-                            </td>
-                            <td>{getStatusBadge(user.subscription?.status)}</td>
-                            <td className="text-xs text-zinc-500">
-                              {user.created_at ? new Date(user.created_at).toLocaleDateString() : '-'}
-                            </td>
-                            <td className="text-xs text-zinc-500">
-                              {user.last_login ? new Date(user.last_login).toLocaleDateString() : 'Never'}
-                            </td>
-                            <td>
-                              <div className="flex gap-1 flex-wrap">
-                                {!user.subscription?.status && (
-                                  <>
-                                    <Button size="sm" variant="outline" className="text-xs px-2 py-1 h-7" onClick={() => setUserSubscription(user.id, 'trialing', 'trial')}>
-                                      Start Trial
-                                    </Button>
-                                    <Button size="sm" variant="outline" className="text-xs px-2 py-1 h-7 text-emerald-400" onClick={() => setUserSubscription(user.id, 'active', 'monthly')}>
-                                      Activate
-                                    </Button>
-                                  </>
-                                )}
-                                {user.subscription?.status === 'trialing' && (
-                                  <Button size="sm" variant="outline" className="text-xs px-2 py-1 h-7" onClick={() => extendUserTrial(user.id, 7)}>
-                                    +7 days
-                                  </Button>
-                                )}
-                                {user.subscription?.status === 'active' && (
-                                  <Button size="sm" variant="outline" className="text-xs px-2 py-1 h-7 text-red-400" onClick={() => setUserSubscription(user.id, 'cancelled', user.subscription?.plan)}>
-                                    Cancel
-                                  </Button>
-                                )}
-                                {user.subscription?.status === 'cancelled' && (
-                                  <Button size="sm" variant="outline" className="text-xs px-2 py-1 h-7 text-emerald-400" onClick={() => setUserSubscription(user.id, 'active', user.subscription?.plan || 'monthly')}>
-                                    Reactivate
-                                  </Button>
-                                )}
-                                {!user.is_admin && (
-                                  <Button 
-                                    size="sm" 
-                                    variant="ghost" 
-                                    className="text-xs px-2 py-1 h-7 text-red-400 hover:text-red-300 hover:bg-red-500/10" 
-                                    onClick={() => deleteUser(user.id, user.email)}
-                                    title="Delete user"
-                                  >
-                                    <Trash2 className="w-3 h-3" />
-                                  </Button>
-                                )}
-                              </div>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+              {/* Pagination */}
+              {usersPagination.pages > 1 && (
+                <div className="flex items-center justify-between mt-4 pt-4 border-t border-zinc-800">
+                  <p className="text-sm text-zinc-500">
+                    Page {usersPagination.page} of {usersPagination.pages}
+                  </p>
+                  <div className="flex gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => fetchUsers(usersPagination.page - 1)}
+                      disabled={usersPagination.page <= 1}
+                    >
+                      <ChevronLeft className="w-4 h-4" />
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => fetchUsers(usersPagination.page + 1)}
+                      disabled={usersPagination.page >= usersPagination.pages}
+                    >
+                      <ChevronRight className="w-4 h-4" />
+                    </Button>
                   </div>
-                  
-                  {/* Pagination */}
-                  <div className="flex items-center justify-between mt-4 pt-4 border-t border-zinc-800">
-                    <span className="text-sm text-zinc-500">
-                      Showing {users.length} of {usersPagination.total} users
-                    </span>
-                    <div className="flex gap-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => fetchUsers(usersPagination.page - 1)}
-                        disabled={usersPagination.page <= 1}
-                      >
-                        <ChevronLeft className="w-4 h-4" />
-                      </Button>
-                      <span className="px-3 py-1 text-sm text-zinc-400">
-                        Page {usersPagination.page} of {usersPagination.pages}
-                      </span>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => fetchUsers(usersPagination.page + 1)}
-                        disabled={usersPagination.page >= usersPagination.pages}
-                      >
-                        <ChevronRight className="w-4 h-4" />
-                      </Button>
-                    </div>
-                  </div>
-                </>
+                </div>
               )}
             </CardContent>
           </Card>
@@ -1461,84 +1347,38 @@ const Admin = () => {
           {/* Invitations Section */}
           <Card className="glass-card">
             <CardHeader>
-              <div className="flex items-center justify-between">
-                <div>
-                  <CardTitle className="text-lg flex items-center gap-2">
-                    <Mail className="w-5 h-5 text-emerald-400" />
-                    Invitations
-                  </CardTitle>
-                  <CardDescription>Invite support staff and testers</CardDescription>
-                </div>
-                <div className="flex gap-2">
-                  <Button variant="outline" size="sm" onClick={fetchInvitations}>
-                    <RefreshCw className="w-4 h-4" />
-                  </Button>
-                  <Button onClick={() => setShowInviteModal(true)} className="bg-emerald-600 hover:bg-emerald-700">
-                    <Mail className="w-4 h-4 mr-2" />
-                    Send Invite
-                  </Button>
-                </div>
-              </div>
+              <CardTitle className="text-lg flex items-center gap-2">
+                <Mail className="w-5 h-5 text-violet-400" />
+                Pending Invitations
+              </CardTitle>
             </CardHeader>
             <CardContent>
               {invitationsLoading ? (
-                <div className="space-y-2">
-                  {[...Array(3)].map((_, i) => <Skeleton key={i} className="h-16 rounded-lg" />)}
-                </div>
+                <Skeleton className="h-20" />
               ) : invitations.length === 0 ? (
-                <div className="text-center py-8 text-zinc-500">
-                  <Mail className="w-12 h-12 mx-auto mb-4 opacity-50" />
-                  <p>No invitations sent yet</p>
-                  <Button onClick={() => setShowInviteModal(true)} className="mt-4" variant="outline">
-                    Send First Invite
-                  </Button>
-                </div>
+                <p className="text-zinc-500 text-center py-4">No pending invitations</p>
               ) : (
                 <div className="space-y-2">
-                  {invitations.map(inv => (
-                    <div key={inv.id} className="flex items-center justify-between p-3 rounded-lg bg-zinc-800/50 border border-zinc-700">
-                      <div className="flex items-center gap-4">
-                        <div>
-                          <p className="text-white font-medium">{inv.name}</p>
-                          <p className="text-sm text-zinc-400">{inv.email}</p>
-                        </div>
-                        <Badge className={inv.role === 'support_staff' ? 'bg-violet-500/20 text-violet-400' : 'bg-cyan-500/20 text-cyan-400'}>
-                          {inv.role === 'support_staff' ? 'Support Staff' : 'Tester'}
-                        </Badge>
-                        <Badge className={inv.environment === 'test' ? 'bg-amber-500/20 text-amber-400' : 'bg-emerald-500/20 text-emerald-400'}>
-                          {inv.environment === 'test' ? '🧪 Test' : '🚀 Prod'}
-                        </Badge>
-                        <Badge className={
-                          inv.status === 'pending' ? 'bg-yellow-500/20 text-yellow-400' :
-                          inv.status === 'accepted' ? 'bg-emerald-500/20 text-emerald-400' :
-                          'bg-red-500/20 text-red-400'
-                        }>
-                          {inv.status}
-                        </Badge>
+                  {invitations.map((inv) => (
+                    <div key={inv.id} className="flex items-center justify-between p-3 rounded-lg bg-zinc-800/50">
+                      <div>
+                        <p className="font-medium text-white">{inv.name}</p>
+                        <p className="text-xs text-zinc-500">{inv.email} • {inv.role}</p>
                       </div>
                       <div className="flex items-center gap-2">
-                        <span className="text-xs text-zinc-500">
-                          {new Date(inv.created_at).toLocaleDateString()}
-                        </span>
+                        <Badge className={inv.status === 'pending' ? 'bg-yellow-500/20 text-yellow-400' : inv.status === 'accepted' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-zinc-500/20 text-zinc-400'}>
+                          {inv.status}
+                        </Badge>
                         {inv.status === 'pending' && (
                           <>
-                            <Button size="sm" variant="ghost" onClick={() => resendInvitation(inv.id)} className="text-zinc-400 hover:text-white">
-                              Resend
+                            <Button size="sm" variant="ghost" onClick={() => resendInvitation(inv.id)}>
+                              <RefreshCw className="w-4 h-4" />
                             </Button>
-                            <Button size="sm" variant="ghost" onClick={() => revokeInvitation(inv.id)} className="text-red-400 hover:text-red-300">
-                              Revoke
+                            <Button size="sm" variant="ghost" className="text-red-400" onClick={() => revokeInvitation(inv.id)}>
+                              <XCircle className="w-4 h-4" />
                             </Button>
                           </>
                         )}
-                        <Button 
-                          size="sm" 
-                          variant="ghost" 
-                          onClick={() => revokeInvitation(inv.id)} 
-                          className="text-red-400 hover:text-red-300 hover:bg-red-500/10"
-                          title="Delete invitation"
-                        >
-                          <Trash2 className="w-3 h-3" />
-                        </Button>
                       </div>
                     </div>
                   ))}
@@ -1549,222 +1389,123 @@ const Admin = () => {
 
           {/* Invite Modal */}
           {showInviteModal && (
-            <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
-              <div className="bg-zinc-900 rounded-xl max-w-md w-full">
-                <div className="p-4 border-b border-zinc-800 flex items-center justify-between">
-                  <h3 className="font-semibold text-white">Send Invitation</h3>
-                  <Button variant="ghost" size="sm" onClick={() => setShowInviteModal(false)}>
-                    <XCircle className="w-5 h-5" />
-                  </Button>
-                </div>
-                <div className="p-4 space-y-4">
+            <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+              <Card className="glass-card w-full max-w-md mx-4">
+                <CardHeader>
+                  <CardTitle>Invite New User</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
                   <div>
-                    <Label className="text-zinc-400">Email</Label>
+                    <Label>Email</Label>
                     <Input
                       type="email"
                       value={inviteForm.email}
                       onChange={(e) => setInviteForm(f => ({ ...f, email: e.target.value }))}
-                      className="input-dark mt-2"
+                      className="input-dark mt-1"
                       placeholder="user@example.com"
                     />
                   </div>
                   <div>
-                    <Label className="text-zinc-400">Name</Label>
+                    <Label>Name</Label>
                     <Input
                       value={inviteForm.name}
                       onChange={(e) => setInviteForm(f => ({ ...f, name: e.target.value }))}
-                      className="input-dark mt-2"
-                      placeholder="Full name"
+                      className="input-dark mt-1"
+                      placeholder="John Doe"
                     />
                   </div>
                   <div>
-                    <Label className="text-zinc-400">Role</Label>
+                    <Label>Role</Label>
                     <Select value={inviteForm.role} onValueChange={(v) => setInviteForm(f => ({ ...f, role: v }))}>
-                      <SelectTrigger className="input-dark mt-2">
+                      <SelectTrigger className="input-dark mt-1">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="support_staff">Support Staff - Access to Support System only</SelectItem>
-                        <SelectItem value="tester">Beta Tester - Access to test platform features</SelectItem>
+                        <SelectItem value="tester">Beta Tester</SelectItem>
+                        <SelectItem value="subscriber">Subscriber</SelectItem>
+                        <SelectItem value="admin">Admin</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
                   <div>
-                    <Label className="text-zinc-400">Environment</Label>
-                    <Select value={inviteForm.environment} onValueChange={(v) => setInviteForm(f => ({ ...f, environment: v }))}>
-                      <SelectTrigger className="input-dark mt-2">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="test">🧪 Test Environment - For testing and preview</SelectItem>
-                        <SelectItem value="production">🚀 Production - Live platform</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    <p className="text-xs text-zinc-500 mt-1">
-                      {inviteForm.environment === 'test' 
-                        ? 'User will be invited to the test/preview environment' 
-                        : 'User will be invited to the live production site'}
-                    </p>
-                  </div>
-                  <div>
-                    <Label className="text-zinc-400">Personal Message (optional)</Label>
-                    <textarea
+                    <Label>Personal Message (Optional)</Label>
+                    <Input
                       value={inviteForm.message}
                       onChange={(e) => setInviteForm(f => ({ ...f, message: e.target.value }))}
-                      className="w-full h-24 mt-2 px-3 py-2 rounded-lg bg-zinc-800/50 border border-zinc-700 text-white text-sm resize-none focus:outline-none focus:border-emerald-500"
-                      placeholder="Add a personal welcome message..."
+                      className="input-dark mt-1"
+                      placeholder="Welcome to CCE!"
                     />
                   </div>
-                </div>
-                <div className="p-4 border-t border-zinc-800 flex justify-end gap-2">
-                  <Button variant="outline" onClick={() => setShowInviteModal(false)}>Cancel</Button>
-                  <Button onClick={sendInvitation} disabled={sendingInvite} className="bg-emerald-600 hover:bg-emerald-700">
-                    {sendingInvite ? <RefreshCw className="w-4 h-4 mr-2 animate-spin" /> : <Mail className="w-4 h-4 mr-2" />}
-                    Send Invitation
-                  </Button>
-                </div>
-              </div>
+                  <div className="flex gap-2 pt-2">
+                    <Button variant="outline" className="flex-1" onClick={() => setShowInviteModal(false)}>
+                      Cancel
+                    </Button>
+                    <Button className="flex-1 bg-violet-600 hover:bg-violet-700" onClick={sendInvitation} disabled={sendingInvite}>
+                      {sendingInvite ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Mail className="w-4 h-4 mr-2" />}
+                      Send Invite
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
             </div>
           )}
         </TabsContent>
 
         {/* Support Tab */}
-        <TabsContent value="support" className="space-y-6 mt-6">
+        <TabsContent value="support" className="mt-6">
           <AdminSupport />
         </TabsContent>
 
         {/* Email Automation Tab */}
         <TabsContent value="email-automation" className="space-y-6 mt-6">
-          {/* Email Stats Overview */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <Card className="glass-card">
-              <CardContent className="p-4">
-                <div className="flex items-center gap-3">
-                  <div className="p-2 rounded-lg bg-emerald-500/20">
-                    <CheckCircle className="w-5 h-5 text-emerald-400" />
-                  </div>
-                  <div>
-                    <div className="text-2xl font-bold text-white">{emailStats?.total_sent || 0}</div>
-                    <div className="text-xs text-zinc-500">Emails Sent</div>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-            <Card className="glass-card">
-              <CardContent className="p-4">
-                <div className="flex items-center gap-3">
-                  <div className="p-2 rounded-lg bg-red-500/20">
-                    <XCircle className="w-5 h-5 text-red-400" />
-                  </div>
-                  <div>
-                    <div className="text-2xl font-bold text-white">{emailStats?.total_failed || 0}</div>
-                    <div className="text-xs text-zinc-500">Failed</div>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-            <Card className="glass-card">
-              <CardContent className="p-4">
-                <div className="flex items-center gap-3">
-                  <div className="p-2 rounded-lg bg-blue-500/20">
-                    <Mail className="w-5 h-5 text-blue-400" />
-                  </div>
-                  <div>
-                    <div className="text-2xl font-bold text-white">{emailStats?.recent_sent_7d || 0}</div>
-                    <div className="text-xs text-zinc-500">Sent (7 days)</div>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-            <Card className="glass-card">
-              <CardContent className="p-4">
-                <div className="flex items-center gap-3">
-                  <div className="p-2 rounded-lg bg-violet-500/20">
-                    <Activity className="w-5 h-5 text-violet-400" />
-                  </div>
-                  <div>
-                    <div className="text-2xl font-bold text-white">{emailTemplates.length}</div>
-                    <div className="text-xs text-zinc-500">Templates</div>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-          
-          {/* Sub-tabs for Email Automation */}
-          <Tabs value={emailSubTab} onValueChange={setEmailSubTab} className="w-full">
-            <TabsList className="bg-zinc-800/50 p-1">
-              <TabsTrigger value="templates" className="flex items-center gap-2">
-                <Mail className="w-4 h-4" />
-                Templates
-              </TabsTrigger>
-              <TabsTrigger value="rules" className="flex items-center gap-2">
-                <Settings className="w-4 h-4" />
-                Automation Rules
-              </TabsTrigger>
-              <TabsTrigger value="broadcast" className="flex items-center gap-2">
-                <Newspaper className="w-4 h-4" />
-                Broadcast
-              </TabsTrigger>
-              <TabsTrigger value="logs" className="flex items-center gap-2">
-                <Activity className="w-4 h-4" />
-                Logs & Analytics
-              </TabsTrigger>
+          {/* Email Stats */}
+          {emailStats && (
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <StatCard title="Total Sent" value={emailStats.total_sent || 0} icon={Mail} color="violet" />
+              <StatCard title="Delivered" value={emailStats.delivered || 0} icon={CheckCircle} color="emerald" />
+              <StatCard title="Failed" value={emailStats.failed || 0} icon={XCircle} color="red" />
+              <StatCard title="Pending" value={emailStats.pending || 0} icon={Clock} color="yellow" />
+            </div>
+          )}
+
+          {/* Sub-tabs */}
+          <Tabs value={emailSubTab} onValueChange={setEmailSubTab}>
+            <TabsList className="bg-zinc-800/50">
+              <TabsTrigger value="templates">Templates</TabsTrigger>
+              <TabsTrigger value="rules">Automation Rules</TabsTrigger>
+              <TabsTrigger value="broadcast">Broadcast</TabsTrigger>
+              <TabsTrigger value="logs">Logs</TabsTrigger>
             </TabsList>
-            
-            {/* Email Templates */}
+
+            {/* Templates */}
             <TabsContent value="templates" className="mt-4">
               <Card className="glass-card">
                 <CardHeader>
-                  <CardTitle className="text-lg flex items-center gap-2">
-                    <Mail className="w-5 h-5 text-emerald-400" />
-                    Email Templates
-                  </CardTitle>
-                  <CardDescription>Manage automated email templates for user lifecycle</CardDescription>
+                  <CardTitle className="text-lg">Email Templates</CardTitle>
+                  <CardDescription>Manage automated email templates</CardDescription>
                 </CardHeader>
                 <CardContent>
                   {emailLoading ? (
-                    <div className="space-y-3">
-                      {[...Array(6)].map((_, i) => <Skeleton key={i} className="h-16 rounded-lg" />)}
+                    <div className="space-y-2">
+                      {[...Array(3)].map((_, i) => <Skeleton key={i} className="h-16" />)}
                     </div>
+                  ) : emailTemplates.length === 0 ? (
+                    <p className="text-zinc-500 text-center py-4">No templates configured</p>
                   ) : (
                     <div className="space-y-3">
                       {emailTemplates.map((template) => (
-                        <div key={template.id || template.key} className="p-4 rounded-lg bg-zinc-800/50 border border-zinc-700 hover:border-zinc-600 transition-colors">
-                          <div className="flex items-center justify-between">
-                            <div className="flex-1">
-                              <div className="flex items-center gap-3">
-                                <h4 className="font-medium text-white">{template.name}</h4>
-                                <Badge className={template.enabled ? 'bg-emerald-500/20 text-emerald-400' : 'bg-zinc-500/20 text-zinc-400'}>
-                                  {template.enabled ? 'Active' : 'Disabled'}
-                                </Badge>
-                                <Badge className="bg-violet-500/20 text-violet-400">{template.purpose}</Badge>
-                                <Badge className="bg-cyan-500/20 text-cyan-400">{template.trigger}</Badge>
-                              </div>
-                              <p className="text-sm text-zinc-500 mt-1">Subject: {template.subject}</p>
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <Switch
-                                checked={template.enabled}
-                                onCheckedChange={(enabled) => handleUpdateTemplate(template.key || template.id, { enabled })}
-                              />
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => setSelectedTemplate(template)}
-                                className="text-zinc-400 hover:text-white"
-                              >
-                                <Eye className="w-4 h-4" />
-                              </Button>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => setEditingTemplate(template)}
-                                className="text-zinc-400 hover:text-white"
-                              >
-                                <Settings className="w-4 h-4" />
-                              </Button>
-                            </div>
+                        <div key={template.key || template.id} className="p-4 rounded-lg bg-zinc-800/50 flex items-center justify-between">
+                          <div>
+                            <p className="font-medium text-white">{template.name}</p>
+                            <p className="text-xs text-zinc-500">{template.subject}</p>
+                          </div>
+                          <div className="flex gap-2">
+                            <Button size="sm" variant="outline" onClick={() => setEditingTemplate(template)}>
+                              Edit
+                            </Button>
+                            <Button size="sm" variant="outline" onClick={() => handleTestEmail(template.key || template.id, testEmailAddress || 'test@example.com')}>
+                              Test
+                            </Button>
                           </div>
                         </div>
                       ))}
@@ -1773,156 +1514,92 @@ const Admin = () => {
                 </CardContent>
               </Card>
             </TabsContent>
-            
+
             {/* Automation Rules */}
             <TabsContent value="rules" className="mt-4">
               <Card className="glass-card">
                 <CardHeader>
-                  <CardTitle className="text-lg flex items-center gap-2">
-                    <Settings className="w-5 h-5 text-violet-400" />
-                    Automation Rules
-                  </CardTitle>
-                  <CardDescription>Configure when and how emails are sent automatically</CardDescription>
+                  <CardTitle className="text-lg">Automation Rules</CardTitle>
+                  <CardDescription>Configure when emails are automatically sent</CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <div className="space-y-3">
-                    {automationRules.map((rule) => (
-                      <div key={rule.id} className="p-4 rounded-lg bg-zinc-800/50 border border-zinc-700">
-                        <div className="flex items-center justify-between">
+                  {automationRules.length === 0 ? (
+                    <p className="text-zinc-500 text-center py-4">No automation rules configured</p>
+                  ) : (
+                    <div className="space-y-3">
+                      {automationRules.map((rule) => (
+                        <div key={rule.id} className="p-4 rounded-lg bg-zinc-800/50 flex items-center justify-between">
                           <div>
-                            <div className="flex items-center gap-3">
-                              <h4 className="font-medium text-white">{rule.name}</h4>
-                              <Badge className={rule.enabled ? 'bg-emerald-500/20 text-emerald-400' : 'bg-zinc-500/20 text-zinc-400'}>
-                                {rule.enabled ? 'Active' : 'Disabled'}
-                              </Badge>
-                            </div>
-                            <div className="flex items-center gap-4 mt-2 text-sm text-zinc-400">
-                              <span className="flex items-center gap-1">
-                                <Zap className="w-3 h-3" />
-                                {triggerTypes.find(t => t.value === rule.trigger_type)?.label || rule.trigger_type}
-                              </span>
-                              <span className="flex items-center gap-1">
-                                <Clock className="w-3 h-3" />
-                                {rule.delay_minutes === 0 ? 'Immediate' : `${Math.floor(rule.delay_minutes / 60)}h ${rule.delay_minutes % 60}m delay`}
-                              </span>
-                              <span className="flex items-center gap-1">
-                                <Mail className="w-3 h-3" />
-                                {rule.template_key}
-                              </span>
-                            </div>
+                            <p className="font-medium text-white">{rule.name}</p>
+                            <p className="text-xs text-zinc-500">Trigger: {rule.trigger_type} → Template: {rule.template_key}</p>
                           </div>
                           <Switch
                             checked={rule.enabled}
                             onCheckedChange={(enabled) => handleToggleRule(rule.id, enabled)}
                           />
                         </div>
-                      </div>
-                    ))}
-                  </div>
+                      ))}
+                    </div>
+                  )}
                 </CardContent>
               </Card>
             </TabsContent>
-            
-            {/* Broadcast / Announcements */}
+
+            {/* Broadcast */}
             <TabsContent value="broadcast" className="mt-4">
               <Card className="glass-card">
                 <CardHeader>
-                  <CardTitle className="text-lg flex items-center gap-2">
-                    <Newspaper className="w-5 h-5 text-cyan-400" />
-                    Send Broadcast
-                  </CardTitle>
-                  <CardDescription>Send announcements or updates to all users</CardDescription>
+                  <CardTitle className="text-lg">Send Broadcast</CardTitle>
+                  <CardDescription>Send an announcement to all active users</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
                   <div>
-                    <Label className="text-zinc-400">Template</Label>
-                    <Select
-                      value={broadcastData.template_key}
-                      onValueChange={(value) => setBroadcastData({ ...broadcastData, template_key: value })}
-                    >
-                      <SelectTrigger className="input-dark mt-2">
-                        <SelectValue placeholder="Select template" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="announcement">Announcement</SelectItem>
-                        <SelectItem value="system_update">System Update</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div>
-                    <Label className="text-zinc-400">Title</Label>
+                    <Label>Announcement Title</Label>
                     <Input
                       value={broadcastData.announcement_title}
-                      onChange={(e) => setBroadcastData({ ...broadcastData, announcement_title: e.target.value })}
-                      className="input-dark mt-2"
-                      placeholder="Enter announcement title..."
+                      onChange={(e) => setBroadcastData(d => ({ ...d, announcement_title: e.target.value }))}
+                      className="input-dark mt-1"
+                      placeholder="New Feature Announcement"
                     />
                   </div>
                   <div>
-                    <Label className="text-zinc-400">Content</Label>
+                    <Label>Content</Label>
                     <textarea
                       value={broadcastData.announcement_content}
-                      onChange={(e) => setBroadcastData({ ...broadcastData, announcement_content: e.target.value })}
-                      className="w-full h-40 mt-2 px-3 py-2 rounded-lg bg-zinc-800/50 border border-zinc-700 text-white resize-none focus:outline-none focus:border-emerald-500"
-                      placeholder="Enter announcement content..."
+                      onChange={(e) => setBroadcastData(d => ({ ...d, announcement_content: e.target.value }))}
+                      className="w-full h-32 mt-1 px-3 py-2 rounded-lg bg-zinc-800/50 border border-zinc-700 text-white resize-none focus:outline-none focus:border-emerald-500"
+                      placeholder="We're excited to announce..."
                     />
                   </div>
-                  <Button
-                    onClick={handleSendBroadcast}
-                    disabled={sendingBroadcast}
-                    className="w-full bg-emerald-600 hover:bg-emerald-700"
-                  >
-                    {sendingBroadcast ? (
-                      <>
-                        <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
-                        Sending...
-                      </>
-                    ) : (
-                      <>
-                        <Mail className="w-4 h-4 mr-2" />
-                        Send Broadcast to All Users
-                      </>
-                    )}
+                  <Button onClick={handleSendBroadcast} disabled={sendingBroadcast} className="bg-violet-600 hover:bg-violet-700">
+                    {sendingBroadcast ? <RefreshCw className="w-4 h-4 mr-2 animate-spin" /> : <Mail className="w-4 h-4 mr-2" />}
+                    Send Broadcast
                   </Button>
                 </CardContent>
               </Card>
             </TabsContent>
-            
-            {/* Logs & Analytics */}
+
+            {/* Logs */}
             <TabsContent value="logs" className="mt-4">
               <Card className="glass-card">
                 <CardHeader>
-                  <CardTitle className="text-lg flex items-center gap-2">
-                    <Activity className="w-5 h-5 text-blue-400" />
-                    Email Logs
-                  </CardTitle>
-                  <CardDescription>View sent emails and their status</CardDescription>
+                  <CardTitle className="text-lg">Email Logs</CardTitle>
+                  <CardDescription>Recent email activity</CardDescription>
                 </CardHeader>
                 <CardContent>
                   {emailLogs.length === 0 ? (
-                    <div className="text-center py-8 text-zinc-500">
-                      <Mail className="w-12 h-12 mx-auto mb-4 opacity-50" />
-                      <p>No emails sent yet</p>
-                    </div>
+                    <p className="text-zinc-500 text-center py-4">No email logs yet</p>
                   ) : (
-                    <div className="space-y-2">
-                      {emailLogs.slice(0, 20).map((log) => (
-                        <div key={log.id} className="flex items-center justify-between p-3 rounded-lg bg-zinc-800/30 text-sm">
-                          <div className="flex items-center gap-3">
-                            {log.status === 'sent' ? (
-                              <CheckCircle className="w-4 h-4 text-emerald-400" />
-                            ) : (
-                              <XCircle className="w-4 h-4 text-red-400" />
-                            )}
-                            <div>
-                              <span className="text-white">{log.recipient}</span>
-                              <span className="text-zinc-500 ml-2">• {log.template_key}</span>
-                            </div>
+                    <div className="space-y-2 max-h-96 overflow-y-auto">
+                      {emailLogs.map((log, idx) => (
+                        <div key={idx} className="p-3 rounded-lg bg-zinc-800/50 flex items-center justify-between">
+                          <div>
+                            <p className="text-sm text-white">{log.recipient}</p>
+                            <p className="text-xs text-zinc-500">{log.template} • {new Date(log.sent_at).toLocaleString()}</p>
                           </div>
-                          <div className="flex items-center gap-3 text-zinc-500">
-                            <span>{log.subject?.substring(0, 30)}...</span>
-                            <span>{new Date(log.created_at).toLocaleString()}</span>
-                          </div>
+                          <Badge className={log.status === 'delivered' ? 'bg-emerald-500/20 text-emerald-400' : log.status === 'failed' ? 'bg-red-500/20 text-red-400' : 'bg-yellow-500/20 text-yellow-400'}>
+                            {log.status}
+                          </Badge>
                         </div>
                       ))}
                     </div>
@@ -1931,55 +1608,15 @@ const Admin = () => {
               </Card>
             </TabsContent>
           </Tabs>
-          
-          {/* Template Preview Modal */}
-          {selectedTemplate && (
-            <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
-              <div className="bg-zinc-900 rounded-xl max-w-2xl w-full max-h-[80vh] overflow-hidden">
-                <div className="p-4 border-b border-zinc-800 flex items-center justify-between">
-                  <h3 className="font-semibold text-white">Preview: {selectedTemplate.name}</h3>
-                  <Button variant="ghost" size="sm" onClick={() => setSelectedTemplate(null)}>
-                    <XCircle className="w-5 h-5" />
-                  </Button>
-                </div>
-                <div className="p-4 overflow-auto max-h-[60vh]">
-                  <div className="mb-4 p-3 bg-zinc-800 rounded-lg">
-                    <div className="text-xs text-zinc-500">Subject:</div>
-                    <div className="text-white">{selectedTemplate.subject}</div>
-                  </div>
-                  <div dangerouslySetInnerHTML={{ __html: selectedTemplate.html }} />
-                </div>
-                <div className="p-4 border-t border-zinc-800 flex justify-end gap-2">
-                  <Input
-                    placeholder="test@email.com"
-                    className="input-dark w-48"
-                    id="test-email-input"
-                  />
-                  <Button
-                    onClick={() => {
-                      const email = document.getElementById('test-email-input').value;
-                      if (email) handleTestEmail(selectedTemplate.key, email);
-                    }}
-                    className="bg-emerald-600 hover:bg-emerald-700"
-                  >
-                    Send Test
-                  </Button>
-                </div>
-              </div>
-            </div>
-          )}
-          
-          {/* Template Edit Modal */}
+
+          {/* Template Editor Modal */}
           {editingTemplate && (
-            <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
-              <div className="bg-zinc-900 rounded-xl max-w-2xl w-full max-h-[80vh] overflow-hidden">
-                <div className="p-4 border-b border-zinc-800 flex items-center justify-between">
-                  <h3 className="font-semibold text-white">Edit: {editingTemplate.name}</h3>
-                  <Button variant="ghost" size="sm" onClick={() => setEditingTemplate(null)}>
-                    <XCircle className="w-5 h-5" />
-                  </Button>
+            <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+              <div className="bg-zinc-900 rounded-lg w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+                <div className="p-4 border-b border-zinc-800">
+                  <h3 className="text-lg font-medium text-white">Edit Template: {editingTemplate.name}</h3>
                 </div>
-                <div className="p-4 space-y-4 overflow-auto max-h-[60vh]">
+                <div className="p-4 space-y-4">
                   <div>
                     <Label className="text-zinc-400">Template Name</Label>
                     <Input
@@ -2052,8 +1689,8 @@ const Admin = () => {
                       </span>
                     </div>
                     <p className="text-xs text-zinc-500">
-                      {subscriptionSettings.active_mode === 'live' 
-                        ? 'Production payment links are active' 
+                      {subscriptionSettings.active_mode === 'live'
+                        ? 'Production payment links are active'
                         : 'Test payment links are active (no real charges)'}
                     </p>
                   </div>
@@ -2086,7 +1723,7 @@ const Admin = () => {
                   <TabsTrigger value="test"><TestTube className="w-4 h-4 mr-2" />Test Links</TabsTrigger>
                   <TabsTrigger value="live"><Zap className="w-4 h-4 mr-2" />Live Links</TabsTrigger>
                 </TabsList>
-                
+
                 <TabsContent value="test" className="space-y-4 mt-4">
                   <div className="space-y-4">
                     <div className="space-y-2">
@@ -2127,7 +1764,7 @@ const Admin = () => {
                     </div>
                   </div>
                 </TabsContent>
-                
+
                 <TabsContent value="live" className="space-y-4 mt-4">
                   <div className="p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/30 mb-4">
                     <p className="text-xs text-emerald-400">
@@ -2183,7 +1820,7 @@ const Admin = () => {
               </div>
             </CardContent>
           </Card>
-          
+
           {/* PayPal Configuration Card */}
           <Card className={`glass-card border-l-4 ${integrationStatus?.paypal?.configured ? 'border-emerald-500' : 'border-yellow-500'}`}>
             <CardHeader>
@@ -2223,8 +1860,8 @@ const Admin = () => {
                       </span>
                     </div>
                     <p className="text-xs text-zinc-500">
-                      {integrationSettings.paypal_mode === 'live' 
-                        ? 'Production PayPal endpoint' 
+                      {integrationSettings.paypal_mode === 'live'
+                        ? 'Production PayPal endpoint'
                         : 'Sandbox PayPal endpoint (no real charges)'}
                     </p>
                   </div>
@@ -2381,7 +2018,7 @@ const Admin = () => {
               </CardContent>
             </Card>
           </div>
-          
+
           {/* Stripe Settings */}
           <Card className="glass-card">
             <CardHeader>
@@ -2413,7 +2050,7 @@ const Admin = () => {
               />
             </CardContent>
           </Card>
-          
+
           {/* Email Settings */}
           <Card className="glass-card">
             <CardHeader>
@@ -2444,7 +2081,7 @@ const Admin = () => {
               <p className="text-xs text-zinc-500">
                 Get your API key from <a href="https://resend.com" target="_blank" rel="noopener noreferrer" className="text-cyan-400 hover:underline">resend.com</a>
               </p>
-              
+
               {/* Test Email Section */}
               <div className="mt-4 pt-4 border-t border-zinc-700">
                 <Label className="text-zinc-400 mb-2 block">Send Test Email</Label>
@@ -2456,8 +2093,8 @@ const Admin = () => {
                     className="input-dark flex-1"
                     type="email"
                   />
-                  <Button 
-                    onClick={sendTestEmail} 
+                  <Button
+                    onClick={sendTestEmail}
                     disabled={sendingTestEmail || !testEmailAddress}
                     className="bg-cyan-600 hover:bg-cyan-700"
                   >
@@ -2475,7 +2112,7 @@ const Admin = () => {
               </div>
             </CardContent>
           </Card>
-          
+
           <div className="flex justify-end">
             <Button onClick={saveIntegrationSettings} className="bg-emerald-600 hover:bg-emerald-700" disabled={savingIntegration}>
               {savingIntegration ? <RefreshCw className="w-4 h-4 mr-2 animate-spin" /> : <Save className="w-4 h-4 mr-2" />}
@@ -2505,7 +2142,7 @@ const Admin = () => {
                 </div>
               </CardContent>
             </Card>
-            
+
             <Card className={`glass-card border-l-4 ${imapStatus?.last_sync_success ? 'border-emerald-500' : imapStatus?.last_sync_error ? 'border-red-500' : 'border-zinc-600'}`}>
               <CardContent className="p-4">
                 <div className="flex items-center gap-3">
@@ -2519,15 +2156,15 @@ const Admin = () => {
                   <div>
                     <p className="font-medium text-white">Last Sync</p>
                     <p className="text-xs text-zinc-500">
-                      {imapStatus?.last_sync 
-                        ? new Date(imapStatus.last_sync).toLocaleString() 
+                      {imapStatus?.last_sync
+                        ? new Date(imapStatus.last_sync).toLocaleString()
                         : 'Never synced'}
                     </p>
                   </div>
                 </div>
               </CardContent>
             </Card>
-            
+
             <Card className="glass-card border-l-4 border-violet-500">
               <CardContent className="p-4">
                 <div className="flex items-center gap-3">
@@ -2542,7 +2179,7 @@ const Admin = () => {
               </CardContent>
             </Card>
           </div>
-          
+
           {/* Error Alert */}
           {imapStatus?.last_sync_error && (
             <Card className="glass-card border-red-500/50 bg-red-500/5">
@@ -2562,7 +2199,7 @@ const Admin = () => {
               </CardContent>
             </Card>
           )}
-          
+
           {/* IMAP Settings */}
           <Card className="glass-card">
             <CardHeader>
@@ -2578,7 +2215,7 @@ const Admin = () => {
               <div className="grid md:grid-cols-2 gap-4">
                 <div className="form-group">
                   <Label className="form-label">IMAP Server</Label>
-                  <Input 
+                  <Input
                     value={imapSettings.imap_server}
                     onChange={(e) => setImapSettings(prev => ({ ...prev, imap_server: e.target.value }))}
                     placeholder="imap.hostinger.com"
@@ -2587,7 +2224,7 @@ const Admin = () => {
                 </div>
                 <div className="form-group">
                   <Label className="form-label">Port</Label>
-                  <Input 
+                  <Input
                     type="number"
                     value={imapSettings.imap_port}
                     onChange={(e) => setImapSettings(prev => ({ ...prev, imap_port: parseInt(e.target.value) || 993 }))}
@@ -2599,7 +2236,7 @@ const Admin = () => {
               <div className="grid md:grid-cols-2 gap-4">
                 <div className="form-group">
                   <Label className="form-label">Email Address (Username)</Label>
-                  <Input 
+                  <Input
                     value={imapSettings.username}
                     onChange={(e) => setImapSettings(prev => ({ ...prev, username: e.target.value }))}
                     placeholder="support@coveredcallengine.com"
@@ -2609,7 +2246,7 @@ const Admin = () => {
                 <div className="form-group">
                   <Label className="form-label">Password</Label>
                   <div className="relative">
-                    <Input 
+                    <Input
                       type={showImapPassword ? 'text' : 'password'}
                       value={imapSettings.password}
                       onChange={(e) => setImapSettings(prev => ({ ...prev, password: e.target.value }))}
@@ -2627,7 +2264,7 @@ const Admin = () => {
                   <p className="text-xs text-zinc-500 mt-1">Leave blank to keep existing password</p>
                 </div>
               </div>
-              
+
               <div className="flex gap-3">
                 <Button onClick={testImapConnection} variant="outline" className="border-zinc-700">
                   <Activity className="w-4 h-4 mr-2" />
@@ -2644,7 +2281,7 @@ const Admin = () => {
               </div>
             </CardContent>
           </Card>
-          
+
           {/* Sync History */}
           <Card className="glass-card">
             <CardHeader>
@@ -2733,7 +2370,7 @@ const Admin = () => {
                   placeholder="Your Secret Key"
                 />
               </div>
-              
+
               {/* MarketAux */}
               <div className="p-4 rounded-lg bg-zinc-800/50 space-y-4">
                 <h4 className="font-medium text-white flex items-center gap-2">
@@ -2749,7 +2386,7 @@ const Admin = () => {
                   placeholder="Your MarketAux API Token"
                 />
               </div>
-              
+
               {/* OpenAI */}
               <div className="p-4 rounded-lg bg-zinc-800/50 space-y-4">
                 <h4 className="font-medium text-white flex items-center gap-2">
@@ -2765,7 +2402,7 @@ const Admin = () => {
                   placeholder="sk-..."
                 />
               </div>
-              
+
               <div className="flex justify-end pt-4 border-t border-zinc-800">
                 <Button onClick={saveSettings} className="bg-emerald-600 hover:bg-emerald-700" disabled={saving}>
                   {saving ? <RefreshCw className="w-4 h-4 mr-2 animate-spin" /> : <Save className="w-4 h-4 mr-2" />}
