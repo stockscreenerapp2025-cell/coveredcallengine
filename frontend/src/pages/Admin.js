@@ -2128,6 +2128,145 @@ const Admin = () => {
               </div>
             </CardContent>
           </Card>
+          
+          {/* PayPal Configuration Card */}
+          <Card className={`glass-card border-l-4 ${integrationStatus?.paypal?.configured ? 'border-emerald-500' : 'border-yellow-500'}`}>
+            <CardHeader>
+              <CardTitle className="text-lg flex items-center gap-2">
+                <DollarSign className="w-5 h-5 text-cyan-400" />
+                PayPal Subscription Settings
+              </CardTitle>
+              <CardDescription>Configure PayPal Express Checkout + Recurring Profiles for subscription payments</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {/* Enabled Toggle */}
+              <div className="flex items-center justify-between p-4 rounded-lg bg-zinc-800/50 border border-zinc-700">
+                <div>
+                  <Label className="text-white">PayPal Payments Enabled</Label>
+                  <p className="text-xs text-zinc-500">Allow customers to pay via PayPal</p>
+                </div>
+                <Switch
+                  checked={integrationSettings.paypal_enabled}
+                  onCheckedChange={(checked) => setIntegrationSettings(prev => ({ ...prev, paypal_enabled: checked }))}
+                />
+              </div>
+
+              {/* Mode Toggle */}
+              <div className="flex items-center justify-between p-4 rounded-lg bg-zinc-800/50 border border-zinc-700">
+                <div className="flex items-center gap-3">
+                  <div className={`p-2 rounded-lg ${integrationSettings.paypal_mode === 'live' ? 'bg-emerald-500/20' : 'bg-yellow-500/20'}`}>
+                    {integrationSettings.paypal_mode === 'live' ? (
+                      <Zap className="w-5 h-5 text-emerald-400" />
+                    ) : (
+                      <TestTube className="w-5 h-5 text-yellow-400" />
+                    )}
+                  </div>
+                  <div>
+                    <div className="font-medium text-white">
+                      Mode: <span className={integrationSettings.paypal_mode === 'live' ? 'text-emerald-400' : 'text-yellow-400'}>
+                        {integrationSettings.paypal_mode?.toUpperCase() || 'SANDBOX'}
+                      </span>
+                    </div>
+                    <p className="text-xs text-zinc-500">
+                      {integrationSettings.paypal_mode === 'live' 
+                        ? 'Production PayPal endpoint' 
+                        : 'Sandbox PayPal endpoint (no real charges)'}
+                    </p>
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  <Button
+                    variant={integrationSettings.paypal_mode === 'sandbox' ? 'default' : 'outline'}
+                    size="sm"
+                    onClick={() => setIntegrationSettings(prev => ({ ...prev, paypal_mode: 'sandbox' }))}
+                    className={integrationSettings.paypal_mode === 'sandbox' ? 'bg-yellow-600 hover:bg-yellow-700' : ''}
+                  >
+                    <TestTube className="w-4 h-4 mr-1" />
+                    Sandbox
+                  </Button>
+                  <Button
+                    variant={integrationSettings.paypal_mode === 'live' ? 'default' : 'outline'}
+                    size="sm"
+                    onClick={() => setIntegrationSettings(prev => ({ ...prev, paypal_mode: 'live' }))}
+                    className={integrationSettings.paypal_mode === 'live' ? 'bg-emerald-600 hover:bg-emerald-700' : ''}
+                  >
+                    <Zap className="w-4 h-4 mr-1" />
+                    Live
+                  </Button>
+                </div>
+              </div>
+
+              {/* API Credentials */}
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="paypal_api_username">API Username</Label>
+                  <Input
+                    id="paypal_api_username"
+                    type="text"
+                    value={integrationSettings.paypal_api_username}
+                    onChange={(e) => setIntegrationSettings(prev => ({ ...prev, paypal_api_username: e.target.value }))}
+                    placeholder={integrationStatus?.paypal?.api_username_masked || "sb-xxxxx_api1.business.example.com"}
+                    className="bg-zinc-800 border-zinc-700"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="paypal_api_password">API Password</Label>
+                  <div className="relative">
+                    <Input
+                      id="paypal_api_password"
+                      type={showPayPalPassword ? 'text' : 'password'}
+                      value={integrationSettings.paypal_api_password}
+                      onChange={(e) => setIntegrationSettings(prev => ({ ...prev, paypal_api_password: e.target.value }))}
+                      placeholder={integrationStatus?.paypal?.has_api_password ? '••••••••' : 'Enter API password'}
+                      className="bg-zinc-800 border-zinc-700 pr-10"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPayPalPassword(!showPayPalPassword)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-white"
+                    >
+                      {showPayPalPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="paypal_api_signature">API Signature</Label>
+                  <div className="relative">
+                    <Input
+                      id="paypal_api_signature"
+                      type={showPayPalSignature ? 'text' : 'password'}
+                      value={integrationSettings.paypal_api_signature}
+                      onChange={(e) => setIntegrationSettings(prev => ({ ...prev, paypal_api_signature: e.target.value }))}
+                      placeholder={integrationStatus?.paypal?.has_api_signature ? '••••••••' : 'Enter API signature'}
+                      className="bg-zinc-800 border-zinc-700 pr-10"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPayPalSignature(!showPayPalSignature)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-white"
+                    >
+                      {showPayPalSignature ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* IPN URL Info */}
+              <div className="p-3 rounded-lg bg-cyan-500/10 border border-cyan-500/20">
+                <p className="text-xs text-cyan-400 flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4" />
+                  Set your PayPal IPN URL to: <code className="bg-zinc-800 px-1 rounded">{window.location.origin}/api/paypal/ipn</code>
+                </p>
+              </div>
+
+              <div className="flex justify-end">
+                <Button onClick={saveIntegrationSettings} className="bg-cyan-600 hover:bg-cyan-700" disabled={savingIntegration}>
+                  {savingIntegration ? <RefreshCw className="w-4 h-4 mr-2 animate-spin" /> : <Save className="w-4 h-4 mr-2" />}
+                  Save PayPal Settings
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
         </TabsContent>
 
         {/* Integrations Tab */}
