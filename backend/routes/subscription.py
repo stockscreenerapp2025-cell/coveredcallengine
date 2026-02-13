@@ -137,3 +137,22 @@ async def update_pricing_config(payload: PricingConfig, admin: dict = Depends(ge
     }
     await db.admin_settings.update_one({"type": "pricing_config"}, {"$set": doc}, upsert=True)
     return {"success": True, "updated_at": now}
+
+
+@subscription_router.get("/links")
+async def get_subscription_links():
+    """
+    Public endpoint for Pricing page to fetch payment links.
+    Returns PayPal hosted links from admin_settings.
+    """
+    settings = await db.admin_settings.find_one({"type": "paypal_links"}, {"_id": 0})
+    if not settings:
+        return {}
+    
+    # Determine which links to return based on mode
+    paypal_settings = await db.admin_settings.find_one({"type": "paypal_settings"}, {"_id": 0})
+    mode = paypal_settings.get("mode", "sandbox") if paypal_settings else "sandbox"
+    
+    if mode == "live":
+        return settings.get("live_links", {})
+    return settings.get("sandbox_links", {})

@@ -748,12 +748,12 @@ const Dashboard = () => {
               <Target className="w-5 h-5 text-emerald-400" />
               Top 10 Covered Call Opportunities
             </CardTitle>
-            <p className="text-xs text-zinc-500 mt-1 flex items-center gap-2">
+            <div className="text-xs text-zinc-500 mt-1 flex items-center gap-2">
               <Badge className="bg-cyan-500/20 text-cyan-400 border-cyan-500/30 text-xs">Top 5 Weekly</Badge>
               <span>+</span>
               <Badge className="bg-violet-500/20 text-violet-400 border-violet-500/30 text-xs">Top 5 Monthly</Badge>
               <span className="ml-2">• OTM strikes • DTE {`<`}14 Weekly, {`>`}14 Monthly</span>
-            </p>
+            </div>
           </div>
           <div className="flex items-center gap-2">
             {opportunitiesInfo?.is_live && (
