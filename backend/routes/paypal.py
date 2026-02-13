@@ -144,6 +144,10 @@ async def checkout_return(token: str = Query(...), PayerID: str = Query(...)):
 
     Creates a recurring profile for monthly/yearly billing (with optional 7-day trial)
     and updates the user's subscription state in our DB.
+    
+    - Sets access_active = True
+    - Stores paypal_profile_id
+    - Triggers email automation for subscription_created
     """
     await paypal_service.initialize()
 
@@ -158,10 +162,19 @@ async def checkout_return(token: str = Query(...), PayerID: str = Query(...)):
     billing_cycle = (metadata.get("billing_cycle") or "monthly").lower()
     is_trial = metadata.get("is_trial") in ["1", "true", "True"]
 
-    if plan_id not in SUBSCRIPTION_PLANS:
+    # Load pricing from DB first, fallback to hardcoded SUBSCRIPTION_PLANS
+    pricing_config = await db.admin_settings.find_one({"type": "pricing_config"}, {"_id": 0})
+    if pricing_config and pricing_config.get("plans"):
+        plans = pricing_config["plans"]
+    else:
+        plans = SUBSCRIPTION_PLANS
+
+    if plan_id not in plans:
         plan_id = "standard"
     if billing_cycle not in ["monthly", "yearly"]:
         billing_cycle = "monthly"
+
+    plan = plans[plan_id]
 
     # Complete the initial payment (0.01 for trial verification OR full amount if no-trial)
     amount = float(details.get("amount", 0) or 0)
@@ -174,27 +187,30 @@ async def checkout_return(token: str = Query(...), PayerID: str = Query(...)):
         raise HTTPException(status_code=400, detail=payment_result.get("error", "Payment failed"))
 
     # Create recurring profile (PayPal handles ongoing billing)
-    full_amount = float(SUBSCRIPTION_PLANS[plan_id][f"{billing_cycle}_price"])
-    description = f"Covered Call Engine - {SUBSCRIPTION_PLANS[plan_id]['name']} ({billing_cycle})"
+    full_amount = float(plan.get(f"{billing_cycle}_price", 0))
+    description = f"Covered Call Engine - {plan.get('name', plan_id.title())} ({billing_cycle})"
 
     profile_id = None
+    trial_days = int(plan.get("trial_days", 7)) if is_trial else 0
+    
     profile_result = await paypal_service.create_recurring_profile(
         token=token,
         payer_id=PayerID,
         amount=full_amount,
         billing_cycle=billing_cycle,
         description=description,
-        trial_days=int(SUBSCRIPTION_PLANS[plan_id].get("trial_days", 7) if is_trial else 0),
+        trial_days=trial_days,
         trial_amount=0.00,
     )
     if profile_result.get("success"):
         profile_id = profile_result.get("profile_id")
+    else:
+        logger.warning(f"[PayPal] Failed to create recurring profile: {profile_result.get('error')}")
 
     now = datetime.now(timezone.utc)
 
     # Build subscription object
-    if is_trial:
-        trial_days = int(SUBSCRIPTION_PLANS[plan_id].get("trial_days", 7))
+    if is_trial and trial_days > 0:
         trial_end = now + timedelta(days=trial_days)
         next_billing = trial_end
         status = "trialing"
@@ -204,7 +220,7 @@ async def checkout_return(token: str = Query(...), PayerID: str = Query(...)):
 
     subscription_data = {
         "plan_id": plan_id,
-        "plan_name": SUBSCRIPTION_PLANS[plan_id]["name"],
+        "plan_name": plan.get("name", plan_id.title()),
         "billing_cycle": billing_cycle,
         "status": status,
         "subscription_start": now.isoformat(),
