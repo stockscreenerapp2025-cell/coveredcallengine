@@ -103,28 +103,37 @@ class PayPalService:
     async def set_express_checkout(
         self,
         amount: float,
-        currency: str = "USD",
-        plan_type: str = "monthly",
+        plan_id: str = "standard",
+        billing_cycle: str = "monthly",
+        is_trial: bool = False,
         return_url: str = "",
         cancel_url: str = "",
-        customer_email: Optional[str] = None
+        customer_email: Optional[str] = None,
+        currency: str = "USD",
     ) -> Dict[str, Any]:
         """
-        Create an Express Checkout session
-        Returns token for redirecting user to PayPal
+        Create an Express Checkout session.
+        
+        Stores plan_id, billing_cycle, and is_trial in CUSTOM field (pipe-delimited)
+        so checkout-return can parse them.
         """
+        # Encode metadata in CUSTOM field: plan_id|billing_cycle|is_trial
+        custom_data = f"{plan_id}|{billing_cycle}|{'1' if is_trial else '0'}"
+        
         params = {
             "METHOD": "SetExpressCheckout",
             "PAYMENTREQUEST_0_PAYMENTACTION": "Sale",
             "PAYMENTREQUEST_0_AMT": f"{amount:.2f}",
             "PAYMENTREQUEST_0_CURRENCYCODE": currency,
-            "PAYMENTREQUEST_0_DESC": f"Covered Call Engine - {plan_type.title()} Subscription",
+            "PAYMENTREQUEST_0_DESC": f"Covered Call Engine - {plan_id.title()} ({billing_cycle})",
             "RETURNURL": return_url,
             "CANCELURL": cancel_url,
             "NOSHIPPING": "1",
             "ALLOWNOTE": "0",
             "BRANDNAME": "Covered Call Engine",
-            "CUSTOM": plan_type,  # Store plan type for later
+            "CUSTOM": custom_data,
+            "L_BILLINGTYPE0": "RecurringPayments",
+            "L_BILLINGAGREEMENTDESCRIPTION0": f"Covered Call Engine {plan_id.title()} ({billing_cycle})",
         }
         
         if customer_email:
@@ -135,19 +144,24 @@ class PayPalService:
         if result.get("ACK") == "Success":
             token = result.get("TOKEN")
             redirect = f"{self.redirect_url}?cmd=_express-checkout&token={token}"
+            logger.info(f"[PayPal] Express checkout created: token={token}, plan={plan_id}, cycle={billing_cycle}, trial={is_trial}")
             return {
                 "success": True,
                 "token": token,
                 "redirect_url": redirect
             }
         
+        logger.error(f"[PayPal] SetExpressCheckout failed: {result.get('L_LONGMESSAGE0', 'Unknown error')}")
         return {
             "success": False,
             "error": result.get("L_LONGMESSAGE0", "Unknown error")
         }
     
     async def get_express_checkout_details(self, token: str) -> Dict[str, Any]:
-        """Get checkout details after user returns from PayPal"""
+        """Get checkout details after user returns from PayPal.
+        
+        Parses CUSTOM field to extract plan_id, billing_cycle, is_trial.
+        """
         params = {
             "METHOD": "GetExpressCheckoutDetails",
             "TOKEN": token
@@ -156,6 +170,13 @@ class PayPalService:
         result = await self._make_request(params)
         
         if result.get("ACK") == "Success":
+            # Parse CUSTOM field: plan_id|billing_cycle|is_trial
+            custom = result.get("CUSTOM", "standard|monthly|0")
+            parts = custom.split("|")
+            plan_id = parts[0] if len(parts) > 0 else "standard"
+            billing_cycle = parts[1] if len(parts) > 1 else "monthly"
+            is_trial = parts[2] == "1" if len(parts) > 2 else False
+            
             return {
                 "success": True,
                 "payer_id": result.get("PAYERID"),
@@ -163,7 +184,11 @@ class PayPalService:
                 "first_name": result.get("FIRSTNAME"),
                 "last_name": result.get("LASTNAME"),
                 "amount": result.get("PAYMENTREQUEST_0_AMT"),
-                "plan_type": result.get("CUSTOM", "monthly")
+                "metadata": {
+                    "plan_id": plan_id,
+                    "billing_cycle": billing_cycle,
+                    "is_trial": "1" if is_trial else "0",
+                }
             }
         
         return {
