@@ -57,6 +57,7 @@ from routes.news import news_router
 from routes.chatbot import chatbot_router
 from routes.ai import ai_router
 from routes.subscription import subscription_router
+from routes.email_automation import email_automation_router
 from routes.stocks import stocks_router
 from routes.options import options_router
 from routes.admin import admin_router
@@ -991,6 +992,17 @@ from routes.simulator import calculate_greeks, evaluate_and_execute_rules
 # Scheduler for automated daily price updates
 scheduler = AsyncIOScheduler()
 
+
+async def scheduled_email_automation():
+    """Process due marketing/automation emails."""
+    try:
+        from services.email_automation import EmailAutomationService
+        service = EmailAutomationService(db)
+        await service.process_due_jobs(limit=100)
+    except Exception as e:
+        logging.error(f"scheduled_email_automation failed: {e}")
+
+
 async def scheduled_price_update():
     """
     Automated daily price update for all active simulator trades.
@@ -1223,6 +1235,7 @@ api_router.include_router(news_router, prefix="/news")
 api_router.include_router(chatbot_router, prefix="/chatbot")
 api_router.include_router(ai_router, prefix="/ai")
 api_router.include_router(subscription_router, prefix="/subscription")
+api_router.include_router(email_automation_router)
 api_router.include_router(stocks_router, prefix="/stocks")
 api_router.include_router(options_router, prefix="/options")
 api_router.include_router(admin_router, prefix="/admin")
@@ -1459,7 +1472,16 @@ async def startup():
         id='eod_market_close_ingestion',
         replace_existing=True
     )
-    
+
+    # Run email automation queue every 2 minutes
+    scheduler.add_job(
+        scheduled_email_automation,
+        "interval",
+        minutes=2,
+        id="email_automation_queue",
+        replace_existing=True
+    )
+
     scheduler.start()
     logger.info("Schedulers started - EOD: 4:05 PM ET, Pre-computed scans: 4:05 PM ET, Simulator: 4:05 PM ET, Support: every 5 min, IMAP: every 6 hours")
 

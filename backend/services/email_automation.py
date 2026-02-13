@@ -325,7 +325,7 @@ DEFAULT_RULES = [
     {
         "name": "Welcome Email",
         "trigger_type": "subscription_created",
-        "condition": {"plan": "FREE"},
+        "condition": {"status": "trialing"},
         "delay_minutes": 0,
         "action": "send_email",
         "template_key": "welcome_free_trial",
@@ -334,7 +334,7 @@ DEFAULT_RULES = [
     {
         "name": "Getting Started",
         "trigger_type": "subscription_created",
-        "condition": {"plan": "FREE"},
+        "condition": {"status": "trialing"},
         "delay_minutes": 1440,  # 1 day
         "action": "send_email",
         "template_key": "getting_started",
@@ -343,7 +343,7 @@ DEFAULT_RULES = [
     {
         "name": "Feature Highlight",
         "trigger_type": "subscription_created",
-        "condition": {"plan": "FREE"},
+        "condition": {"status": "trialing"},
         "delay_minutes": 4320,  # 3 days
         "action": "send_email",
         "template_key": "feature_highlight",
@@ -352,7 +352,7 @@ DEFAULT_RULES = [
     {
         "name": "Trial Check-in",
         "trigger_type": "subscription_created",
-        "condition": {"plan": "FREE"},
+        "condition": {"status": "trialing"},
         "delay_minutes": 10080,  # 7 days
         "action": "send_email",
         "template_key": "trial_checkin",
@@ -384,7 +384,10 @@ TRIGGER_TYPES = [
     {"value": "subscription_expired", "label": "Subscription Expired"},
     {"value": "user_inactive", "label": "User Inactive (X days)"},
     {"value": "feature_not_used", "label": "Feature Not Used"},
-    {"value": "manual_broadcast", "label": "Manual Broadcast"}
+    {"value": "manual_broadcast", "label": "Manual Broadcast"},
+    {"value": "subscription_payment_succeeded", "label": "Payment Succeeded / Renewed"},
+    {"value": "subscription_payment_failed", "label": "Payment Failed"},
+    {"value": "subscription_cancelled", "label": "Subscription Cancelled"},
 ]
 
 ACTION_TYPES = [
@@ -455,7 +458,131 @@ class EmailAutomationService:
             logger.error(f"Failed to setup default rules: {e}")
             return False
     
-    async def get_templates(self) -> List[Dict]:
+    
+    async def trigger_event(self, trigger_type: str, user: Dict, subscription: Dict):
+        """Trigger automation rules for an event by scheduling email jobs."""
+        await self.setup_default_templates()
+        await self.setup_default_rules()
+
+        rules = await self.db.automation_rules.find(
+            {"trigger_type": trigger_type, "enabled": True},
+            {"_id": 0}
+        ).to_list(1000)
+
+        if not rules:
+            return {"scheduled": 0}
+
+        scheduled = 0
+        now = datetime.now(timezone.utc)
+
+        # Normalize subscription context for rule matching
+        ctx = {
+            "plan": subscription.get("plan") or subscription.get("plan_name") or subscription.get("plan_id"),
+            "plan_id": subscription.get("plan_id"),
+            "status": subscription.get("status"),
+            "billing_cycle": subscription.get("billing_cycle"),
+            "payment_provider": subscription.get("payment_provider"),
+        }
+
+        for rule in rules:
+            condition = rule.get("condition") or {}
+            if not self._matches_condition(condition, ctx):
+                continue
+
+            delay_minutes = int(rule.get("delay_minutes", 0) or 0)
+            run_at = now + timedelta(minutes=delay_minutes)
+
+            job = {
+                "id": str(uuid4()),
+                "status": "scheduled",
+                "trigger_type": trigger_type,
+                "template_key": rule.get("template_key"),
+                "to_email": user.get("email"),
+                "payload": {
+                    "first_name": user.get("first_name") or user.get("name") or "",
+                    "email": user.get("email"),
+                    "dashboard_url": os.environ.get("APP_URL", ""),
+                    "trial_days": subscription.get("trial_days", 7),
+                    "plan_name": subscription.get("plan_name") or subscription.get("plan_id") or "",
+                },
+                "run_at": run_at.isoformat(),
+                "attempts": 0,
+                "created_at": now.isoformat(),
+                "updated_at": now.isoformat(),
+            }
+
+            await self.db.email_jobs.insert_one(job)
+            scheduled += 1
+
+        return {"scheduled": scheduled}
+
+    def _matches_condition(self, condition: Dict, ctx: Dict) -> bool:
+        """Simple condition matcher supporting keys in ctx."""
+        for k, expected in (condition or {}).items():
+            actual = ctx.get(k)
+            if expected is None:
+                continue
+            if isinstance(expected, (list, tuple, set)):
+                if actual not in expected:
+                    return False
+            else:
+                if str(actual) != str(expected):
+                    return False
+        return True
+
+    async def process_due_jobs(self, limit: int = 50) -> Dict[str, int]:
+        """Send any scheduled emails that are due."""
+        await self.initialize()
+        now = datetime.now(timezone.utc)
+
+        jobs = await self.db.email_jobs.find(
+            {"status": "scheduled", "run_at": {"$lte": now.isoformat()}},
+            {"_id": 0}
+        ).to_list(limit)
+
+        sent = 0
+        failed = 0
+
+        for job in jobs:
+            job_id = job.get("id")
+            template_key = job.get("template_key")
+            to_email = job.get("to_email")
+            payload = job.get("payload") or {}
+
+            try:
+                # Load template by key
+                template = await self.db.email_templates.find_one({"key": template_key}, {"_id": 0})
+                if not template:
+                    # fallback to default templates dict
+                    template = DEFAULT_TEMPLATES.get(template_key)
+
+                if not template or not template.get("enabled", True):
+                    await self.db.email_jobs.update_one({"id": job_id}, {"$set": {"status": "skipped", "updated_at": now.isoformat()}})
+                    continue
+
+                subject = template.get("subject", "")
+                html = template.get("html", "")
+
+                # Very lightweight variable substitution
+                for k, v in payload.items():
+                    html = html.replace(f"{{{{{k}}}}}", str(v))
+                    subject = subject.replace(f"{{{{{k}}}}}", str(v))
+
+                await self.send_email(to_email=to_email, subject=subject, html=html)
+
+                await self.db.email_jobs.update_one({"id": job_id}, {"$set": {"status": "sent", "sent_at": now.isoformat(), "updated_at": now.isoformat()}})
+                sent += 1
+            except Exception as e:
+                failed += 1
+                await self.db.email_jobs.update_one(
+                    {"id": job_id},
+                    {"$set": {"status": "failed", "last_error": str(e), "updated_at": now.isoformat()}, "$inc": {"attempts": 1}}
+                )
+
+        return {"sent": sent, "failed": failed}
+
+
+async def get_templates(self) -> List[Dict]:
         """Get all email templates"""
         templates = await self.db.email_templates.find({}, {"_id": 0}).to_list(100)
         return templates
