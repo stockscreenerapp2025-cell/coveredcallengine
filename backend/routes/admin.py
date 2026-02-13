@@ -45,6 +45,15 @@ def _mask_api_key(key: str) -> str:
     return key[:8] + "..." + key[-4:]
 
 
+def _mask_small(key: str) -> str:
+    """Mask string for UI display - show first 4 and last 2 chars."""
+    if not key:
+        return ""
+    if len(key) <= 6:
+        return "****"
+    return key[:4] + "..." + key[-2:]
+
+
 async def clear_cache(prefix: str = None) -> int:
     """Clear cache entries. If prefix provided, only clear matching entries."""
     try:
