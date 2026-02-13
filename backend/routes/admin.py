@@ -532,13 +532,34 @@ async def update_integration_settings(
             upsert=True
         )
     
+    # PayPal settings
+    if paypal_enabled is not None or paypal_mode is not None or paypal_api_username is not None or paypal_api_password is not None or paypal_api_signature is not None:
+        paypal_update = {"type": "paypal_settings", "updated_at": now}
+        if paypal_enabled is not None:
+            paypal_update["enabled"] = paypal_enabled
+        if paypal_mode:
+            paypal_update["mode"] = paypal_mode
+        if paypal_api_username:
+            paypal_update["api_username"] = paypal_api_username
+        if paypal_api_password:
+            paypal_update["api_password"] = paypal_api_password
+        if paypal_api_signature:
+            paypal_update["api_signature"] = paypal_api_signature
+        
+        await db.admin_settings.update_one(
+            {"type": "paypal_settings"},
+            {"$set": paypal_update},
+            upsert=True
+        )
+    
     # Log action
     await db.audit_logs.insert_one({
         "action": "update_integration_settings",
         "admin_id": admin["id"],
         "details": {
             "stripe_updated": stripe_webhook_secret is not None or stripe_secret_key is not None,
-            "email_updated": resend_api_key is not None or sender_email is not None
+            "email_updated": resend_api_key is not None or sender_email is not None,
+            "paypal_updated": paypal_enabled is not None or paypal_mode is not None or paypal_api_username is not None
         },
         "timestamp": now
     })
