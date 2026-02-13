@@ -527,6 +527,12 @@ const Admin = () => {
       if (integrationSettings.stripe_secret_key) params.append('stripe_secret_key', integrationSettings.stripe_secret_key);
       if (integrationSettings.resend_api_key) params.append('resend_api_key', integrationSettings.resend_api_key);
       if (integrationSettings.sender_email) params.append('sender_email', integrationSettings.sender_email);
+      // PayPal settings
+      if (integrationSettings.paypal_enabled !== undefined) params.append('paypal_enabled', String(integrationSettings.paypal_enabled));
+      if (integrationSettings.paypal_mode) params.append('paypal_mode', integrationSettings.paypal_mode);
+      if (integrationSettings.paypal_api_username) params.append('paypal_api_username', integrationSettings.paypal_api_username);
+      if (integrationSettings.paypal_api_password) params.append('paypal_api_password', integrationSettings.paypal_api_password);
+      if (integrationSettings.paypal_api_signature) params.append('paypal_api_signature', integrationSettings.paypal_api_signature);
       
       await api.post(`/admin/integration-settings?${params.toString()}`);
       toast.success('Integration settings saved');
