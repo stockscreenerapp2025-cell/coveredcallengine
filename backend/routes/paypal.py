@@ -227,12 +227,12 @@ async def checkout_return(token: str = Query(...), PayerID: str = Query(...)):
         "next_billing_date": next_billing.isoformat(),
         "payment_status": "succeeded",
         "payment_provider": "paypal",
-        "trial_days": int(SUBSCRIPTION_PLANS[plan_id].get("trial_days", 7)),
+        "trial_days": trial_days,
     }
-    if is_trial:
+    if is_trial and trial_days > 0:
         subscription_data.update({
             "trial_start": now.isoformat(),
-            "trial_end": (now + timedelta(days=int(SUBSCRIPTION_PLANS[plan_id].get("trial_days", 7)))).isoformat(),
+            "trial_end": (now + timedelta(days=trial_days)).isoformat(),
         })
 
     user_doc = await db.users.find_one({"email": email})
@@ -247,19 +247,20 @@ async def checkout_return(token: str = Query(...), PayerID: str = Query(...)):
             update_doc["paypal_profile_id"] = profile_id
 
         await db.users.update_one({"email": email}, {"$set": update_doc})
+        logger.info(f"[PayPal] User {email} subscription activated: plan={plan_id}, status={status}, profile_id={profile_id}")
 
-        # Trigger marketing emails during trial (welcome, followups)
-        if subscription_data.get("status") == "trialing":
-            try:
-                automation = EmailAutomationService(db)
-                await automation.initialize()
-                await automation.trigger_event(
-                    trigger_type="subscription_created",
-                    user=user_doc,
-                    subscription=subscription_data
-                )
-            except Exception as e:
-                logger.error(f"Failed to trigger trial marketing emails: {e}")
+        # Trigger marketing emails for subscription_created (both trialing and active)
+        try:
+            automation = EmailAutomationService(db)
+            await automation.initialize()
+            await automation.trigger_event(
+                trigger_type="subscription_created",
+                user=user_doc,
+                subscription=subscription_data
+            )
+            logger.info(f"[PayPal] Triggered subscription_created email automation for {email}")
+        except Exception as e:
+            logger.error(f"Failed to trigger subscription_created emails: {e}")
 
     # Log transaction
     await db.paypal_transactions.insert_one({
