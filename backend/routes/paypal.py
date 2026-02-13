@@ -91,21 +91,32 @@ async def create_checkout(payload: CreateCheckoutRequest, user: dict = Depends(g
 
     This is used when you want PayPal to handle renewals (recurring profile),
     while our system still controls feature access by updating the user's subscription state.
+    
+    Pricing is DB-driven (admin_settings.type="pricing_config") with fallback to hardcoded.
     """
     plan_id = payload.plan_id.lower().strip()
     billing_cycle = payload.billing_cycle.lower().strip()
 
-    if plan_id not in SUBSCRIPTION_PLANS:
+    # Load pricing from DB first, fallback to hardcoded SUBSCRIPTION_PLANS
+    pricing_config = await db.admin_settings.find_one({"type": "pricing_config"}, {"_id": 0})
+    if pricing_config and pricing_config.get("plans"):
+        plans = pricing_config["plans"]
+    else:
+        plans = SUBSCRIPTION_PLANS
+
+    if plan_id not in plans:
         raise HTTPException(status_code=400, detail="Invalid plan_id")
     if billing_cycle not in ["monthly", "yearly"]:
         raise HTTPException(status_code=400, detail="Invalid billing_cycle")
 
+    plan = plans[plan_id]
+    
     # Amount we will charge as part of the initial checkout.
     # If starting with trial, we use a minimal verification amount.
     if payload.start_with_trial:
         checkout_amount = 0.01
     else:
-        checkout_amount = float(SUBSCRIPTION_PLANS[plan_id][f"{billing_cycle}_price"])
+        checkout_amount = float(plan.get(f"{billing_cycle}_price", 0))
 
     await paypal_service.initialize()
 
@@ -122,6 +133,7 @@ async def create_checkout(payload: CreateCheckoutRequest, user: dict = Depends(g
     if not result.get("success"):
         raise HTTPException(status_code=400, detail=result.get("error", "Checkout creation failed"))
 
+    logger.info(f"[PayPal] Checkout created for user={user.get('email')}, plan={plan_id}, cycle={billing_cycle}, trial={payload.start_with_trial}")
     return result
 
 
