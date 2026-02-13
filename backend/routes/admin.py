@@ -451,12 +451,24 @@ async def set_user_subscription(
 # ==================== INTEGRATION SETTINGS ====================
 @admin_router.get("/integration-settings")
 async def get_integration_settings(admin: dict = Depends(get_admin_user)):
-    """Get all integration settings (Stripe, Resend, etc.)"""
+    """Get all integration settings (Stripe, Resend, PayPal, etc.)"""
     stripe_settings = await db.admin_settings.find_one({"type": "stripe_settings"}, {"_id": 0})
     email_settings = await db.admin_settings.find_one({"type": "email_settings"}, {"_id": 0})
+    paypal_settings = await db.admin_settings.find_one({"type": "paypal_settings"}, {"_id": 0})
     
     env_resend_key = os.environ.get("RESEND_API_KEY")
     env_stripe_webhook = os.environ.get("STRIPE_WEBHOOK_SECRET")
+    
+    # PayPal status
+    paypal_enabled = bool(paypal_settings and paypal_settings.get("enabled"))
+    paypal_mode = (paypal_settings.get("mode") if paypal_settings else None) or "sandbox"
+    paypal_configured = bool(
+        paypal_settings
+        and paypal_settings.get("api_username")
+        and paypal_settings.get("api_password")
+        and paypal_settings.get("api_signature")
+        and paypal_enabled
+    )
     
     return {
         "stripe": {
@@ -466,6 +478,14 @@ async def get_integration_settings(admin: dict = Depends(get_admin_user)):
         "email": {
             "resend_api_key_configured": bool(email_settings and email_settings.get("resend_api_key")) or bool(env_resend_key),
             "sender_email": email_settings.get("sender_email", "") if email_settings else os.environ.get("SENDER_EMAIL", "")
+        },
+        "paypal": {
+            "configured": paypal_configured,
+            "enabled": paypal_enabled,
+            "mode": paypal_mode,
+            "api_username_masked": _mask_small(paypal_settings.get("api_username", "")) if paypal_settings else "",
+            "has_api_password": bool(paypal_settings and paypal_settings.get("api_password")),
+            "has_api_signature": bool(paypal_settings and paypal_settings.get("api_signature"))
         }
     }
 
@@ -476,6 +496,11 @@ async def update_integration_settings(
     stripe_secret_key: Optional[str] = Query(None),
     resend_api_key: Optional[str] = Query(None),
     sender_email: Optional[str] = Query(None),
+    paypal_enabled: Optional[bool] = Query(None),
+    paypal_mode: Optional[str] = Query(None, description="sandbox or live"),
+    paypal_api_username: Optional[str] = Query(None),
+    paypal_api_password: Optional[str] = Query(None),
+    paypal_api_signature: Optional[str] = Query(None),
     admin: dict = Depends(get_admin_user)
 ):
     """Update integration settings"""
