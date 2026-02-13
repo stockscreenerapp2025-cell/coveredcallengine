@@ -73,6 +73,8 @@ from routes.snapshots import snapshot_router  # PHASE 1: Snapshot management (le
 from routes.eod import eod_router  # Canonical EOD data management
 # AI Wallet: Token-based access control for AI features
 from ai_wallet.routes import ai_wallet_router
+# PayPal Express Checkout + Recurring Profiles
+from routes.paypal import paypal_router
 
 # Create routers (still in server.py - to be refactored)
 api_router = APIRouter(prefix="/api")
