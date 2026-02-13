@@ -233,45 +233,74 @@ class PayPalService:
         token: str,
         payer_id: str,
         amount: float,
-        plan_type: str,
+        billing_cycle: str,
         description: str,
+        trial_days: int = 0,
+        trial_amount: float = 0.0,
         currency: str = "USD"
     ) -> Dict[str, Any]:
-        """Create a recurring payments profile for subscriptions"""
+        """Create a recurring payments profile for subscriptions.
+        
+        Args:
+            token: PayPal express checkout token
+            payer_id: PayPal payer ID
+            amount: Recurring billing amount
+            billing_cycle: 'monthly' or 'yearly'
+            description: Profile description
+            trial_days: Number of trial days before billing starts (0 = no trial)
+            trial_amount: Amount to charge during trial (usually 0)
+            currency: Currency code
+        """
         
         # Determine billing period
-        if plan_type == "yearly":
+        if billing_cycle == "yearly":
             billing_period = "Year"
             billing_frequency = "1"
         else:
             billing_period = "Month"
             billing_frequency = "1"
         
-        # Start date should be now
-        start_date = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        # Start date - if trial, start billing after trial period
+        now = datetime.now(timezone.utc)
+        if trial_days > 0:
+            profile_start = now + timedelta(days=trial_days)
+        else:
+            profile_start = now
+        
+        start_date = profile_start.strftime("%Y-%m-%dT%H:%M:%SZ")
         
         params = {
             "METHOD": "CreateRecurringPaymentsProfile",
             "TOKEN": token,
-            "PAYERID": payer_id,
             "PROFILESTARTDATE": start_date,
             "DESC": description,
             "BILLINGPERIOD": billing_period,
             "BILLINGFREQUENCY": billing_frequency,
             "AMT": f"{amount:.2f}",
             "CURRENCYCODE": currency,
-            "AUTOBILLOUTAMT": "AddToNextBilling"
+            "AUTOBILLOUTAMT": "AddToNextBilling",
+            "MAXFAILEDPAYMENTS": "3",
         }
+        
+        # Add trial period if specified
+        if trial_days > 0:
+            params["TRIALBILLINGPERIOD"] = "Day"
+            params["TRIALBILLINGFREQUENCY"] = str(trial_days)
+            params["TRIALAMT"] = f"{trial_amount:.2f}"
+            params["TRIALTOTALBILLINGCYCLES"] = "1"
         
         result = await self._make_request(params)
         
         if result.get("ACK") == "Success":
+            profile_id = result.get("PROFILEID")
+            logger.info(f"[PayPal] Recurring profile created: {profile_id}, billing={billing_cycle}, amount={amount}, trial_days={trial_days}")
             return {
                 "success": True,
-                "profile_id": result.get("PROFILEID"),
+                "profile_id": profile_id,
                 "profile_status": result.get("PROFILESTATUS")
             }
         
+        logger.error(f"[PayPal] CreateRecurringPaymentsProfile failed: {result.get('L_LONGMESSAGE0', 'Unknown error')}")
         return {
             "success": False,
             "error": result.get("L_LONGMESSAGE0", "Unknown error")
