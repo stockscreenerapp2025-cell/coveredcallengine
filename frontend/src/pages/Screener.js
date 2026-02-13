@@ -77,12 +77,12 @@ const Screener = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [marketStatus, setMarketStatus] = useState(null);
   const [dataInfo, setDataInfo] = useState(null);
-  
+
   // Pre-computed scans state
   const [availableScans, setAvailableScans] = useState(null);
   const [activeScan, setActiveScan] = useState(null);
   const [scanLoading, setScanLoading] = useState(false);
-  
+
   // Simulator state
   const [simulateModalOpen, setSimulateModalOpen] = useState(false);
   const [simulateOpp, setSimulateOpp] = useState(null);
@@ -92,18 +92,18 @@ const Screener = () => {
   // Handle adding to simulator
   const handleSimulate = async () => {
     if (!simulateOpp) return;
-    
+
     setSimulateLoading(true);
     try {
       // LAYER 3 CONTRACT: IV is stored as percentage (39.5 = 39.5%)
       // short_call_iv should be stored as DECIMAL for calculation compatibility (0.395)
-      let ivPct = simulateOpp.short_call?.implied_volatility || 
-                  simulateOpp.implied_volatility || 
+      let ivPct = simulateOpp.short_call?.implied_volatility ||
+                  simulateOpp.implied_volatility ||
                   simulateOpp.iv || 0;
-      
+
       // If IV is already in percentage form (> 1), convert to decimal for storage
       const ivDecimal = ivPct > 1 ? ivPct / 100 : ivPct;
-      
+
       const tradeData = {
         symbol: simulateOpp.symbol,
         strategy_type: 'covered_call',
@@ -123,7 +123,7 @@ const Screener = () => {
           iv_pct: ivPct  // Store percentage for display
         }
       };
-      
+
       await simulatorApi.addTrade(tradeData);
       toast.success(`Added ${simulateOpp.symbol} to Simulator!`);
       setSimulateModalOpen(false);
@@ -220,11 +220,11 @@ const Screener = () => {
     const initializeData = async () => {
       fetchSavedFilters();
       fetchMarketStatus();
-      
+
       try {
         const res = await scansApi.getAvailable();
         setAvailableScans(res.data.scans);
-        
+
         // Default to Custom Scan - user can click Quick Scans for pre-computed
         fetchOpportunities();
       } catch (error) {
@@ -232,7 +232,7 @@ const Screener = () => {
         fetchOpportunities();
       }
     };
-    
+
     initializeData();
   }, []);
 
@@ -288,7 +288,7 @@ const Screener = () => {
     try {
       // Only pass filter values that are set (not empty strings)
       const params = { bypass_cache: bypassCache };
-      
+
       if (roiFilters.minRoi !== '' && roiFilters.minRoi !== undefined) params.min_roi = roiFilters.minRoi;
       if (expirationFilters.minDte !== '' && expirationFilters.minDte !== undefined) params.min_dte = expirationFilters.minDte;
       if (expirationFilters.maxDte !== '' && expirationFilters.maxDte !== undefined) params.max_dte = expirationFilters.maxDte;
@@ -300,21 +300,21 @@ const Screener = () => {
       if (optionsFilters.minOpenInterest !== '' && optionsFilters.minOpenInterest !== undefined) params.min_open_interest = optionsFilters.minOpenInterest;
       if (expirationFilters.expirationType === 'weekly') params.weekly_only = true;
       if (expirationFilters.expirationType === 'monthly') params.monthly_only = true;
-      
+
       // Security type filters
       params.include_stocks = stockFilters.includeStocks;
       params.include_etfs = stockFilters.includeETFs;
       params.include_index = stockFilters.includeIndex;
-      
+
       const response = await screenerApi.getCoveredCalls(params);
-      
+
       let results = response.data.opportunities || [];
       setDataInfo({
         from_cache: response.data.from_cache,
         market_closed: response.data.market_closed,
         is_last_trading_day: response.data.is_last_trading_day
       });
-      
+
       // Client-side filtering for moneyness
       if (optionsFilters.moneyness !== 'all') {
         results = results.filter(o => {
@@ -335,7 +335,7 @@ const Screener = () => {
           return probOTM >= minProb && probOTM <= maxProb;
         });
       }
-      
+
       setOpportunities(results);
     } catch (error) {
       console.error('Screener fetch error:', error);
@@ -451,7 +451,7 @@ const Screener = () => {
     const rows = sortedOpportunities.map(o => [
       o.symbol, o.stock_price, o.strike, o.expiry, o.dte, o.premium, o.roi_pct, o.delta, Math.round((1-o.delta)*100), o.iv, o.iv_rank, o.volume, o.open_interest, o.score
     ]);
-    
+
     const csv = [headers, ...rows].map(row => row.join(',')).join('\n');
     const blob = new Blob([csv], { type: 'text/csv' });
     const url = URL.createObjectURL(blob);
@@ -654,10 +654,10 @@ const Screener = () => {
             Covered Call Screener
           </h1>
           <p className="text-zinc-400 mt-1">
-            {dataInfo?.is_precomputed 
+            {dataInfo?.is_precomputed
               ? `Showing ${dataInfo.label} pre-computed results`
-              : dataInfo?.from_cache && marketStatus && !marketStatus.is_open 
-                ? "Showing data from last market session" 
+              : dataInfo?.from_cache && marketStatus && !marketStatus.is_open
+                ? "Showing data from last market session"
                 : "Advanced filtering for optimal premium opportunities"}
           </p>
         </div>
@@ -749,7 +749,7 @@ const Screener = () => {
             </CardHeader>
             <CardContent className="space-y-2">
               <Accordion type="multiple" defaultValue={[]} className="w-full">
-                
+
                 {/* Days to Expiration */}
                 <AccordionItem value="expiration" className="border-zinc-800">
                   <AccordionTrigger className="text-sm font-medium hover:no-underline">
@@ -762,8 +762,8 @@ const Screener = () => {
                     {/* Expiration Type Selection */}
                     <div>
                       <Label className="text-xs text-zinc-400 mb-3 block">Expiration Type</Label>
-                      <RadioGroup 
-                        value={expirationFilters.expirationType} 
+                      <RadioGroup
+                        value={expirationFilters.expirationType}
                         onValueChange={(value) => setExpirationFilters(f => ({ ...f, expirationType: value }))}
                         className="space-y-2"
                       >
@@ -910,7 +910,7 @@ const Screener = () => {
                         data-testid="min-oi-input"
                       />
                     </div>
-                    
+
                     {/* Moneyness Dropdown */}
                     <div className="pt-2 border-t border-zinc-800">
                       <Label className="text-xs text-zinc-400">Moneyness</Label>
@@ -1321,8 +1321,8 @@ const Screener = () => {
                   </thead>
                   <tbody>
                     {sortedOpportunities.map((opp, index) => (
-                      <tr 
-                        key={index} 
+                      <tr
+                        key={index}
                         data-testid={`screener-row-${opp.symbol}`}
                         className="cursor-pointer hover:bg-zinc-800/50 transition-colors"
                         onClick={() => {
@@ -1338,8 +1338,8 @@ const Screener = () => {
                             {/* Show W/M badge for ALL results based on DTE */}
                             {opp.dte && (
                               <Badge className={`text-xs ${
-                                opp.dte <= 14 
-                                  ? 'bg-cyan-500/20 text-cyan-400 border-cyan-500/30' 
+                                opp.dte <= 14
+                                  ? 'bg-cyan-500/20 text-cyan-400 border-cyan-500/30'
                                   : 'bg-purple-500/20 text-purple-400 border-purple-500/30'
                               }`}>
                                 {opp.dte <= 14 ? 'W' : 'M'}
@@ -1372,7 +1372,7 @@ const Screener = () => {
                               <TooltipTrigger asChild>
                                 <Badge className={`cursor-pointer ${
                                   opp.score >= 50 ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' :
-                                  opp.score >= 35 ? 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30' : 
+                                  opp.score >= 35 ? 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30' :
                                   'bg-cyan-500/20 text-cyan-400 border-cyan-500/30'
                                 }`}>
                                   {opp.score?.toFixed(0)}
@@ -1389,8 +1389,8 @@ const Screener = () => {
                                           <span className="text-emerald-400">{pillar.actual_score}/{pillar.max_score}</span>
                                         </div>
                                         <div className="w-full bg-zinc-700 h-1 rounded-full mt-1">
-                                          <div 
-                                            className="bg-emerald-500 h-1 rounded-full" 
+                                          <div
+                                            className="bg-emerald-500 h-1 rounded-full"
                                             style={{width: `${pillar.percentage}%`}}
                                           />
                                         </div>
@@ -1407,7 +1407,7 @@ const Screener = () => {
                         <td>
                           {opp.analyst_rating ? (
                             <Badge className={`text-xs ${
-                              opp.analyst_rating === 'Strong Buy' 
+                              opp.analyst_rating === 'Strong Buy'
                                 ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30'
                                 : opp.analyst_rating === 'Buy'
                                   ? 'bg-green-500/20 text-green-400 border-green-500/30'
@@ -1488,7 +1488,7 @@ const Screener = () => {
                   <span className="text-white">{simulateOpp.dte} days</span>
                 </div>
               </div>
-              
+
               <div>
                 <Label>Number of Contracts</Label>
                 <Input
@@ -1503,7 +1503,7 @@ const Screener = () => {
                   Capital required: ${((simulateOpp.stock_price || 0) * 100 * simulateContracts).toLocaleString()}
                 </p>
               </div>
-              
+
               <div className="flex gap-2 pt-2">
                 <Button
                   variant="outline"
@@ -1526,7 +1526,7 @@ const Screener = () => {
       </Dialog>
 
       {/* Stock Detail Modal */}
-      <StockDetailModal 
+      <StockDetailModal
         symbol={selectedStock}
         isOpen={isModalOpen}
         onClose={() => {
