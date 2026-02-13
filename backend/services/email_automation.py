@@ -583,7 +583,7 @@ class EmailAutomationService:
         return {"sent": sent, "failed": failed}
 
 
-async def get_templates(self) -> List[Dict]:
+    async def get_templates(self) -> List[Dict]:
         """Get all email templates"""
         templates = await self.db.email_templates.find({}, {"_id": 0}).to_list(100)
         return templates
