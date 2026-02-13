@@ -380,6 +380,7 @@ DEFAULT_RULES = [
 
 TRIGGER_TYPES = [
     {"value": "subscription_created", "label": "Subscription Created"},
+    {"value": "subscription_renewed", "label": "Subscription Renewed"},
     {"value": "subscription_expiring", "label": "Subscription Expiring"},
     {"value": "subscription_expired", "label": "Subscription Expired"},
     {"value": "user_inactive", "label": "User Inactive (X days)"},
