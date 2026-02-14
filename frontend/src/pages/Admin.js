@@ -47,7 +47,10 @@ import {
   XCircle,
   Calendar,
   MessageSquare,
-  Trash2
+  Trash2,
+  Download,
+  ExternalLink,
+  X
 } from 'lucide-react';
 import { toast } from 'sonner';
 import AdminSupport from '../components/AdminSupport';
