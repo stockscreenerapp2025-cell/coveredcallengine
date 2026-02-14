@@ -922,21 +922,35 @@ async def get_symbol_snapshots_batch(
     max_dte: int = 45,
     min_dte: int = 1,
     batch_size: int = 10,
+    is_scan_path: bool = False,  # NEW: Path-aware parameter
 ) -> Dict[str, Dict[str, Any]]:
+    """
+    Batch symbol snapshots with path-aware concurrency control.
+    
+    Args:
+        is_scan_path: If True, uses bounded concurrency for scan operations.
+                     If False (default), uses full executor capacity for user paths.
+    """
     if not symbols:
         return {}
     results: Dict[str, Dict[str, Any]] = {}
     unique = list(set(s.upper() for s in symbols))
-    for i in range(0, len(unique), batch_size):
-        batch = unique[i:i+batch_size]
-        tasks = [get_symbol_snapshot(db, s, api_key, include_options, max_dte, min_dte) for s in batch]
+    
+    # Adjust batch size based on path type
+    effective_batch_size = min(batch_size, 4) if is_scan_path else batch_size
+    
+    for i in range(0, len(unique), effective_batch_size):
+        batch = unique[i:i+effective_batch_size]
+        tasks = [get_symbol_snapshot(db, s, api_key, include_options, max_dte, min_dte, is_scan_path) for s in batch]
         batch_results = await asyncio.gather(*tasks, return_exceptions=True)
         for j, r in enumerate(batch_results):
             if isinstance(r, dict) and r.get("stock_data"):
                 results[batch[j]] = r
             elif isinstance(r, Exception):
                 logging.warning(f"Error fetching snapshot for {batch[j]}: {r}")
-        if i + batch_size < len(unique):
+        
+        # Add delay between batches for scan paths only
+        if is_scan_path and i + effective_batch_size < len(unique):
             await asyncio.sleep(0.5)
     return results
 
