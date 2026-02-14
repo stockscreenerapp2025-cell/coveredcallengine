@@ -22,6 +22,10 @@ PHASE 2 (December 2025): Market Snapshot Cache
 - Custom Scans now use get_symbol_snapshot() for cache-first data fetching
 - Reduces Yahoo Finance calls by ~70%
 - Does NOT affect scoring, filters, or outputs
+
+MOCK DATA POLICY (Feb 2026):
+- Mock fallback blocked in production (ENVIRONMENT check)
+- Production must fail explicitly on data unavailability
 """
 from fastapi import APIRouter, Depends, Query, HTTPException
 from pydantic import BaseModel
@@ -38,6 +42,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from database import db
 from utils.auth import get_current_user
+from utils.environment import allow_mock_data, DataUnavailableError
 # Import centralized data provider
 from services.data_provider import (
     fetch_options_chain,
