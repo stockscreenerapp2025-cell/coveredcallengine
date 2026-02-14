@@ -370,7 +370,12 @@ async def get_massive_api_key():
     return None
 
 async def fetch_stock_quote(symbol: str, api_key: str = None) -> Optional[dict]:
-    """Fetch current stock quote - tries Yahoo Finance first for real-time prices, then Massive.com fallback"""
+    """
+    Fetch current stock quote - tries Yahoo Finance first for real-time prices, then Massive.com fallback.
+    
+    In production: Mock fallback is blocked - returns None if no real data available.
+    In dev/test: Mock data allowed as last resort (flagged with is_mock=True).
+    """
     # Normalize symbol for different APIs
     yahoo_symbol = symbol.replace(' ', '-').replace('.', '-')  # BRK B -> BRK-B
     
@@ -423,10 +428,17 @@ async def fetch_stock_quote(symbol: str, api_key: str = None) -> Optional[dict]:
         except Exception as e:
             logging.warning(f"Massive API error for {symbol}: {e}")
     
-    # Last resort: check mock data
-    mock = MOCK_STOCKS.get(symbol.upper())
-    if mock:
-        return {"symbol": symbol.upper(), "price": mock["price"]}
+    # Last resort: check mock data (only allowed in dev/test)
+    if allow_mock_data():
+        mock = MOCK_STOCKS.get(symbol.upper())
+        if mock:
+            logging.warning(f"MOCK_FALLBACK_USED | symbol={symbol} | reason=YAHOO_AND_POLYGON_UNAVAILABLE")
+            return {"symbol": symbol.upper(), "price": mock["price"], "is_mock": True}
+    else:
+        # Production: log that mock fallback was blocked
+        mock = MOCK_STOCKS.get(symbol.upper())
+        if mock:
+            logging.warning(f"MOCK_FALLBACK_BLOCKED_PRODUCTION | symbol={symbol} | reason=YAHOO_AND_POLYGON_UNAVAILABLE")
     
     return None
 
