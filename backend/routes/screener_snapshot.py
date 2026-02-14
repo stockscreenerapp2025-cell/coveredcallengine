@@ -2177,25 +2177,15 @@ async def get_admin_status(user: dict = Depends(get_current_user)):
     else:
         price_source = "STALE"
     
-    # Get last scan run time from precomputed_scans collection
-    last_full_run_at = None
-    scored_trades = 0
-    score_high = 0
-    score_medium_high = 0
-    score_medium = 0
-    score_low = 0
-    
+    # Get score distribution from precomputed scans
     try:
-        # Find most recent precomputed scan
-        latest_scan = await db.precomputed_scans.find_one(
-            {"type": {"$in": ["cc", "pmcc"]}},
-            sort=[("last_updated", -1)]
-        )
-        if latest_scan and latest_scan.get("last_updated"):
-            last_full_run_at = latest_scan["last_updated"]
-            
         # Aggregate score distribution from all precomputed scans
         all_scans = await db.precomputed_scans.find({"type": {"$in": ["cc", "pmcc"]}}).to_list(length=10)
+        scored_trades = 0
+        score_high = 0
+        score_medium_high = 0
+        score_medium = 0
+        score_low = 0
         for scan in all_scans:
             opportunities = scan.get("opportunities", [])
             for opp in opportunities:
@@ -2211,13 +2201,14 @@ async def get_admin_status(user: dict = Depends(get_current_user)):
                     score_low += 1
     except Exception as e:
         logging.error(f"Error fetching precomputed scan data: {e}")
+        scored_trades = structure_valid
+        score_high = 0
+        score_medium_high = 0
+        score_medium = 0
+        score_low = 0
     
     # Calculate health score based on data quality
-    chain_valid_pct = round((valid_chains / total_symbols) * 100) if total_symbols > 0 else 0
-    structure_valid_pct = round((structure_valid / total_symbols) * 100) if total_symbols > 0 else 0
-    
     # Health score: weighted average of data quality metrics
-    # 40% chain validity, 30% stock validity, 30% structure validity
     stock_valid_pct = round((valid_stocks / total_symbols) * 100) if total_symbols > 0 else 0
     health_score = round(
         (chain_valid_pct * 0.4) + 
