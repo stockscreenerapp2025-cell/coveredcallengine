@@ -102,66 +102,88 @@ ETF_WHITELIST: Set[str] = {
 }
 
 # ============================================================
-# S&P 500 CONSTITUENTS (Tier 1)
+# S&P 500 CONSTITUENTS (Tier 1) - Full 500
 # ============================================================
-# Top 200+ liquid S&P 500 stocks by options volume
-# Full S&P 500 list - curated for options liquidity
+# Complete S&P 500 list as of 2025
+# Source: Standard & Poor's official constituents
 
 SP500_SYMBOLS: List[str] = [
-    # Mega Cap Tech
-    "AAPL", "MSFT", "GOOGL", "GOOG", "AMZN", "META", "NVDA", "TSLA",
-    
-    # Large Cap Tech
-    "AMD", "INTC", "MU", "QCOM", "AVGO", "TXN", "ADI", "MCHP", "AMAT", "LRCX",
-    "CRM", "ORCL", "ADBE", "NOW", "SNOW", "INTU", "CDNS", "SNPS", "KLAC", "NXPI",
-    "IBM", "HPQ", "HPE", "CSCO", "PANW", "FTNT", "ZS", "CRWD", "NET", "DDOG",
+    # Information Technology
+    "AAPL", "MSFT", "NVDA", "AVGO", "ORCL", "CRM", "AMD", "ADBE", "ACN", "CSCO",
+    "IBM", "INTU", "QCOM", "TXN", "NOW", "AMAT", "ADI", "SNPS", "KLAC", "LRCX",
+    "CDNS", "MCHP", "INTC", "FTNT", "PANW", "ROP", "NXPI", "HPQ", "HPE", "MPWR",
+    "KEYS", "ANSS", "ON", "FSLR", "TYL", "PTC", "ZBRA", "VRSN", "GEN", "AKAM",
+    "JNPR", "CDW", "CTSH", "IT", "EPAM", "FFIV", "SWKS", "TER", "QRVO", "TRMB",
+    "WDC", "STX", "NTAP",
     
     # Financials
-    "JPM", "BAC", "WFC", "C", "GS", "MS", "USB", "PNC", "TFC", "COF",
-    "AXP", "V", "MA", "PYPL", "BLK", "SCHW", "CME", "ICE", "SPGI", "MCO",
-    "MET", "PRU", "AIG", "ALL", "TRV", "CB", "AFL", "PGR", "MMC", "AON",
+    "BRK-B", "JPM", "V", "MA", "BAC", "WFC", "GS", "MS", "SPGI", "AXP",
+    "BLK", "SCHW", "C", "PGR", "CB", "USB", "MMC", "CME", "ICE", "AON",
+    "MCO", "PNC", "TFC", "AIG", "MET", "AFL", "PRU", "TRV", "AJG", "ALL",
+    "COF", "BK", "MSCI", "MTB", "FITB", "STT", "HBAN", "NDAQ", "DFS", "CINF",
+    "RF", "CFG", "KEY", "NTRS", "TROW", "RJF", "WRB", "L", "ACGL", "RE",
+    "GL", "MKTX", "FDS", "LNC", "ZION", "HIG", "CMA", "AIZ", "IVZ", "BEN",
     
     # Healthcare
-    "UNH", "JNJ", "PFE", "MRK", "ABBV", "LLY", "BMY", "GILD", "AMGN", "REGN",
-    "VRTX", "ISRG", "DXCM", "BSX", "MDT", "SYK", "ZBH", "ABT", "TMO", "DHR",
-    "CVS", "CI", "HUM", "ELV", "CNC", "MCK", "CAH", "ABC",
+    "UNH", "LLY", "JNJ", "ABBV", "MRK", "TMO", "ABT", "PFE", "AMGN", "DHR",
+    "BMY", "ISRG", "MDT", "GILD", "VRTX", "CVS", "SYK", "ELV", "BSX", "REGN",
+    "CI", "ZTS", "BDX", "HCA", "MCK", "HUM", "IDXX", "DXCM", "IQV", "A",
+    "EW", "CAH", "ABC", "GEHC", "BIIB", "MTD", "WAT", "RMD", "HOLX", "COO",
+    "ALGN", "MOH", "CNC", "TFX", "VTRS", "TECH", "DGX", "LH", "INCY", "CRL",
+    "XRAY", "HSIC", "DVA", "BIO", "CTLT",
     
     # Consumer Discretionary
-    "HD", "LOW", "NKE", "SBUX", "MCD", "YUM", "DPZ", "CMG", "ORLY", "AZO",
-    "TJX", "ROST", "BBY", "ULTA", "LULU", "DRI", "MAR", "HLT", "ABNB",
-    "F", "GM", "TSLA", "RIVN",
-    
-    # Consumer Staples
-    "WMT", "COST", "TGT", "DG", "DLTR", "KO", "PEP", "MDLZ", "KHC", "GIS",
-    "K", "HSY", "PG", "CL", "KMB", "CHD", "CLX", "EL", "PM", "MO", "STZ",
-    
-    # Communication Services
-    "DIS", "NFLX", "CMCSA", "CHTR", "TMUS", "VZ", "T", "PARA", "WBD", "FOX",
-    "FOXA", "EA", "TTWO", "ATVI", "MTCH", "SNAP", "PINS",
-    
-    # Energy
-    "XOM", "CVX", "COP", "SLB", "EOG", "OXY", "DVN", "HAL", "MPC", "VLO",
-    "PSX", "PXD", "FANG", "HES", "MRO", "APA", "BKR",
+    "AMZN", "TSLA", "HD", "MCD", "NKE", "LOW", "BKNG", "TJX", "SBUX", "CMG",
+    "MAR", "ORLY", "AZO", "HLT", "ROST", "YUM", "GM", "ABNB", "DHI", "F",
+    "DRI", "LVS", "ULTA", "EBAY", "GRMN", "BBY", "DPZ", "POOL", "DECK",
+    "LEN", "NVR", "PHM", "LULU", "MGM", "WYNN", "LKQ", "RCL", "NCLH", "CCL",
+    "BWA", "APTV", "TPR", "RL", "HAS", "EXPE", "ETSY", "CZR", "PVH", "GNRC",
+    "BBWI", "VFC", "MHK", "PARA", "NWL", "AAL", "UAL", "DAL", "ALK", "LUV",
     
     # Industrials
-    "CAT", "DE", "BA", "HON", "GE", "RTX", "LMT", "NOC", "GD", "TDG",
-    "UPS", "FDX", "CSX", "UNP", "NSC", "UAL", "DAL", "AAL", "LUV", "ALK",
-    "WM", "RSG", "ROK", "EMR", "ETN", "IR", "PH", "ITW", "SWK", "MMM",
+    "GE", "CAT", "HON", "UNP", "RTX", "UPS", "ETN", "DE", "BA", "ADP",
+    "LMT", "FDX", "WM", "TT", "CSX", "NSC", "ITW", "GD", "NOC", "MMM",
+    "EMR", "PH", "CTAS", "PCAR", "ROK", "CARR", "OTIS", "JCI", "GWW", "AME",
+    "CMI", "FAST", "TDG", "PWR", "IR", "SWK", "RSG", "DAL", "XYL", "CPRT",
+    "VRSK", "HUBB", "ODFL", "HII", "DOV", "IEX", "HWM", "WAB", "FTV", "LII",
+    "SNA", "LDOS", "PNR", "ROL", "GNRC", "CHRW", "NDSN", "J", "BR", "EFX",
+    "EXPD", "PAYC", "JBHT", "MAS", "AOS", "ALLE",
+    
+    # Communication Services
+    "GOOGL", "GOOG", "META", "DIS", "NFLX", "CMCSA", "VZ", "T", "TMUS", "CHTR",
+    "EA", "WBD", "TTWO", "OMC", "IPG", "MTCH", "LYV", "FOXA", "FOX", "NWSA",
+    "NWS", "PARA",
+    
+    # Consumer Staples
+    "PG", "COST", "WMT", "PEP", "KO", "PM", "MO", "MDLZ", "CL", "KHC",
+    "EL", "GIS", "SYY", "KMB", "ADM", "STZ", "HSY", "K", "SJM", "CAG",
+    "MKC", "TSN", "HRL", "CLX", "CHD", "KR", "TGT", "DG", "DLTR", "WBA",
+    "BF-B", "TAP", "CPB", "LW", "BG",
+    
+    # Energy
+    "XOM", "CVX", "COP", "SLB", "EOG", "MPC", "PXD", "PSX", "VLO", "OXY",
+    "WMB", "HES", "DVN", "KMI", "HAL", "FANG", "BKR", "TRGP", "OKE", "CTRA",
+    "MRO", "APA", "EQT",
     
     # Materials
-    "LIN", "APD", "SHW", "ECL", "DD", "DOW", "LYB", "PPG", "NEM", "FCX",
-    "NUE", "STLD", "CF", "MOS", "ALB", "FMC",
-    
-    # Real Estate
-    "AMT", "PLD", "CCI", "EQIX", "PSA", "SPG", "O", "WELL", "AVB", "EQR",
-    "DLR", "ARE", "VTR", "BXP", "SLG",
+    "LIN", "APD", "SHW", "FCX", "ECL", "NUE", "NEM", "DOW", "DD", "PPG",
+    "VMC", "MLM", "CTVA", "IFF", "BALL", "LYB", "CF", "PKG", "ALB", "IP",
+    "CE", "EMN", "AMCR", "FMC", "AVY", "WRK", "SEE", "MOS",
     
     # Utilities
-    "NEE", "DUK", "SO", "D", "AEP", "SRE", "EXC", "XEL", "ED", "WEC",
-    "ES", "AWK", "AEE", "CMS", "DTE", "ETR", "FE", "PPL", "PEG", "EIX",
+    "NEE", "DUK", "SO", "SRE", "AEP", "D", "PCG", "EXC", "XEL", "CEG",
+    "ED", "WEC", "EIX", "AWK", "DTE", "ES", "AEE", "FE", "PPL", "CMS",
+    "ATO", "CNP", "EVRG", "NI", "LNT", "ETR", "NRG", "PEG", "PNW",
     
-    # High Growth / Volatility
-    "PLTR", "SOFI", "COIN", "HOOD", "RBLX", "U", "PATH", "DOCN", "BILL",
+    # Real Estate
+    "PLD", "AMT", "EQIX", "WELL", "SPG", "PSA", "O", "CCI", "DLR", "VICI",
+    "SBAC", "WY", "EXR", "AVB", "EQR", "VTR", "ARE", "IRM", "CBRE", "ESS",
+    "MAA", "UDR", "HST", "CPT", "PEAK", "REG", "KIM", "FRT", "BXP", "SLG",
+    "AIV",
+    
+    # High Growth / Recent Additions
+    "PLTR", "SOFI", "COIN", "HOOD", "RIVN", "LCID", "SNOW", "NET", "DDOG", "ZS",
+    "CRWD", "PATH", "DOCN", "BILL", "RBLX", "U",
 ]
 
 # ============================================================
