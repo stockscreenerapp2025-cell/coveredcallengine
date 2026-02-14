@@ -830,7 +830,16 @@ def generate_mock_covered_call_opportunities():
     return opportunities[:50]
 
 def generate_mock_pmcc_opportunities():
-    """Generate mock PMCC opportunities"""
+    """
+    Generate mock PMCC opportunities.
+    
+    WARNING: This function should only be called in dev/test environments.
+    In production, real data should be used from precomputed scans.
+    """
+    if not allow_mock_data():
+        logging.warning("MOCK_FALLBACK_BLOCKED_PRODUCTION | function=generate_mock_pmcc_opportunities")
+        return []
+    
     opportunities = []
     
     for symbol, data in MOCK_STOCKS.items():
