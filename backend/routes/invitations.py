@@ -34,7 +34,7 @@ class InvitationRequest(BaseModel):
 
 # Environment URLs
 ENVIRONMENT_URLS = {
-    "test": "https://payment-gateway-367.preview.emergentagent.com",
+    "test": "https://api-schema-update.preview.emergentagent.com",
     "production": "https://coveredcallengine.com"
 }
 
