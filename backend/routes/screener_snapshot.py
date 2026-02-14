@@ -2023,6 +2023,7 @@ async def get_admin_status(user: dict = Depends(get_current_user)):
     """
     import uuid
     from utils.environment import is_production
+    import yfinance as yf
     
     snapshot_service = get_snapshot_service()
     
@@ -2089,15 +2090,80 @@ async def get_admin_status(user: dict = Depends(get_current_user)):
     now_utc = datetime.now(timezone.utc)
     run_id = f"audit_{now_utc.strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:8]}"
     
+    # ================================================================
+    # HELPER: Fetch live quote when snapshot doesn't exist
+    # Uses previousClose for consistency (PREV_CLOSE rule)
+    # ================================================================
+    def fetch_live_quote_sync(sym: str) -> dict:
+        """Fetch live quote from Yahoo Finance using previousClose."""
+        try:
+            ticker = yf.Ticker(sym)
+            info = ticker.info
+            if not info:
+                return None
+            
+            # Use previousClose for consistency with EOD pricing rules
+            price = info.get("previousClose") or info.get("regularMarketPrice", 0)
+            volume = info.get("averageVolume", 0) or info.get("volume", 0)
+            market_cap = info.get("marketCap", 0)
+            
+            if price and price > 0:
+                return {
+                    "price": price,
+                    "volume": volume,
+                    "market_cap": market_cap,
+                    "source": "yahoo_live_previousClose"
+                }
+            return None
+        except Exception as e:
+            logging.debug(f"Live quote fetch failed for {sym}: {e}")
+            return None
+    
     # Audit records to persist
     audit_records = []
     
-    for symbol in SCAN_SYMBOLS:
-        stock, stock_error = await snapshot_service.get_stock_snapshot(symbol)
-        chain, chain_error = await snapshot_service.get_option_chain_snapshot(symbol)
+    # Process in batches to avoid overwhelming Yahoo
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+    batch_size = 50
+    
+    for i in range(0, len(SCAN_SYMBOLS), batch_size):
+        batch = SCAN_SYMBOLS[i:i + batch_size]
         
-        # Determine inclusion/exclusion status
-        included = True
+        # Fetch live quotes for symbols missing snapshots
+        live_quotes = {}
+        symbols_needing_live = []
+        
+        for symbol in batch:
+            stock, stock_error = await snapshot_service.get_stock_snapshot(symbol)
+            if stock_error and "No snapshot" in stock_error:
+                symbols_needing_live.append(symbol)
+            else:
+                live_quotes[symbol] = (stock, stock_error)
+        
+        # Batch fetch live quotes using thread pool
+        if symbols_needing_live:
+            with ThreadPoolExecutor(max_workers=10) as executor:
+                future_to_symbol = {
+                    executor.submit(fetch_live_quote_sync, sym): sym 
+                    for sym in symbols_needing_live
+                }
+                for future in as_completed(future_to_symbol):
+                    sym = future_to_symbol[future]
+                    try:
+                        result = future.result()
+                        if result:
+                            live_quotes[sym] = (result, None)
+                        else:
+                            live_quotes[sym] = (None, f"Live quote unavailable for {sym}")
+                    except Exception as e:
+                        live_quotes[sym] = (None, f"Live quote error: {str(e)}")
+        
+        for symbol in batch:
+            stock, stock_error = live_quotes.get(symbol, (None, "Not fetched"))
+            chain, chain_error = await snapshot_service.get_option_chain_snapshot(symbol)
+            
+            # Determine inclusion/exclusion status
+            included = True
         exclude_stage = None
         exclude_reason = None
         exclude_detail = None
