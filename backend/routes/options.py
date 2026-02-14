@@ -526,3 +526,33 @@ async def get_option_expirations(symbol: str, user: dict = Depends(get_current_u
         "timestamp_et": now_et.isoformat(),
         "note": "Expirations are synthetic until data_provider exposes real expirations for the symbol.",
     }
+
+
+
+@options_router.get("/market-state")
+async def get_options_market_state():
+    """
+    Get current market state and system mode for options trading.
+    
+    Returns:
+        - system_mode: LIVE or EOD_LOCKED
+        - is_live: True if live data fetching is allowed
+        - is_eod_locked: True if serving from snapshot only
+        - lock_time_et: When EOD lock occurs (4:05 PM ET)
+    """
+    return get_market_state_info()
+
+
+@options_router.get("/snapshot-status")
+async def get_eod_snapshot_status():
+    """
+    Get status of EOD market snapshots.
+    
+    Returns:
+        - trade_date: Current snapshot trade date
+        - symbols_with_snapshot: Count of symbols with snapshots
+        - system_mode: Current system mode
+    """
+    eod_service = get_eod_snapshot_service(db)
+    return await eod_service.get_snapshot_status()
+
