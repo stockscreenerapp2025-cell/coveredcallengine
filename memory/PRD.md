@@ -1,7 +1,67 @@
 # Covered Call Engine - Product Requirements Document
 
 ## Last Updated
-2026-02-14 - Deterministic 4:05 PM ET EOD Snapshot Lock COMPLETE
+2026-02-14 - Scan Timeout Fix COMPLETE
+
+---
+
+## Scan Timeout Fix - COMPLETED 2026-02-14
+
+### Status: ✅ COMPLETE
+
+### Objective:
+Fix scan workflow timeouts by implementing bounded concurrency, timeout handling, and retry logic. This applies ONLY to scan paths (Screener, PMCC scans) without affecting single-symbol lookups.
+
+### Problem Statement:
+Scan workflows (Screener, PMCC, etc.) create bursty traffic to Yahoo Finance, causing timeouts. The fix must:
+1. Apply bounded concurrency ONLY to scan paths
+2. Implement timeout and retry policies
+3. Enable partial success (failed symbols don't fail entire scan)
+4. Log aggregated stats per scan run
+
+### Configuration (Environment Variables):
+| Variable | Default | Description |
+|----------|---------|-------------|
+| YAHOO_SCAN_MAX_CONCURRENCY | 5 | Max concurrent Yahoo calls during scans (semaphore limit) |
+| YAHOO_TIMEOUT_SECONDS | 30 | Timeout per symbol fetch in seconds |
+| YAHOO_MAX_RETRIES | 2 | Number of retry attempts before marking symbol as failed |
+
+### Key Features:
+1. **Bounded Concurrency** - `asyncio.Semaphore` limits concurrent Yahoo calls
+2. **Timeout Handling** - `asyncio.wait_for()` wraps each fetch
+3. **Retry Logic** - Exponential backoff (0.5s, 1s, 2s...) before retries
+4. **Partial Success** - Failed symbols logged, scan continues
+5. **Aggregated Stats** - Success rate, timeout count, error count per scan run
+
+### New Components:
+- `/backend/services/resilient_fetch.py` - Resilient fetch service
+  - `ResilientYahooFetcher` class for scan contexts
+  - `ScanStats` dataclass for aggregated metrics
+  - `get_scan_semaphore()` for lazy semaphore initialization
+
+### Modified Files:
+- `/backend/services/precomputed_scans.py` - Uses ResilientYahooFetcher
+- `/backend/routes/admin.py` - Added `/api/admin/scan/resilience-config` endpoint
+- `/backend/.env` - Added new environment variables
+
+### New API Endpoint:
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/admin/scan/resilience-config` | GET | Returns resilience configuration |
+
+### Logging:
+- `SCAN_START | run_id=... | type=... | symbols=... | batch_size=...`
+- `SCAN_TIMEOUT | symbol=... | attempts=... | timeout=...`
+- `SCAN_ERROR | symbol=... | error=...`
+- `SCAN_STATS | run_id=... | total=... | success=... | timeout=... | error=...`
+
+### Scope:
+- ✅ Applies to: `run_covered_call_scan()`, `run_pmcc_scan()` in precomputed_scans.py
+- ❌ Does NOT affect: Single-symbol lookups (Watchlist, Simulator, Options Chain)
+
+### Test Coverage:
+- 25 tests in `/backend/tests/test_scan_resilience.py`
+- All tests passing
 
 ---
 
