@@ -18,6 +18,10 @@ PRICING RULES:
 - SELL legs: Use BID only, reject if BID is None/0/missing
 - BUY legs: Use ASK only, reject if ASK is None/0/missing
 - NEVER use: lastPrice, mid, theoretical price
+
+USER PATH vs SCAN PATH (Feb 2026):
+- USER PATHS (Dashboard, Watchlist, Simulator, single-symbol): Use full executor capacity, NO scan semaphore
+- SCAN PATHS (Screener, PMCC scans): Use bounded concurrency via ResilientYahooFetcher
 """
 
 from __future__ import annotations
@@ -26,6 +30,7 @@ import logging
 import asyncio
 import httpx
 import time
+import os
 from datetime import datetime, timedelta, timezone, date
 from typing import Optional, List, Dict, Any, Literal
 from concurrent.futures import ThreadPoolExecutor
@@ -37,9 +42,20 @@ import pytz  # retained for compatibility in other modules that still import pyt
 HTTP_TIMEOUT = httpx.Timeout(30.0, connect=10.0)
 POLYGON_BASE_URL = "https://api.polygon.io"
 
-# Thread pool for blocking yfinance calls
-_yahoo_executor = ThreadPoolExecutor(max_workers=4)
-_yahoo_semaphore = asyncio.Semaphore(4)
+# =============================================================================
+# YAHOO EXECUTOR CONFIGURATION (Feb 2026 - User Path Speed Fix)
+# =============================================================================
+# USER PATHS (Dashboard, Watchlist, Simulator) use this executor directly
+# SCAN PATHS use ResilientYahooFetcher with bounded concurrency
+# =============================================================================
+YAHOO_MAX_WORKERS = int(os.environ.get("YAHOO_MAX_WORKERS", "12"))
+
+_yahoo_executor = ThreadPoolExecutor(max_workers=YAHOO_MAX_WORKERS)
+# Legacy semaphore kept for backward compatibility but NOT used in user paths
+_yahoo_semaphore = asyncio.Semaphore(YAHOO_MAX_WORKERS)
+
+logger = logging.getLogger(__name__)
+logger.info(f"Yahoo executor initialized: YAHOO_MAX_WORKERS={YAHOO_MAX_WORKERS}")
 
 NY = ZoneInfo("America/New_York")
 
