@@ -1,7 +1,103 @@
 # Covered Call Engine - Product Requirements Document
 
 ## Last Updated
-2026-02-10 - AI Wallet & Token System COMPLETE (Deployment On Hold)
+2026-02-14 - Deterministic 4:05 PM ET EOD Snapshot Lock COMPLETE
+
+---
+
+## Deterministic EOD Snapshot Lock - COMPLETED 2026-02-14
+
+### Status: ✅ COMPLETE
+
+### Objective:
+Implement a strict EOD snapshot model guaranteeing synchronized underlying price and option chain data after market close. After 4:05 PM ET, all data comes from a stored deterministic snapshot with no live rebuilding.
+
+### System Modes:
+| Mode | Time Range | Behavior |
+|------|------------|----------|
+| LIVE | 9:30 AM - 4:05 PM ET | Live Yahoo Finance fetching |
+| EOD_LOCKED | After 4:05 PM ET | Serve ONLY from `eod_market_snapshot` |
+
+### Non-Negotiables Enforced:
+- ✅ No mock data in production
+- ✅ No dynamic option chain rebuilding after 4:05 PM ET
+- ✅ No mixing live underlying with cached options
+- ✅ Snapshot is sole source of truth after lock time
+- ✅ No scoring/pricing rule changes
+
+### Key Features:
+1. **Market State Enforcement** (`/backend/utils/market_state.py`)
+   - `get_system_mode()` returns LIVE or EOD_LOCKED
+   - Uses US/Eastern timezone explicitly
+   - Handles weekends and holidays via NYSE calendar
+
+2. **4:05 PM ET Snapshot Job** (Scheduler in `server.py`)
+   - Triggered at 4:05 PM ET on weekdays
+   - Fetches underlying prices
+   - Fetches option chains using BID_ONLY pricing rule
+   - Saves to `eod_market_snapshot` collection
+
+3. **After 4:05 PM ET Behavior**
+   - `/api/options/chain/{symbol}` serves from snapshot
+   - Returns `data_status: EOD_SNAPSHOT_NOT_AVAILABLE` if missing
+   - No live Yahoo calls permitted
+
+4. **Logging**
+   - `[EOD-SNAPSHOT-CREATED] run_id=... symbols=...` on success
+   - `[EOD-SNAPSHOT-FAILED] symbol=... reason=...` on failure
+   - Exclusions logged to `eod_snapshot_audit` collection
+
+### New Collection: `eod_market_snapshot`
+```json
+{
+  "run_id": "eod_snap_20260213_1605_abc12345",
+  "symbol": "AAPL",
+  "underlying_price": 255.78,
+  "option_chain": [...],
+  "pricing_rule_used": "BID_ONLY_SELL_LEG",
+  "as_of": "2026-02-13T16:05:00-05:00",
+  "trade_date": "2026-02-13",
+  "is_final": true,
+  "created_at": "2026-02-13T21:05:00.000Z"
+}
+```
+
+### New/Modified API Endpoints:
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/options/chain/{symbol}` | GET | Now serves from snapshot in EOD_LOCKED mode |
+| `/api/options/market-state` | GET | Returns system mode and lock info |
+| `/api/options/snapshot-status` | GET | Returns snapshot availability |
+| `/api/market-status` | GET | Enhanced with system_mode field |
+| `/api/admin/eod-snapshot/trigger` | POST | Manual snapshot creation |
+| `/api/admin/eod-snapshot/status` | GET | Detailed snapshot status |
+| `/api/admin/eod-snapshot/sample/{symbol}` | GET | View snapshot for symbol |
+
+### Files Created:
+- `/backend/utils/market_state.py` - System mode enforcement
+- `/backend/services/eod_snapshot_service.py` - Snapshot creation/retrieval
+
+### Files Modified:
+- `/backend/routes/options.py` - EOD lock enforcement on /chain
+- `/backend/routes/admin.py` - Admin snapshot endpoints
+- `/backend/server.py` - Scheduler job, indexes, market-status enhancement
+
+### Expected Behavior:
+| Time | System Mode | Data Source |
+|------|-------------|-------------|
+| 4:04 PM ET | LIVE | Yahoo Finance |
+| 4:05 PM ET | EOD_LOCKED | Snapshot created |
+| 4:06 PM ET | EOD_LOCKED | Snapshot only |
+| 9:00 PM ET | EOD_LOCKED | Snapshot only |
+| Next 9:30 AM ET | LIVE | Yahoo Finance |
+
+### Guarantees:
+- ✅ Underlying price = option chain reference (synchronized)
+- ✅ No after-hours drift
+- ✅ No stale mismatches
+- ✅ No fake quotes
+- ✅ No mock fallback
+- ✅ Deterministic behavior
 
 ---
 
