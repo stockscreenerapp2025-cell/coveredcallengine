@@ -1011,7 +1011,20 @@ async def get_dashboard_opportunities(
         
     except Exception as e:
         logging.error(f"Dashboard opportunities error: {e}")
-        return {"opportunities": [], "total": 0, "error": str(e), "is_mock": True}
+        if allow_mock_data():
+            logging.warning(f"MOCK_FALLBACK_USED | endpoint=dashboard/opportunities | reason=EXCEPTION | error={e}")
+            return {"opportunities": [], "total": 0, "error": str(e), "is_mock": True}
+        else:
+            logging.warning(f"MOCK_FALLBACK_BLOCKED_PRODUCTION | endpoint=dashboard/opportunities | reason=EXCEPTION | error={e}")
+            raise HTTPException(
+                status_code=503,
+                detail={
+                    "data_status": "UNAVAILABLE",
+                    "reason": "INTERNAL_ERROR",
+                    "details": str(e),
+                    "is_mock": False
+                }
+            )
 
 
 @screener_router.get("/pmcc")
