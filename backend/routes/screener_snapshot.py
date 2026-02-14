@@ -2124,7 +2124,8 @@ async def get_admin_status(user: dict = Depends(get_current_user)):
     
     # Process in batches to avoid overwhelming Yahoo
     from concurrent.futures import ThreadPoolExecutor, as_completed
-    batch_size = 50
+    import time
+    batch_size = 30  # Reduced batch size to avoid rate limits
     
     for i in range(0, len(SCAN_SYMBOLS), batch_size):
         batch = SCAN_SYMBOLS[i:i + batch_size]
@@ -2140,9 +2141,9 @@ async def get_admin_status(user: dict = Depends(get_current_user)):
             else:
                 live_quotes[symbol] = (stock, stock_error)
         
-        # Batch fetch live quotes using thread pool
+        # Batch fetch live quotes using thread pool (reduced workers to avoid rate limits)
         if symbols_needing_live:
-            with ThreadPoolExecutor(max_workers=10) as executor:
+            with ThreadPoolExecutor(max_workers=5) as executor:
                 future_to_symbol = {
                     executor.submit(fetch_live_quote_sync, sym): sym 
                     for sym in symbols_needing_live
