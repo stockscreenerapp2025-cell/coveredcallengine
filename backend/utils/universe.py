@@ -200,9 +200,8 @@ NASDAQ100_NET: List[str] = [
     "MELI", "TEAM", "WDAY", "ZM", "OKTA", "SPLK", "VEEV", "MDB", "DKNG",
     "PTON", "SGEN", "MRNA", "BNTX", "ILMN",
     
-    # Other Nasdaq 100 not in S&P
-    "MRVL", "KDP", "MNST", "PCAR", "CSGP", "WBA", "SIRI", "CPRT",
-    "FAST", "PAYX", "CEG", "CTAS",
+    # Other Nasdaq 100 not in S&P (removed overlaps: CTAS, WBA, CEG, PCAR, FAST, CPRT)
+    "MRVL", "KDP", "MNST", "SIRI",
 ]
 
 
