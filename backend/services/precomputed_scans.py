@@ -897,13 +897,26 @@ class PrecomputedScanService:
         """
         Run a covered call scan for the given risk profile.
         Returns ranked list of opportunities.
+        
+        SCAN TIMEOUT FIX (December 2025):
+        - Uses bounded concurrency via semaphore
+        - Applies timeout/retry to each symbol fetch
+        - Continues on partial failure (logs failed symbols)
+        - Aggregates success/timeout/error counts
         """
         profile = RISK_PROFILES.get(risk_profile, RISK_PROFILES["conservative"])
-        logger.info(f"Starting {risk_profile} covered call scan...")
+        run_id = f"cc_{risk_profile}_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:8]}"
+        
+        logger.info(f"Starting {risk_profile} covered call scan (run_id={run_id})...")
+        logger.info(f"Resilience config: concurrency={YAHOO_SCAN_MAX_CONCURRENCY}, timeout={YAHOO_TIMEOUT_SECONDS}s, retries={YAHOO_MAX_RETRIES}")
         
         # Get symbol universe
         symbols = await self.get_liquid_symbols()
         logger.info(f"Scanning {len(symbols)} symbols for {risk_profile} profile")
+        
+        # Initialize resilient fetcher for this scan
+        fetcher = ResilientYahooFetcher(scan_type=f"covered_call_{risk_profile}", run_id=run_id)
+        fetcher.set_total_symbols(len(symbols))
         
         opportunities = []
         stats = {
@@ -916,23 +929,42 @@ class PrecomputedScanService:
             "failed_options": []
         }
         
-        # Process symbols in batches to manage memory and rate limiting
-        # Yahoo Finance has ~2000 requests/hour limit, so ~33/min
-        # We process in smaller batches with delays to avoid rate limits
-        batch_size = 10  # Reduced from 20 to avoid rate limits
+        # Process symbols in batches with bounded concurrency
+        # The semaphore in resilient_fetch limits concurrent Yahoo calls
+        batch_size = 10
         for i in range(0, len(symbols), batch_size):
             batch = symbols[i:i + batch_size]
             
-            # Fetch technical and fundamental data in parallel
-            tech_tasks = [self.fetch_technical_data(s) for s in batch]
-            fund_tasks = [self.fetch_fundamental_data(s) for s in batch]
+            # Fetch technical and fundamental data with resilience
+            # Each call goes through the semaphore and has timeout/retry
+            tech_results = []
+            fund_results = []
             
-            tech_results = await asyncio.gather(*tech_tasks, return_exceptions=True)
-            fund_results = await asyncio.gather(*fund_tasks, return_exceptions=True)
+            for symbol in batch:
+                # Technical data fetch with resilience
+                tech_data = await fetcher.fetch(
+                    symbol=symbol,
+                    fetch_func=self.fetch_technical_data,
+                    symbol  # Pass symbol as argument to fetch_technical_data
+                )
+                tech_results.append(tech_data)
+                
+                # Fundamental data fetch with resilience
+                fund_data = await fetcher.fetch(
+                    symbol=symbol,
+                    fetch_func=self.fetch_fundamental_data,
+                    symbol  # Pass symbol as argument to fetch_fundamental_data
+                )
+                fund_results.append(fund_data)
             
             for j, symbol in enumerate(batch):
-                tech_data = tech_results[j] if not isinstance(tech_results[j], Exception) else None
-                fund_data = fund_results[j] if not isinstance(fund_results[j], Exception) else None
+                tech_data = tech_results[j]
+                fund_data = fund_results[j]
+                
+                # Handle fetch failures gracefully (partial success)
+                if tech_data is None:
+                    stats["failed_technical"].append((symbol, "Fetch failed/timeout"))
+                    continue
                 
                 # Apply technical filters
                 tech_pass, tech_reason = self.passes_technical_filters(tech_data, profile)
@@ -941,6 +973,11 @@ class PrecomputedScanService:
                     continue
                 stats["passed_technical"] += 1
                 
+                # Handle fundamental fetch failure
+                if fund_data is None:
+                    stats["failed_fundamental"].append((symbol, "Fetch failed/timeout"))
+                    continue
+                
                 # Apply fundamental filters
                 fund_pass, fund_reason = self.passes_fundamental_filters(fund_data, profile)
                 if not fund_pass:
@@ -948,9 +985,11 @@ class PrecomputedScanService:
                     continue
                 stats["passed_fundamental"] += 1
                 
-                # Fetch options for survivors only
+                # Fetch options for survivors only (with resilience)
                 current_price = tech_data.get("close", 0)
-                options = await self.fetch_options_for_scan(
+                options = await fetcher.fetch(
+                    symbol=symbol,
+                    fetch_func=self.fetch_options_for_scan,
                     symbol,
                     current_price,
                     profile["dte_min"],
@@ -960,7 +999,7 @@ class PrecomputedScanService:
                 )
                 
                 if not options:
-                    stats["failed_options"].append((symbol, "No matching options"))
+                    stats["failed_options"].append((symbol, "No matching options or fetch failed"))
                     continue
                 
                 stats["passed_options"] += 1
@@ -1028,10 +1067,13 @@ class PrecomputedScanService:
                         "iv_rank": round(min(100, opt.get("iv", 0) * 100 * 1.5), 0) if opt.get("iv") else None,
                     })
             
-            # Longer delay between batches to avoid Yahoo Finance rate limits
-            # Yahoo allows ~2000 requests/hour, we need ~3 requests per symbol (tech, fund, options)
-            # With 10 symbols per batch = 30 requests, we wait 2 seconds between batches
-            await asyncio.sleep(2.0)
+            # Inter-batch delay to avoid rate limiting
+            # Reduced since semaphore now controls concurrency
+            await asyncio.sleep(1.0)
+        
+        # Log resilient fetch stats
+        scan_stats = fetcher.get_stats()
+        scan_stats.log_summary()
         
         # Deduplicate: Keep best Weekly + Monthly per symbol
         opportunities = self._dedupe_by_symbol_timeframe(opportunities)
