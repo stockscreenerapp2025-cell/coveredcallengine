@@ -2023,277 +2023,142 @@ async def get_admin_status(user: dict = Depends(get_current_user)):
     """
     import uuid
     from utils.environment import is_production
-    import yfinance as yf
     
-    snapshot_service = get_snapshot_service()
+    # ================================================================
+    # READ-ONLY MODE: Pull from latest 4:05 PM ET snapshot/audit run
+    # No live Yahoo fetching to avoid rate limits
+    # ================================================================
     
-    # Count snapshots by status
+    now_utc = datetime.now(timezone.utc)
     total_symbols = len(SCAN_SYMBOLS)
     
-    valid_stocks = 0
-    valid_chains = 0
-    stale_stocks = 0
-    stale_chains = 0
-    missing_stocks = 0
-    missing_chains = 0
-    incomplete_chains = 0
-    structure_valid = 0
-    
-    # Track exclusions by stage and reason
-    excluded_counts_by_stage = {
-        "QUOTE": 0,
-        "LIQUIDITY_FILTER": 0,
-        "OPTIONS_CHAIN": 0,
-        "CHAIN_QUALITY": 0,
-        "CONTRACT_QUALITY": 0,
-        "OTHER": 0
-    }
-    
-    excluded_counts_by_reason = {
-        "MISSING_QUOTE": 0,
-        "LOW_LIQUIDITY_RANK": 0,
-        "OUT_OF_PRICE_BAND": 0,
-        "MISSING_CHAIN": 0,
-        "CHAIN_EMPTY": 0,
-        "BAD_CHAIN_DATA": 0,
-        "MISSING_CONTRACT_FIELDS": 0,
-        "OTHER": 0
-    }
-    
-    # Legacy format for backward compatibility
-    excluded_counts = {
-        "OUT_OF_RULES": 0,
-        "OUT_OF_PRICE_BAND": 0,
-        "LOW_LIQUIDITY": 0,
-        "MISSING_QUOTE": 0,
-        "MISSING_CHAIN": 0,
-        "CHAIN_EMPTY": 0,
-        "BAD_CHAIN_DATA": 0,
-        "MISSING_CONTRACT_FIELDS": 0,
-        "OTHER": 0
-    }
+    # Get tier counts from universe builder
+    tier_counts = get_tier_counts()
     
     # ================================================================
-    # FORCED EXCLUSION TEST MODE (Development/Testing Only)
+    # QUERY LATEST AUDIT RUN FROM DATABASE
     # ================================================================
-    # Set AUDIT_FORCE_EXCLUDE_SYMBOLS=AAPL,MSFT to test exclusion flow
-    # DISABLED in production environment
-    # ================================================================
-    forced_exclude_symbols = set()
-    if not is_production():
-        force_exclude_env = os.environ.get("AUDIT_FORCE_EXCLUDE_SYMBOLS", "")
-        if force_exclude_env:
-            forced_exclude_symbols = set(s.strip().upper() for s in force_exclude_env.split(",") if s.strip())
-            logging.info(f"[AUDIT] Forced exclusion test mode: {forced_exclude_symbols}")
+    # Find the most recent audit run_id
+    latest_run = await db.scan_universe_audit.find_one(
+        {},
+        sort=[("as_of", -1)],
+        projection={"run_id": 1, "as_of": 1}
+    )
     
-    # Generate run_id for this audit
-    now_utc = datetime.now(timezone.utc)
-    run_id = f"audit_{now_utc.strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:8]}"
-    
-    # ================================================================
-    # HELPER: Fetch live quote when snapshot doesn't exist
-    # Uses previousClose for consistency (PREV_CLOSE rule)
-    # ================================================================
-    def fetch_live_quote_sync(sym: str) -> dict:
-        """Fetch live quote from Yahoo Finance using previousClose."""
-        try:
-            ticker = yf.Ticker(sym)
-            info = ticker.info
-            if not info:
-                return None
-            
-            # Use previousClose for consistency with EOD pricing rules
-            price = info.get("previousClose") or info.get("regularMarketPrice", 0)
-            volume = info.get("averageVolume", 0) or info.get("volume", 0)
-            market_cap = info.get("marketCap", 0)
-            
-            if price and price > 0:
-                return {
-                    "price": price,
-                    "volume": volume,
-                    "market_cap": market_cap,
-                    "source": "yahoo_live_previousClose"
-                }
-            return None
-        except Exception as e:
-            logging.debug(f"Live quote fetch failed for {sym}: {e}")
-            return None
-    
-    # Audit records to persist
-    audit_records = []
-    
-    # Process in batches to avoid overwhelming Yahoo
-    from concurrent.futures import ThreadPoolExecutor, as_completed
-    import time
-    batch_size = 30  # Reduced batch size to avoid rate limits
-    
-    for i in range(0, len(SCAN_SYMBOLS), batch_size):
-        batch = SCAN_SYMBOLS[i:i + batch_size]
+    if latest_run:
+        run_id = latest_run["run_id"]
+        last_audit_at = latest_run["as_of"]
         
-        # Fetch live quotes for symbols missing snapshots
-        live_quotes = {}
-        symbols_needing_live = []
+        # Aggregate counts from the audit collection for this run
+        pipeline = [
+            {"$match": {"run_id": run_id}},
+            {"$group": {
+                "_id": None,
+                "total": {"$sum": 1},
+                "included": {"$sum": {"$cond": ["$included", 1, 0]}},
+                "excluded": {"$sum": {"$cond": ["$included", 0, 1]}}
+            }}
+        ]
         
-        for symbol in batch:
-            stock, stock_error = await snapshot_service.get_stock_snapshot(symbol)
-            if stock_error and "No snapshot" in stock_error:
-                symbols_needing_live.append(symbol)
-            else:
-                live_quotes[symbol] = (stock, stock_error)
+        agg_result = await db.scan_universe_audit.aggregate(pipeline).to_list(1)
         
-        # Batch fetch live quotes using thread pool (reduced workers to avoid rate limits)
-        if symbols_needing_live:
-            with ThreadPoolExecutor(max_workers=5) as executor:
-                future_to_symbol = {
-                    executor.submit(fetch_live_quote_sync, sym): sym 
-                    for sym in symbols_needing_live
-                }
-                for future in as_completed(future_to_symbol):
-                    sym = future_to_symbol[future]
-                    try:
-                        result = future.result()
-                        if result:
-                            live_quotes[sym] = (result, None)
-                        else:
-                            live_quotes[sym] = (None, f"Live quote unavailable for {sym}")
-                    except Exception as e:
-                        live_quotes[sym] = (None, f"Live quote error: {str(e)}")
+        if agg_result:
+            stats = agg_result[0]
+            structure_valid = stats.get("included", 0)
+            total_excluded = stats.get("excluded", 0)
+        else:
+            structure_valid = 0
+            total_excluded = 0
         
-        for symbol in batch:
-            stock, stock_error = live_quotes.get(symbol, (None, "Not fetched"))
-            chain, chain_error = await snapshot_service.get_option_chain_snapshot(symbol)
-            
-            # Determine inclusion/exclusion status
-            included = True
-            exclude_stage = None
-            exclude_reason = None
-            exclude_detail = None
-            price_used = stock.get("price", 0) if stock else 0
-            avg_volume = stock.get("volume", 0) if stock else 0
-            dollar_volume = price_used * avg_volume if price_used and avg_volume else 0
-            
-            # ================================================================
-            # STAGE 1: QUOTE - Check stock quote availability
-            # ================================================================
-            if stock_error:
-                included = False
-                exclude_stage = "QUOTE"
-                if "stale" in stock_error.lower():
-                    stale_stocks += 1
-                    exclude_reason = "MISSING_QUOTE"
-                    exclude_detail = f"Stale quote: {stock_error}"
-                else:
-                    missing_stocks += 1
-                    exclude_reason = "MISSING_QUOTE"
-                    exclude_detail = stock_error
-            else:
-                valid_stocks += 1
-            
-            # ================================================================
-            # STAGE 2: LIQUIDITY_FILTER - Check price band and liquidity
-            # (Only if quote was valid)
-            # ================================================================
-            if included and stock:
-                # Price band check (example: $5 - $500)
-                min_price = 5.0
-                max_price = 500.0
-                if price_used < min_price or price_used > max_price:
-                    included = False
-                    exclude_stage = "LIQUIDITY_FILTER"
-                    exclude_reason = "OUT_OF_PRICE_BAND"
-                    exclude_detail = f"Price ${price_used:.2f} outside ${min_price}-${max_price} range"
-                
-                # Liquidity check (example: $1M daily dollar volume)
-                min_dollar_volume = 1_000_000
-                if included and dollar_volume < min_dollar_volume:
-                    included = False
-                    exclude_stage = "LIQUIDITY_FILTER"
-                    exclude_reason = "LOW_LIQUIDITY_RANK"
-                    exclude_detail = f"Dollar volume ${dollar_volume:,.0f} below ${min_dollar_volume:,.0f} threshold"
-            
-            # ================================================================
-            # STAGE 3: OPTIONS_CHAIN - Check chain availability
-            # (Only if previous stages passed)
-            # ================================================================
-            if included and chain_error:
-                included = False
-                if "stale" in chain_error.lower():
-                    stale_chains += 1
-                    exclude_stage = "CHAIN_QUALITY"
-                    exclude_reason = "BAD_CHAIN_DATA"
-                    exclude_detail = f"Stale chain: {chain_error}"
-                elif "incomplete" in chain_error.lower():
-                    incomplete_chains += 1
-                    exclude_stage = "CONTRACT_QUALITY"
-                    exclude_reason = "MISSING_CONTRACT_FIELDS"
-                    exclude_detail = chain_error
-                elif "empty" in chain_error.lower() or "no options" in chain_error.lower():
-                    exclude_stage = "CHAIN_QUALITY"
-                    exclude_reason = "CHAIN_EMPTY"
-                    exclude_detail = chain_error
-                else:
-                    missing_chains += 1
-                    exclude_stage = "OPTIONS_CHAIN"
-                    exclude_reason = "MISSING_CHAIN"
-                    exclude_detail = chain_error
-            elif included and not chain_error:
-                valid_chains += 1
-                structure_valid += 1
-            
-            # ================================================================
-            # FORCED EXCLUSION TEST MODE (Development Only)
-            # ================================================================
-            if symbol.upper() in forced_exclude_symbols:
-                included = False
-                exclude_stage = "OTHER"
-                exclude_reason = "OTHER"
-                exclude_detail = "FORCED_TEST_EXCLUSION"
-            
-            # ================================================================
-            # Update exclusion counters
-            # ================================================================
-            if not included and exclude_stage and exclude_reason:
-                excluded_counts_by_stage[exclude_stage] += 1
-                excluded_counts_by_reason[exclude_reason] += 1
-                
-                # Legacy counter mapping
-                legacy_mapping = {
-                    "MISSING_QUOTE": "MISSING_QUOTE",
-                    "LOW_LIQUIDITY_RANK": "LOW_LIQUIDITY",
-                    "OUT_OF_PRICE_BAND": "OUT_OF_PRICE_BAND",
-                    "MISSING_CHAIN": "MISSING_CHAIN",
-                    "CHAIN_EMPTY": "CHAIN_EMPTY",
-                    "BAD_CHAIN_DATA": "BAD_CHAIN_DATA",
-                    "MISSING_CONTRACT_FIELDS": "MISSING_CONTRACT_FIELDS",
-                    "OTHER": "OTHER"
-                }
-                legacy_key = legacy_mapping.get(exclude_reason, "OTHER")
-                if legacy_key in excluded_counts:
-                    excluded_counts[legacy_key] += 1
-            
-            # ================================================================
-            # Create audit record (one per symbol, included or excluded)
-            # ================================================================
-            audit_records.append({
-                "run_id": run_id,
-                "symbol": symbol,
-                "included": included,
-                "exclude_stage": exclude_stage,
-                "exclude_reason": exclude_reason,
-                "exclude_detail": exclude_detail,
-                "price_used": price_used,
-                "avg_volume": avg_volume,
-                "dollar_volume": dollar_volume,
-                "as_of": now_utc
-            })
+        # Get exclusion breakdown by stage
+        stage_pipeline = [
+            {"$match": {"run_id": run_id, "included": False, "exclude_stage": {"$ne": None}}},
+            {"$group": {"_id": "$exclude_stage", "count": {"$sum": 1}}}
+        ]
+        stage_results = await db.scan_universe_audit.aggregate(stage_pipeline).to_list(100)
+        excluded_counts_by_stage = {
+            "QUOTE": 0, "LIQUIDITY_FILTER": 0, "OPTIONS_CHAIN": 0,
+            "CHAIN_QUALITY": 0, "CONTRACT_QUALITY": 0, "OTHER": 0
+        }
+        for r in stage_results:
+            if r["_id"] in excluded_counts_by_stage:
+                excluded_counts_by_stage[r["_id"]] = r["count"]
+        
+        # Get exclusion breakdown by reason
+        reason_pipeline = [
+            {"$match": {"run_id": run_id, "included": False, "exclude_reason": {"$ne": None}}},
+            {"$group": {"_id": "$exclude_reason", "count": {"$sum": 1}}}
+        ]
+        reason_results = await db.scan_universe_audit.aggregate(reason_pipeline).to_list(100)
+        excluded_counts_by_reason = {
+            "MISSING_QUOTE": 0, "LOW_LIQUIDITY_RANK": 0, "OUT_OF_PRICE_BAND": 0,
+            "MISSING_CHAIN": 0, "CHAIN_EMPTY": 0, "BAD_CHAIN_DATA": 0,
+            "MISSING_CONTRACT_FIELDS": 0, "OTHER": 0
+        }
+        for r in reason_results:
+            if r["_id"] in excluded_counts_by_reason:
+                excluded_counts_by_reason[r["_id"]] = r["count"]
+        
+        # Legacy format
+        excluded_counts = {
+            "OUT_OF_RULES": 0,
+            "OUT_OF_PRICE_BAND": excluded_counts_by_reason.get("OUT_OF_PRICE_BAND", 0),
+            "LOW_LIQUIDITY": excluded_counts_by_reason.get("LOW_LIQUIDITY_RANK", 0),
+            "MISSING_QUOTE": excluded_counts_by_reason.get("MISSING_QUOTE", 0),
+            "MISSING_CHAIN": excluded_counts_by_reason.get("MISSING_CHAIN", 0),
+            "CHAIN_EMPTY": excluded_counts_by_reason.get("CHAIN_EMPTY", 0),
+            "BAD_CHAIN_DATA": excluded_counts_by_reason.get("BAD_CHAIN_DATA", 0),
+            "MISSING_CONTRACT_FIELDS": excluded_counts_by_reason.get("MISSING_CONTRACT_FIELDS", 0),
+            "OTHER": excluded_counts_by_reason.get("OTHER", 0)
+        }
+        
+        valid_chains = structure_valid  # Approximation
+        
+    else:
+        # No audit data yet - return empty/placeholder stats
+        run_id = None
+        last_audit_at = None
+        structure_valid = 0
+        total_excluded = 0
+        valid_chains = 0
+        excluded_counts_by_stage = {
+            "QUOTE": 0, "LIQUIDITY_FILTER": 0, "OPTIONS_CHAIN": 0,
+            "CHAIN_QUALITY": 0, "CONTRACT_QUALITY": 0, "OTHER": 0
+        }
+        excluded_counts_by_reason = {
+            "MISSING_QUOTE": 0, "LOW_LIQUIDITY_RANK": 0, "OUT_OF_PRICE_BAND": 0,
+            "MISSING_CHAIN": 0, "CHAIN_EMPTY": 0, "BAD_CHAIN_DATA": 0,
+            "MISSING_CONTRACT_FIELDS": 0, "OTHER": 0
+        }
+        excluded_counts = {
+            "OUT_OF_RULES": 0, "OUT_OF_PRICE_BAND": 0, "LOW_LIQUIDITY": 0,
+            "MISSING_QUOTE": 0, "MISSING_CHAIN": 0, "CHAIN_EMPTY": 0,
+            "BAD_CHAIN_DATA": 0, "MISSING_CONTRACT_FIELDS": 0, "OTHER": 0
+        }
     
-    # Persist audit records to database
-    try:
-        if audit_records:
-            result = await db.scan_universe_audit.insert_many(audit_records)
-            logging.info(f"Persisted {len(result.inserted_ids)} universe audit records for run_id={run_id}")
-    except Exception as e:
-        logging.error(f"Failed to persist universe audit for run_id={run_id}: {e}")
+    # ================================================================
+    # Calculate derived metrics
+    # ================================================================
+    chain_valid_pct = round((valid_chains / total_symbols * 100), 1) if total_symbols > 0 else 0
+    structure_valid_pct = round((structure_valid / total_symbols * 100), 1) if total_symbols > 0 else 0
+    
+    # Get last scan run time from precomputed_scans collection
+    last_scan = await db.precomputed_scans.find_one(
+        {"strategy": "covered_call"},
+        sort=[("scan_timestamp", -1)],
+        projection={"scan_timestamp": 1}
+    )
+    last_full_run_at = last_scan.get("scan_timestamp") if last_scan else last_audit_at
+    
+    # Health score (simplified)
+    health_score = min(100, int(structure_valid_pct + chain_valid_pct) // 2) if structure_valid > 0 else 0
+    
+    # Score distribution (would need to query precomputed_scans for real data)
+    scored_trades = structure_valid  # Approximation
+    score_high = 0
+    score_medium_high = 0
+    score_medium = 0
+    score_low = 0
     
     # Get market state
     current_market_state = get_market_state()
