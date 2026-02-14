@@ -155,6 +155,63 @@ def shutdown_executor():
         _yahoo_executor.shutdown(wait=True)
         logging.info("Yahoo Finance thread pool executor shut down")
 
+# =============================================================================
+# RESILIENT YAHOO FETCHER (Feb 2026 - Scan Path Concurrency Control)
+# =============================================================================
+# Used ONLY by scan paths (screener, PMCC scans) to prevent overwhelming Yahoo
+# User paths bypass this and use _yahoo_executor directly for maximum speed
+# =============================================================================
+
+class ResilientYahooFetcher:
+    """
+    Bounded concurrency wrapper for Yahoo Finance calls in SCAN contexts.
+    
+    Features:
+    - Configurable max concurrent requests (default: 4)
+    - Exponential backoff on failures
+    - Request rate limiting
+    - Automatic retry with jitter
+    
+    Usage: SCAN PATHS ONLY - user paths should use _yahoo_executor directly
+    """
+    
+    def __init__(self, max_concurrent: int = 4, max_retries: int = 2):
+        self.semaphore = asyncio.Semaphore(max_concurrent)
+        self.max_retries = max_retries
+        self.last_request_time = 0
+        self.min_request_interval = 0.1  # 100ms between requests
+        
+    async def fetch_with_backoff(self, fetch_func, *args, **kwargs):
+        """Execute fetch function with exponential backoff and rate limiting."""
+        async with self.semaphore:
+            # Rate limiting
+            now = time.time()
+            time_since_last = now - self.last_request_time
+            if time_since_last < self.min_request_interval:
+                await asyncio.sleep(self.min_request_interval - time_since_last)
+            
+            self.last_request_time = time.time()
+            
+            for attempt in range(self.max_retries + 1):
+                try:
+                    loop = asyncio.get_event_loop()
+                    result = await loop.run_in_executor(_yahoo_executor, fetch_func, *args, **kwargs)
+                    return result
+                except Exception as e:
+                    if attempt == self.max_retries:
+                        logger.warning(f"Yahoo fetch failed after {self.max_retries + 1} attempts: {e}")
+                        return None
+                    
+                    # Exponential backoff with jitter
+                    delay = (2 ** attempt) + (0.1 * attempt)  # 0.1, 2.1, 4.2 seconds
+                    jitter = delay * 0.1 * (0.5 - asyncio.get_event_loop().time() % 1)
+                    await asyncio.sleep(delay + jitter)
+                    
+            return None
+
+# Global instance for scan paths
+_resilient_fetcher = ResilientYahooFetcher(max_concurrent=4)
+
 # -----------------------------------------------------------------------------
 # Yahoo Finance - LIVE intraday prices (Watchlist & Simulator)
 # -----------------------------------------------------------------------------
