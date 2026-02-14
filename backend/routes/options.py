@@ -16,6 +16,12 @@ FIXES APPLIED (Feb 2026):
    - Greeks/filters use a synced regular-session underlying unless market is OPEN
 ✅ Expirations endpoint prefers real expirations from data_provider (fallback is synthetic + flagged).
 ✅ Response includes explicit metadata: market_state, staleness, sources, timestamp_et.
+
+EOD SNAPSHOT LOCK (Dec 2025):
+✅ After 4:05 PM ET, system is EOD_LOCKED
+✅ /chain/{symbol} serves ONLY from eod_market_snapshot collection
+✅ No live Yahoo calls after lock time
+✅ Returns data_status=EOD_SNAPSHOT_NOT_AVAILABLE if snapshot missing
 """
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -31,6 +37,13 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from utils.auth import get_current_user
 from utils.environment import allow_mock_data, check_mock_fallback, DataUnavailableError
+from utils.market_state import (
+    get_system_mode,
+    get_market_state_info,
+    get_last_trading_day,
+    EODSnapshotNotAvailableError,
+    log_eod_event
+)
 from services.data_provider import (
     fetch_stock_quote,
     fetch_options_chain,
@@ -40,6 +53,7 @@ from services.data_provider import (
 )
 from services.greeks_service import calculate_greeks, normalize_iv_fields
 from services.iv_rank_service import get_iv_metrics_for_symbol
+from services.eod_snapshot_service import get_eod_snapshot_service
 from database import db
 
 options_router = APIRouter(tags=["Options"])
