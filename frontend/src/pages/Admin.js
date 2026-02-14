@@ -2636,6 +2636,121 @@ const Admin = () => {
           </Card>
         </TabsContent>
       </Tabs>
+
+      {/* Exclusion Drilldown Modal */}
+      {exclusionDrilldown.open && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
+          <div className="bg-zinc-900 border border-zinc-700 rounded-xl shadow-2xl w-full max-w-4xl max-h-[80vh] flex flex-col mx-4">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between p-4 border-b border-zinc-700">
+              <div>
+                <h3 className="text-lg font-semibold text-white">
+                  Excluded Symbols: {exclusionDrilldown.reason?.replace(/_/g, ' ') || 'All'}
+                </h3>
+                <p className="text-sm text-zinc-400">
+                  Showing {exclusionDrilldown.data.length} of {exclusionDrilldown.total} symbols
+                  {currentRunId && <span className="ml-2 font-mono text-xs">• Run: {currentRunId}</span>}
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <a
+                  href={getExclusionCsvUrl(exclusionDrilldown.reason)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-2 px-3 py-2 text-sm bg-emerald-600 hover:bg-emerald-700 rounded-lg transition-colors"
+                >
+                  <Download className="w-4 h-4" />
+                  CSV
+                </a>
+                <button
+                  onClick={() => setExclusionDrilldown(prev => ({ ...prev, open: false }))}
+                  className="p-2 rounded-lg hover:bg-zinc-700 text-zinc-400 hover:text-white"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+            </div>
+
+            {/* Modal Body */}
+            <div className="flex-1 overflow-auto p-4">
+              {exclusionDrilldown.loading ? (
+                <div className="flex items-center justify-center py-12">
+                  <RefreshCw className="w-8 h-8 text-zinc-500 animate-spin" />
+                </div>
+              ) : exclusionDrilldown.data.length > 0 ? (
+                <table className="w-full text-sm">
+                  <thead className="sticky top-0 bg-zinc-900">
+                    <tr className="border-b border-zinc-700">
+                      <th className="text-left py-2 px-3 text-zinc-400 font-medium">Symbol</th>
+                      <th className="text-right py-2 px-3 text-zinc-400 font-medium">Price</th>
+                      <th className="text-right py-2 px-3 text-zinc-400 font-medium">Avg Volume</th>
+                      <th className="text-right py-2 px-3 text-zinc-400 font-medium">$ Volume</th>
+                      <th className="text-left py-2 px-3 text-zinc-400 font-medium">Stage</th>
+                      <th className="text-left py-2 px-3 text-zinc-400 font-medium">Detail</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {exclusionDrilldown.data.map((item, idx) => (
+                      <tr key={`${item.symbol}-${idx}`} className="border-b border-zinc-800 hover:bg-zinc-800/50">
+                        <td className="py-2 px-3 font-mono text-cyan-400">{item.symbol || 'N/A'}</td>
+                        <td className="py-2 px-3 text-right text-white">
+                          {item.price_used ? `$${Number(item.price_used).toFixed(2)}` : 'N/A'}
+                        </td>
+                        <td className="py-2 px-3 text-right text-zinc-400">
+                          {item.avg_volume ? Number(item.avg_volume).toLocaleString() : 'N/A'}
+                        </td>
+                        <td className="py-2 px-3 text-right text-zinc-400">
+                          {item.dollar_volume ? `$${(Number(item.dollar_volume) / 1e6).toFixed(1)}M` : 'N/A'}
+                        </td>
+                        <td className="py-2 px-3">
+                          <Badge variant="outline" className="text-xs">
+                            {item.exclude_stage || 'N/A'}
+                          </Badge>
+                        </td>
+                        <td className="py-2 px-3 text-zinc-500 text-xs max-w-[200px] truncate" title={item.exclude_detail}>
+                          {item.exclude_detail || 'N/A'}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              ) : (
+                <div className="flex flex-col items-center justify-center py-12 text-zinc-500">
+                  <CheckCircle className="w-12 h-12 mb-4 text-zinc-600" />
+                  <p>No excluded symbols found</p>
+                </div>
+              )}
+            </div>
+
+            {/* Modal Footer - Pagination */}
+            {exclusionDrilldown.total > 100 && (
+              <div className="flex items-center justify-between p-4 border-t border-zinc-700">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => fetchExclusionDrilldown(exclusionDrilldown.reason, Math.max(0, exclusionDrilldown.offset - 100))}
+                  disabled={exclusionDrilldown.offset === 0 || exclusionDrilldown.loading}
+                >
+                  <ChevronLeft className="w-4 h-4 mr-1" />
+                  Prev
+                </Button>
+                <span className="text-sm text-zinc-400">
+                  Page {Math.floor(exclusionDrilldown.offset / 100) + 1} of {Math.ceil(exclusionDrilldown.total / 100)}
+                </span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => fetchExclusionDrilldown(exclusionDrilldown.reason, exclusionDrilldown.offset + 100)}
+                  disabled={exclusionDrilldown.offset + 100 >= exclusionDrilldown.total || exclusionDrilldown.loading}
+                >
+                  Next
+                  <ChevronRight className="w-4 h-4 ml-1" />
+                </Button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 };
