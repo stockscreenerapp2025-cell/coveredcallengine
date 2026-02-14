@@ -365,19 +365,74 @@ class ResilientYahooFetcher:
         Fetch data for a symbol with resilience.
         
         Returns the data on success, None on failure.
+        
+        Args:
+            symbol: Symbol being fetched (for logging)
+            fetch_func: Async function to call
+            *args: Arguments to pass to fetch_func
+            **kwargs: Keyword arguments to pass to fetch_func
         """
-        result = await fetch_with_resilience(
-            symbol=symbol,
-            fetch_func=fetch_func,
-            stats=self.stats,
-            *args,
-            **kwargs
-        )
+        semaphore = get_scan_semaphore()
+        timeout = YAHOO_TIMEOUT_SECONDS
+        retries = YAHOO_MAX_RETRIES
         
-        if result.fetch_time_seconds > 0:
-            self._fetch_times.append(result.fetch_time_seconds)
+        start_time = time.time()
         
-        return result.data if result.success else None
+        for attempt in range(retries + 1):
+            try:
+                async with semaphore:
+                    # Apply timeout to the fetch operation
+                    data = await asyncio.wait_for(
+                        fetch_func(*args, **kwargs),
+                        timeout=timeout
+                    )
+                    
+                    # Success
+                    fetch_time = time.time() - start_time
+                    self._fetch_times.append(fetch_time)
+                    self.stats.successful += 1
+                    self.stats.retries_total += attempt
+                    
+                    return data
+                    
+            except asyncio.TimeoutError:
+                if attempt < retries:
+                    # Exponential backoff before retry
+                    wait_time = (2 ** attempt) * 0.5
+                    logger.debug(f"Timeout for {symbol}, retry {attempt + 1}/{retries} in {wait_time}s")
+                    await asyncio.sleep(wait_time)
+                else:
+                    # Final timeout
+                    self.stats.failed_timeout += 1
+                    self.stats.retries_total += retries
+                    self.stats.failed_symbols.append({
+                        "symbol": symbol,
+                        "reason": "TIMEOUT",
+                        "attempts": retries + 1
+                    })
+                    logger.warning(f"SCAN_TIMEOUT | symbol={symbol} | attempts={retries + 1} | timeout={timeout}s")
+                    return None
+                    
+            except Exception as e:
+                error_msg = str(e)
+                
+                if attempt < retries:
+                    wait_time = (2 ** attempt) * 0.5
+                    logger.debug(f"Error for {symbol}: {error_msg}, retry {attempt + 1}/{retries} in {wait_time}s")
+                    await asyncio.sleep(wait_time)
+                else:
+                    # Final error
+                    self.stats.failed_error += 1
+                    self.stats.retries_total += retries
+                    self.stats.failed_symbols.append({
+                        "symbol": symbol,
+                        "reason": f"ERROR: {error_msg[:100]}",
+                        "attempts": retries + 1
+                    })
+                    logger.warning(f"SCAN_ERROR | symbol={symbol} | error={error_msg[:100]}")
+                    return None
+        
+        return None
     
     def get_stats(self) -> ScanStats:
         """Get the current stats (call at end of scan)."""
