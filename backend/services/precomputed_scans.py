@@ -55,6 +55,9 @@ from services.resilient_fetch import (
     YAHOO_MAX_RETRIES
 )
 
+# Import universe builder for ETF detection
+from utils.universe import is_etf, get_scan_universe, get_tier_counts
+
 # Configure logging
 logger = logging.getLogger(__name__)
 
