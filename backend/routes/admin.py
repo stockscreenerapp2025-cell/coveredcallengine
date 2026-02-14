@@ -1484,3 +1484,173 @@ async def test_completeness(
     
     return results
 
+
+
+# ==================== UNIVERSE AUDIT DRILLDOWN ====================
+
+@admin_router.get("/universe/excluded")
+async def get_excluded_symbols(
+    run_id: Optional[str] = Query(None, description="Specific run ID to query. If omitted, uses latest run."),
+    reason: Optional[str] = Query(None, description="Filter by exclusion reason"),
+    limit: int = Query(100, ge=1, le=500),
+    offset: int = Query(0, ge=0),
+    admin: dict = Depends(get_admin_user)
+):
+    """
+    Get list of excluded symbols from a universe audit run.
+    
+    Exclusion reasons:
+    - OUT_OF_RULES
+    - OUT_OF_PRICE_BAND
+    - LOW_LIQUIDITY
+    - MISSING_QUOTE
+    - MISSING_CHAIN
+    - CHAIN_EMPTY
+    - BAD_CHAIN_DATA
+    - MISSING_CONTRACT_FIELDS
+    - OTHER
+    """
+    # Build query
+    query = {"included": False}
+    
+    if run_id:
+        query["run_id"] = run_id
+    else:
+        # Find the latest run_id
+        latest = await db.scan_universe_audit.find_one(
+            {},
+            sort=[("as_of", -1)],
+            projection={"run_id": 1}
+        )
+        if latest and latest.get("run_id"):
+            query["run_id"] = latest["run_id"]
+        else:
+            return {"total": 0, "items": [], "run_id": None}
+    
+    if reason:
+        query["exclude_reason"] = reason
+    
+    # Get total count
+    total = await db.scan_universe_audit.count_documents(query)
+    
+    # Fetch items with pagination
+    cursor = db.scan_universe_audit.find(
+        query,
+        {"_id": 0, "symbol": 1, "price_used": 1, "avg_volume": 1, "dollar_volume": 1, 
+         "exclude_reason": 1, "exclude_detail": 1, "as_of": 1}
+    ).sort("symbol", 1).skip(offset).limit(limit)
+    
+    items = []
+    async for doc in cursor:
+        items.append({
+            "symbol": doc.get("symbol"),
+            "price_used": doc.get("price_used", 0),
+            "avg_volume": doc.get("avg_volume", 0),
+            "dollar_volume": doc.get("dollar_volume", 0),
+            "exclude_reason": doc.get("exclude_reason"),
+            "exclude_detail": doc.get("exclude_detail"),
+            "as_of": doc.get("as_of").isoformat() if doc.get("as_of") else None
+        })
+    
+    return {
+        "total": total,
+        "items": items,
+        "run_id": query.get("run_id"),
+        "reason_filter": reason
+    }
+
+
+@admin_router.get("/universe/excluded.csv")
+async def get_excluded_symbols_csv(
+    run_id: Optional[str] = Query(None, description="Specific run ID to query. If omitted, uses latest run."),
+    reason: Optional[str] = Query(None, description="Filter by exclusion reason"),
+    admin: dict = Depends(get_admin_user)
+):
+    """
+    Download excluded symbols as CSV.
+    
+    Columns: symbol,price_used,avg_volume,dollar_volume,exclude_reason,exclude_detail,as_of
+    """
+    from fastapi.responses import Response
+    
+    # Build query
+    query = {"included": False}
+    
+    if run_id:
+        query["run_id"] = run_id
+    else:
+        # Find the latest run_id
+        latest = await db.scan_universe_audit.find_one(
+            {},
+            sort=[("as_of", -1)],
+            projection={"run_id": 1}
+        )
+        if latest and latest.get("run_id"):
+            query["run_id"] = latest["run_id"]
+        else:
+            return Response(
+                content="symbol,price_used,avg_volume,dollar_volume,exclude_reason,exclude_detail,as_of\n",
+                media_type="text/csv",
+                headers={"Content-Disposition": "attachment; filename=excluded_symbols.csv"}
+            )
+    
+    if reason:
+        query["exclude_reason"] = reason
+    
+    # Fetch all excluded symbols
+    cursor = db.scan_universe_audit.find(
+        query,
+        {"_id": 0, "symbol": 1, "price_used": 1, "avg_volume": 1, "dollar_volume": 1, 
+         "exclude_reason": 1, "exclude_detail": 1, "as_of": 1}
+    ).sort("symbol", 1)
+    
+    # Build CSV
+    lines = ["symbol,price_used,avg_volume,dollar_volume,exclude_reason,exclude_detail,as_of"]
+    async for doc in cursor:
+        as_of = doc.get("as_of").isoformat() if doc.get("as_of") else ""
+        # Escape quotes in exclude_detail
+        exclude_detail = (doc.get("exclude_detail") or "").replace('"', '""')
+        line = f'{doc.get("symbol", "")},{doc.get("price_used", 0)},{doc.get("avg_volume", 0)},{doc.get("dollar_volume", 0)},{doc.get("exclude_reason", "")},"{exclude_detail}",{as_of}'
+        lines.append(line)
+    
+    csv_content = "\n".join(lines)
+    
+    return Response(
+        content=csv_content,
+        media_type="text/csv",
+        headers={"Content-Disposition": f"attachment; filename=excluded_symbols_{query.get('run_id', 'latest')}.csv"}
+    )
+
+
+@admin_router.get("/universe/runs")
+async def get_audit_runs(
+    limit: int = Query(10, ge=1, le=50),
+    admin: dict = Depends(get_admin_user)
+):
+    """
+    Get list of recent universe audit runs.
+    """
+    # Aggregate to get unique run_ids with their stats
+    pipeline = [
+        {"$group": {
+            "_id": "$run_id",
+            "as_of": {"$max": "$as_of"},
+            "total_symbols": {"$sum": 1},
+            "included": {"$sum": {"$cond": ["$included", 1, 0]}},
+            "excluded": {"$sum": {"$cond": ["$included", 0, 1]}}
+        }},
+        {"$sort": {"as_of": -1}},
+        {"$limit": limit}
+    ]
+    
+    runs = []
+    async for doc in db.scan_universe_audit.aggregate(pipeline):
+        runs.append({
+            "run_id": doc["_id"],
+            "as_of": doc["as_of"].isoformat() if doc.get("as_of") else None,
+            "total_symbols": doc.get("total_symbols", 0),
+            "included": doc.get("included", 0),
+            "excluded": doc.get("excluded", 0)
+        })
+    
+    return {"runs": runs}
