@@ -1742,7 +1742,7 @@ async def get_excluded_symbols_csv(
     """
     Download excluded symbols as CSV.
     
-    Columns: symbol,price_used,avg_volume,dollar_volume,exclude_reason,exclude_detail,as_of
+    Columns: symbol,price_used,avg_volume,dollar_volume,exclude_stage,exclude_reason,exclude_detail,as_of
     """
     from fastapi.responses import Response
     
@@ -1762,7 +1762,7 @@ async def get_excluded_symbols_csv(
             query["run_id"] = latest["run_id"]
         else:
             return Response(
-                content="symbol,price_used,avg_volume,dollar_volume,exclude_reason,exclude_detail,as_of\n",
+                content="symbol,price_used,avg_volume,dollar_volume,exclude_stage,exclude_reason,exclude_detail,as_of\n",
                 media_type="text/csv",
                 headers={"Content-Disposition": "attachment; filename=excluded_symbols.csv"}
             )
@@ -1774,16 +1774,16 @@ async def get_excluded_symbols_csv(
     cursor = db.scan_universe_audit.find(
         query,
         {"_id": 0, "symbol": 1, "price_used": 1, "avg_volume": 1, "dollar_volume": 1, 
-         "exclude_reason": 1, "exclude_detail": 1, "as_of": 1}
+         "exclude_stage": 1, "exclude_reason": 1, "exclude_detail": 1, "as_of": 1}
     ).sort("symbol", 1)
     
     # Build CSV
-    lines = ["symbol,price_used,avg_volume,dollar_volume,exclude_reason,exclude_detail,as_of"]
+    lines = ["symbol,price_used,avg_volume,dollar_volume,exclude_stage,exclude_reason,exclude_detail,as_of"]
     async for doc in cursor:
         as_of = doc.get("as_of").isoformat() if doc.get("as_of") else ""
         # Escape quotes in exclude_detail
         exclude_detail = (doc.get("exclude_detail") or "").replace('"', '""')
-        line = f'{doc.get("symbol", "")},{doc.get("price_used", 0)},{doc.get("avg_volume", 0)},{doc.get("dollar_volume", 0)},{doc.get("exclude_reason", "")},"{exclude_detail}",{as_of}'
+        line = f'{doc.get("symbol", "")},{doc.get("price_used", 0)},{doc.get("avg_volume", 0)},{doc.get("dollar_volume", 0)},{doc.get("exclude_stage", "")},{doc.get("exclude_reason", "")},"{exclude_detail}",{as_of}'
         lines.append(line)
     
     csv_content = "\n".join(lines)
