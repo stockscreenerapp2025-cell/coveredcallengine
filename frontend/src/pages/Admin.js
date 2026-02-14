@@ -1116,6 +1116,171 @@ const Admin = () => {
                 </CardContent>
               </Card>
 
+              {/* 3.5️⃣ Universe Breakdown (Tier Counts) */}
+              <Card className="glass-card">
+                <CardHeader>
+                  <CardTitle className="text-lg flex items-center gap-2">
+                    <Database className="w-5 h-5 text-cyan-400" />
+                    Universe Breakdown
+                  </CardTitle>
+                  <CardDescription>
+                    Run ID: <span className="font-mono text-xs text-zinc-400">{currentRunId || 'N/A'}</span>
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  {tierCounts ? (
+                    <div className="space-y-4">
+                      {/* Tier Counts Grid */}
+                      <div className="grid grid-cols-5 gap-3">
+                        <div className="text-center p-3 rounded-lg bg-blue-500/10 border border-blue-500/20">
+                          <p className="text-2xl font-bold text-blue-400">{tierCounts.sp500 ?? 'N/A'}</p>
+                          <p className="text-xs text-zinc-400 mt-1">S&P 500</p>
+                        </div>
+                        <div className="text-center p-3 rounded-lg bg-purple-500/10 border border-purple-500/20">
+                          <p className="text-2xl font-bold text-purple-400">{tierCounts.nasdaq100_net ?? 'N/A'}</p>
+                          <p className="text-xs text-zinc-400 mt-1">Nasdaq 100</p>
+                        </div>
+                        <div className="text-center p-3 rounded-lg bg-amber-500/10 border border-amber-500/20">
+                          <p className="text-2xl font-bold text-amber-400">{tierCounts.etf_whitelist ?? 'N/A'}</p>
+                          <p className="text-xs text-zinc-400 mt-1">ETF Whitelist</p>
+                        </div>
+                        <div className="text-center p-3 rounded-lg bg-zinc-700/50 border border-zinc-600/20">
+                          <p className="text-2xl font-bold text-zinc-400">{tierCounts.liquidity_expansion ?? 0}</p>
+                          <p className="text-xs text-zinc-400 mt-1">Liquidity Exp.</p>
+                        </div>
+                        <div className="text-center p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/30">
+                          <p className="text-2xl font-bold text-emerald-400">{tierCounts.total ?? 'N/A'}</p>
+                          <p className="text-xs text-zinc-400 mt-1">Total</p>
+                        </div>
+                      </div>
+                      
+                      {/* Included / Excluded Summary */}
+                      <div className="flex gap-4 mt-4">
+                        <div className="flex-1 p-4 rounded-lg bg-emerald-500/10 border border-emerald-500/20">
+                          <div className="flex items-center justify-between">
+                            <span className="text-zinc-400">Included</span>
+                            <span className="text-2xl font-bold text-emerald-400">{universeIncluded ?? 'N/A'}</span>
+                          </div>
+                        </div>
+                        <div className="flex-1 p-4 rounded-lg bg-red-500/10 border border-red-500/20">
+                          <div className="flex items-center justify-between">
+                            <span className="text-zinc-400">Excluded</span>
+                            <span className="text-2xl font-bold text-red-400">{universeExcluded ?? 'N/A'}</span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="text-zinc-500 text-center py-4">No tier count data available</p>
+                  )}
+                </CardContent>
+              </Card>
+
+              {/* 3.6️⃣ Exclusions Breakdown (Clickable) */}
+              <Card className="glass-card">
+                <CardHeader className="flex flex-row items-center justify-between">
+                  <div>
+                    <CardTitle className="text-lg flex items-center gap-2">
+                      <XCircle className="w-5 h-5 text-red-400" />
+                      Exclusions Breakdown
+                    </CardTitle>
+                    <CardDescription>Click a reason to view excluded symbols</CardDescription>
+                  </div>
+                  <a
+                    href={getExclusionCsvUrl(null)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-2 px-3 py-2 text-sm bg-zinc-700 hover:bg-zinc-600 rounded-lg transition-colors"
+                  >
+                    <Download className="w-4 h-4" />
+                    Download All CSV
+                  </a>
+                </CardHeader>
+                <CardContent>
+                  {excludedCountsByReason ? (
+                    <div className="space-y-4">
+                      {/* By Reason Table */}
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-sm">
+                          <thead>
+                            <tr className="border-b border-zinc-700">
+                              <th className="text-left py-2 px-3 text-zinc-400 font-medium">Reason</th>
+                              <th className="text-right py-2 px-3 text-zinc-400 font-medium">Count</th>
+                              <th className="text-right py-2 px-3 text-zinc-400 font-medium">Actions</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {Object.entries(excludedCountsByReason)
+                              .filter(([_, count]) => count > 0)
+                              .sort(([, a], [, b]) => b - a)
+                              .map(([reason, count]) => (
+                                <tr key={reason} className="border-b border-zinc-800 hover:bg-zinc-800/50 transition-colors">
+                                  <td className="py-3 px-3">
+                                    <button
+                                      onClick={() => fetchExclusionDrilldown(reason, 0)}
+                                      className="text-left text-cyan-400 hover:text-cyan-300 hover:underline cursor-pointer"
+                                    >
+                                      {reason.replace(/_/g, ' ')}
+                                    </button>
+                                  </td>
+                                  <td className="py-3 px-3 text-right">
+                                    <span className="font-mono text-red-400">{count}</span>
+                                  </td>
+                                  <td className="py-3 px-3 text-right">
+                                    <div className="flex items-center justify-end gap-2">
+                                      <button
+                                        onClick={() => fetchExclusionDrilldown(reason, 0)}
+                                        className="p-1.5 rounded hover:bg-zinc-700 text-zinc-400 hover:text-white"
+                                        title="View Details"
+                                      >
+                                        <Eye className="w-4 h-4" />
+                                      </button>
+                                      <a
+                                        href={getExclusionCsvUrl(reason)}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="p-1.5 rounded hover:bg-zinc-700 text-zinc-400 hover:text-white"
+                                        title="Download CSV"
+                                      >
+                                        <Download className="w-4 h-4" />
+                                      </a>
+                                    </div>
+                                  </td>
+                                </tr>
+                              ))}
+                            {Object.entries(excludedCountsByReason).filter(([_, count]) => count > 0).length === 0 && (
+                              <tr>
+                                <td colSpan={3} className="py-4 text-center text-zinc-500">
+                                  No exclusions recorded
+                                </td>
+                              </tr>
+                            )}
+                          </tbody>
+                        </table>
+                      </div>
+
+                      {/* By Stage (Optional - if available) */}
+                      {excludedCountsByStage && Object.values(excludedCountsByStage).some(v => v > 0) && (
+                        <div className="mt-4 pt-4 border-t border-zinc-700">
+                          <p className="text-xs text-zinc-500 uppercase mb-2">By Stage</p>
+                          <div className="flex flex-wrap gap-2">
+                            {Object.entries(excludedCountsByStage)
+                              .filter(([_, count]) => count > 0)
+                              .map(([stage, count]) => (
+                                <Badge key={stage} variant="outline" className="text-xs">
+                                  {stage}: {count}
+                                </Badge>
+                              ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <p className="text-zinc-500 text-center py-4">No exclusion data available</p>
+                  )}
+                </CardContent>
+              </Card>
+
               {/* 4️⃣ Data Quality Indicators */}
               <div className="grid md:grid-cols-2 gap-4">
                 <Card className="glass-card">
