@@ -1148,7 +1148,8 @@ async def screen_pmcc(
             symbols=symbols_to_scan,
             api_key=api_key,
             include_options=False,  # PMCC options fetched separately due to different DTE ranges
-            batch_size=10
+            batch_size=10,
+            is_scan_path=True  # Use bounded concurrency for screener
         )
         
         cache_stats = {"hits": 0, "misses": 0, "symbols_processed": 0, "ask_rejected": 0, "bid_rejected": 0}
