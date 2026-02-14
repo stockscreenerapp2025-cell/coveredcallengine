@@ -988,8 +988,8 @@ class PrecomputedScanService:
                 # Fetch options for survivors only (with resilience)
                 current_price = tech_data.get("close", 0)
                 options = await fetcher.fetch(
-                    symbol=symbol,
-                    fetch_func=self.fetch_options_for_scan,
+                    symbol,  # For logging
+                    self.fetch_options_for_scan,
                     symbol,
                     current_price,
                     profile["dte_min"],
