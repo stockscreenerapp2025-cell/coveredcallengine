@@ -159,28 +159,17 @@ MONTHLY_MAX_DTE = 45
 # Earnings exclusion window (days before and after)
 EARNINGS_EXCLUSION_DAYS = 7
 
-# Symbol universe (fixed at ~60, validated for snapshot completeness)
-# NOTE: GS, BLK, AMGN, MMM, GLD removed due to option chain validation issues
-# NOTE: GOOGL = Class A shares, GOOG = Class C shares (both included)
-SCAN_SYMBOLS = [
-    # Tech Giants (GOOGL = Class A, GOOG = Class C)
-    "AAPL", "MSFT", "GOOGL", "GOOG", "AMZN", "META", "NVDA", "TSLA", "AMD", "INTC", "CRM",
-    # Finance (excluding GS, BLK - incomplete chains)
-    "JPM", "BAC", "WFC", "MS", "C", "USB", "PNC", "SCHW",
-    # Consumer
-    "WMT", "HD", "NKE", "SBUX", "MCD", "DIS", "CMCSA", "VZ", "T",
-    # Healthcare (excluding AMGN - incomplete chain)
-    "JNJ", "UNH", "PFE", "MRK", "ABBV", "BMY", "GILD", "LLY",
-    # Energy
-    "XOM", "CVX", "COP", "SLB", "EOG", "OXY", "DVN", "HAL", "MPC",
-    # Industrial (excluding MMM - incomplete chain)
-    "CAT", "DE", "BA", "HON", "GE", "UPS", "RTX",
-    # Other Popular
-    "PLTR", "SOFI", "COIN", "HOOD", "RIVN", "LCID", "NIO", "UBER", "LYFT",
-    "AAL", "DAL", "UAL", "CCL", "NCLH", "MGM", "WYNN",
-    # ETFs - only those with existing snapshots
-    "SPY", "QQQ", "IWM", "SLV"
-]
+# Symbol universe (now built dynamically from universe builder)
+# Phase 2: S&P500 + Nasdaq100 net + ETF whitelist
+# Configuration via MAX_SCAN_UNIVERSE env variable (default 700)
+# NOTE: This is now a function call to support dynamic updates
+def get_scan_symbols() -> list:
+    """Get the current scan universe symbols."""
+    return get_scan_universe()
+
+# For backward compatibility, expose as constant (evaluated at import time)
+# NOTE: Use get_scan_symbols() for dynamic access
+SCAN_SYMBOLS = get_scan_universe()
 
 
 # ============================================================
