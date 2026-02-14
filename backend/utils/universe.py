@@ -22,7 +22,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 # ============================================================
-# ETF WHITELIST (Tier 3)
+# ETF WHITELIST (Tier 3) - ~50 liquid options ETFs
 # ============================================================
 # Liquid options ETFs with good bid/ask spreads
 # These skip fundamental data fetch entirely
@@ -33,8 +33,11 @@ ETF_WHITELIST: Set[str] = {
     "QQQ",   # Nasdaq 100
     "IWM",   # Russell 2000
     "DIA",   # Dow Jones
+    "VOO",   # Vanguard S&P 500
+    "VTI",   # Vanguard Total Market
+    "IVV",   # iShares S&P 500
     
-    # Sector ETFs
+    # Sector ETFs (Select Sector SPDRs)
     "XLF",   # Financials
     "XLE",   # Energy
     "XLK",   # Technology
@@ -51,16 +54,26 @@ ETF_WHITELIST: Set[str] = {
     "GLD",   # Gold
     "SLV",   # Silver
     "USO",   # Oil
+    "GDX",   # Gold Miners
+    "GDXJ",  # Junior Gold Miners
+    "XME",   # Metals & Mining
     
     # Bond ETFs
     "TLT",   # 20+ Year Treasury
     "HYG",   # High Yield Corporate
     "LQD",   # Investment Grade Corporate
+    "IEF",   # 7-10 Year Treasury
+    "SHY",   # 1-3 Year Treasury
+    "TIP",   # TIPS
+    "BND",   # Vanguard Total Bond
     
     # International
     "EEM",   # Emerging Markets
     "EFA",   # Developed Markets ex-US
     "FXI",   # China Large Cap
+    "EWZ",   # Brazil
+    "EWJ",   # Japan
+    "VWO",   # Vanguard Emerging Markets
     
     # Volatility & Leveraged (high premium)
     "VXX",   # VIX Short-Term Futures
@@ -69,17 +82,23 @@ ETF_WHITELIST: Set[str] = {
     "TQQQ",  # 3x Nasdaq
     "SPXU",  # 3x Inverse S&P
     "SPXL",  # 3x S&P
+    "SOXL",  # 3x Semiconductors
+    "SOXS",  # 3x Inverse Semiconductors
     
     # Thematic / ARK
     "ARKK",  # ARK Innovation
     "ARKG",  # ARK Genomic
     "ARKW",  # ARK Next Gen Internet
     "ARKF",  # ARK Fintech
+    "XBI",   # Biotech
+    "SMH",   # Semiconductors
+    "KWEB",  # China Internet
     
     # Small/Mid Cap
     "IJR",   # S&P SmallCap 600
     "IJH",   # S&P MidCap 400
     "MDY",   # S&P MidCap 400 (SPDR)
+    "VB",    # Vanguard Small Cap
 }
 
 # ============================================================
