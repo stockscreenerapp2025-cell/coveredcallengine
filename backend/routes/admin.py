@@ -1125,6 +1125,28 @@ async def get_cache_health(admin: dict = Depends(get_admin_user)):
     return await get_cache_status(db)
 
 
+@admin_router.get("/user-path/metrics")
+async def get_user_path_latency_metrics(admin: dict = Depends(get_admin_user)):
+    """
+    Get user path latency metrics (Dashboard, Watchlist, Simulator).
+    
+    Returns avg, p95, max latency and Yahoo executor configuration.
+    """
+    from services.data_provider import get_user_path_metrics
+    
+    return get_user_path_metrics()
+
+
+@admin_router.post("/user-path/reset-metrics")
+async def reset_user_path_latency_metrics(admin: dict = Depends(get_admin_user)):
+    """
+    Reset user path latency metrics.
+    """
+    from services.data_provider import reset_user_path_metrics
+    
+    return reset_user_path_metrics()
+
+
 @admin_router.get("/cache/metrics")
 async def get_cache_metrics(admin: dict = Depends(get_admin_user)):
     """
