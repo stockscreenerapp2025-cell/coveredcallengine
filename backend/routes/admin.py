@@ -1652,6 +1652,7 @@ async def test_completeness(
 async def get_excluded_symbols(
     run_id: Optional[str] = Query(None, description="Specific run ID to query. If omitted, uses latest run."),
     reason: Optional[str] = Query(None, description="Filter by exclusion reason"),
+    stage: Optional[str] = Query(None, description="Filter by exclusion stage"),
     limit: int = Query(100, ge=1, le=500),
     offset: int = Query(0, ge=0),
     admin: dict = Depends(get_admin_user)
@@ -1659,16 +1660,23 @@ async def get_excluded_symbols(
     """
     Get list of excluded symbols from a universe audit run.
     
-    Exclusion reasons:
-    - OUT_OF_RULES
-    - OUT_OF_PRICE_BAND
-    - LOW_LIQUIDITY
-    - MISSING_QUOTE
-    - MISSING_CHAIN
-    - CHAIN_EMPTY
-    - BAD_CHAIN_DATA
-    - MISSING_CONTRACT_FIELDS
-    - OTHER
+    Exclusion Stages:
+    - QUOTE: Failed to fetch stock quote
+    - LIQUIDITY_FILTER: Failed liquidity/price band checks
+    - OPTIONS_CHAIN: Failed to fetch options chain
+    - CHAIN_QUALITY: Chain is empty or stale
+    - CONTRACT_QUALITY: Missing required contract fields
+    - OTHER: Forced test exclusion or unknown
+    
+    Exclusion Reasons:
+    - MISSING_QUOTE: No stock quote available
+    - LOW_LIQUIDITY_RANK: Dollar volume below threshold
+    - OUT_OF_PRICE_BAND: Price outside min/max range
+    - MISSING_CHAIN: No options chain available
+    - CHAIN_EMPTY: Options chain has no contracts
+    - BAD_CHAIN_DATA: Stale or invalid chain data
+    - MISSING_CONTRACT_FIELDS: Contracts missing bid/ask/delta
+    - OTHER: Forced exclusion or unknown error
     """
     # Build query
     query = {"included": False}
@@ -1685,10 +1693,13 @@ async def get_excluded_symbols(
         if latest and latest.get("run_id"):
             query["run_id"] = latest["run_id"]
         else:
-            return {"total": 0, "items": [], "run_id": None}
+            return {"total": 0, "items": [], "run_id": None, "reason_filter": reason, "stage_filter": stage}
     
     if reason:
         query["exclude_reason"] = reason
+    
+    if stage:
+        query["exclude_stage"] = stage
     
     # Get total count
     total = await db.scan_universe_audit.count_documents(query)
@@ -1697,7 +1708,7 @@ async def get_excluded_symbols(
     cursor = db.scan_universe_audit.find(
         query,
         {"_id": 0, "symbol": 1, "price_used": 1, "avg_volume": 1, "dollar_volume": 1, 
-         "exclude_reason": 1, "exclude_detail": 1, "as_of": 1}
+         "exclude_stage": 1, "exclude_reason": 1, "exclude_detail": 1, "as_of": 1}
     ).sort("symbol", 1).skip(offset).limit(limit)
     
     items = []
@@ -1707,6 +1718,7 @@ async def get_excluded_symbols(
             "price_used": doc.get("price_used", 0),
             "avg_volume": doc.get("avg_volume", 0),
             "dollar_volume": doc.get("dollar_volume", 0),
+            "exclude_stage": doc.get("exclude_stage"),
             "exclude_reason": doc.get("exclude_reason"),
             "exclude_detail": doc.get("exclude_detail"),
             "as_of": doc.get("as_of").isoformat() if doc.get("as_of") else None
@@ -1716,7 +1728,8 @@ async def get_excluded_symbols(
         "total": total,
         "items": items,
         "run_id": query.get("run_id"),
-        "reason_filter": reason
+        "reason_filter": reason,
+        "stage_filter": stage
     }
 
 
