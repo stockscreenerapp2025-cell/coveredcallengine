@@ -130,8 +130,17 @@ async def ai_opportunity_scan(
     min_score: float = Query(70, ge=0, le=100),
     user: dict = Depends(get_current_user)
 ):
-    """AI-scored trading opportunities"""
+    """
+    AI-scored trading opportunities.
+    
+    In production: Returns empty if no real opportunities available.
+    In dev/test: May use mock data as fallback.
+    """
     opportunities = generate_mock_covered_call_opportunities()
+    
+    # If no opportunities (production or no mock data), return empty
+    if not opportunities:
+        return {"opportunities": [], "total": 0, "data_status": "NO_DATA"}
     
     # Add AI scores
     for opp in opportunities:
