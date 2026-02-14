@@ -6,6 +6,7 @@ PHASE 1 REFACTOR (December 2025):
 - All options data now routes through services/data_provider.py
 - Yahoo Finance is primary source, Polygon is backup (via data_provider)
 - MOCK options retained for fallback but flagged
+- Mock fallback blocked in production (ENVIRONMENT check)
 
 FIXES APPLIED (Feb 2026):
 ✅ All time/DTE logic is now America/New_York (ET) aware (no server-local datetime.now()).
@@ -29,6 +30,7 @@ from zoneinfo import ZoneInfo
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from utils.auth import get_current_user
+from utils.environment import allow_mock_data, check_mock_fallback, DataUnavailableError
 from services.data_provider import (
     fetch_stock_quote,
     fetch_options_chain,
