@@ -190,17 +190,17 @@ SP500_SYMBOLS: List[str] = [
 # NASDAQ 100 CONSTITUENTS (Tier 2 - net of S&P overlap)
 # ============================================================
 # Nasdaq 100 symbols NOT already in S&P 500
-# These are typically recent additions or non-S&P members
+# Removed: SPLK (acquired by Cisco 2024), SGEN (acquired by Pfizer 2023)
 
 NASDAQ100_NET: List[str] = [
     # Chinese ADRs (not in S&P)
     "BIDU", "JD", "PDD", "NTES", 
     
-    # Tech not yet in S&P
-    "MELI", "TEAM", "WDAY", "ZM", "OKTA", "SPLK", "VEEV", "MDB", "DKNG",
-    "PTON", "SGEN", "MRNA", "BNTX", "ILMN",
+    # Tech not yet in S&P (removed SPLK - acquired)
+    "MELI", "TEAM", "WDAY", "ZM", "OKTA", "VEEV", "MDB", "DKNG",
+    "PTON", "MRNA", "BNTX", "ILMN",
     
-    # Other Nasdaq 100 not in S&P (removed overlaps: CTAS, WBA, CEG, PCAR, FAST, CPRT)
+    # Other Nasdaq 100 not in S&P
     "MRVL", "KDP", "MNST", "SIRI",
 ]
 
