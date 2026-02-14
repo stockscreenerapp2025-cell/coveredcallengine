@@ -299,10 +299,10 @@ def check_cc_eligibility(
     Returns:
         (is_eligible, rejection_reason or warning)
     """
-    is_etf = symbol in ETF_SYMBOLS
+    symbol_is_etf = is_etf(symbol)  # Use imported function
     
     # ETFs are exempt from most checks - they follow different rules
-    if is_etf:
+    if symbol_is_etf:
         # ETFs have NO price restriction (SPY is ~$600, QQQ is ~$530)
         # Only reject if price is completely unreasonable
         if stock_price < 1 or stock_price > 2000:
