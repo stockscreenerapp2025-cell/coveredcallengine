@@ -2298,6 +2298,9 @@ async def get_admin_status(user: dict = Depends(get_current_user)):
     # Calculate rejected count
     rejected = total_symbols - structure_valid
     
+    # Calculate total excluded
+    total_excluded = sum(excluded_counts_by_stage.values())
+    
     return {
         "run_id": run_id,
         "run_type": "EOD",
@@ -2312,7 +2315,10 @@ async def get_admin_status(user: dict = Depends(get_current_user)):
             "notes": "S&P 500 + Nasdaq 100 + ETF whitelist + optional expansion",
             "total_candidates": total_symbols,
             "included": structure_valid,
-            "excluded_counts": excluded_counts
+            "excluded": total_excluded,
+            "excluded_counts": excluded_counts,  # Legacy format
+            "excluded_counts_by_stage": excluded_counts_by_stage,
+            "excluded_counts_by_reason": excluded_counts_by_reason
         },
         "eligibility": {
             "universe_scanned": total_symbols,
@@ -2337,7 +2343,9 @@ async def get_admin_status(user: dict = Depends(get_current_user)):
         "cache_status": "valid" if valid_chains > 0 else "stale",
         "cache_updated_at": last_full_run_at.isoformat() if last_full_run_at else None,
         "api_errors_24h": None,  # Would require error logging system
-        "scheduler_running": True  # APScheduler is running if we got here
+        "scheduler_running": True,  # APScheduler is running if we got here
+        "forced_exclusion_test_mode": len(forced_exclude_symbols) > 0,
+        "forced_exclude_symbols": list(forced_exclude_symbols) if forced_exclude_symbols else None
     }
 
 
