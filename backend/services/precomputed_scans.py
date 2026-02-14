@@ -1772,16 +1772,16 @@ class PrecomputedScanService:
             for symbol in batch:
                 # Technical data fetch with resilience
                 tech_data = await fetcher.fetch(
-                    symbol=symbol,
-                    fetch_func=self.fetch_technical_data,
+                    symbol,  # For logging
+                    self.fetch_technical_data,
                     symbol
                 )
                 tech_results.append(tech_data)
                 
                 # Fundamental data fetch with resilience
                 fund_data = await fetcher.fetch(
-                    symbol=symbol,
-                    fetch_func=self.fetch_fundamental_data,
+                    symbol,  # For logging
+                    self.fetch_fundamental_data,
                     symbol
                 )
                 fund_results.append(fund_data)
@@ -1816,8 +1816,8 @@ class PrecomputedScanService:
                 
                 # Fetch LEAPS (long leg) with resilience
                 leaps = await fetcher.fetch(
-                    symbol=symbol,
-                    fetch_func=self.fetch_leaps_options,
+                    symbol,  # For logging
+                    self.fetch_leaps_options,
                     symbol,
                     current_price,
                     pmcc_profile.get("long_dte_min", 180),
@@ -1833,8 +1833,8 @@ class PrecomputedScanService:
                 
                 # Fetch short calls with resilience
                 short_calls = await fetcher.fetch(
-                    symbol=symbol,
-                    fetch_func=self.fetch_options_for_scan,
+                    symbol,  # For logging
+                    self.fetch_options_for_scan,
                     symbol,
                     current_price,
                     pmcc_profile.get("short_dte_min", 20),
