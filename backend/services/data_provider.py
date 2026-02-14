@@ -981,6 +981,11 @@ async def get_symbol_snapshot(
     _cache_metrics["fetch_times_ms"].append(ft)
     if len(_cache_metrics["fetch_times_ms"]) > 100:
         _cache_metrics["fetch_times_ms"] = _cache_metrics["fetch_times_ms"][-100:]
+    
+    # Record latency for user paths
+    if not is_scan_path:
+        record_user_path_latency(ft, "get_symbol_snapshot")
+    
     return result
 
 async def get_symbol_snapshots_batch(
