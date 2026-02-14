@@ -32,6 +32,9 @@ import asyncio
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
 
+# Environment configuration for mock data policy
+from utils.environment import allow_mock_data, check_mock_fallback, DataUnavailableError, ENVIRONMENT
+
 # MongoDB connection
 mongo_url = os.environ['MONGO_URL']
 client = AsyncIOMotorClient(mongo_url)
