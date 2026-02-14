@@ -1,7 +1,9 @@
 """
 AI Routes - AI-powered analysis endpoints
+
+Note: Mock fallback blocked in production (ENVIRONMENT check).
 """
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, HTTPException
 from typing import Optional
 import os
 import logging
@@ -14,6 +16,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from database import db
 from models.schemas import AIAnalysisRequest
 from utils.auth import get_current_user
+from utils.environment import allow_mock_data
 
 ai_router = APIRouter(tags=["AI Insights"])
 
@@ -34,7 +37,15 @@ async def get_admin_settings():
 
 
 def generate_mock_covered_call_opportunities():
-    """Generate mock covered call opportunities - imported from server for now"""
+    """
+    Generate mock covered call opportunities - imported from server.
+    
+    Returns empty list in production to prevent mock data leakage.
+    """
+    if not allow_mock_data():
+        logging.warning("MOCK_FALLBACK_BLOCKED_PRODUCTION | function=ai.generate_mock_covered_call_opportunities")
+        return []
+    
     from server import generate_mock_covered_call_opportunities as mock_fn
     return mock_fn()
 
