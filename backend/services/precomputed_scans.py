@@ -943,16 +943,16 @@ class PrecomputedScanService:
             for symbol in batch:
                 # Technical data fetch with resilience
                 tech_data = await fetcher.fetch(
-                    symbol=symbol,
-                    fetch_func=self.fetch_technical_data,
+                    symbol,  # For logging
+                    self.fetch_technical_data,
                     symbol  # Pass symbol as argument to fetch_technical_data
                 )
                 tech_results.append(tech_data)
                 
                 # Fundamental data fetch with resilience
                 fund_data = await fetcher.fetch(
-                    symbol=symbol,
-                    fetch_func=self.fetch_fundamental_data,
+                    symbol,  # For logging
+                    self.fetch_fundamental_data,
                     symbol  # Pass symbol as argument to fetch_fundamental_data
                 )
                 fund_results.append(fund_data)
