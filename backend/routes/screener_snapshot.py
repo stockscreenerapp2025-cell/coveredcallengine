@@ -1130,7 +1130,7 @@ async def screen_covered_calls(
                 "metadata": {
                     "dte_category": "weekly" if dte <= WEEKLY_MAX_DTE else "monthly",
                     "earnings_safe": earnings_date is None,
-                    "is_etf": is_etf,
+                    "is_etf": symbol_is_etf,
                     "validation_flags": {
                         "spread_ok": spread_pct < 10,
                         "liquidity_ok": oi >= 100,
