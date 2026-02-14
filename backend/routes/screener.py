@@ -230,10 +230,24 @@ async def screen_covered_calls(
     logging.info(f"Covered Calls Screener: api_key={'present' if api_key else 'missing'}, min_roi={min_roi}, max_dte={max_dte}")
     
     if not api_key:
-        # No API key - return mock data
-        opportunities = funcs['generate_mock_covered_call_opportunities']()
-        filtered = [o for o in opportunities if o["roi_pct"] >= min_roi and o["dte"] <= max_dte]
-        return {"opportunities": filtered[:20], "total": len(filtered), "is_mock": True, "message": "API key required for live data"}
+        # No API key - check if mock fallback is allowed
+        if allow_mock_data():
+            opportunities = funcs['generate_mock_covered_call_opportunities']()
+            filtered = [o for o in opportunities if o["roi_pct"] >= min_roi and o["dte"] <= max_dte]
+            logging.warning("MOCK_FALLBACK_USED | endpoint=covered-calls | reason=NO_API_KEY")
+            return {"opportunities": filtered[:20], "total": len(filtered), "is_mock": True, "message": "API key required for live data"}
+        else:
+            # Production: fail explicitly
+            logging.warning("MOCK_FALLBACK_BLOCKED_PRODUCTION | endpoint=covered-calls | reason=NO_API_KEY")
+            raise HTTPException(
+                status_code=503,
+                detail={
+                    "data_status": "UNAVAILABLE",
+                    "reason": "NO_API_KEY",
+                    "details": "API key not configured for live data",
+                    "is_mock": False
+                }
+            )
     
     try:
         opportunities = []
