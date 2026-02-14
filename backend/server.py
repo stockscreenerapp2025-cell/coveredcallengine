@@ -1508,6 +1508,73 @@ async def startup():
         id='eod_market_close_ingestion',
         replace_existing=True
     )
+    
+    # EOD MARKET SNAPSHOT: Deterministic 4:05 PM ET Snapshot Lock
+    # Creates synchronized underlying + option chain snapshots for all symbols
+    async def run_eod_market_snapshot():
+        """
+        DETERMINISTIC EOD SNAPSHOT at 4:05 PM ET.
+        
+        After this job completes:
+        - All data requests are served from eod_market_snapshot collection
+        - No live Yahoo calls permitted
+        - System enters EOD_LOCKED mode
+        
+        NON-NEGOTIABLES:
+        - No mock data fallback
+        - No live chain rebuilding
+        - Snapshot is sole source of truth until next market open
+        """
+        try:
+            from utils.market_state import is_trading_day, log_eod_event
+            from services.eod_snapshot_service import get_eod_snapshot_service
+            from routes.eod import EOD_SYMBOLS
+            
+            # Skip non-trading days
+            if not is_trading_day():
+                logger.info("[EOD-SNAPSHOT] Market closed today, skipping snapshot creation")
+                return
+            
+            logger.info("[EOD-SNAPSHOT] Starting deterministic 4:05 PM ET snapshot generation")
+            
+            eod_service = get_eod_snapshot_service(db)
+            await eod_service.ensure_indexes()
+            
+            # Get API key for data fetching
+            settings = await db.admin_settings.find_one(
+                {"massive_api_key": {"$exists": True}}, 
+                {"_id": 0}
+            )
+            api_key = settings.get("massive_api_key") if settings else None
+            
+            # Create snapshot for all symbols
+            results = await eod_service.create_eod_snapshot(
+                symbols=EOD_SYMBOLS,
+                api_key=api_key
+            )
+            
+            logger.info(f"[EOD-SNAPSHOT-CREATED] run_id={results['run_id']} "
+                       f"symbols={results['symbols_success']}/{results['symbols_requested']} "
+                       f"failed={results['symbols_failed']}")
+            
+            log_eod_event(
+                "SNAPSHOT_JOB_COMPLETE",
+                run_id=results['run_id'],
+                success=results['symbols_success'],
+                failed=results['symbols_failed']
+            )
+            
+        except Exception as e:
+            logger.error(f"[EOD-SNAPSHOT-ERROR] Snapshot generation failed: {e}")
+            from utils.market_state import log_eod_event
+            log_eod_event("SNAPSHOT_JOB_FAILED", error=str(e))
+    
+    scheduler.add_job(
+        run_eod_market_snapshot,
+        CronTrigger(hour=16, minute=5, day_of_week='mon-fri', timezone='America/New_York'),
+        id='eod_market_snapshot',
+        replace_existing=True
+    )
 
     # Run email automation queue every 2 minutes
     scheduler.add_job(
