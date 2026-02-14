@@ -1335,7 +1335,8 @@ async def screen_pmcc(
         symbols=SCAN_SYMBOLS,
         api_key=None,
         include_options=False,
-        batch_size=10
+        batch_size=10,
+        is_scan_path=True  # Use bounded concurrency for screener
     )
     
     # Step 1: Get stock prices - PHASE 2: Cache-first approach
