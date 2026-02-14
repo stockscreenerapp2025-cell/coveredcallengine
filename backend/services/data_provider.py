@@ -70,6 +70,74 @@ _cache_metrics = {
     "fetch_times_ms": []
 }
 
+# =============================================================================
+# USER PATH LATENCY METRICS (Feb 2026)
+# =============================================================================
+_user_path_metrics = {
+    "requests": 0,
+    "total_time_ms": 0.0,
+    "fetch_times_ms": [],  # Rolling window for p95 calculation
+    "last_reset": datetime.now(timezone.utc),
+}
+
+def record_user_path_latency(latency_ms: float, endpoint: str = "unknown"):
+    """Record latency for user path requests."""
+    global _user_path_metrics
+    _user_path_metrics["requests"] += 1
+    _user_path_metrics["total_time_ms"] += latency_ms
+    _user_path_metrics["fetch_times_ms"].append(latency_ms)
+    # Keep rolling window of last 200 requests for p95
+    if len(_user_path_metrics["fetch_times_ms"]) > 200:
+        _user_path_metrics["fetch_times_ms"] = _user_path_metrics["fetch_times_ms"][-200:]
+    
+    # Log significant latencies
+    if latency_ms > 2000:
+        logger.warning(f"USER_PATH_SLOW | endpoint={endpoint} | latency_ms={latency_ms:.0f}")
+    else:
+        logger.debug(f"USER_PATH | endpoint={endpoint} | latency_ms={latency_ms:.0f}")
+
+def get_user_path_metrics() -> Dict[str, Any]:
+    """Get user path latency metrics including p95."""
+    global _user_path_metrics
+    ft = _user_path_metrics["fetch_times_ms"]
+    
+    if not ft:
+        return {
+            "requests": 0,
+            "avg_latency_ms": 0,
+            "p95_latency_ms": 0,
+            "max_latency_ms": 0,
+            "min_latency_ms": 0,
+            "time_since_reset_hours": 0,
+        }
+    
+    sorted_ft = sorted(ft)
+    p95_idx = int(len(sorted_ft) * 0.95)
+    elapsed = (datetime.now(timezone.utc) - _user_path_metrics["last_reset"]).total_seconds()
+    
+    return {
+        "requests": _user_path_metrics["requests"],
+        "avg_latency_ms": round(_user_path_metrics["total_time_ms"] / _user_path_metrics["requests"], 1),
+        "p95_latency_ms": round(sorted_ft[p95_idx] if p95_idx < len(sorted_ft) else sorted_ft[-1], 1),
+        "max_latency_ms": round(max(ft), 1),
+        "min_latency_ms": round(min(ft), 1),
+        "sample_size": len(ft),
+        "time_since_reset_hours": round(elapsed / 3600, 2),
+        "yahoo_max_workers": YAHOO_MAX_WORKERS,
+    }
+
+def reset_user_path_metrics() -> Dict[str, Any]:
+    """Reset user path metrics and return previous values."""
+    global _user_path_metrics
+    old = get_user_path_metrics()
+    _user_path_metrics = {
+        "requests": 0,
+        "total_time_ms": 0.0,
+        "fetch_times_ms": [],
+        "last_reset": datetime.now(timezone.utc),
+    }
+    return {"message": "User path metrics reset", "previous_metrics": old}
+
 # -----------------------------------------------------------------------------
 # Time / Market State Helpers (ET)
 # -----------------------------------------------------------------------------
