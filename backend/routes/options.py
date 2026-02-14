@@ -320,12 +320,28 @@ async def get_options_chain(
     except Exception as e:
         logging.error(f"data_provider options chain error for {symbol}: {e}")
 
+    # Check if mock fallback is allowed (raises in production)
+    try:
+        check_mock_fallback(
+            symbol=symbol,
+            reason="YAHOO_CHAIN_UNAVAILABLE",
+            details="Options chain fetch failed from all data providers"
+        )
+    except DataUnavailableError as err:
+        # Production: return structured unavailability response
+        raise HTTPException(
+            status_code=503,
+            detail=err.to_dict()
+        )
+
+    # Mock fallback allowed (dev/test only)
     stock_price = MOCK_STOCKS.get(symbol, {}).get("price", 100)
     mock_options = generate_mock_options(symbol, stock_price)
     if expiry:
         mock_options = [o for o in mock_options if o.get("expiry") == expiry]
 
     now_et = _now_et()
+    logging.warning(f"Using mock options fallback for {symbol}")
     return {
         "symbol": symbol,
         "stock_price": stock_price,
