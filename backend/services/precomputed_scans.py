@@ -1805,17 +1805,25 @@ class PrecomputedScanService:
                 )
                 tech_results.append(tech_data)
                 
-                # Fundamental data fetch with resilience
-                fund_data = await fetcher.fetch(
-                    symbol,  # For logging
-                    self.fetch_fundamental_data,
-                    symbol
-                )
-                fund_results.append(fund_data)
+                # ================================================================
+                # ETF HANDLING: Skip fundamental fetch for ETFs (same as CC scan)
+                # ================================================================
+                if is_etf(symbol):
+                    fund_results.append({"symbol": symbol, "is_etf": True, "fundamentals_skipped": True})
+                    logger.debug(f"PMCC_ETF_FUNDAMENTALS_SKIPPED | symbol={symbol}")
+                else:
+                    # Fundamental data fetch with resilience
+                    fund_data = await fetcher.fetch(
+                        symbol,  # For logging
+                        self.fetch_fundamental_data,
+                        symbol
+                    )
+                    fund_results.append(fund_data)
             
             for j, symbol in enumerate(batch):
                 tech_data = tech_results[j]
                 fund_data = fund_results[j]
+                symbol_is_etf = is_etf(symbol)
                 
                 # Handle fetch failures gracefully
                 if tech_data is None:
@@ -1827,15 +1835,24 @@ class PrecomputedScanService:
                     continue
                 stats["passed_technical"] += 1
                 
-                # Handle fundamental fetch failure
-                if fund_data is None:
-                    continue
-                
-                # Apply fundamental filters
-                fund_pass, _ = self.passes_fundamental_filters(fund_data, cc_profile)
-                if not fund_pass:
-                    continue
-                stats["passed_fundamental"] += 1
+                # ================================================================
+                # ETF HANDLING: Skip fundamental filters for ETFs
+                # ================================================================
+                if symbol_is_etf:
+                    # ETF: Auto-pass fundamentals
+                    stats["passed_fundamental"] += 1
+                    logger.debug(f"PMCC_ETF_FUNDAMENTALS_BYPASSED | symbol={symbol}")
+                else:
+                    # Stock: Apply fundamental filters
+                    # Handle fundamental fetch failure
+                    if fund_data is None:
+                        continue
+                    
+                    # Apply fundamental filters
+                    fund_pass, _ = self.passes_fundamental_filters(fund_data, cc_profile)
+                    if not fund_pass:
+                        continue
+                    stats["passed_fundamental"] += 1
                 
                 current_price = tech_data.get("close", 0)
                 if current_price <= 0:
