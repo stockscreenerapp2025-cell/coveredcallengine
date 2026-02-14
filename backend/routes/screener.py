@@ -304,7 +304,8 @@ async def screen_covered_calls(
             include_options=True,
             max_dte=max_dte,
             min_dte=1,
-            batch_size=10
+            batch_size=10,
+            is_scan_path=True  # Use bounded concurrency for screener
         )
         
         cache_stats = {"hits": 0, "misses": 0, "symbols_processed": 0, "bid_rejected": 0}
