@@ -132,13 +132,13 @@ SP500_SYMBOLS: List[str] = [
     "ALGN", "MOH", "CNC", "TFX", "VTRS", "TECH", "DGX", "LH", "INCY", "CRL",
     "XRAY", "HSIC", "DVA", "BIO", "CTLT",
     
-    # Consumer Discretionary
+    # Consumer Discretionary (removed PARA - duplicate in Comm Services)
     "AMZN", "TSLA", "HD", "MCD", "NKE", "LOW", "BKNG", "TJX", "SBUX", "CMG",
     "MAR", "ORLY", "AZO", "HLT", "ROST", "YUM", "GM", "ABNB", "DHI", "F",
     "DRI", "LVS", "ULTA", "EBAY", "GRMN", "BBY", "DPZ", "POOL", "DECK",
     "LEN", "NVR", "PHM", "LULU", "MGM", "WYNN", "LKQ", "RCL", "NCLH", "CCL",
     "BWA", "APTV", "TPR", "RL", "HAS", "EXPE", "ETSY", "CZR", "PVH", "GNRC",
-    "BBWI", "VFC", "MHK", "PARA", "NWL", "AAL", "UAL", "DAL", "ALK", "LUV",
+    "BBWI", "VFC", "MHK", "NWL", "AAL", "UAL", "DAL", "ALK", "LUV",
     
     # Industrials
     "GE", "CAT", "HON", "UNP", "RTX", "UPS", "ETN", "DE", "BA", "ADP",
