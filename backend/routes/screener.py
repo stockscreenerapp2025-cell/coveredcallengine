@@ -73,6 +73,8 @@ from services.quality_score import (
     calculate_pmcc_quality_score,
     score_to_dict
 )
+# Import universe builder for ETF detection
+from utils.universe import is_etf, ETF_WHITELIST
 
 screener_router = APIRouter(tags=["Screener"])
 
@@ -82,8 +84,8 @@ HTTP_TIMEOUT = httpx.Timeout(30.0, connect=10.0)
 # Thread pool for blocking yfinance calls
 _analyst_executor = ThreadPoolExecutor(max_workers=10)
 
-# ETF symbols for special handling
-ETF_SYMBOLS = {"SPY", "QQQ", "IWM", "DIA", "XLF", "XLE", "XLK", "XLV", "XLI", "XLB", "XLU", "XLP", "XLY", "GLD", "SLV", "ARKK", "ARKG", "ARKW", "TLT", "EEM", "VXX", "UVXY", "SQQQ", "TQQQ"}
+# ETF symbols for special handling - now using centralized universe builder
+ETF_SYMBOLS = ETF_WHITELIST  # Re-export for backward compatibility
 
 
 def _fetch_analyst_rating_sync(symbol: str) -> dict:
