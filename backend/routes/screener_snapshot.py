@@ -2040,7 +2040,7 @@ async def get_admin_status(user: dict = Depends(get_current_user)):
     # Audit records to persist
     audit_records = []
     
-    logging.info(f"Starting admin-status scan for {len(SCAN_SYMBOLS)} symbols, run_id={run_id}")
+    print(f"[AUDIT] Starting admin-status scan for {len(SCAN_SYMBOLS)} symbols, run_id={run_id}")
     
     for symbol in SCAN_SYMBOLS:
         stock, stock_error = await snapshot_service.get_stock_snapshot(symbol)
