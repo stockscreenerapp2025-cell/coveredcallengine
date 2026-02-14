@@ -1352,6 +1352,14 @@ async def startup():
     await db.eod_options_chain.create_index([("trade_date", 1), ("is_final", 1)])
     await db.eod_options_chain.create_index("ingestion_run_id")
     
+    # EOD Market Snapshot: Deterministic 4:05 PM ET snapshot collection
+    await db.eod_market_snapshot.create_index([("symbol", 1), ("trade_date", 1)], unique=True)
+    await db.eod_market_snapshot.create_index([("run_id", 1)])
+    await db.eod_market_snapshot.create_index([("trade_date", 1), ("is_final", 1)])
+    await db.eod_market_snapshot.create_index("as_of")
+    await db.eod_snapshot_audit.create_index([("run_id", 1), ("symbol", 1)])
+    await db.eod_snapshot_audit.create_index("as_of")
+    
     # CCE Volatility & Greeks Correctness - IV History indexes
     from services.iv_rank_service import ensure_iv_history_indexes
     await ensure_iv_history_indexes(db)
