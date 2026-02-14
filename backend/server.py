@@ -787,7 +787,16 @@ def generate_mock_options(symbol: str, stock_price: float):
     return options
 
 def generate_mock_covered_call_opportunities():
-    """Generate mock covered call screening results"""
+    """
+    Generate mock covered call screening results.
+    
+    WARNING: This function should only be called in dev/test environments.
+    In production, real data should be used from precomputed scans.
+    """
+    if not allow_mock_data():
+        logging.warning("MOCK_FALLBACK_BLOCKED_PRODUCTION | function=generate_mock_covered_call_opportunities")
+        return []
+    
     opportunities = []
     
     for symbol, data in MOCK_STOCKS.items():
