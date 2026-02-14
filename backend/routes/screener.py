@@ -713,7 +713,8 @@ async def get_dashboard_opportunities(
             include_options=True,
             max_dte=DASHBOARD_FILTERS["monthly_dte_max"],
             min_dte=DASHBOARD_FILTERS["weekly_dte_min"],
-            batch_size=10
+            batch_size=10,
+            is_scan_path=True  # Use bounded concurrency for screener
         )
         
         cache_stats = {"hits": 0, "misses": 0, "symbols_processed": 0, "bid_rejected": 0}
