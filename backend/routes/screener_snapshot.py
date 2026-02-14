@@ -1189,8 +1189,8 @@ async def screen_covered_calls(
                 # Liquidity
                 "open_interest": oi,
                 "volume": volume,
-                "is_etf": is_etf,
-                "instrument_type": "ETF" if is_etf else "STOCK",
+                "is_etf": symbol_is_etf,
+                "instrument_type": "ETF" if symbol_is_etf else "STOCK",
                 "base_score": round(quality_result.total_score, 1),
                 "score": round(final_score, 1),
                 "score_breakdown": {
