@@ -769,6 +769,14 @@ const Admin = () => {
   const scoreDriftValue = isNumber(screenerStatus?.score_drift) ? screenerStatus.score_drift : null;
   const outlierSwingsValue = isNumber(screenerStatus?.outlier_swings) ? screenerStatus.outlier_swings : null;
 
+  // Universe tier counts and exclusion breakdown
+  const tierCounts = screenerStatus?.tier_counts || screenerStatus?.universe?.tier_counts || null;
+  const universeIncluded = screenerStatus?.included ?? screenerStatus?.universe?.included ?? null;
+  const universeExcluded = screenerStatus?.excluded ?? screenerStatus?.universe?.excluded ?? null;
+  const excludedCountsByReason = screenerStatus?.excluded_counts_by_reason || screenerStatus?.universe?.excluded_counts_by_reason || screenerStatus?.universe?.excluded_counts || null;
+  const excludedCountsByStage = screenerStatus?.excluded_counts_by_stage || screenerStatus?.universe?.excluded_counts_by_stage || null;
+  const currentRunId = screenerStatus?.run_id || null;
+
   return (
     <div className="space-y-6" data-testid="admin-page">
       {/* Header */}
