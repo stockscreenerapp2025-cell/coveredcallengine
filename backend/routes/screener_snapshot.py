@@ -2209,21 +2209,15 @@ async def get_admin_status(user: dict = Depends(get_current_user)):
     
     # Calculate health score based on data quality
     # Health score: weighted average of data quality metrics
-    stock_valid_pct = round((valid_stocks / total_symbols) * 100) if total_symbols > 0 else 0
     health_score = round(
-        (chain_valid_pct * 0.4) + 
-        (stock_valid_pct * 0.3) + 
-        (structure_valid_pct * 0.3)
-    )
+        (chain_valid_pct * 0.5) + 
+        (structure_valid_pct * 0.5)
+    ) if structure_valid > 0 else 0
     
     # Calculate rejected count
     rejected = total_symbols - structure_valid
     
-    # Calculate total excluded
-    total_excluded = sum(excluded_counts_by_stage.values())
-    
-    # Get tier counts from universe builder
-    tier_counts = get_tier_counts()
+    # Note: tier_counts already fetched at start of function
     
     return {
         "run_id": run_id,
@@ -2269,9 +2263,7 @@ async def get_admin_status(user: dict = Depends(get_current_user)):
         "cache_status": "valid" if valid_chains > 0 else "stale",
         "cache_updated_at": last_full_run_at.isoformat() if last_full_run_at else None,
         "api_errors_24h": None,  # Would require error logging system
-        "scheduler_running": True,  # APScheduler is running if we got here
-        "forced_exclusion_test_mode": len(forced_exclude_symbols) > 0,
-        "forced_exclude_symbols": list(forced_exclude_symbols) if forced_exclude_symbols else None
+        "scheduler_running": True  # APScheduler is running if we got here
     }
 
 
