@@ -1792,3 +1792,41 @@ async def get_audit_runs(
         })
     
     return {"runs": runs}
+
+
+# ==================== SCAN RESILIENCE CONFIGURATION ====================
+
+@admin_router.get("/scan/resilience-config")
+async def get_scan_resilience_config(
+    admin: dict = Depends(get_admin_user)
+):
+    """
+    Get the current scan resilience configuration.
+    
+    SCAN TIMEOUT FIX (December 2025):
+    Shows bounded concurrency, timeout, and retry settings.
+    """
+    from services.resilient_fetch import get_resilience_config
+    
+    config = get_resilience_config()
+    return {
+        "config": config,
+        "description": {
+            "yahoo_scan_max_concurrency": "Maximum concurrent Yahoo Finance calls during scans (semaphore limit)",
+            "yahoo_timeout_seconds": "Timeout per symbol fetch in seconds",
+            "yahoo_max_retries": "Number of retry attempts before marking a symbol as failed",
+            "semaphore_initialized": "Whether the scan semaphore has been initialized"
+        },
+        "environment_variables": {
+            "YAHOO_SCAN_MAX_CONCURRENCY": os.environ.get("YAHOO_SCAN_MAX_CONCURRENCY", "5"),
+            "YAHOO_TIMEOUT_SECONDS": os.environ.get("YAHOO_TIMEOUT_SECONDS", "30"),
+            "YAHOO_MAX_RETRIES": os.environ.get("YAHOO_MAX_RETRIES", "2")
+        },
+        "notes": [
+            "These settings apply ONLY to batch scan workflows (Screener, PMCC scans)",
+            "Single-symbol lookups (Watchlist, Simulator) are NOT affected",
+            "Partial success: if a symbol times out, the scan continues with remaining symbols",
+            "Aggregated stats are logged at the end of each scan run"
+        ]
+    }
+
