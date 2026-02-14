@@ -1042,12 +1042,13 @@ class PrecomputedScanService:
                     delta_score = 20 - abs(opt["delta"] - 0.30) * 50
                     dte_score = 10 - abs(opt["dte"] - 30) * 0.3
                     
-                    # Fundamental bonus
+                    # Fundamental bonus (ETFs get neutral score since fundamentals skipped)
                     fund_score = 0
-                    if fund_data.get("roe", 0) > 0.15:
-                        fund_score += 5
-                    if fund_data.get("revenue_growth", 0) > 0.10:
-                        fund_score += 5
+                    if not symbol_is_etf:
+                        if fund_data.get("roe", 0) > 0.15:
+                            fund_score += 5
+                        if fund_data.get("revenue_growth", 0) > 0.10:
+                            fund_score += 5
                     
                     total_score = max(0, roi_score + delta_score + dte_score + fund_score)
                     
@@ -1067,22 +1068,24 @@ class PrecomputedScanService:
                         "strategy": "covered_call",
                         # Timeframe classification
                         "timeframe": "weekly" if opt["dte"] <= 14 else "monthly",
+                        # ETF flag
+                        "is_etf": symbol_is_etf,
                         # Include technical indicators
                         "sma50": tech_data.get("sma50"),
                         "sma200": tech_data.get("sma200"),
                         "rsi14": tech_data.get("rsi14"),
                         "atr_pct": round(tech_data.get("atr_pct", 0) * 100, 2) if tech_data.get("atr_pct") else None,
-                        # Include fundamental data
-                        "market_cap": fund_data.get("market_cap", 0),
-                        "eps_ttm": fund_data.get("eps_ttm", 0),
-                        "roe": round(fund_data.get("roe", 0) * 100, 1) if fund_data.get("roe") else None,
-                        "debt_to_equity": fund_data.get("debt_to_equity"),
-                        "days_to_earnings": fund_data.get("days_to_earnings"),
-                        "sector": fund_data.get("sector", ""),
-                        # Include analyst rating
-                        "analyst_rating": fund_data.get("analyst_rating"),
-                        "num_analysts": fund_data.get("num_analysts", 0),
-                        "target_price": fund_data.get("target_price"),
+                        # Include fundamental data (None for ETFs)
+                        "market_cap": fund_data.get("market_cap", 0) if not symbol_is_etf else None,
+                        "eps_ttm": fund_data.get("eps_ttm", 0) if not symbol_is_etf else None,
+                        "roe": round(fund_data.get("roe", 0) * 100, 1) if fund_data.get("roe") and not symbol_is_etf else None,
+                        "debt_to_equity": fund_data.get("debt_to_equity") if not symbol_is_etf else None,
+                        "days_to_earnings": fund_data.get("days_to_earnings") if not symbol_is_etf else None,
+                        "sector": fund_data.get("sector", "") if not symbol_is_etf else "ETF",
+                        # Include analyst rating (None for ETFs)
+                        "analyst_rating": fund_data.get("analyst_rating") if not symbol_is_etf else None,
+                        "num_analysts": fund_data.get("num_analysts", 0) if not symbol_is_etf else None,
+                        "target_price": fund_data.get("target_price") if not symbol_is_etf else None,
                         # Include IV data
                         "iv": opt.get("iv"),
                         "iv_pct": round(opt.get("iv", 0) * 100, 1) if opt.get("iv") else None,
