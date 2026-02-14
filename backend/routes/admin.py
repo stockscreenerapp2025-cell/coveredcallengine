@@ -1530,8 +1530,12 @@ async def get_excluded_symbols(
     if reason:
         query["exclude_reason"] = reason
     
+    # Debug logging
+    logging.info(f"Universe excluded query: {query}")
+    
     # Get total count
     total = await db.scan_universe_audit.count_documents(query)
+    logging.info(f"Universe excluded total: {total}")
     
     # Fetch items with pagination
     cursor = db.scan_universe_audit.find(
