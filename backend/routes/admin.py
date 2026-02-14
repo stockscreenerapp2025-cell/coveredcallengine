@@ -1201,6 +1201,7 @@ async def get_cache_entries(
 
 @admin_router.post("/eod-snapshot/trigger")
 async def trigger_eod_snapshot(
+    trade_date: Optional[str] = Query(None, description="Trade date (YYYY-MM-DD), defaults to last trading day"),
     admin: dict = Depends(get_admin_user)
 ):
     """
@@ -1214,9 +1215,13 @@ async def trigger_eod_snapshot(
     """
     from services.eod_snapshot_service import get_eod_snapshot_service
     from routes.eod import EOD_SYMBOLS
-    from utils.market_state import now_et, log_eod_event
+    from utils.market_state import now_et, get_last_trading_day, log_eod_event
     
-    logging.info(f"[EOD-SNAPSHOT] Manual trigger by admin: {admin.get('email')}")
+    # Use last trading day if not specified
+    if not trade_date:
+        trade_date = get_last_trading_day()
+    
+    logging.info(f"[EOD-SNAPSHOT] Manual trigger by admin: {admin.get('email')} for trade_date={trade_date}")
     
     # Get API key for data fetching
     settings = await db.admin_settings.find_one(
@@ -1230,13 +1235,15 @@ async def trigger_eod_snapshot(
     
     results = await eod_service.create_eod_snapshot(
         symbols=EOD_SYMBOLS,
+        trade_date=trade_date,
         api_key=api_key
     )
     
     log_eod_event(
         "MANUAL_SNAPSHOT_TRIGGERED",
         triggered_by=admin.get("email"),
-        run_id=results["run_id"]
+        run_id=results["run_id"],
+        trade_date=trade_date
     )
     
     return {
