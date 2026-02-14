@@ -1068,13 +1068,13 @@ async def screen_covered_calls(
             # ==============================================================
             # AUTHORITATIVE CC CONTRACT - LAYER 3 COMPLIANT
             # ==============================================================
-            is_etf = symbol in ETF_SYMBOLS
+            symbol_is_etf = is_etf(symbol)  # Use imported function
             
             opportunities.append({
                 # UNDERLYING object - ADR-001: Uses market_close_price
                 "underlying": {
                     "symbol": symbol,
-                    "instrument_type": "ETF" if is_etf else "STOCK",
+                    "instrument_type": "ETF" if symbol_is_etf else "STOCK",
                     "last_price": round(stock_price, 2),
                     "price_source": "YAHOO_PREVIOUS_CLOSE",  # Single source of truth
                     "snapshot_date": sym_data.get("stock_price_trade_date"),
