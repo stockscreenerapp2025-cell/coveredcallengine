@@ -1728,16 +1728,28 @@ class PrecomputedScanService:
         - Long Call (LEAPS): Deep ITM, high delta, long DTE
         - Short Call: OTM, lower delta, shorter DTE
         
+        SCAN TIMEOUT FIX (December 2025):
+        - Uses bounded concurrency via semaphore
+        - Applies timeout/retry to each symbol fetch
+        - Continues on partial failure (logs failed symbols)
+        - Aggregates success/timeout/error counts
+        
         Returns ranked list of PMCC opportunities.
         """
         cc_profile = RISK_PROFILES.get(risk_profile, RISK_PROFILES["conservative"])
         pmcc_profile = PMCC_PROFILES.get(risk_profile, PMCC_PROFILES["conservative"])
+        run_id = f"pmcc_{risk_profile}_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:8]}"
         
-        logger.info(f"Starting {risk_profile} PMCC scan...")
+        logger.info(f"Starting {risk_profile} PMCC scan (run_id={run_id})...")
+        logger.info(f"Resilience config: concurrency={YAHOO_SCAN_MAX_CONCURRENCY}, timeout={YAHOO_TIMEOUT_SECONDS}s, retries={YAHOO_MAX_RETRIES}")
         
         # Get symbol universe
         symbols = await self.get_liquid_symbols()
         logger.info(f"Scanning {len(symbols)} symbols for {risk_profile} PMCC")
+        
+        # Initialize resilient fetcher for this scan
+        fetcher = ResilientYahooFetcher(scan_type=f"pmcc_{risk_profile}", run_id=run_id)
+        fetcher.set_total_symbols(len(symbols))
         
         opportunities = []
         stats = {
@@ -1748,28 +1760,49 @@ class PrecomputedScanService:
             "has_short_call": 0,
         }
         
-        # Process symbols in batches with rate limiting
-        # Yahoo Finance has ~2000 requests/hour limit
-        batch_size = 10  # Reduced from 15 to avoid rate limits
+        # Process symbols in batches with bounded concurrency
+        batch_size = 10
         for i in range(0, len(symbols), batch_size):
             batch = symbols[i:i + batch_size]
             
-            # Fetch technical and fundamental data in parallel
-            tech_tasks = [self.fetch_technical_data(s) for s in batch]
-            fund_tasks = [self.fetch_fundamental_data(s) for s in batch]
+            # Fetch technical and fundamental data with resilience
+            tech_results = []
+            fund_results = []
             
-            tech_results = await asyncio.gather(*tech_tasks, return_exceptions=True)
-            fund_results = await asyncio.gather(*fund_tasks, return_exceptions=True)
+            for symbol in batch:
+                # Technical data fetch with resilience
+                tech_data = await fetcher.fetch(
+                    symbol=symbol,
+                    fetch_func=self.fetch_technical_data,
+                    symbol
+                )
+                tech_results.append(tech_data)
+                
+                # Fundamental data fetch with resilience
+                fund_data = await fetcher.fetch(
+                    symbol=symbol,
+                    fetch_func=self.fetch_fundamental_data,
+                    symbol
+                )
+                fund_results.append(fund_data)
             
             for j, symbol in enumerate(batch):
-                tech_data = tech_results[j] if not isinstance(tech_results[j], Exception) else None
-                fund_data = fund_results[j] if not isinstance(fund_results[j], Exception) else None
+                tech_data = tech_results[j]
+                fund_data = fund_results[j]
+                
+                # Handle fetch failures gracefully
+                if tech_data is None:
+                    continue
                 
                 # Apply technical filters (same as covered call)
                 tech_pass, _ = self.passes_technical_filters(tech_data, cc_profile)
                 if not tech_pass:
                     continue
                 stats["passed_technical"] += 1
+                
+                # Handle fundamental fetch failure
+                if fund_data is None:
+                    continue
                 
                 # Apply fundamental filters
                 fund_pass, _ = self.passes_fundamental_filters(fund_data, cc_profile)
@@ -1781,29 +1814,33 @@ class PrecomputedScanService:
                 if current_price <= 0:
                     continue
                 
-                # Fetch LEAPS (long leg)
-                leaps = await self.fetch_leaps_options(
+                # Fetch LEAPS (long leg) with resilience
+                leaps = await fetcher.fetch(
+                    symbol=symbol,
+                    fetch_func=self.fetch_leaps_options,
                     symbol,
                     current_price,
-                    dte_min=pmcc_profile.get("long_dte_min", 180),
-                    dte_max=pmcc_profile.get("long_dte_max", 730),
-                    delta_min=pmcc_profile.get("long_delta_min", 0.65),
-                    delta_max=pmcc_profile.get("long_delta_max", 0.80),
-                    itm_pct=pmcc_profile.get("long_itm_pct", 0.10)
+                    pmcc_profile.get("long_dte_min", 180),
+                    pmcc_profile.get("long_dte_max", 730),
+                    pmcc_profile.get("long_delta_min", 0.65),
+                    pmcc_profile.get("long_delta_max", 0.80),
+                    pmcc_profile.get("long_itm_pct", 0.10)
                 )
                 
                 if not leaps:
                     continue
                 stats["has_leaps"] += 1
                 
-                # Fetch short calls
-                short_calls = await self.fetch_options_for_scan(
+                # Fetch short calls with resilience
+                short_calls = await fetcher.fetch(
+                    symbol=symbol,
+                    fetch_func=self.fetch_options_for_scan,
                     symbol,
                     current_price,
-                    dte_min=pmcc_profile.get("short_dte_min", 20),
-                    dte_max=pmcc_profile.get("short_dte_max", 45),
-                    delta_min=pmcc_profile.get("short_delta_min", 0.20),
-                    delta_max=pmcc_profile.get("short_delta_max", 0.40)
+                    pmcc_profile.get("short_dte_min", 20),
+                    pmcc_profile.get("short_dte_max", 45),
+                    pmcc_profile.get("short_delta_min", 0.20),
+                    pmcc_profile.get("short_delta_max", 0.40)
                 )
                 
                 if not short_calls:
@@ -1884,16 +1921,15 @@ class PrecomputedScanService:
                     "target_price": fund_data.get("target_price"),
                 })
             
-            # Longer delay between batches to avoid Yahoo Finance rate limits
-            await asyncio.sleep(2.0)
+            # Inter-batch delay
+            await asyncio.sleep(1.0)
+        
+        # Log resilient fetch stats
+        scan_stats = fetcher.get_stats()
+        scan_stats.log_summary()
         
         # ============================================================
         # PHASE 3: AI-BASED BEST OPTION SELECTION PER SYMBOL (PMCC)
-        # ============================================================
-        # IMPORTANT:
-        # Scan candidates may include multiple PMCC combinations per symbol.
-        # Final output must return ONE best option per symbol,
-        # selected by highest AI score.
         # ============================================================
         symbol_best = {}
         for opp in opportunities:
