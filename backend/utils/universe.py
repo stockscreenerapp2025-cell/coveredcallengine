@@ -116,8 +116,8 @@ SP500_SYMBOLS: List[str] = [
     "JNPR", "CDW", "CTSH", "IT", "EPAM", "FFIV", "SWKS", "TER", "QRVO", "TRMB",
     "WDC", "STX", "NTAP",
     
-    # Financials
-    "BRK-B", "JPM", "V", "MA", "BAC", "WFC", "GS", "MS", "SPGI", "AXP",
+    # Financials (Note: BRK.B for Yahoo format)
+    "BRK.B", "JPM", "V", "MA", "BAC", "WFC", "GS", "MS", "SPGI", "AXP",
     "BLK", "SCHW", "C", "PGR", "CB", "USB", "MMC", "CME", "ICE", "AON",
     "MCO", "PNC", "TFC", "AIG", "MET", "AFL", "PRU", "TRV", "AJG", "ALL",
     "COF", "BK", "MSCI", "MTB", "FITB", "STT", "HBAN", "NDAQ", "DFS", "CINF",
