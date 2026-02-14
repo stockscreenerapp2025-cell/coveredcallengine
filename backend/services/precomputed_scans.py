@@ -18,6 +18,13 @@ ARCHITECTURE:
 - Nightly job runs at 4:45 PM ET (after market close)
 - Results stored in MongoDB `precomputed_scans` collection
 - User clicks → instant fetch from DB
+
+SCAN TIMEOUT FIX (December 2025):
+- Bounded concurrency via semaphore (YAHOO_SCAN_MAX_CONCURRENCY)
+- Timeout handling per symbol (YAHOO_TIMEOUT_SECONDS)
+- Retry logic with exponential backoff (YAHOO_MAX_RETRIES)
+- Partial success: failed symbols are logged, scan continues
+- Aggregated stats logging per scan run
 """
 
 import asyncio
@@ -25,6 +32,7 @@ import logging
 import aiohttp
 import httpx
 import pytz
+import uuid
 from datetime import datetime, timezone, timedelta
 from typing import Dict, List, Any, Optional, Tuple
 import yfinance as yf
@@ -34,6 +42,18 @@ from concurrent.futures import ThreadPoolExecutor
 
 # Import centralized market status helper
 from services.data_provider import is_market_closed
+
+# Import resilient fetch service for scan timeout handling
+from services.resilient_fetch import (
+    ResilientYahooFetcher,
+    fetch_with_resilience,
+    get_scan_semaphore,
+    ScanStats,
+    get_resilience_config,
+    YAHOO_SCAN_MAX_CONCURRENCY,
+    YAHOO_TIMEOUT_SECONDS,
+    YAHOO_MAX_RETRIES
+)
 
 # Configure logging
 logger = logging.getLogger(__name__)
