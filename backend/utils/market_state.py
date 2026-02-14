@@ -195,12 +195,9 @@ def get_last_trading_day(dt: datetime = None) -> str:
     
     # Use NYSE calendar to find last trading day
     try:
-        calendar = _get_nyse_calendar()
-        # Look back up to 10 days
-        end_date = dt.strftime('%Y-%m-%d')
-        start_date = (dt - datetime.timedelta(days=10)).strftime('%Y-%m-%d') if hasattr(datetime, 'timedelta') else None
-        
         from datetime import timedelta
+        calendar = _get_nyse_calendar()
+        end_date = dt.strftime('%Y-%m-%d')
         start_dt = dt - timedelta(days=10)
         schedule = calendar.schedule(
             start_date=start_dt.strftime('%Y-%m-%d'),
