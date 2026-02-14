@@ -87,18 +87,32 @@ async def ai_analysis(request: AIAnalysisRequest, user: dict = Depends(get_curre
                 }
             )
         
-        # For other errors, return mock analysis
-        return {
-            "analysis": f"AI analysis for {request.symbol or 'market'} ({request.analysis_type})",
-            "recommendations": [
-                "Consider selling weekly covered calls at 0.25-0.30 delta",
-                "Monitor IV rank for optimal entry points",
-                "Set alerts for earnings dates to avoid assignment risk"
-            ],
-            "confidence": 0.75,
-            "is_mock": True,
-            "error": result.get("error")
-        }
+        # For other errors, check if mock fallback is allowed
+        if allow_mock_data():
+            logging.warning(f"MOCK_FALLBACK_USED | endpoint=ai_analysis | reason={result.get('error')}")
+            return {
+                "analysis": f"AI analysis for {request.symbol or 'market'} ({request.analysis_type})",
+                "recommendations": [
+                    "Consider selling weekly covered calls at 0.25-0.30 delta",
+                    "Monitor IV rank for optimal entry points",
+                    "Set alerts for earnings dates to avoid assignment risk"
+                ],
+                "confidence": 0.75,
+                "is_mock": True,
+                "error": result.get("error")
+            }
+        else:
+            # Production: fail explicitly
+            logging.warning(f"MOCK_FALLBACK_BLOCKED_PRODUCTION | endpoint=ai_analysis | reason={result.get('error')}")
+            raise HTTPException(
+                status_code=503,
+                detail={
+                    "data_status": "UNAVAILABLE",
+                    "reason": "AI_SERVICE_ERROR",
+                    "details": result.get("error"),
+                    "is_mock": False
+                }
+            )
     
     return {
         "analysis": result["response"],
