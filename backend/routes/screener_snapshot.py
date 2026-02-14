@@ -1998,10 +1998,12 @@ async def get_admin_status(user: dict = Depends(get_current_user)):
     """
     Get detailed screener status for admin dashboard.
     
-    Returns structured metrics for Data Quality tab.
-    Computes values from existing scan/snapshot data.
-    Returns null for fields that cannot be computed.
+    Returns structured metrics for Data Quality tab including:
+    - Universe breakdown with exclusion counts
+    - Run ID for drilldown queries
+    - Real-time computed values from scan/snapshot data
     """
+    import uuid
     snapshot_service = get_snapshot_service()
     
     # Count snapshots by status
@@ -2016,30 +2018,98 @@ async def get_admin_status(user: dict = Depends(get_current_user)):
     incomplete_chains = 0
     structure_valid = 0
     
+    # Track exclusion reasons for universe audit
+    excluded_counts = {
+        "OUT_OF_RULES": 0,
+        "OUT_OF_PRICE_BAND": 0,
+        "LOW_LIQUIDITY": 0,
+        "MISSING_QUOTE": 0,
+        "MISSING_CHAIN": 0,
+        "CHAIN_EMPTY": 0,
+        "BAD_CHAIN_DATA": 0,
+        "MISSING_CONTRACT_FIELDS": 0,
+        "OTHER": 0
+    }
+    
+    # Generate run_id for this audit
+    now_utc = datetime.now(timezone.utc)
+    run_id = f"audit_{now_utc.strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:8]}"
+    
+    # Audit records to persist
+    audit_records = []
+    
     for symbol in SCAN_SYMBOLS:
         stock, stock_error = await snapshot_service.get_stock_snapshot(symbol)
         chain, chain_error = await snapshot_service.get_option_chain_snapshot(symbol)
         
+        # Determine inclusion/exclusion status
+        included = True
+        exclude_reason = None
+        exclude_detail = None
+        price_used = stock.get("price", 0) if stock else 0
+        avg_volume = stock.get("volume", 0) if stock else 0
+        dollar_volume = price_used * avg_volume if price_used and avg_volume else 0
+        
         if stock_error:
+            included = False
             if "stale" in stock_error.lower():
                 stale_stocks += 1
+                exclude_reason = "MISSING_QUOTE"
+                exclude_detail = f"Stale quote: {stock_error}"
             else:
                 missing_stocks += 1
+                exclude_reason = "MISSING_QUOTE"
+                exclude_detail = stock_error
+            excluded_counts[exclude_reason] += 1
         else:
             valid_stocks += 1
         
         if chain_error:
+            included = False
             if "stale" in chain_error.lower():
                 stale_chains += 1
+                exclude_reason = "BAD_CHAIN_DATA"
+                exclude_detail = f"Stale chain: {chain_error}"
             elif "incomplete" in chain_error.lower():
                 incomplete_chains += 1
+                exclude_reason = "MISSING_CONTRACT_FIELDS"
+                exclude_detail = chain_error
+            elif "empty" in chain_error.lower() or "no options" in chain_error.lower():
+                exclude_reason = "CHAIN_EMPTY"
+                exclude_detail = chain_error
             else:
                 missing_chains += 1
+                exclude_reason = "MISSING_CHAIN"
+                exclude_detail = chain_error
+            
+            if exclude_reason and exclude_reason not in ["MISSING_QUOTE"]:  # Don't double-count
+                excluded_counts[exclude_reason] += 1
         else:
             valid_chains += 1
             # Count as structure valid if both stock and chain are valid
             if not stock_error:
                 structure_valid += 1
+        
+        # Create audit record
+        audit_records.append({
+            "run_id": run_id,
+            "symbol": symbol,
+            "included": included,
+            "exclude_reason": exclude_reason,
+            "exclude_detail": exclude_detail,
+            "price_used": price_used,
+            "avg_volume": avg_volume,
+            "dollar_volume": dollar_volume,
+            "as_of": now_utc
+        })
+    
+    # Persist audit records to database
+    try:
+        if audit_records:
+            await db.scan_universe_audit.insert_many(audit_records)
+            logging.info(f"Persisted {len(audit_records)} universe audit records for run_id={run_id}")
+    except Exception as e:
+        logging.error(f"Failed to persist universe audit: {e}")
     
     # Get market state
     current_market_state = get_market_state()
@@ -2109,31 +2179,38 @@ async def get_admin_status(user: dict = Depends(get_current_user)):
     # Calculate rejected count
     rejected = total_symbols - structure_valid
     
-    now_utc = datetime.now(timezone.utc).isoformat()
-    
     return {
-        "health_score": health_score if health_score > 0 else None,
+        "run_id": run_id,
+        "run_type": "EOD",
+        "health_score": health_score if health_score > 0 else 0,
         "last_full_run_at": last_full_run_at.isoformat() if last_full_run_at else None,
         "market_state": current_market_state,
         "price_source": price_source,
         "underlying_price_source": price_source,  # Alias for frontend compatibility
-        "as_of": now_utc,
+        "as_of": now_utc.isoformat(),
+        "universe": {
+            "source": "INDEX_PLUS_LIQUIDITY",
+            "notes": "S&P 500 + Nasdaq 100 + ETF whitelist + optional expansion",
+            "total_candidates": total_symbols,
+            "included": structure_valid,
+            "excluded_counts": excluded_counts
+        },
         "eligibility": {
             "universe_scanned": total_symbols,
             "chain_valid": valid_chains,
             "chain_valid_pct": chain_valid_pct,
             "structure_valid": structure_valid,
             "structure_valid_pct": structure_valid_pct,
-            "scored_trades": scored_trades if scored_trades > 0 else None,
+            "scored_trades": scored_trades,
             "rejected": rejected
         },
         "score_distribution": {
-            "high": score_high if scored_trades > 0 else None,
-            "medium_high": score_medium_high if scored_trades > 0 else None,
-            "medium": score_medium if scored_trades > 0 else None,
-            "low": score_low if scored_trades > 0 else None
-        } if scored_trades > 0 else None,
-        "total_opportunities": scored_trades if scored_trades > 0 else None,
+            "high": score_high,
+            "medium_high": score_medium_high,
+            "medium": score_medium,
+            "low": score_low
+        },
+        "total_opportunities": scored_trades,
         "symbols_scanned": total_symbols,
         "average_score": None,  # Would require computation across all opportunities
         "score_drift": None,  # Would require historical comparison
