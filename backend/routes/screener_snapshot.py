@@ -1370,10 +1370,10 @@ async def screen_pmcc(
                         stock_price = quote["price"]
                         price_source = "yahoo_cached" if snapshot.get("from_cache") else "yahoo_live"
                     
-                    is_etf = symbol in ETF_SYMBOLS
+                    symbol_is_etf = is_etf(symbol)  # Use imported function
                     
                     # PMCC-specific price filter (different from CC)
-                    if not is_etf:
+                    if not symbol_is_etf:
                         # Stocks: $30-$90
                         if stock_price < PMCC_STOCK_MIN_PRICE or stock_price > PMCC_STOCK_MAX_PRICE:
                             continue
@@ -1384,7 +1384,7 @@ async def screen_pmcc(
                         "trade_date": quote.get("close_date"),
                         "market_cap": quote.get("market_cap"),
                         "analyst_rating": quote.get("analyst_rating"),
-                        "is_etf": is_etf,
+                        "is_etf": symbol_is_etf,
                         "source": price_source
                     }
                     symbols_with_stock_data.append(symbol)
