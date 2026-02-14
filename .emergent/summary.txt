@@ -1,60 +1,68 @@
 <analysis>**original_problem_statement:**
-The user initially requested a fix for a data mismatch in financial screeners, which was completed. The primary task then shifted to a multi-phase project to activate and integrate a PayPal Express Checkout subscription system.
-
-**PRODUCT REQUIREMENTS:**
--   **Phase 1 (Screener Fix):** Ensure underlying stock price and options chain prices are synchronized based on market state (open/closed). (COMPLETED)
--   **Phase 2 (PayPal Activation):**
-    -   Implement a full PayPal Express Checkout flow (, , IPN handling).
-    -   Subscription lifecycle management must be DB-driven.
-    -   Access control ( flag) must be automatically toggled based on PayPal events (payment success, failure, cancellation).
-    -   Subscription events must trigger an existing admin email automation system.
-    -   All changes must be minimal, activating existing but dormant code where possible.
--   **Phase 3 (PayPal Admin UI):**
-    -   Incorporate user-provided frontend () and backend () changes to allow managing PayPal settings (credentials, mode) from an admin panel.
-    -   The PayPal service must read its configuration from these new DB settings.
-    -   The  flow must be gated by an enabled flag from the DB.
-    -   The agent must NOT run the final sandbox tests but provide a comprehensive checklist for the user to perform them.
+The user initiated this session with several performance and data integrity tasks:
+1.  **Fix Scan Timeouts:** Implement bounded concurrency, timeouts, and retries for scan-only workflows to prevent timeouts from Yahoo Finance. The fix should not slow down single-symbol user lookups.
+2.  **Restore Dashboard Speed:** Increase the concurrency for user-facing workflows (Dashboard, Watchlist, Simulator) that became slow due to a globally shared, throttled executor. Ensure these user paths are never blocked by the scan semaphore.
+3.  **Resolve Cache Helper Mismatch:** Ensure that cache helper functions imported in routes exist and are consistent.
+4.  **Patch Admin Universe Audit:** Remove all demo/test data from the  collection and associated admin endpoints (), ensuring they reflect real scan data.
+5.  **Implement Detailed Exclusion Tracking:** Enhance the audit mechanism to record not just included symbols, but also excluded symbols with a specific  and . Add a test mode to force exclusions for validation.
 
 **User's preferred language**: English
 
 **what currently exists?**
-The initial screener data-sync fix was implemented and verified with live market data. The larger PayPal task is now code-complete. This includes the full checkout and subscription lifecycle logic, driven by a database configuration that is manageable via a new section in the Admin UI. The agent successfully recovered two corrupted files (, ) by restoring them from git history and then correctly applying the necessary UI and backend logic for the PayPal admin panel. The system is now ready for end-to-end sandbox testing by the user.
+The application now has a two-tiered concurrency system for handling external API calls to Yahoo Finance.
+1.  **User-facing paths** (Dashboard, Watchlist) use a  with a high number of workers () for fast, parallel fetching.
+2.  **Background scan paths** (Screener, PMCC) are routed through a new  service which uses a strict  () and a retry mechanism () to prevent overwhelming the data provider.
+
+The  system has been overhauled. It no longer contains demo data and now serves as the source of truth for all scan runs. It logs every symbol processed, marking it as included or excluded, and provides detailed  and  for failures. A development-only feature, , has been added to  to test exclusion reporting. All related admin endpoints have been updated to reflect this real, detailed data.
 
 **Last working item**:
--   **Last item agent was working:** The agent finished integrating the user-provided Admin UI for PayPal settings with the backend. This involved restoring corrupted  and  files, correctly applying the changes for the UI form and backend endpoints, and ensuring the live PayPal service uses this new DB-driven configuration. The final action was providing a comprehensive test plan for the user, as per their explicit instructions not to perform the test themselves.
+-   **Last item agent was working:** The agent finished implementing detailed exclusion tracking in the admin audit system. This involved updating the  endpoint to categorize and record exclusion reasons (, ) for every symbol that fails the scan process. A forced exclusion mode was added for testing, and the relevant admin endpoints (, CSV export) were updated to display this new data.
 -   **Status:** USER VERIFICATION PENDING
--   **Agent Testing Done:** N (User explicitly instructed the agent NOT to run the final e2e tests).
--   **Which testing method agent to use?** Manual user testing. The user will follow the detailed checklist, curl commands, and DB queries provided by the agent to conduct a full sandbox test of the PayPal integration.
+-   **Agent Testing Done:** Y
+-   **Which testing method agent to use?** manual testing by curl. The agent has already performed tests by setting the  environment variable and using  to verify the JSON responses from , , and the CSV export. The next agent should await user confirmation or perform these same tests if requested.
 -   **User Testing Done:** N
 
 **All Pending/In progress Issue list**:
--   **Issue 1: User Verification of PayPal E2E Flow (P0)**
--   **Issue 2: Inbound email replies not appearing in the support dashboard (P3 - Recurring)**
--   **Issue 3: Verify Watchlist page functionality after data-fetching refactors (P3)**
+-   **Issue 1: User Verification of Scan, Dashboard, and Admin Fixes (P0)**
+-   **Issue 2: User Verification of PayPal E2E Flow (P0)**
+-   **Issue 3: Inbound email replies not appearing in the support dashboard (P3 - Recurring)**
+-   **Issue 4: Verify Watchlist page functionality after data-fetching refactors (P3)**
 
 **Issues Detail:**
--   **Issue 1: User Verification of PayPal E2E Flow**
-    -   **Attempted fixes:** All coding is complete. This included implementing the core PayPal logic, fixing pre-existing bugs (missing modules/routes), and recovering corrupted files (, ) before integrating the user's admin panel code.
-    -   **Next debug checklist:** The user needs to execute the comprehensive test plan provided in the agent's last message. This involves setting up PayPal sandbox credentials, configuring them in the app's admin panel, and testing the full subscription lifecycle (checkout, activation, cancellation).
-    -   **Why fix this issue and what will be achieved with the fix?** This verification is the final step to confirm the entire PayPal subscription and payment automation feature is working correctly.
+-   **Issue 1: User Verification of Scan, Dashboard, and Admin Fixes**
+    -   **Attempted fixes:** All coding is complete. The agent implemented fixes for scan timeouts, dashboard speed, and admin audit data integrity.
+    -   **Next debug checklist:** Awaiting user feedback on the implemented changes. The user should be asked to verify:
+        1.  Dashboard and Watchlist pages are responsive.
+        2.  Background scans complete without failing due to timeouts.
+        3.  The admin universe audit endpoints () show real, detailed data with exclusion reasons.
+    -   **Why fix this issue and what will be achieved with the fix?** Final validation of critical performance and data integrity improvements.
     -   **Status:** USER VERIFICATION PENDING
     -   **Is recurring issue?** N
     -   **Should Test frontend/backend/both after fix?** both
     -   **Blocked on other issue:** None (Blocked on user action).
 
--   **Issue 2: Inbound email replies not appearing in the support dashboard**
+-   **Issue 2: User Verification of PayPal E2E Flow**
+    -   **Attempted fixes:** All coding was completed in a previous session.
+    -   **Next debug checklist:** Awaiting user action to perform end-to-end testing in a sandbox environment.
+    -   **Why fix this issue and what will be achieved with the fix?** Final validation step to launch the PayPal subscription feature.
+    -   **Status:** USER VERIFICATION PENDING
+    -   **Is recurring issue?** N
+    -   **Should Test frontend/backend/both after fix?** both
+    -   **Blocked on other issue:** None (Blocked on user action).
+
+-   **Issue 3: Inbound email replies not appearing in the support dashboard**
     -   **Attempted fixes:** None in this session.
     -   **Next debug checklist:** Trace IMAP sync logic in  and check scheduler logs for errors.
-    -   **Why fix this issue and what will be achieved with the fix?** To restore a core two-way communication feature in the support dashboard.
+    -   **Why fix this issue and what will be achieved with the fix?** To restore core two-way communication in the support dashboard.
     -   **Status:** NOT STARTED
     -   **Is recurring issue?** Y
     -   **Should Test frontend/backend/both after fix?** both
     -   **Blocked on other issue:** None.
 
--   **Issue 3: Verify Watchlist page functionality after data-fetching refactors**
+-   **Issue 4: Verify Watchlist page functionality after data-fetching refactors**
     -   **Attempted fixes:** None.
-    -   **Next debug checklist:** Manually test the Watchlist page on the frontend to ensure adding/removing stocks and data display works correctly after backend changes.
-    -   **Why fix this issue and what will be achieved with the fix?** To prevent regressions in a key user-facing feature.
+    -   **Next debug checklist:** Manually test adding/removing stocks and data display on the Watchlist page.
+    -   **Why fix this issue and what will be achieved with the fix?** To prevent regressions in a key user-facing feature after recent backend changes.
     -   **Status:** NOT STARTED
     -   **Is recurring issue?** N
     -   **Should Test frontend/backend/both after fix?** frontend
@@ -63,14 +71,14 @@ The initial screener data-sync fix was implemented and verified with live market
 **In progress Task List**:
 -   **Task 1: Activate PayPal Express Checkout & Admin UI Integration**
     -   **Where to resume:** Awaiting user feedback after they complete the end-to-end sandbox testing.
-    -   **What will be achieved with this?** A fully functional, database-configurable PayPal subscription system integrated with the admin UI.
+    -   **What will be achieved with this?** A fully functional, database-configurable PayPal subscription system.
     -   **Status:** USER VERIFICATION PENDING
     -   **Should Test frontend/backend/both after fix?** both
     -   **Blocked on something:** User action.
 
 **Upcoming and Future Tasks**
 *   **Upcoming Tasks:**
-    *   (P0) **Merge & Deploy AI Wallet:** Await user's green light to deploy the approved AI Wallet feature.
+    *   (P0) **Merge & Deploy AI Wallet:** Await user's green light to deploy the approved feature.
     *   (P3) **Fix Pre-existing Bugs:** Address the recurring inbound email issue and verify the Watchlist page.
 *   **Future Tasks (Backlog):**
     *   (P4) **Frontend Refactor:** Break down the monolithic .
@@ -78,16 +86,10 @@ The initial screener data-sync fix was implemented and verified with live market
     *   (P4) **Consolidate :** Refactor to fully use  functions.
 
 **Completed work in this session**
--   **Screener Fix Verification:**
-    -   Confirmed  and  on screener endpoints using authenticated curl commands against live market data.
--   **PayPal Express Checkout Activation:**
-    -   Implemented backend logic for , , and IPN handling in  and .
-    -   Wired PayPal lifecycle events to the existing email automation triggers.
-    -   Fixed multiple pre-existing application errors (missing router in , missing  module, incorrect indentation in ) to make the backend runnable.
--   **PayPal Admin UI Integration:**
-    -   Recovered corrupted files (, ) by restoring them from git history.
-    -   Successfully integrated user-provided code to add a PayPal configuration section to the Admin page and the corresponding backend endpoints to save/load the settings.
-    -   Provided a comprehensive, step-by-step testing guide for the user to perform sandbox validation.
+-   **Fix Scan Timeouts (DONE):** Implemented bounded concurrency and retry logic for scan workflows via a new  service. All scan paths now route through this service, making them robust to transient API errors. Tested with the testing agent.
+-   **Restore Dashboard Speed (DONE):** Differentiated USER PATHS from SCAN PATHS. Increased  workers to 12 for user paths, ensuring the dashboard, watchlist, and simulator are not blocked by slow background scans. Added latency metrics.
+-   **Patch Admin Universe Audit (DONE):** Removed all hardcoded demo data from the  collection and related endpoints. The system now exclusively uses real data generated from scan runs.
+-   **Implement Detailed Exclusion Tracking (DONE):** Enhanced the audit system to log  and  for every symbol that fails a scan. Added a development-only test mode () to validate reporting.
 
 **Earlier issues found/mentioned but not fixed**
 -   Inbound email replies not appearing in the support dashboard (Recurring).
@@ -102,66 +104,75 @@ The initial screener data-sync fix was implemented and verified with live market
 
 
 **Key Technical Concepts**
--   **PayPal Express Checkout & IPN:** The full workflow from checkout creation to backend confirmation via Instant Payment Notification.
--   **Database-Driven Configuration:** Storing secrets and settings in MongoDB ( collection) to be managed via an admin UI, rather than in environment variables or code.
--   **Git Recovery:** Using  to restore file contents from a previous state after they became corrupted.
--   **Defensive Coding:** Adding checks (e.g., ) to gracefully handle features being disabled via the admin panel.
+-   **Differentiated Execution Paths:** Isolating high-throughput background SCAN PATHS from low-latency USER PATHS to optimize performance for both.
+-   **Bounded Concurrency:** Using  to limit concurrent requests to an external service during batch scans to avoid rate-limiting.
+-   **Resilient Data Fetching:** Using a timeout and retry policy to handle transient network errors gracefully during scans.
+-   **Data Integrity and Auditing:** Moving from demo data to a persistent, detailed audit trail () that serves as the single source of truth for operational reporting.
+-   **Latency Metrics Collection:** Adding simple, in-memory counters to track request counts and average latency for critical API paths.
 
 **key DB schema**
--   :
-    -   
--   :
-    -   
-    -   
-    -   
--   :
+-   : (Updated)
     -   
 
 **changes in tech stack**
 -   None.
 
 **All files of reference**
--   
--   
--   
--   
--   
--   
+-   : New service for concurrency-limited, resilient API calls.
+-   : Core logic for differentiating user vs. scan path execution.
+-   : Core logic for generating the scan audit trail.
+-   : Endpoints for viewing audit and performance metrics.
+-   : Main consumer of the new resilient fetcher.
+-   : New configuration variables for concurrency and testing.
+-   : Updated with completed work.
 
 **Areas that need refactoring**:
--    (monolith)
--    (monolith)
+-    (monolithic)
+-    (monolithic)
+-    (has opportunities to consolidate logic)
 
 **key api endpoints**
--   
--   
--   
--   
--   
+-    (New)
+-    (New)
+-    (New)
+-    (Modified)
+-    (Modified)
+-    (Modified)
+-    (Modified)
 
 **Critical Info for New Agent**
--   The immediate task is to **wait for the user to perform sandbox testing** of the PayPal integration. Do not proceed with any other tasks until the user provides feedback on the PayPal flow.
--   A complete test plan has already been delivered to the user. Your role is to analyze their feedback and debug any issues they report.
--   Be aware that  and  were recently restored from git history due to file corruption. If the user reports issues with the admin panel, this history is important context.
--   Once the PayPal task is fully verified and closed, the next priorities are the outstanding bugs (email sync, watchlist verification) from the backlog.
+-   The system now strictly separates API call strategies: high-concurrency for user-facing endpoints and semaphore-limited for background scans. This is controlled by the  flag in .
+-   The  collection is the source of truth for scan history. The  endpoint populates this collection.
+-   The  variable in  is a development tool for testing exclusion logic. It is disabled in production.
+-   All work from this session is complete from the agent's side. The next step is to await user verification and feedback before addressing the next priority tasks (PayPal verification, recurring email bug, etc.).
 
 **documents and test reports created in this job**
--   None.
+-    (Updated)
+-   
+-   
 
 **Last 10 User Messages and any pending HUMAN messages**
-1.  **User:** Provided a detailed plan to activate a PayPal subscription system with strict activation-only constraints.
-2.  **User:** Followed up, stating they had made changes to  and  for PayPal configuration and asked the agent to integrate these changes and provide a test plan for the user to execute.
-3.  **User:** Reported a UI issue (I cannot access Preview), which led the agent to discover that  was corrupted.
--   All subsequent messages were from the agent, who diagnosed and fixed the corrupted files before providing the requested test plan. The last user message is the one reporting the UI issue.
+1.  **User:** Requested confirmation of scan fix, a change in retry count to 1, and before/after metrics. (Completed)
+2.  **Agent:** Provided confirmation, updated retry count, and shared performance metrics. (Completed)
+3.  **User:** Requested to restore dashboard speed by increasing workers for user paths and fix a cache helper mismatch. (Completed)
+4.  **Agent:** Implemented the dashboard speed fix and confirmed cache helpers were correctly implemented. (Completed)
+5.  **User:** Requested to patch the admin universe audit to remove demo data and show real run results. (Completed)
+6.  **Agent:** Cleaned the database of demo data and confirmed endpoints were querying the live collection. (Completed)
+7.  **User:** Requested to enhance the audit to record specific exclusion stages and reasons for failed symbols. (Completed)
+8.  **Agent:** Implemented detailed exclusion tracking and provided a summary of deliverables. (Completed)
+9.  **The conversation ended with the agent providing the final summary for the last task. The implicit next step is to wait for user verification.**
 
 **Project Health Check:**
 *   **Broken:**
     *   Inbound Email Processing (recurring issue).
 *   **Needs Verification:**
-    *   **PayPal End-to-End Flow:** The entire subscription lifecycle is code-complete but pending user sandbox testing.
+    *   PayPal End-to-End Flow.
     *   Watchlist Page functionality.
+    *   Scan Timeout Fix & Resiliency.
+    *   Dashboard & User-Path Performance.
+    *   Admin Universe Audit Data Integrity.
 *   **Mocked:**
-    *   None.
+    *   Mock data generators exist for development but are correctly blocked in the  environment via the  check.
 
 **3rd Party Integrations**
 *   : Primary market data source.
@@ -205,17 +216,17 @@ options:
                         id
   -V, --version         show program's version number and exit SDK: Used directly for some LLM integrations.
 *   : Used for scheduled jobs.
-*   **PayPal**: Deeply integrated for subscriptions and payments (NVP/SOAP API).
+*   **PayPal**: Integrated for subscriptions (NVP/SOAP API), pending user verification.
 
 **Testing status**
--   **Testing agent used after significant changes:** NO
+-   **Testing agent used after significant changes:** YES (for scan resilience feature)
 -   **Troubleshoot agent used after agent stuck in loop:** NO
 -   **Test files created:** []
--   **Known regressions:** Corrupted  and  files were introduced during the session, but were identified and fixed by restoring from git history. The root cause of the corruption is likely an external tool error, but the codebase is now in a correct state.
+-   **Known regressions:** None identified in this session.
 
 **Credentials to test flow:**
 *   Admin user: 
 *   Password: 
 
 **What agent forgot to execute**
--   The agent successfully followed all user instructions, including the negative constraint of not performing the final tests. It proactively identified and fixed several pre-existing bugs and file corruption issues to complete the task. No forgotten steps were identified.</analysis>
+The agent successfully addressed all user requests and priorities for this session. The remaining pending items are lower-priority tasks from a previous session that the user did not elect to prioritize.</analysis>
