@@ -154,11 +154,11 @@ SP500_SYMBOLS: List[str] = [
     "EA", "WBD", "TTWO", "OMC", "IPG", "MTCH", "LYV", "FOXA", "FOX", "NWSA",
     "NWS", "PARA",
     
-    # Consumer Staples
+    # Consumer Staples (Note: BF.B for Yahoo format)
     "PG", "COST", "WMT", "PEP", "KO", "PM", "MO", "MDLZ", "CL", "KHC",
     "EL", "GIS", "SYY", "KMB", "ADM", "STZ", "HSY", "K", "SJM", "CAG",
     "MKC", "TSN", "HRL", "CLX", "CHD", "KR", "TGT", "DG", "DLTR", "WBA",
-    "BF-B", "TAP", "CPB", "LW", "BG",
+    "BF.B", "TAP", "CPB", "LW", "BG",
     
     # Energy
     "XOM", "CVX", "COP", "SLB", "EOG", "MPC", "PXD", "PSX", "VLO", "OXY",
