@@ -2001,11 +2001,31 @@ async def get_admin_status(user: dict = Depends(get_current_user)):
     Get detailed screener status for admin dashboard.
     
     Returns structured metrics for Data Quality tab including:
-    - Universe breakdown with exclusion counts
+    - Universe breakdown with exclusion counts by stage and reason
     - Run ID for drilldown queries
     - Real-time computed values from scan/snapshot data
+    
+    Exclusion Stages:
+    - QUOTE: Failed to fetch stock quote
+    - LIQUIDITY_FILTER: Failed liquidity/price band checks
+    - OPTIONS_CHAIN: Failed to fetch options chain
+    - CHAIN_QUALITY: Chain is empty or stale
+    - CONTRACT_QUALITY: Missing required contract fields
+    - OTHER: Forced test exclusion or unknown
+    
+    Exclusion Reasons:
+    - MISSING_QUOTE: No stock quote available
+    - LOW_LIQUIDITY_RANK: Dollar volume below threshold
+    - OUT_OF_PRICE_BAND: Price outside min/max range
+    - MISSING_CHAIN: No options chain available
+    - CHAIN_EMPTY: Options chain has no contracts
+    - BAD_CHAIN_DATA: Stale or invalid chain data
+    - MISSING_CONTRACT_FIELDS: Contracts missing bid/ask/delta
+    - OTHER: Forced exclusion or unknown error
     """
     import uuid
+    from utils.environment import is_production
+    
     snapshot_service = get_snapshot_service()
     
     # Count snapshots by status
@@ -2020,7 +2040,28 @@ async def get_admin_status(user: dict = Depends(get_current_user)):
     incomplete_chains = 0
     structure_valid = 0
     
-    # Track exclusion reasons for universe audit
+    # Track exclusions by stage and reason
+    excluded_counts_by_stage = {
+        "QUOTE": 0,
+        "LIQUIDITY_FILTER": 0,
+        "OPTIONS_CHAIN": 0,
+        "CHAIN_QUALITY": 0,
+        "CONTRACT_QUALITY": 0,
+        "OTHER": 0
+    }
+    
+    excluded_counts_by_reason = {
+        "MISSING_QUOTE": 0,
+        "LOW_LIQUIDITY_RANK": 0,
+        "OUT_OF_PRICE_BAND": 0,
+        "MISSING_CHAIN": 0,
+        "CHAIN_EMPTY": 0,
+        "BAD_CHAIN_DATA": 0,
+        "MISSING_CONTRACT_FIELDS": 0,
+        "OTHER": 0
+    }
+    
+    # Legacy format for backward compatibility
     excluded_counts = {
         "OUT_OF_RULES": 0,
         "OUT_OF_PRICE_BAND": 0,
@@ -2032,6 +2073,19 @@ async def get_admin_status(user: dict = Depends(get_current_user)):
         "MISSING_CONTRACT_FIELDS": 0,
         "OTHER": 0
     }
+    
+    # ================================================================
+    # FORCED EXCLUSION TEST MODE (Development/Testing Only)
+    # ================================================================
+    # Set AUDIT_FORCE_EXCLUDE_SYMBOLS=AAPL,MSFT to test exclusion flow
+    # DISABLED in production environment
+    # ================================================================
+    forced_exclude_symbols = set()
+    if not is_production():
+        force_exclude_env = os.environ.get("AUDIT_FORCE_EXCLUDE_SYMBOLS", "")
+        if force_exclude_env:
+            forced_exclude_symbols = set(s.strip().upper() for s in force_exclude_env.split(",") if s.strip())
+            logging.info(f"[AUDIT] Forced exclusion test mode: {forced_exclude_symbols}")
     
     # Generate run_id for this audit
     now_utc = datetime.now(timezone.utc)
@@ -2046,14 +2100,19 @@ async def get_admin_status(user: dict = Depends(get_current_user)):
         
         # Determine inclusion/exclusion status
         included = True
+        exclude_stage = None
         exclude_reason = None
         exclude_detail = None
         price_used = stock.get("price", 0) if stock else 0
         avg_volume = stock.get("volume", 0) if stock else 0
         dollar_volume = price_used * avg_volume if price_used and avg_volume else 0
         
+        # ================================================================
+        # STAGE 1: QUOTE - Check stock quote availability
+        # ================================================================
         if stock_error:
             included = False
+            exclude_stage = "QUOTE"
             if "stale" in stock_error.lower():
                 stale_stocks += 1
                 exclude_reason = "MISSING_QUOTE"
@@ -2062,41 +2121,99 @@ async def get_admin_status(user: dict = Depends(get_current_user)):
                 missing_stocks += 1
                 exclude_reason = "MISSING_QUOTE"
                 exclude_detail = stock_error
-            excluded_counts[exclude_reason] += 1
         else:
             valid_stocks += 1
         
-        if chain_error:
+        # ================================================================
+        # STAGE 2: LIQUIDITY_FILTER - Check price band and liquidity
+        # (Only if quote was valid)
+        # ================================================================
+        if included and stock:
+            # Price band check (example: $5 - $500)
+            min_price = 5.0
+            max_price = 500.0
+            if price_used < min_price or price_used > max_price:
+                included = False
+                exclude_stage = "LIQUIDITY_FILTER"
+                exclude_reason = "OUT_OF_PRICE_BAND"
+                exclude_detail = f"Price ${price_used:.2f} outside ${min_price}-${max_price} range"
+            
+            # Liquidity check (example: $1M daily dollar volume)
+            min_dollar_volume = 1_000_000
+            if included and dollar_volume < min_dollar_volume:
+                included = False
+                exclude_stage = "LIQUIDITY_FILTER"
+                exclude_reason = "LOW_LIQUIDITY_RANK"
+                exclude_detail = f"Dollar volume ${dollar_volume:,.0f} below ${min_dollar_volume:,.0f} threshold"
+        
+        # ================================================================
+        # STAGE 3: OPTIONS_CHAIN - Check chain availability
+        # (Only if previous stages passed)
+        # ================================================================
+        if included and chain_error:
             included = False
             if "stale" in chain_error.lower():
                 stale_chains += 1
+                exclude_stage = "CHAIN_QUALITY"
                 exclude_reason = "BAD_CHAIN_DATA"
                 exclude_detail = f"Stale chain: {chain_error}"
             elif "incomplete" in chain_error.lower():
                 incomplete_chains += 1
+                exclude_stage = "CONTRACT_QUALITY"
                 exclude_reason = "MISSING_CONTRACT_FIELDS"
                 exclude_detail = chain_error
             elif "empty" in chain_error.lower() or "no options" in chain_error.lower():
+                exclude_stage = "CHAIN_QUALITY"
                 exclude_reason = "CHAIN_EMPTY"
                 exclude_detail = chain_error
             else:
                 missing_chains += 1
+                exclude_stage = "OPTIONS_CHAIN"
                 exclude_reason = "MISSING_CHAIN"
                 exclude_detail = chain_error
-            
-            if exclude_reason and exclude_reason not in ["MISSING_QUOTE"]:  # Don't double-count
-                excluded_counts[exclude_reason] += 1
-        else:
+        elif included and not chain_error:
             valid_chains += 1
-            # Count as structure valid if both stock and chain are valid
-            if not stock_error:
-                structure_valid += 1
+            structure_valid += 1
         
-        # Create audit record
+        # ================================================================
+        # FORCED EXCLUSION TEST MODE (Development Only)
+        # ================================================================
+        if symbol.upper() in forced_exclude_symbols:
+            included = False
+            exclude_stage = "OTHER"
+            exclude_reason = "OTHER"
+            exclude_detail = "FORCED_TEST_EXCLUSION"
+        
+        # ================================================================
+        # Update exclusion counters
+        # ================================================================
+        if not included and exclude_stage and exclude_reason:
+            excluded_counts_by_stage[exclude_stage] += 1
+            excluded_counts_by_reason[exclude_reason] += 1
+            
+            # Legacy counter mapping
+            legacy_mapping = {
+                "MISSING_QUOTE": "MISSING_QUOTE",
+                "LOW_LIQUIDITY_RANK": "LOW_LIQUIDITY",
+                "OUT_OF_PRICE_BAND": "OUT_OF_PRICE_BAND",
+                "MISSING_CHAIN": "MISSING_CHAIN",
+                "CHAIN_EMPTY": "CHAIN_EMPTY",
+                "BAD_CHAIN_DATA": "BAD_CHAIN_DATA",
+                "MISSING_CONTRACT_FIELDS": "MISSING_CONTRACT_FIELDS",
+                "OTHER": "OTHER"
+            }
+            legacy_key = legacy_mapping.get(exclude_reason, "OTHER")
+            if legacy_key in excluded_counts:
+                excluded_counts[legacy_key] += 1
+        
+        # ================================================================
+        # Create audit record (one per symbol, included or excluded)
+        # ================================================================
         audit_records.append({
             "run_id": run_id,
             "symbol": symbol,
             "included": included,
+            "exclude_stage": exclude_stage,
             "exclude_reason": exclude_reason,
             "exclude_detail": exclude_detail,
             "price_used": price_used,
