@@ -69,6 +69,14 @@ from services.quote_cache_service import get_quote_cache
 # Import SnapshotService for stock metadata (not for options)
 from services.snapshot_service import SnapshotService
 
+# Universe Builder for tiered symbol universe and ETF detection
+from utils.universe import (
+    is_etf,
+    get_scan_universe,
+    get_tier_counts,
+    ETF_WHITELIST
+)
+
 # ADR-001: EOD Market Close Price Contract (for stock prices ONLY)
 from services.eod_ingestion_service import (
     EODPriceContract,
