@@ -1046,7 +1046,7 @@ async def screen_covered_calls(
                 "strike": strike,
                 "open_interest": oi,
                 "volume": volume,
-                "is_etf": symbol in ETF_SYMBOLS,
+                "is_etf": is_etf(symbol),  # Use imported function
                 "market_cap": market_cap,
                 "analyst_rating": None
             }
