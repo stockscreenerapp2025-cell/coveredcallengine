@@ -189,25 +189,20 @@ SP500_SYMBOLS: List[str] = [
 # ============================================================
 # NASDAQ 100 CONSTITUENTS (Tier 2 - net of S&P overlap)
 # ============================================================
-# Nasdaq 100 symbols NOT in S&P 500 (to avoid duplicates)
+# Nasdaq 100 symbols NOT already in S&P 500
+# These are typically recent additions or non-S&P members
 
 NASDAQ100_NET: List[str] = [
-    # Tech not in S&P 500
-    "MRVL", "ON", "TEAM", "WDAY", "ZM", "OKTA", "DDOG", "SPLK", "VEEV",
-    "ANSS", "CPRT", "FAST", "IDXX", "ODFL", "PAYX", "VRSK", "CSGP",
-    "SIRI", "WBA", "DLTR", "EBAY", "EXPE", "JD", "LCID", "MELI", "PDD",
-    "PTON", "SGEN", "VRSN", "XEL", "ZS",
+    # Chinese ADRs (not in S&P)
+    "BIDU", "JD", "PDD", "NTES", 
     
-    # Biotech
-    "BIIB", "ILMN", "MRNA", "BNTX", "ALGN", "DXCM",
+    # Tech not yet in S&P
+    "MELI", "TEAM", "WDAY", "ZM", "OKTA", "SPLK", "VEEV", "MDB", "DKNG",
+    "PTON", "SGEN", "MRNA", "BNTX", "ILMN",
     
-    # Chinese ADRs in Nasdaq
-    "BIDU", "NTES", "BABA",
-    
-    # Other Nasdaq 100
-    "ADP", "CEG", "CTAS", "CSX", "FANG", "GILD", "HON", "KDP", "KHC",
-    "MAR", "MCHP", "MDLZ", "MNST", "NXPI", "PCAR", "REGN", "ROST",
-    "SBUX", "TMUS", "VRSK", "WBD",
+    # Other Nasdaq 100 not in S&P
+    "MRVL", "KDP", "MNST", "PCAR", "CSGP", "WBA", "SIRI", "CPRT",
+    "FAST", "PAYX", "CEG", "CTAS",
 ]
 
 
