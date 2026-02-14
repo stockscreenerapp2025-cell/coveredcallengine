@@ -2109,14 +2109,16 @@ async def get_admin_status(user: dict = Depends(get_current_user)):
     
     # Persist audit records to database
     try:
+        print(f"[AUDIT] Created {len(audit_records)} records, attempting to persist")
         if audit_records:
-            logging.info(f"Attempting to persist {len(audit_records)} audit records for run_id={run_id}")
             result = await db.scan_universe_audit.insert_many(audit_records)
-            logging.info(f"Successfully persisted {len(result.inserted_ids)} universe audit records for run_id={run_id}")
+            print(f"[AUDIT] Successfully persisted {len(result.inserted_ids)} universe audit records for run_id={run_id}")
         else:
-            logging.warning(f"No audit records to persist for run_id={run_id}")
+            print(f"[AUDIT] WARNING: No audit records to persist for run_id={run_id}")
     except Exception as e:
-        logging.error(f"Failed to persist universe audit for run_id={run_id}: {e}", exc_info=True)
+        print(f"[AUDIT] ERROR: Failed to persist universe audit for run_id={run_id}: {e}")
+        import traceback
+        traceback.print_exc()
     
     # Get market state
     current_market_state = get_market_state()
