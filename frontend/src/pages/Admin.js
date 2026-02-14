@@ -163,6 +163,16 @@ const Admin = () => {
   const [triggeringScan, setTriggeringScan] = useState(false);
   const [lastScanResult, setLastScanResult] = useState(null);
 
+  // Universe Exclusions Drilldown (Data Quality Tab)
+  const [exclusionDrilldown, setExclusionDrilldown] = useState({
+    open: false,
+    reason: null,
+    data: [],
+    loading: false,
+    offset: 0,
+    total: 0
+  });
+
   useEffect(() => {
     fetchSettings();
     fetchDashboardStats();
