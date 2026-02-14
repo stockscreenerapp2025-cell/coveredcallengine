@@ -200,7 +200,6 @@ async def get_options_chain(
     
     now_et_time = _now_et()
     system_mode = get_system_mode()
-    market_state_info = get_market_state_info()
     
     # EOD_LOCKED: Serve from snapshot only - NO live Yahoo calls
     if system_mode == "EOD_LOCKED":
