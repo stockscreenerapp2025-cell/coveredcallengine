@@ -132,8 +132,9 @@ def get_eod_contract() -> EODPriceContract:
 # Thread pool for analyst ratings (still needed for scoring enrichment)
 _analyst_executor = ThreadPoolExecutor(max_workers=10)
 
-# ETF symbols for special handling
-ETF_SYMBOLS = {"SPY", "QQQ", "IWM", "DIA", "XLF", "XLE", "XLK", "XLV", "XLI", "XLB", "XLU", "XLP", "XLY", "GLD", "SLV", "ARKK", "ARKG", "ARKW", "TLT", "EEM", "VXX", "UVXY", "SQQQ", "TQQQ"}
+# ETF symbols for special handling - now using centralized universe builder
+# is_etf(symbol) function should be used instead of checking this set directly
+ETF_SYMBOLS = ETF_WHITELIST  # Re-export for backward compatibility
 
 # ============================================================
 # LAYER 3 CONSTANTS - CC ELIGIBILITY FILTERS
