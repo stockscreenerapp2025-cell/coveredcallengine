@@ -1196,6 +1196,137 @@ async def get_cache_entries(
         return {"error": str(e)}
 
 
+
+# ==================== EOD MARKET SNAPSHOT MANAGEMENT ====================
+
+@admin_router.post("/eod-snapshot/trigger")
+async def trigger_eod_snapshot(
+    admin: dict = Depends(get_admin_user)
+):
+    """
+    Manually trigger EOD market snapshot generation.
+    
+    Creates a synchronized snapshot of underlying prices and option chains
+    for all symbols in the universe.
+    
+    WARNING: This should normally only run at 4:05 PM ET via scheduler.
+    Manual triggering is for testing and recovery purposes only.
+    """
+    from services.eod_snapshot_service import get_eod_snapshot_service
+    from routes.eod import EOD_SYMBOLS
+    from utils.market_state import now_et, log_eod_event
+    
+    logging.info(f"[EOD-SNAPSHOT] Manual trigger by admin: {admin.get('email')}")
+    
+    # Get API key for data fetching
+    settings = await db.admin_settings.find_one(
+        {"massive_api_key": {"$exists": True}}, 
+        {"_id": 0}
+    )
+    api_key = settings.get("massive_api_key") if settings else None
+    
+    eod_service = get_eod_snapshot_service(db)
+    await eod_service.ensure_indexes()
+    
+    results = await eod_service.create_eod_snapshot(
+        symbols=EOD_SYMBOLS,
+        api_key=api_key
+    )
+    
+    log_eod_event(
+        "MANUAL_SNAPSHOT_TRIGGERED",
+        triggered_by=admin.get("email"),
+        run_id=results["run_id"]
+    )
+    
+    return {
+        "status": "completed",
+        "triggered_by": admin.get("email"),
+        "triggered_at": now_et().isoformat(),
+        **results
+    }
+
+
+@admin_router.get("/eod-snapshot/status")
+async def get_eod_snapshot_admin_status(
+    trade_date: Optional[str] = Query(None, description="Trade date (YYYY-MM-DD)"),
+    admin: dict = Depends(get_admin_user)
+):
+    """
+    Get detailed status of EOD market snapshots.
+    
+    Returns snapshot availability, symbols covered, and audit information.
+    """
+    from services.eod_snapshot_service import get_eod_snapshot_service
+    from utils.market_state import get_system_mode, get_last_trading_day, now_et
+    
+    eod_service = get_eod_snapshot_service(db)
+    
+    if not trade_date:
+        trade_date = get_last_trading_day()
+    
+    # Get basic status
+    status = await eod_service.get_snapshot_status(trade_date)
+    
+    # Get list of available symbols
+    available_symbols = await eod_service.list_available_symbols(trade_date)
+    
+    # Get failures from audit collection
+    failures = await db.eod_snapshot_audit.find(
+        {"as_of": {"$gte": datetime.strptime(trade_date, '%Y-%m-%d').replace(tzinfo=timezone.utc)},
+         "included": False}
+    ).to_list(100)
+    
+    return {
+        **status,
+        "available_symbols": available_symbols,
+        "available_count": len(available_symbols),
+        "failures": [{"symbol": f.get("symbol"), "reason": f.get("exclude_reason"), "detail": f.get("exclude_detail")} for f in failures],
+        "current_time_et": now_et().isoformat()
+    }
+
+
+@admin_router.get("/eod-snapshot/sample/{symbol}")
+async def get_eod_snapshot_sample(
+    symbol: str,
+    trade_date: Optional[str] = Query(None, description="Trade date (YYYY-MM-DD)"),
+    admin: dict = Depends(get_admin_user)
+):
+    """
+    Get sample EOD snapshot for a specific symbol.
+    
+    Returns the full snapshot document including underlying price and option chain.
+    """
+    from services.eod_snapshot_service import get_eod_snapshot_service
+    from utils.market_state import get_last_trading_day
+    
+    eod_service = get_eod_snapshot_service(db)
+    
+    if not trade_date:
+        trade_date = get_last_trading_day()
+    
+    snapshot = await eod_service.get_snapshot(symbol.upper(), trade_date)
+    
+    if not snapshot:
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "data_status": "EOD_SNAPSHOT_NOT_FOUND",
+                "symbol": symbol.upper(),
+                "trade_date": trade_date
+            }
+        )
+    
+    # Limit option chain to first 5 contracts for sample view
+    if snapshot.get("option_chain"):
+        snapshot["option_chain_sample"] = snapshot["option_chain"][:5]
+        snapshot["option_chain_total"] = len(snapshot["option_chain"])
+        del snapshot["option_chain"]
+    
+    return snapshot
+
+
+
 # ==================== IV METRICS VERIFICATION (CCE Volatility & Greeks Correctness) ====================
 
 @admin_router.get("/iv-metrics/check/{symbol}")
