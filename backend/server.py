@@ -974,19 +974,32 @@ async def health():
 
 @api_router.get("/market-status")
 async def get_market_status():
-    """Get current market status (open/closed) and relevant times"""
+    """
+    Get current market status (open/closed), system mode, and relevant times.
+    
+    SYSTEM MODES:
+    - LIVE: During market hours (9:30 AM - 4:05 PM ET), use live data
+    - EOD_LOCKED: After 4:05 PM ET, serve ONLY from eod_market_snapshot
+    """
     try:
+        from utils.market_state import get_system_mode, get_market_state_info
+        
         eastern = pytz.timezone('US/Eastern')
         now_eastern = datetime.now(eastern)
         
         market_open_time = now_eastern.replace(hour=9, minute=30, second=0, microsecond=0)
         market_close_time = now_eastern.replace(hour=16, minute=0, second=0, microsecond=0)
+        eod_lock_time = now_eastern.replace(hour=16, minute=5, second=0, microsecond=0)
         
         is_weekend = now_eastern.weekday() >= 5
         is_before_open = now_eastern < market_open_time
         is_after_close = now_eastern > market_close_time
+        is_after_lock = now_eastern >= eod_lock_time
         
         market_closed = is_weekend or is_before_open or is_after_close
+        
+        # Get system mode from market_state utility
+        system_mode = get_system_mode()
         
         status = "closed"
         reason = ""
@@ -1004,6 +1017,16 @@ async def get_market_status():
             status = "open"
             reason = "Market is open"
         
+        # Data note based on system mode
+        if system_mode == "EOD_LOCKED":
+            data_note = "Data served from 4:05 PM ET EOD snapshot (deterministic, frozen)"
+        elif is_weekend:
+            data_note = "Data shown is from Friday's market close"
+        elif market_closed:
+            data_note = "Data is cached from market hours"
+        else:
+            data_note = "Live market data"
+        
         return {
             "status": status,
             "is_open": not market_closed,
@@ -1012,7 +1035,11 @@ async def get_market_status():
             "current_time_et": now_eastern.strftime("%Y-%m-%d %H:%M:%S ET"),
             "market_open": "9:30 AM ET",
             "market_close": "4:00 PM ET",
-            "data_note": "Data shown is from Friday's market close" if is_weekend else ("Data is cached from market hours" if market_closed else "Live market data")
+            "eod_lock_time": "4:05 PM ET",
+            "system_mode": system_mode,
+            "is_eod_locked": system_mode == "EOD_LOCKED",
+            "is_after_lock": is_after_lock,
+            "data_note": data_note
         }
     except Exception as e:
         logging.error(f"Market status error: {e}")
