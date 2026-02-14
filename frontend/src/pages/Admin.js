@@ -229,6 +229,43 @@ const Admin = () => {
     }
   };
 
+  // Fetch exclusion drilldown data for a specific reason
+  const fetchExclusionDrilldown = async (reason, offset = 0) => {
+    setExclusionDrilldown(prev => ({ ...prev, loading: true, reason, offset }));
+    try {
+      const runId = screenerStatus?.run_id;
+      const params = new URLSearchParams({
+        limit: '100',
+        offset: String(offset)
+      });
+      if (runId) params.append('run_id', runId);
+      if (reason) params.append('reason', reason);
+      
+      const response = await api.get(`/admin/universe/excluded?${params.toString()}`);
+      setExclusionDrilldown(prev => ({
+        ...prev,
+        open: true,
+        data: response.data.items || [],
+        total: response.data.total || 0,
+        loading: false
+      }));
+    } catch (error) {
+      console.error('Exclusion drilldown error:', error);
+      toast.error('Failed to fetch exclusion details');
+      setExclusionDrilldown(prev => ({ ...prev, loading: false }));
+    }
+  };
+
+  // Get CSV download URL for exclusions
+  const getExclusionCsvUrl = (reason) => {
+    const runId = screenerStatus?.run_id;
+    const backendUrl = process.env.REACT_APP_BACKEND_URL || '';
+    const params = new URLSearchParams();
+    if (runId) params.append('run_id', runId);
+    if (reason) params.append('reason', reason);
+    return `${backendUrl}/api/admin/universe/excluded.csv?${params.toString()}`;
+  };
+
 
 
   const fetchSubscriptionSettings = async () => {
