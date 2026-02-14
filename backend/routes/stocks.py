@@ -5,6 +5,7 @@ PHASE 1 REFACTOR (December 2025):
 - All stock quotes now route through services/data_provider.py
 - Yahoo Finance is primary source, Polygon is backup (via data_provider)
 - MOCK_STOCKS retained for fallback but flagged
+- Mock fallback blocked in production (ENVIRONMENT check)
 """
 from fastapi import APIRouter, Depends, Query, HTTPException
 from datetime import datetime, timedelta
@@ -19,6 +20,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from utils.auth import get_current_user
+from utils.environment import allow_mock_data, check_mock_fallback, DataUnavailableError
 from services.data_provider import fetch_stock_quote, fetch_live_stock_quote
 
 # Lazy import yfinance to avoid startup slowdown (retained for analyst ratings)
@@ -51,7 +53,7 @@ async def get_stock_quote(symbol: str, user: dict = Depends(get_current_user)):
     PHASE 1 REFACTOR: Now routes through data_provider.py
     - Primary: Yahoo Finance (via data_provider.fetch_stock_quote)
     - Backup: Polygon (via data_provider fallback)
-    - Last Resort: MOCK_STOCKS (flagged with is_mock=True)
+    - Last Resort: MOCK_STOCKS (only in dev/test, blocked in production)
     """
     MOCK_STOCKS, _, get_massive_api_key, _ = _get_server_data()
     
@@ -78,20 +80,32 @@ async def get_stock_quote(symbol: str, user: dict = Depends(get_current_user)):
     except Exception as e:
         logging.error(f"data_provider fetch_stock_quote error for {symbol}: {e}")
     
-    # Fallback to mock data (flagged)
-    if symbol in MOCK_STOCKS:
-        data = MOCK_STOCKS[symbol]
-        logging.warning(f"Using MOCK_STOCKS fallback for {symbol}")
-        return {
-            "symbol": symbol,
-            "price": data["price"],
-            "change": data["change"],
-            "change_pct": data["change_pct"],
-            "volume": data["volume"],
-            "pe": data["pe"],
-            "roe": data["roe"],
-            "is_mock": True  # FLAG: Mock data in use
-        }
+    # Check if mock fallback is allowed (raises in production)
+    try:
+        if symbol in MOCK_STOCKS and allow_mock_data():
+            check_mock_fallback(
+                symbol=symbol,
+                reason="YAHOO_AND_POLYGON_UNAVAILABLE",
+                details="Primary and backup data providers failed"
+            )
+            data = MOCK_STOCKS[symbol]
+            logging.warning(f"Using MOCK_STOCKS fallback for {symbol}")
+            return {
+                "symbol": symbol,
+                "price": data["price"],
+                "change": data["change"],
+                "change_pct": data["change_pct"],
+                "volume": data["volume"],
+                "pe": data["pe"],
+                "roe": data["roe"],
+                "is_mock": True  # FLAG: Mock data in use
+            }
+    except DataUnavailableError as e:
+        # Production: return structured unavailability response
+        raise HTTPException(
+            status_code=503,
+            detail=e.to_dict()
+        )
     
     raise HTTPException(status_code=404, detail=f"Stock {symbol} not found")
 
