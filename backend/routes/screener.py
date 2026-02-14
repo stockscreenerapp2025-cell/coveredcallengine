@@ -1087,7 +1087,20 @@ async def screen_pmcc(
     api_key = await funcs['get_massive_api_key']()
     
     if not api_key:
-        return {"opportunities": [], "total": 0, "message": "API key required for PMCC screening", "is_mock": True}
+        if allow_mock_data():
+            logging.warning("MOCK_FALLBACK_USED | endpoint=pmcc | reason=NO_API_KEY")
+            return {"opportunities": [], "total": 0, "message": "API key required for PMCC screening", "is_mock": True}
+        else:
+            logging.warning("MOCK_FALLBACK_BLOCKED_PRODUCTION | endpoint=pmcc | reason=NO_API_KEY")
+            raise HTTPException(
+                status_code=503,
+                detail={
+                    "data_status": "UNAVAILABLE",
+                    "reason": "NO_API_KEY",
+                    "details": "API key required for PMCC screening",
+                    "is_mock": False
+                }
+            )
     
     try:
         # ========== MARKET-STATE AWARE PRICING ==========
