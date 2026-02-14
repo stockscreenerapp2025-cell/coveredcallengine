@@ -927,32 +927,31 @@ async def get_symbol_snapshot(
 
     # PATH-AWARE EXECUTION (Feb 2026 User Path Speed Fix)
     if is_scan_path:
-        # SCAN PATH: Use bounded concurrency via ResilientYahooFetcher
-        _cache_metrics["yahoo_calls"] += 1
-        if not result["stock_data"]:
-            stock_data = await _resilient_fetcher.fetch_with_backoff(_fetch_stock_quote_yahoo_sync, symbol)
-            if stock_data and stock_data.get("price", 0) > 0:
-                result["stock_data"] = stock_data
-                await _store_snapshot_cache(db, symbol, stock_data)
-            else:
-                result["fetch_time_ms"] = (time.time() - start) * 1000
-                return result
+        # SCAN PATH: Use semaphore for bounded concurrency
+        async with _yahoo_semaphore:
+            _cache_metrics["yahoo_calls"] += 1
+            if not result["stock_data"]:
+                stock_data = await fetch_stock_quote(symbol, api_key)
+                if stock_data and stock_data.get("price", 0) > 0:
+                    result["stock_data"] = stock_data
+                    await _store_snapshot_cache(db, symbol, stock_data)
+                else:
+                    result["fetch_time_ms"] = (time.time() - start) * 1000
+                    return result
 
-        if include_options:
-            current_price = result["stock_data"].get("price", 0)
-            options_data = await _resilient_fetcher.fetch_with_backoff(
-                _fetch_options_chain_yahoo_sync, symbol, max_dte, min_dte, "call", current_price
-            )
-            if options_data:
-                result["options_data"] = options_data
-                options_metadata = {
-                    "count": len(options_data),
-                    "expiries": list(set(o.get("expiry", "") for o in options_data)),
-                    "fetched_at": datetime.now(timezone.utc).isoformat(),
-                }
-                await _store_snapshot_cache(db, symbol, result["stock_data"], options_metadata)
+            if include_options:
+                current_price = result["stock_data"].get("price", 0)
+                options_data = await fetch_options_chain(symbol, api_key, "call", max_dte, min_dte, current_price)
+                if options_data:
+                    result["options_data"] = options_data
+                    options_metadata = {
+                        "count": len(options_data),
+                        "expiries": list(set(o.get("expiry", "") for o in options_data)),
+                        "fetched_at": datetime.now(timezone.utc).isoformat(),
+                    }
+                    await _store_snapshot_cache(db, symbol, result["stock_data"], options_metadata)
     else:
-        # USER PATH: Direct executor access for maximum speed (NO semaphore)
+        # USER PATH: Direct executor access for maximum speed (NO semaphore blocking)
         _cache_metrics["yahoo_calls"] += 1
         if not result["stock_data"]:
             stock_data = await fetch_stock_quote(symbol, api_key)
@@ -961,6 +960,8 @@ async def get_symbol_snapshot(
                 await _store_snapshot_cache(db, symbol, stock_data)
             else:
                 result["fetch_time_ms"] = (time.time() - start) * 1000
+                # Record latency for user path (even failures)
+                record_user_path_latency(result["fetch_time_ms"], "get_symbol_snapshot")
                 return result
 
         if include_options:
