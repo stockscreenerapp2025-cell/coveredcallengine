@@ -1,7 +1,88 @@
 # Covered Call Engine - Product Requirements Document
 
 ## Last Updated
-2026-02-14 - Scan Timeout Fix COMPLETE
+2026-02-14 - Universe Expansion Phase 1 & 2 COMPLETE
+
+---
+
+## Universe Expansion - COMPLETED 2026-02-14
+
+### Status: ✅ COMPLETE (Phase 1 & Phase 2)
+
+### Objective:
+Expand scan universe from fixed ~60 symbols to S&P500 + Nasdaq100 + ETF whitelist (~340+ symbols), with proper ETF handling that skips fundamental data fetch.
+
+### Phase 1: ETF Handling (Complete)
+**Goal:** Make ETFs first-class citizens in scans by skipping fundamentals cleanly
+
+**Implementation:**
+1. **`is_etf(symbol)` function** - Centralized ETF detection using whitelist
+   - Located in `/backend/utils/universe.py`
+   - Returns True for 37 whitelisted ETFs (SPY, QQQ, IWM, sector ETFs, etc.)
+   
+2. **Scan Pipeline Changes:**
+   - Covered Call scan (`precomputed_scans.py`): Skips `fetch_fundamental_data()` for ETFs
+   - PMCC scan (`precomputed_scans.py`): Skips `passes_fundamental_filters()` for ETFs
+   - No 404 errors logged for ETF fundamentals
+   - ETFs get neutral fundamental score (0 points, not penalized)
+
+3. **Audit Ledger:**
+   - ETF symbols show `fundamentals_skipped: true`
+   - ETFs auto-pass fundamental stage in stats
+
+### Phase 2: Universe Expansion v1 (Complete)
+**Goal:** Expand universe to S&P500 + Nasdaq100 + ETF whitelist
+
+**Implementation:**
+1. **Universe Builder** (`/backend/utils/universe.py`):
+   - `SP500_SYMBOLS`: ~263 liquid S&P 500 stocks
+   - `NASDAQ100_NET`: ~41 Nasdaq 100 symbols (net of S&P overlap)
+   - `ETF_WHITELIST`: 37 liquid options ETFs
+   - `build_scan_universe()`: Combines tiers, respects MAX_SCAN_UNIVERSE limit
+
+2. **Configuration:**
+   | Variable | Default | Description |
+   |----------|---------|-------------|
+   | MAX_SCAN_UNIVERSE | 700 | Maximum symbols in scan universe |
+   | UNIVERSE_INCLUDE_ETF | true | Include ETF whitelist |
+   | UNIVERSE_INCLUDE_NASDAQ | true | Include Nasdaq 100 net |
+
+3. **Admin Status Updates:**
+   - `GET /api/screener/admin-status` now returns `tier_counts`:
+     ```json
+     "tier_counts": {
+       "sp500": 263,
+       "nasdaq100_net": 41,
+       "etf_whitelist": 37,
+       "liquidity_expansion": 0,
+       "total": 341
+     }
+     ```
+   - Exclusion tracking works with expanded universe
+
+### New Files:
+- `/backend/utils/universe.py` - Universe builder and ETF detection
+
+### Modified Files:
+- `/backend/services/precomputed_scans.py` - ETF fundamental skip logic
+- `/backend/routes/screener_snapshot.py` - Uses universe builder, returns tier_counts
+- `/backend/routes/screener.py` - Uses centralized ETF detection
+- `/backend/.env` - Added MAX_SCAN_UNIVERSE, UNIVERSE_INCLUDE_* vars
+
+### API Changes:
+| Endpoint | Change |
+|----------|--------|
+| `/api/screener/admin-status` | Added `universe.tier_counts` field |
+
+### ETF Whitelist (37 symbols):
+- Major Index: SPY, QQQ, IWM, DIA
+- Sectors: XLF, XLE, XLK, XLV, XLI, XLB, XLU, XLP, XLY, XLRE, XLC
+- Commodities: GLD, SLV, USO
+- Bonds: TLT, HYG, LQD
+- International: EEM, EFA, FXI
+- Volatility: VXX, UVXY, SQQQ, TQQQ, SPXU, SPXL
+- Thematic: ARKK, ARKG, ARKW, ARKF
+- Small/Mid: IJR, IJH, MDY
 
 ---
 
