@@ -852,7 +852,8 @@ async def screen_covered_calls(
         symbols=SCAN_SYMBOLS,
         api_key=None,  # Not needed for Yahoo-only mode
         include_options=False,  # Options fetched live below
-        batch_size=10
+        batch_size=10,
+        is_scan_path=True  # Use bounded concurrency for screener
     )
     
     for symbol in SCAN_SYMBOLS:
