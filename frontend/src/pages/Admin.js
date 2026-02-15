@@ -1212,15 +1212,13 @@ const Admin = () => {
                     </CardTitle>
                     <CardDescription>Click a reason to view excluded symbols</CardDescription>
                   </div>
-                  <a
-                    href={getExclusionCsvUrl(null)}
-                    target="_blank"
-                    rel="noopener noreferrer"
+                  <button
+                    onClick={() => downloadExclusionCsv(null)}
                     className="inline-flex items-center gap-2 px-3 py-2 text-sm bg-zinc-700 hover:bg-zinc-600 rounded-lg transition-colors"
                   >
                     <Download className="w-4 h-4" />
                     Download All CSV
-                  </a>
+                  </button>
                 </CardHeader>
                 <CardContent>
                   {excludedCountsByReason ? (
