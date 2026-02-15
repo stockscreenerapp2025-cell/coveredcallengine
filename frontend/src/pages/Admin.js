@@ -1259,15 +1259,13 @@ const Admin = () => {
                                       >
                                         <Eye className="w-4 h-4" />
                                       </button>
-                                      <a
-                                        href={getExclusionCsvUrl(reason)}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
+                                      <button
+                                        onClick={() => downloadExclusionCsv(reason)}
                                         className="p-1.5 rounded hover:bg-zinc-700 text-zinc-400 hover:text-white"
                                         title="Download CSV"
                                       >
                                         <Download className="w-4 h-4" />
-                                      </a>
+                                      </button>
                                     </div>
                                   </td>
                                 </tr>
