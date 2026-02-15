@@ -2025,81 +2025,41 @@ async def get_admin_status(user: dict = Depends(get_current_user)):
     from utils.environment import is_production
     
     # ================================================================
-    # READ-ONLY MODE: Pull from latest 4:05 PM ET snapshot/audit run
-    # No live Yahoo fetching to avoid rate limits
+    # FAST READ-ONLY MODE: Read from scan_run_summary (denormalized)
+    # No aggregation across audit rows - single document lookup
     # ================================================================
     
     now_utc = datetime.now(timezone.utc)
     total_symbols = len(SCAN_SYMBOLS)
     
-    # Get tier counts from universe builder
+    # Get tier counts from universe builder (cached)
     tier_counts = get_tier_counts()
     
     # ================================================================
-    # QUERY LATEST AUDIT RUN FROM DATABASE
+    # QUERY LATEST SCAN_RUN_SUMMARY (single document, indexed)
     # ================================================================
-    # Find the most recent audit run_id
-    latest_run = await db.scan_universe_audit.find_one(
+    latest_summary = await db.scan_run_summary.find_one(
         {},
-        sort=[("as_of", -1)],
-        projection={"run_id": 1, "as_of": 1}
+        sort=[("as_of", -1)]
     )
     
-    if latest_run:
-        run_id = latest_run["run_id"]
-        last_audit_at = latest_run["as_of"]
+    if latest_summary:
+        # Fast path: read pre-computed values from summary document
+        run_id = latest_summary.get("run_id")
+        last_audit_at = latest_summary.get("as_of")
+        structure_valid = latest_summary.get("included", 0)
+        total_excluded = latest_summary.get("excluded", 0)
+        valid_chains = structure_valid  # Approximation
         
-        # Aggregate counts from the audit collection for this run
-        pipeline = [
-            {"$match": {"run_id": run_id}},
-            {"$group": {
-                "_id": None,
-                "total": {"$sum": 1},
-                "included": {"$sum": {"$cond": ["$included", 1, 0]}},
-                "excluded": {"$sum": {"$cond": ["$included", 0, 1]}}
-            }}
-        ]
+        # Pre-computed exclusion breakdowns
+        excluded_counts_by_stage = latest_summary.get("excluded_counts_by_stage", {})
+        excluded_counts_by_reason = latest_summary.get("excluded_counts_by_reason", {})
         
-        agg_result = await db.scan_universe_audit.aggregate(pipeline).to_list(1)
+        # Use tier_counts from summary if available, else from universe builder
+        if latest_summary.get("tier_counts"):
+            tier_counts = latest_summary["tier_counts"]
         
-        if agg_result:
-            stats = agg_result[0]
-            structure_valid = stats.get("included", 0)
-            total_excluded = stats.get("excluded", 0)
-        else:
-            structure_valid = 0
-            total_excluded = 0
-        
-        # Get exclusion breakdown by stage
-        stage_pipeline = [
-            {"$match": {"run_id": run_id, "included": False, "exclude_stage": {"$ne": None}}},
-            {"$group": {"_id": "$exclude_stage", "count": {"$sum": 1}}}
-        ]
-        stage_results = await db.scan_universe_audit.aggregate(stage_pipeline).to_list(100)
-        excluded_counts_by_stage = {
-            "QUOTE": 0, "LIQUIDITY_FILTER": 0, "OPTIONS_CHAIN": 0,
-            "CHAIN_QUALITY": 0, "CONTRACT_QUALITY": 0, "OTHER": 0
-        }
-        for r in stage_results:
-            if r["_id"] in excluded_counts_by_stage:
-                excluded_counts_by_stage[r["_id"]] = r["count"]
-        
-        # Get exclusion breakdown by reason
-        reason_pipeline = [
-            {"$match": {"run_id": run_id, "included": False, "exclude_reason": {"$ne": None}}},
-            {"$group": {"_id": "$exclude_reason", "count": {"$sum": 1}}}
-        ]
-        reason_results = await db.scan_universe_audit.aggregate(reason_pipeline).to_list(100)
-        excluded_counts_by_reason = {
-            "MISSING_QUOTE": 0, "LOW_LIQUIDITY_RANK": 0, "OUT_OF_PRICE_BAND": 0,
-            "MISSING_CHAIN": 0, "CHAIN_EMPTY": 0, "BAD_CHAIN_DATA": 0,
-            "MISSING_CONTRACT_FIELDS": 0, "OTHER": 0
-        }
-        for r in reason_results:
-            if r["_id"] in excluded_counts_by_reason:
-                excluded_counts_by_reason[r["_id"]] = r["count"]
-        
-        # Legacy format
+        # Legacy format for backward compatibility
         excluded_counts = {
             "OUT_OF_RULES": 0,
             "OUT_OF_PRICE_BAND": excluded_counts_by_reason.get("OUT_OF_PRICE_BAND", 0),
@@ -2112,22 +2072,67 @@ async def get_admin_status(user: dict = Depends(get_current_user)):
             "OTHER": excluded_counts_by_reason.get("OTHER", 0)
         }
         
-        valid_chains = structure_valid  # Approximation
-        
     else:
-        # No audit data yet - return empty/placeholder stats
-        run_id = None
-        last_audit_at = None
-        structure_valid = 0
-        total_excluded = 0
-        valid_chains = 0
-        excluded_counts_by_stage = {
-            "QUOTE": 0, "LIQUIDITY_FILTER": 0, "OPTIONS_CHAIN": 0,
-            "CHAIN_QUALITY": 0, "CONTRACT_QUALITY": 0, "OTHER": 0
-        }
-        excluded_counts_by_reason = {
-            "MISSING_QUOTE": 0, "LOW_LIQUIDITY_RANK": 0, "OUT_OF_PRICE_BAND": 0,
-            "MISSING_CHAIN": 0, "CHAIN_EMPTY": 0, "BAD_CHAIN_DATA": 0,
+        # Fallback: Try reading from audit collection (slower path)
+        latest_run = await db.scan_universe_audit.find_one(
+            {},
+            sort=[("as_of", -1)],
+            projection={"run_id": 1, "as_of": 1}
+        )
+        
+        if latest_run:
+            run_id = latest_run["run_id"]
+            last_audit_at = latest_run["as_of"]
+            
+            # Count included/excluded (uses index)
+            structure_valid = await db.scan_universe_audit.count_documents({"run_id": run_id, "included": True})
+            total_excluded = await db.scan_universe_audit.count_documents({"run_id": run_id, "included": False})
+            valid_chains = structure_valid
+            
+            # Minimal aggregation for breakdowns (uses indexes)
+            stage_pipeline = [
+                {"$match": {"run_id": run_id, "included": False, "exclude_stage": {"$ne": None}}},
+                {"$group": {"_id": "$exclude_stage", "count": {"$sum": 1}}}
+            ]
+            stage_results = await db.scan_universe_audit.aggregate(stage_pipeline).to_list(100)
+            excluded_counts_by_stage = {}
+            for r in stage_results:
+                excluded_counts_by_stage[r["_id"]] = r["count"]
+            
+            reason_pipeline = [
+                {"$match": {"run_id": run_id, "included": False, "exclude_reason": {"$ne": None}}},
+                {"$group": {"_id": "$exclude_reason", "count": {"$sum": 1}}}
+            ]
+            reason_results = await db.scan_universe_audit.aggregate(reason_pipeline).to_list(100)
+            excluded_counts_by_reason = {}
+            for r in reason_results:
+                excluded_counts_by_reason[r["_id"]] = r["count"]
+            
+            excluded_counts = {
+                "OUT_OF_RULES": 0,
+                "OUT_OF_PRICE_BAND": excluded_counts_by_reason.get("OUT_OF_PRICE_BAND", 0),
+                "LOW_LIQUIDITY": excluded_counts_by_reason.get("LOW_LIQUIDITY_RANK", 0),
+                "MISSING_QUOTE": excluded_counts_by_reason.get("MISSING_QUOTE", 0),
+                "MISSING_CHAIN": excluded_counts_by_reason.get("MISSING_CHAIN", 0),
+                "CHAIN_EMPTY": excluded_counts_by_reason.get("CHAIN_EMPTY", 0),
+                "BAD_CHAIN_DATA": excluded_counts_by_reason.get("BAD_CHAIN_DATA", 0),
+                "MISSING_CONTRACT_FIELDS": excluded_counts_by_reason.get("MISSING_CONTRACT_FIELDS", 0),
+                "OTHER": excluded_counts_by_reason.get("OTHER", 0)
+            }
+        else:
+            # No audit data yet - return empty/placeholder stats
+            run_id = None
+            last_audit_at = None
+            structure_valid = 0
+            total_excluded = 0
+            valid_chains = 0
+            excluded_counts_by_stage = {}
+            excluded_counts_by_reason = {}
+            excluded_counts = {
+                "OUT_OF_RULES": 0, "OUT_OF_PRICE_BAND": 0, "LOW_LIQUIDITY": 0,
+                "MISSING_QUOTE": 0, "MISSING_CHAIN": 0, "CHAIN_EMPTY": 0,
+                "BAD_CHAIN_DATA": 0, "MISSING_CONTRACT_FIELDS": 0, "OTHER": 0
+            }
             "MISSING_CONTRACT_FIELDS": 0, "OTHER": 0
         }
         excluded_counts = {
