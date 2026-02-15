@@ -259,14 +259,40 @@ const Admin = () => {
     }
   };
 
-  // Get CSV download URL for exclusions
-  const getExclusionCsvUrl = (reason) => {
-    const runId = screenerStatus?.run_id;
-    const backendUrl = process.env.REACT_APP_BACKEND_URL || '';
-    const params = new URLSearchParams();
-    if (runId) params.append('run_id', runId);
-    if (reason) params.append('reason', reason);
-    return `${backendUrl}/api/admin/universe/excluded.csv?${params.toString()}`;
+  // Download CSV with authentication (fixes auth header issue)
+  const downloadExclusionCsv = async (reason) => {
+    try {
+      const runId = screenerStatus?.run_id;
+      const params = new URLSearchParams();
+      if (runId) params.append('run_id', runId);
+      if (reason) params.append('reason', reason);
+      
+      // Use authenticated API call
+      const response = await api.get(`/admin/universe/excluded.csv?${params.toString()}`, {
+        responseType: 'blob'
+      });
+      
+      // Create blob and trigger download
+      const blob = new Blob([response.data], { type: 'text/csv' });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      
+      // Generate filename
+      const reasonPart = reason ? `_${reason.toLowerCase()}` : '_all';
+      const runIdPart = runId ? `_${runId}` : '';
+      link.download = `excluded${reasonPart}${runIdPart}.csv`;
+      
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+      
+      toast.success('CSV downloaded successfully');
+    } catch (error) {
+      console.error('CSV download error:', error);
+      toast.error('Failed to download CSV');
+    }
   };
 
 
