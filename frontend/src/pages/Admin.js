@@ -2675,15 +2675,13 @@ const Admin = () => {
                 </p>
               </div>
               <div className="flex items-center gap-2">
-                <a
-                  href={getExclusionCsvUrl(exclusionDrilldown.reason)}
-                  target="_blank"
-                  rel="noopener noreferrer"
+                <button
+                  onClick={() => downloadExclusionCsv(exclusionDrilldown.reason)}
                   className="inline-flex items-center gap-2 px-3 py-2 text-sm bg-emerald-600 hover:bg-emerald-700 rounded-lg transition-colors"
                 >
                   <Download className="w-4 h-4" />
                   CSV
-                </a>
+                </button>
                 <button
                   onClick={() => setExclusionDrilldown(prev => ({ ...prev, open: false }))}
                   className="p-2 rounded-lg hover:bg-zinc-700 text-zinc-400 hover:text-white"
