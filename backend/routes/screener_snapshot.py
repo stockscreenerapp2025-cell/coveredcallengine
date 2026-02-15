@@ -1354,9 +1354,13 @@ async def screen_pmcc(
     cache_stats = {"hits": 0, "misses": 0, "symbols_processed": 0, "ask_rejected": 0, "bid_rejected": 0}
     
     # PHASE 2: Batch fetch snapshots with cache-first approach
+    # NOTE: Use FAST_SCAN_SYMBOLS (95 symbols) instead of full SCAN_SYMBOLS (550)
+    # to avoid Yahoo rate limits on live scanning
+    scan_universe = FAST_SCAN_SYMBOLS
+    
     snapshots = await get_symbol_snapshots_batch(
         db=db,
-        symbols=SCAN_SYMBOLS,
+        symbols=scan_universe,
         api_key=None,
         include_options=False,
         batch_size=10,
@@ -1367,7 +1371,7 @@ async def screen_pmcc(
     stock_data = {}
     symbols_with_stock_data = []
     
-    for symbol in SCAN_SYMBOLS:
+    for symbol in scan_universe:
         try:
             # PHASE 2: Get data from snapshot cache
             snapshot = snapshots.get(symbol.upper())
