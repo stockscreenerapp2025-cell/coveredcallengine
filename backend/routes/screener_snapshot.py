@@ -171,6 +171,28 @@ def get_scan_symbols() -> list:
 # NOTE: Use get_scan_symbols() for dynamic access
 SCAN_SYMBOLS = get_scan_universe()
 
+# Fast scan subset - most liquid symbols for live scanning
+# Full universe (550) is too slow for live Yahoo calls
+# This subset is used by /covered-calls and /pmcc for live scanning
+FAST_SCAN_SYMBOLS = [
+    # Top 20 Tech
+    "AAPL", "MSFT", "GOOGL", "AMZN", "META", "NVDA", "TSLA", "AMD", "INTC", "CRM",
+    "ORCL", "ADBE", "NFLX", "PYPL", "SHOP", "SQ", "UBER", "SNOW", "PLTR", "COIN",
+    # Top 10 Finance
+    "JPM", "BAC", "WFC", "GS", "MS", "C", "V", "MA", "AXP", "SCHW",
+    # Top 10 Healthcare
+    "UNH", "JNJ", "PFE", "MRK", "ABBV", "LLY", "BMY", "GILD", "AMGN", "CVS",
+    # Top 10 Consumer
+    "WMT", "HD", "NKE", "SBUX", "MCD", "DIS", "COST", "TGT", "LOW", "YUM",
+    # Top 10 Energy
+    "XOM", "CVX", "COP", "SLB", "EOG", "OXY", "DVN", "HAL", "MPC", "VLO",
+    # Top 10 Industrial
+    "CAT", "DE", "BA", "HON", "GE", "UPS", "FDX", "RTX", "LMT", "UNP",
+    # Top 15 ETFs (most liquid)
+    "SPY", "QQQ", "IWM", "DIA", "XLF", "XLE", "XLK", "XLV", "GLD", "SLV",
+    "TLT", "ARKK", "VXX", "UVXY", "TQQQ"
+]
+
 
 # ============================================================
 # PHASE 3: AI-BASED BEST OPTION SELECTION PER SYMBOL
