@@ -867,16 +867,20 @@ async def screen_covered_calls(
     cache_stats = {"hits": 0, "misses": 0, "symbols_processed": 0, "bid_rejected": 0}
     
     # PHASE 2: Batch fetch snapshots with cache-first approach
+    # NOTE: Use FAST_SCAN_SYMBOLS (95 symbols) instead of full SCAN_SYMBOLS (550)
+    # to avoid Yahoo rate limits on live scanning
+    scan_universe = FAST_SCAN_SYMBOLS
+    
     snapshots = await get_symbol_snapshots_batch(
         db=db,
-        symbols=SCAN_SYMBOLS,
+        symbols=scan_universe,
         api_key=None,  # Not needed for Yahoo-only mode
         include_options=False,  # Options fetched live below
         batch_size=10,
         is_scan_path=True  # Use bounded concurrency for screener
     )
     
-    for symbol in SCAN_SYMBOLS:
+    for symbol in scan_universe:
         try:
             # PHASE 2: Get data from snapshot cache
             snapshot = snapshots.get(symbol.upper())
