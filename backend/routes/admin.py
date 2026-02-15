@@ -1865,3 +1865,227 @@ async def get_scan_resilience_config(
         ]
     }
 
+
+# ==================== UNIVERSE AUDIT RUN ====================
+
+@admin_router.post("/universe/audit-run")
+async def run_universe_audit(
+    admin: dict = Depends(get_admin_user)
+):
+    """
+    Run a fresh universe audit with proper quote fetching.
+    
+    QUOTE FETCHING RULE:
+    - Uses previousClose (not regularMarketPrice) for after-hours consistency
+    - Only marks MISSING_QUOTE if previousClose is truly unavailable
+    - Records detailed failure reasons for debugging
+    
+    Returns:
+    - run_id: Unique identifier for this audit run
+    - summary: quote_success_count, quote_failure_count, provider_error_count
+    - top_failures: First 20 failures with raw reason
+    """
+    import uuid
+    import yfinance as yf
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+    from utils.universe import get_scan_universe, get_tier_counts, is_etf
+    
+    now_utc = datetime.now(timezone.utc)
+    run_id = f"audit_{now_utc.strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:8]}"
+    
+    universe = get_scan_universe()
+    tier_counts = get_tier_counts()
+    total_symbols = len(universe)
+    
+    # Counters
+    quote_success_count = 0
+    quote_failure_count = 0
+    provider_error_count = 0
+    
+    # Track failures for debugging
+    failures = []
+    
+    # Audit records
+    audit_records = []
+    
+    def fetch_quote_sync(symbol: str) -> dict:
+        """Fetch previousClose from Yahoo - blocking call for thread pool."""
+        try:
+            ticker = yf.Ticker(symbol)
+            info = ticker.info
+            
+            if not info:
+                return {
+                    "symbol": symbol,
+                    "success": False,
+                    "error_type": "EMPTY_RESPONSE",
+                    "error_detail": "Yahoo returned empty info dict"
+                }
+            
+            # Use previousClose for consistency (not regularMarketPrice)
+            prev_close = info.get("previousClose")
+            regular_price = info.get("regularMarketPrice")
+            
+            # Accept previousClose as primary, regularMarketPrice as fallback
+            price = prev_close or regular_price
+            
+            if price and price > 0:
+                return {
+                    "symbol": symbol,
+                    "success": True,
+                    "price": price,
+                    "price_source": "previousClose" if prev_close else "regularMarketPrice",
+                    "avg_volume": info.get("averageVolume", 0) or info.get("volume", 0),
+                    "market_cap": info.get("marketCap", 0)
+                }
+            else:
+                return {
+                    "symbol": symbol,
+                    "success": False,
+                    "error_type": "NO_PRICE",
+                    "error_detail": f"previousClose={prev_close}, regularMarketPrice={regular_price}"
+                }
+                
+        except Exception as e:
+            error_str = str(e)
+            error_type = "UNKNOWN_ERROR"
+            
+            if "Too Many Requests" in error_str or "Rate limit" in error_str.lower():
+                error_type = "RATE_LIMITED"
+            elif "404" in error_str or "Not Found" in error_str:
+                error_type = "HTTP_404"
+            elif "401" in error_str or "Unauthorized" in error_str:
+                error_type = "HTTP_401"
+            elif "timeout" in error_str.lower():
+                error_type = "TIMEOUT"
+            elif "delisted" in error_str.lower():
+                error_type = "DELISTED"
+            
+            return {
+                "symbol": symbol,
+                "success": False,
+                "error_type": error_type,
+                "error_detail": error_str[:200]  # Truncate long errors
+            }
+    
+    # Process in batches with thread pool
+    batch_size = 30
+    max_workers = 5
+    
+    logging.info(f"[AUDIT_RUN] Starting audit run_id={run_id} for {total_symbols} symbols")
+    
+    for i in range(0, total_symbols, batch_size):
+        batch = universe[i:i + batch_size]
+        
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            future_to_symbol = {executor.submit(fetch_quote_sync, sym): sym for sym in batch}
+            
+            for future in as_completed(future_to_symbol):
+                result = future.result()
+                symbol = result["symbol"]
+                
+                if result["success"]:
+                    quote_success_count += 1
+                    
+                    # Price band check
+                    price = result["price"]
+                    avg_volume = result.get("avg_volume", 0)
+                    dollar_volume = price * avg_volume if price and avg_volume else 0
+                    
+                    included = True
+                    exclude_stage = None
+                    exclude_reason = None
+                    exclude_detail = None
+                    
+                    # Price band filter ($5 - $500 for stocks, no limit for ETFs)
+                    if not is_etf(symbol):
+                        if price < 5 or price > 500:
+                            included = False
+                            exclude_stage = "LIQUIDITY_FILTER"
+                            exclude_reason = "OUT_OF_PRICE_BAND"
+                            exclude_detail = f"Price ${price:.2f} outside $5-$500 range"
+                    
+                    audit_records.append({
+                        "run_id": run_id,
+                        "symbol": symbol,
+                        "included": included,
+                        "exclude_stage": exclude_stage,
+                        "exclude_reason": exclude_reason,
+                        "exclude_detail": exclude_detail,
+                        "price_used": price,
+                        "price_source": result.get("price_source"),
+                        "avg_volume": avg_volume,
+                        "dollar_volume": dollar_volume,
+                        "is_etf": is_etf(symbol),
+                        "as_of": now_utc
+                    })
+                else:
+                    quote_failure_count += 1
+                    
+                    if result["error_type"] in ["RATE_LIMITED", "HTTP_404", "HTTP_401", "TIMEOUT"]:
+                        provider_error_count += 1
+                    
+                    # Track for top failures
+                    failures.append({
+                        "symbol": symbol,
+                        "error_type": result["error_type"],
+                        "error_detail": result["error_detail"]
+                    })
+                    
+                    audit_records.append({
+                        "run_id": run_id,
+                        "symbol": symbol,
+                        "included": False,
+                        "exclude_stage": "QUOTE",
+                        "exclude_reason": "MISSING_QUOTE",
+                        "exclude_detail": f"{result['error_type']}: {result['error_detail'][:100]}",
+                        "price_used": 0,
+                        "price_source": None,
+                        "avg_volume": 0,
+                        "dollar_volume": 0,
+                        "is_etf": is_etf(symbol),
+                        "as_of": now_utc
+                    })
+    
+    # Persist audit records
+    try:
+        if audit_records:
+            result = await db.scan_universe_audit.insert_many(audit_records)
+            logging.info(f"[AUDIT_RUN] Persisted {len(result.inserted_ids)} audit records for run_id={run_id}")
+    except Exception as e:
+        logging.error(f"[AUDIT_RUN] Failed to persist audit records: {e}")
+    
+    # Calculate included count
+    included_count = sum(1 for r in audit_records if r["included"])
+    excluded_count = sum(1 for r in audit_records if not r["included"])
+    
+    # Aggregate exclusion reasons
+    exclusion_by_reason = {}
+    for r in audit_records:
+        if not r["included"] and r["exclude_reason"]:
+            reason = r["exclude_reason"]
+            exclusion_by_reason[reason] = exclusion_by_reason.get(reason, 0) + 1
+    
+    logging.info(f"[AUDIT_RUN] Completed run_id={run_id}: success={quote_success_count}, failure={quote_failure_count}, provider_errors={provider_error_count}")
+    
+    return {
+        "run_id": run_id,
+        "completed_at": now_utc.isoformat(),
+        "tier_counts": tier_counts,
+        "summary": {
+            "total_symbols": total_symbols,
+            "quote_success_count": quote_success_count,
+            "quote_failure_count": quote_failure_count,
+            "provider_error_count": provider_error_count,
+            "included_count": included_count,
+            "excluded_count": excluded_count,
+            "exclusion_by_reason": exclusion_by_reason
+        },
+        "top_failures": failures[:20],
+        "notes": [
+            "Quote source: previousClose (fallback to regularMarketPrice)",
+            "MISSING_QUOTE only if previousClose is truly unavailable",
+            "Provider errors: rate limits, HTTP errors, timeouts"
+        ]
+    }
+
