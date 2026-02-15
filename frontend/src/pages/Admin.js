@@ -187,13 +187,16 @@ const Admin = () => {
   // Keep Data Quality tab fresh (without masking missing backend fields)
   useEffect(() => {
     if (activeTab !== 'data-quality') return;
-    // Fetch immediately on tab focus
-    fetchScreenerStatus();
-    // Poll every 30s while this tab is active
+    // Fetch immediately on tab focus (only if not already loaded)
+    if (!screenerStatus) {
+      fetchScreenerStatus();
+    }
+    // Poll every 60s while this tab is active (reduced from 30s)
     const interval = setInterval(() => {
       fetchScreenerStatus();
-    }, 30000);
+    }, 60000);
     return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab]);
 
   const fetchSettings = async () => {
