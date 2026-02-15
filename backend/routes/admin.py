@@ -2061,16 +2061,55 @@ async def run_universe_audit(
     
     # Aggregate exclusion reasons
     exclusion_by_reason = {}
+    exclusion_by_stage = {}
     for r in audit_records:
-        if not r["included"] and r["exclude_reason"]:
-            reason = r["exclude_reason"]
-            exclusion_by_reason[reason] = exclusion_by_reason.get(reason, 0) + 1
+        if not r["included"]:
+            reason = r.get("exclude_reason")
+            stage = r.get("exclude_stage")
+            if reason:
+                exclusion_by_reason[reason] = exclusion_by_reason.get(reason, 0) + 1
+            if stage:
+                exclusion_by_stage[stage] = exclusion_by_stage.get(stage, 0) + 1
     
-    logging.info(f"[AUDIT_RUN] Completed run_id={run_id}: success={quote_success_count}, failure={quote_failure_count}, provider_errors={provider_error_count}")
+    # Calculate duration
+    end_time = datetime.now(timezone.utc)
+    duration_seconds = (end_time - now_utc).total_seconds()
+    
+    # Create scan_run_summary document (denormalized for fast reads)
+    summary_doc = {
+        "run_id": run_id,
+        "as_of": now_utc,
+        "completed_at": end_time,
+        "duration_seconds": round(duration_seconds, 2),
+        "tier_counts": tier_counts,
+        "total_symbols": total_symbols,
+        "included": included_count,
+        "excluded": excluded_count,
+        "excluded_counts_by_reason": exclusion_by_reason,
+        "excluded_counts_by_stage": exclusion_by_stage,
+        "quote_success_count": quote_success_count,
+        "quote_failure_count": quote_failure_count,
+        "provider_error_count": provider_error_count,
+        "top_failures": failures[:20]
+    }
+    
+    # Persist summary document
+    try:
+        await db.scan_run_summary.replace_one(
+            {"run_id": run_id},
+            summary_doc,
+            upsert=True
+        )
+        logging.info(f"[AUDIT_RUN] Persisted scan_run_summary for run_id={run_id}")
+    except Exception as e:
+        logging.error(f"[AUDIT_RUN] Failed to persist scan_run_summary: {e}")
+    
+    logging.info(f"[AUDIT_RUN] Completed run_id={run_id}: success={quote_success_count}, failure={quote_failure_count}, provider_errors={provider_error_count}, duration={duration_seconds:.1f}s")
     
     return {
         "run_id": run_id,
-        "completed_at": now_utc.isoformat(),
+        "completed_at": end_time.isoformat(),
+        "duration_seconds": round(duration_seconds, 2),
         "tier_counts": tier_counts,
         "summary": {
             "total_symbols": total_symbols,
@@ -2079,7 +2118,8 @@ async def run_universe_audit(
             "provider_error_count": provider_error_count,
             "included_count": included_count,
             "excluded_count": excluded_count,
-            "exclusion_by_reason": exclusion_by_reason
+            "exclusion_by_reason": exclusion_by_reason,
+            "exclusion_by_stage": exclusion_by_stage
         },
         "top_failures": failures[:20],
         "notes": [
