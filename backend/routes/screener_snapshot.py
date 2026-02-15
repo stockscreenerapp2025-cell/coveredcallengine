@@ -2133,13 +2133,6 @@ async def get_admin_status(user: dict = Depends(get_current_user)):
                 "MISSING_QUOTE": 0, "MISSING_CHAIN": 0, "CHAIN_EMPTY": 0,
                 "BAD_CHAIN_DATA": 0, "MISSING_CONTRACT_FIELDS": 0, "OTHER": 0
             }
-            "MISSING_CONTRACT_FIELDS": 0, "OTHER": 0
-        }
-        excluded_counts = {
-            "OUT_OF_RULES": 0, "OUT_OF_PRICE_BAND": 0, "LOW_LIQUIDITY": 0,
-            "MISSING_QUOTE": 0, "MISSING_CHAIN": 0, "CHAIN_EMPTY": 0,
-            "BAD_CHAIN_DATA": 0, "MISSING_CONTRACT_FIELDS": 0, "OTHER": 0
-        }
     
     # ================================================================
     # Calculate derived metrics
