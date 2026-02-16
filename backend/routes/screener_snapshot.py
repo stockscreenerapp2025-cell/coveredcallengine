@@ -1265,7 +1265,10 @@ def _transform_pmcc_result(r: Dict) -> Dict:
         # Underlying
         "symbol": r.get("symbol"),
         "stock_price": r.get("stock_price"),
-        "stock_price_source": r.get("stock_price_source", "EOD_SNAPSHOT"),
+        
+        # MANDATORY MARKET CONTEXT FIELDS (Feb 2026)
+        "stock_price_source": r.get("stock_price_source", "REGULAR_MARKET_PREVIOUS_CLOSE"),
+        "market_status": r.get("market_status", "UNKNOWN"),
         "as_of": r.get("as_of"),
         
         # LEAP (Long leg - BUY)
