@@ -1023,8 +1023,15 @@ def _transform_cc_result(r: Dict) -> Dict:
         # Pricing (EXPLICIT)
         "premium_bid": round(premium_bid, 2),
         "premium_ask": round(premium_ask, 2) if premium_ask else None,
+        "premium_mid": r.get("premium_mid"),
+        "premium_last": r.get("premium_last"),
+        "premium_prev_close": r.get("premium_prev_close"),
         "premium_used": round(premium_used, 2),
         "pricing_rule": r.get("pricing_rule", "SELL_BID"),
+        
+        # OPTION PARITY MODEL: Display price (matches Yahoo)
+        "premium_display": r.get("premium_display"),
+        "premium_display_source": r.get("premium_display_source", "NONE"),
         
         # Legacy alias
         "premium": round(premium_bid, 2),
