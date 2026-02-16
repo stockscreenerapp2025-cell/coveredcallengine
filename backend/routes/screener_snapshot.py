@@ -4,30 +4,21 @@ Screener Routes - Covered Call and PMCC screening endpoints
 
 CCE MASTER ARCHITECTURE - LAYER 3: Strategy Selection Layer
 
-DATA FETCHING RULES (NON-NEGOTIABLE):
+DATA FETCHING RULES (NON-NEGOTIABLE - UPDATED FEB 2026):
 
-1. STOCK PRICES: Use PREVIOUS US MARKET CLOSE on trading days only
-   - Source: eod_market_close or previousClose from Yahoo
-   - ❌ No intraday prices (regularMarketPrice)
-   - ❌ No pre-market or after-hours prices
+1. ALL SCAN DATA COMES FROM MONGODB ONLY
+   - Source: scan_results_cc, scan_results_pmcc collections
+   - Pre-computed by EOD pipeline at 4:10 PM ET daily
+   - ❌ NO LIVE YAHOO CALLS during request/response cycle
+   - ❌ NO fetch_options_chain() calls allowed
 
-2. OPTIONS CHAIN: MUST be fetched LIVE per symbol, per expiry
-   - Source: Yahoo Finance at scan time
-   - ❌ Never cached, stored, or reconstructed
-   - ❌ Never inferred from derived data
+2. FALLBACK: precomputed_scans collection (legacy)
+   - Used only if no EOD run exists
 
 LAYER 3 RESPONSIBILITIES:
-    - Apply CC eligibility filters (price, volume, market cap)
-    - Enforce earnings ±7 days exclusion
-    - Separate Weekly (7-14 DTE) and Monthly (21-45 DTE) modes
-    - Compute/enrich Greeks (Delta, IV, IV Rank, OI)
-    - Prepare enriched data for downstream scoring
-
-PHASE 2 (December 2025): Market Snapshot Cache
-- Stock data now uses get_symbol_snapshot() for cache-first approach
-- Reduces Yahoo Finance calls by ~70% for Custom Scans
-- Options are still fetched live (not cached)
-- Does NOT affect Watchlist or Simulator
+    - Apply user filters at MongoDB query level
+    - Return pre-computed results with optional filtering
+    - Maintain response schema compatibility
 """
 from fastapi import APIRouter, Depends, Query, HTTPException
 from pydantic import BaseModel
