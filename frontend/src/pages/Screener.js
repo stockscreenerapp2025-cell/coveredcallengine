@@ -447,9 +447,13 @@ const Screener = () => {
   };
 
   const exportToCSV = () => {
-    const headers = ['Symbol', 'Stock Price', 'Strike', 'Expiry', 'DTE', 'Premium', 'ROI %', 'Delta', 'Prob OTM', 'IV', 'IV Rank', 'Volume', 'OI', 'Score'];
+    const headers = ['Symbol', 'Stock Price', 'Strike', 'Expiry', 'DTE', 'Premium', 'ROI %', 'Delta', 'Prob OTM', 'IV %', 'IV Rank', 'Volume', 'OI', 'Score', 'Analyst'];
     const rows = sortedOpportunities.map(o => [
-      o.symbol, o.stock_price, o.strike, o.expiry, o.dte, o.premium, o.roi_pct, o.delta, Math.round((1-o.delta)*100), o.iv, o.iv_rank, o.volume, o.open_interest, o.score
+      o.symbol, o.stock_price, o.strike, o.expiry, o.dte, o.premium, o.roi_pct, o.delta, Math.round((1-o.delta)*100), 
+      o.iv_pct || (o.iv ? (o.iv * 100).toFixed(1) : ''), 
+      o.iv_rank != null ? o.iv_rank : 'N/A', 
+      o.volume, o.open_interest, o.score,
+      o.analyst_rating_label || o.analyst_rating || 'N/A'
     ]);
 
     const csv = [headers, ...rows].map(row => row.join(',')).join('\n');
