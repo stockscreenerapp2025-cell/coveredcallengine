@@ -874,6 +874,7 @@ async def run_eod_pipeline(db, force_build_universe: bool = False) -> EODPipelin
         logger.error(f"[EOD_PIPELINE] Failed to persist summary: {e}")
     
     # Persist scan_runs (atomic publish)
+    # FIXED: symbols_included = chain_success (consistent with summary)
     scan_run_doc = {
         "run_id": run_id,
         "run_type": "EOD",
@@ -883,9 +884,9 @@ async def run_eod_pipeline(db, force_build_universe: bool = False) -> EODPipelin
         "created_at": result.started_at,
         "completed_at": result.completed_at,
         "duration_seconds": result.duration_seconds,
-        "symbols_processed": result.symbols_processed,
-        "symbols_included": result.quote_success,
-        "symbols_excluded": result.symbols_total - result.quote_success
+        "symbols_processed": result.symbols_total,  # FIXED: total symbols attempted
+        "symbols_included": result.chain_success,   # FIXED: symbols with both quote AND chain
+        "symbols_excluded": result.symbols_total - result.chain_success  # FIXED: total - included
     }
     
     try:
@@ -900,7 +901,7 @@ async def run_eod_pipeline(db, force_build_universe: bool = False) -> EODPipelin
     
     logger.info(
         f"[EOD_PIPELINE] Completed run_id={run_id} in {result.duration_seconds:.1f}s: "
-        f"included={result.quote_success}, excluded={result.quote_failure + result.chain_failure}"
+        f"included={result.chain_success}, excluded={result.symbols_total - result.chain_success}"
     )
     
     return result
