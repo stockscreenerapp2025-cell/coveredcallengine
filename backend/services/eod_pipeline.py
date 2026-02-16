@@ -983,11 +983,17 @@ async def compute_scan_results(
             continue
         
         # Fetch analyst enrichment from symbol_enrichment collection
-        analyst_data = await db.symbol_enrichment.find_one(
-            {"symbol": symbol},
-            {"_id": 0, "analyst_rating_label": 1, "analyst_rating_value": 1}
-        ) if db else None
-        analyst_rating = analyst_data.get("analyst_rating_label") if analyst_data else None
+        analyst_data = None
+        analyst_rating = None
+        if db is not None:
+            try:
+                analyst_data = await db.symbol_enrichment.find_one(
+                    {"symbol": symbol},
+                    {"_id": 0, "analyst_rating_label": 1, "analyst_rating_value": 1}
+                )
+                analyst_rating = analyst_data.get("analyst_rating_label") if analyst_data else None
+            except Exception:
+                pass
         
         # Process option chains for CC opportunities
         for chain in option_chains:
