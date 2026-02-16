@@ -1001,13 +1001,16 @@ def _transform_cc_result(r: Dict) -> Dict:
         # Quality flags
         "quality_flags": r.get("quality_flags", []),
         
-        # Analyst (nullable - "N/A" in UI if null)
-        "analyst_rating": r.get("analyst_rating"),
+        # Analyst (explicit fields for UI consistency)
+        "analyst_rating": r.get("analyst_rating"),  # Legacy field
+        "analyst_rating_label": r.get("analyst_rating"),  # Explicit label for UI
+        "analyst_rating_value": r.get("analyst_rating_value"),  # Numeric value if available
+        "analyst_opinions": r.get("analyst_opinions"),  # Count of opinions if available
         
         # Scoring
         "score": r.get("score", 0),
         
-        # Metadata
+        # Metadata (for mock banner logic)
         "data_source": "eod_precomputed",
         "run_id": r.get("run_id"),
         
