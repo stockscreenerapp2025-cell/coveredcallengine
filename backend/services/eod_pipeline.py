@@ -802,114 +802,152 @@ def validate_pmcc_structure(
     short_ask: float,
     short_delta: float,
     short_dte: int,
-    short_iv: float,
-    short_oi: int
+    short_oi: int,
+    short_iv: float
 ) -> Tuple[bool, List[str]]:
     """
-    Validate PMCC structure against STRICT INSTITUTIONAL rules (Feb 2026).
+    Validate PMCC structure against STRICT INSTITUTIONAL RULES (Feb 2026).
     Returns (is_valid, list_of_quality_flags)
     
-    STRICT PMCC RULES (INSTITUTIONAL GRADE):
-    - LEAP: ITM (strike < stock_price), delta >= 0.80, ask > 0, DTE 365-730, OI >= 100, spread <= 5%
-    - SHORT: OTM (strike >= stock_price * 1.02), bid > 0, DTE 30-45, delta 0.20-0.30, OI >= 100, spread <= 5%
-    - STRUCTURE: short_strike > leap_strike, net_debit > 0
+    PMCC HARD RULES (INSTITUTIONAL):
+    ================================
+    LONG LEAP:
+    - 365 ≤ leap_dte ≤ 730
+    - leap_delta ≥ 0.80
+    - leap_ask > 0
+    - leap_open_interest ≥ 100
+    - leap_spread_pct ≤ 5%
     
-    These rules significantly reduce opportunities but ensure institutional-grade trades.
+    SHORT CALL:
+    - 30 ≤ short_dte ≤ 45
+    - 0.20 ≤ short_delta ≤ 0.30
+    - short_bid > 0
+    - short_open_interest ≥ 100
+    - short_spread_pct ≤ 5%
+    
+    STRUCTURE:
+    - width > net_debit (SOLVENCY GOLDEN RULE)
+    - short_strike > (leap_strike + net_debit) (BREAK-EVEN)
     """
     flags = []
     
-    # === LEAP VALIDATION (STRICT) ===
+    # ================================================================
+    # LEAP VALIDATION (HARD RULES)
+    # ================================================================
     
     # HARD RULE: LEAP must be ITM
     if leap_strike >= stock_price:
-        flags.append("LEAP_NOT_ITM")
+        flags.append("FAIL_LONG_NOT_ITM")
         return False, flags
     
     # HARD RULE: LEAP ask > 0
     if not leap_ask or leap_ask <= 0:
-        flags.append("LEAP_ASK_INVALID")
-        return False, flags
-    
-    # HARD RULE: LEAP delta >= 0.80 (STRICTER - was 0.70)
-    if leap_delta < PMCC_MIN_LEAP_DELTA:
-        flags.append(f"LEAP_DELTA_LOW_{leap_delta:.2f}")
+        flags.append("FAIL_LONG_ASK_INVALID")
         return False, flags
     
     # HARD RULE: LEAP DTE 365-730
     if leap_dte < PMCC_MIN_LEAP_DTE or leap_dte > PMCC_MAX_LEAP_DTE:
-        flags.append(f"LEAP_DTE_OUT_OF_RANGE_{leap_dte}")
+        flags.append(f"FAIL_LONG_DTE_{leap_dte}")
         return False, flags
     
-    # HARD RULE: LEAP minimum open interest (INSTITUTIONAL)
+    # HARD RULE: LEAP delta >= 0.80
+    if leap_delta < PMCC_MIN_LEAP_DELTA:
+        flags.append(f"FAIL_LONG_DELTA_{leap_delta:.2f}")
+        return False, flags
+    
+    # HARD RULE: LEAP open interest >= 100
     if leap_oi < PMCC_MIN_LEAP_OI:
-        flags.append(f"LEAP_OI_LOW_{leap_oi}")
+        flags.append(f"FAIL_LIQUIDITY_LEAP_OI_{leap_oi}")
         return False, flags
     
-    # HARD RULE: LEAP bid-ask spread <= 5% (INSTITUTIONAL)
+    # HARD RULE: LEAP spread <= 5%
     if leap_bid and leap_bid > 0:
-        leap_spread_pct = ((leap_ask - leap_bid) / leap_bid) * 100
+        leap_mid = (leap_ask + leap_bid) / 2
+        leap_spread_pct = ((leap_ask - leap_bid) / leap_mid * 100) if leap_mid > 0 else 100
         if leap_spread_pct > PMCC_MAX_LEAP_SPREAD_PCT:
-            flags.append(f"LEAP_SPREAD_WIDE_{leap_spread_pct:.1f}%")
+            flags.append(f"FAIL_LIQUIDITY_LEAP_SPREAD_{leap_spread_pct:.1f}%")
             return False, flags
     
-    # === SHORT VALIDATION (STRICT) ===
+    # ================================================================
+    # SHORT VALIDATION (HARD RULES)
+    # ================================================================
     
     # HARD RULE: Short bid > 0
     if not short_bid or short_bid <= 0:
-        flags.append("SHORT_BID_INVALID")
+        flags.append("FAIL_SHORT_BID_INVALID")
         return False, flags
     
     # HARD RULE: Short strike must be OTM relative to stock_price
     min_short_strike = stock_price * (1 + PMCC_MIN_SHORT_OTM_PCT)
     if short_strike < min_short_strike:
-        flags.append("SHORT_NOT_OTM_FROM_STOCK")
+        flags.append("FAIL_SHORT_NOT_OTM")
         return False, flags
     
-    # HARD RULE: Short DTE 30-45 (STRICTER - was 7-60)
+    # HARD RULE: Short DTE 30-45
     if short_dte < PMCC_MIN_SHORT_DTE or short_dte > PMCC_MAX_SHORT_DTE:
-        flags.append(f"SHORT_DTE_OUT_OF_RANGE_{short_dte}")
+        flags.append(f"FAIL_SHORT_DTE_{short_dte}")
         return False, flags
     
-    # HARD RULE: Short delta range 0.20-0.30 (INSTITUTIONAL)
+    # HARD RULE: Short delta 0.20-0.30
     if short_delta < PMCC_MIN_SHORT_DELTA or short_delta > PMCC_MAX_SHORT_DELTA:
-        flags.append(f"SHORT_DELTA_OUT_OF_RANGE_{short_delta:.2f}")
+        flags.append(f"FAIL_SHORT_DELTA_{short_delta:.2f}")
         return False, flags
     
-    # HARD RULE: Short minimum open interest (INSTITUTIONAL)
+    # HARD RULE: Short open interest >= 100
     if short_oi < PMCC_MIN_SHORT_OI:
-        flags.append(f"SHORT_OI_LOW_{short_oi}")
+        flags.append(f"FAIL_LIQUIDITY_SHORT_OI_{short_oi}")
         return False, flags
     
-    # HARD RULE: Short bid-ask spread <= 5% (INSTITUTIONAL)
+    # HARD RULE: Short spread <= 5%
     if short_ask and short_ask > 0:
-        short_spread_pct = ((short_ask - short_bid) / short_bid) * 100
+        short_mid = (short_ask + short_bid) / 2
+        short_spread_pct = ((short_ask - short_bid) / short_mid * 100) if short_mid > 0 else 100
         if short_spread_pct > PMCC_MAX_SHORT_SPREAD_PCT:
-            flags.append(f"SHORT_SPREAD_WIDE_{short_spread_pct:.1f}%")
+            flags.append(f"FAIL_LIQUIDITY_SHORT_SPREAD_{short_spread_pct:.1f}%")
             return False, flags
     
-    # === STRUCTURE VALIDATION ===
+    # ================================================================
+    # STRUCTURE VALIDATION (HARD RULES)
+    # ================================================================
     
     # HARD RULE: short_strike > leap_strike
     if short_strike <= leap_strike:
-        flags.append("SHORT_STRIKE_NOT_ABOVE_LEAP")
+        flags.append("FAIL_STRIKE_STRUCTURE")
         return False, flags
+    
+    # Calculate structure metrics
+    net_debit = leap_ask - short_bid
+    width = short_strike - leap_strike
+    breakeven = leap_strike + net_debit
     
     # HARD RULE: net_debit > 0
-    net_debit = leap_ask - short_bid
     if net_debit <= 0:
-        flags.append("NEGATIVE_NET_DEBIT")
+        flags.append("FAIL_NEGATIVE_NET_DEBIT")
         return False, flags
     
+    # HARD RULE: SOLVENCY (width > net_debit)
+    # This ensures the trade can be profitable
+    if width <= net_debit:
+        flags.append(f"FAIL_SOLVENCY_width{width:.2f}_debit{net_debit:.2f}")
+        return False, flags
+    
+    # HARD RULE: BREAK-EVEN (short_strike > breakeven)
+    # This ensures the short strike is above the break-even point
+    if short_strike <= breakeven:
+        flags.append(f"FAIL_BREAK_EVEN_short{short_strike:.2f}_be{breakeven:.2f}")
+        return False, flags
+    
+    # ================================================================
+    # SOFT RULES (Flag but don't reject)
+    # ================================================================
+    
     # SOFT RULE: Minimum width
-    width = short_strike - leap_strike
     if width < PMCC_MIN_WIDTH:
         flags.append(f"NARROW_WIDTH_{width:.2f}")
-        # Allow but flag
     
     # SOFT RULE: IV sanity check
     if short_iv and (short_iv < PMCC_MIN_IV or short_iv > PMCC_MAX_IV):
         flags.append(f"IV_EXTREME_{short_iv:.2f}")
-        # Allow but flag
     
     return True, flags
 
