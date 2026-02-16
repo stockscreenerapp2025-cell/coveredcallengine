@@ -1313,6 +1313,9 @@ def _transform_pmcc_result(r: Dict) -> Dict:
         "is_etf": r.get("is_etf", False),
         "instrument_type": r.get("instrument_type", "STOCK"),
         
+        # Quality flags
+        "quality_flags": r.get("quality_flags", []),
+        
         # Analyst (nullable - "N/A" in UI if null)
         "analyst_rating": r.get("analyst_rating"),
         
