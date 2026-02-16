@@ -806,17 +806,19 @@ def validate_pmcc_structure(
     short_oi: int
 ) -> Tuple[bool, List[str]]:
     """
-    Validate PMCC structure against strategy rules.
+    Validate PMCC structure against STRICT INSTITUTIONAL rules (Feb 2026).
     Returns (is_valid, list_of_quality_flags)
     
-    PMCC HARD RULES:
-    - LEAP: ITM (strike < stock_price), delta >= 0.70, ask > 0, DTE 365-730
-    - SHORT: OTM (strike >= stock_price * 1.02), bid > 0, DTE 7-60
+    STRICT PMCC RULES (INSTITUTIONAL GRADE):
+    - LEAP: ITM (strike < stock_price), delta >= 0.80, ask > 0, DTE 365-730, OI >= 100, spread <= 5%
+    - SHORT: OTM (strike >= stock_price * 1.02), bid > 0, DTE 30-45, delta 0.20-0.30, OI >= 100, spread <= 5%
     - STRUCTURE: short_strike > leap_strike, net_debit > 0
+    
+    These rules significantly reduce opportunities but ensure institutional-grade trades.
     """
     flags = []
     
-    # === LEAP VALIDATION ===
+    # === LEAP VALIDATION (STRICT) ===
     
     # HARD RULE: LEAP must be ITM
     if leap_strike >= stock_price:
@@ -828,8 +830,8 @@ def validate_pmcc_structure(
         flags.append("LEAP_ASK_INVALID")
         return False, flags
     
-    # HARD RULE: LEAP delta >= 0.70
-    if leap_delta < PMCC_MIN_DELTA:
+    # HARD RULE: LEAP delta >= 0.80 (STRICTER - was 0.70)
+    if leap_delta < PMCC_MIN_LEAP_DELTA:
         flags.append(f"LEAP_DELTA_LOW_{leap_delta:.2f}")
         return False, flags
     
@@ -838,7 +840,19 @@ def validate_pmcc_structure(
         flags.append(f"LEAP_DTE_OUT_OF_RANGE_{leap_dte}")
         return False, flags
     
-    # === SHORT VALIDATION ===
+    # HARD RULE: LEAP minimum open interest (INSTITUTIONAL)
+    if leap_oi < PMCC_MIN_LEAP_OI:
+        flags.append(f"LEAP_OI_LOW_{leap_oi}")
+        return False, flags
+    
+    # HARD RULE: LEAP bid-ask spread <= 5% (INSTITUTIONAL)
+    if leap_bid and leap_bid > 0:
+        leap_spread_pct = ((leap_ask - leap_bid) / leap_bid) * 100
+        if leap_spread_pct > PMCC_MAX_LEAP_SPREAD_PCT:
+            flags.append(f"LEAP_SPREAD_WIDE_{leap_spread_pct:.1f}%")
+            return False, flags
+    
+    # === SHORT VALIDATION (STRICT) ===
     
     # HARD RULE: Short bid > 0
     if not short_bid or short_bid <= 0:
@@ -851,10 +865,27 @@ def validate_pmcc_structure(
         flags.append("SHORT_NOT_OTM_FROM_STOCK")
         return False, flags
     
-    # HARD RULE: Short DTE 7-60
+    # HARD RULE: Short DTE 30-45 (STRICTER - was 7-60)
     if short_dte < PMCC_MIN_SHORT_DTE or short_dte > PMCC_MAX_SHORT_DTE:
         flags.append(f"SHORT_DTE_OUT_OF_RANGE_{short_dte}")
         return False, flags
+    
+    # HARD RULE: Short delta range 0.20-0.30 (INSTITUTIONAL)
+    if short_delta < PMCC_MIN_SHORT_DELTA or short_delta > PMCC_MAX_SHORT_DELTA:
+        flags.append(f"SHORT_DELTA_OUT_OF_RANGE_{short_delta:.2f}")
+        return False, flags
+    
+    # HARD RULE: Short minimum open interest (INSTITUTIONAL)
+    if short_oi < PMCC_MIN_SHORT_OI:
+        flags.append(f"SHORT_OI_LOW_{short_oi}")
+        return False, flags
+    
+    # HARD RULE: Short bid-ask spread <= 5% (INSTITUTIONAL)
+    if short_ask and short_ask > 0:
+        short_spread_pct = ((short_ask - short_bid) / short_bid) * 100
+        if short_spread_pct > PMCC_MAX_SHORT_SPREAD_PCT:
+            flags.append(f"SHORT_SPREAD_WIDE_{short_spread_pct:.1f}%")
+            return False, flags
     
     # === STRUCTURE VALIDATION ===
     
