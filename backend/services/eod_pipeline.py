@@ -656,7 +656,7 @@ async def compute_scan_results(
                     try:
                         exp_dt = datetime.strptime(expiry, "%Y-%m-%d")
                         dte = (exp_dt - datetime.now()).days
-                    except:
+                    except Exception:
                         continue
                 
                 # DTE filter
@@ -760,7 +760,7 @@ async def compute_scan_results(
                     try:
                         exp_dt = datetime.strptime(expiry, "%Y-%m-%d")
                         dte = (exp_dt - datetime.now()).days
-                    except:
+                    except Exception:
                         continue
                 
                 strike = call.get("strike", 0)
