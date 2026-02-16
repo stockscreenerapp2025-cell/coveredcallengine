@@ -1319,77 +1319,83 @@ async def get_dashboard_opportunities(
     Get top opportunities for dashboard display.
     
     Returns Top 5 Weekly + Top 5 Monthly covered calls for dashboard display.
-    If fewer than 5 weekly options available, fills remaining slots with monthly.
     
-    ARCHITECTURE: Phase 2 - Reads ONLY from stored Mongo snapshots.
-    
-    FAIL CLOSED: Returns HTTP 409 if snapshot validation fails.
+    ARCHITECTURE (Feb 2026): MONGODB READ-ONLY
+    ==========================================
+    - Reads directly from scan_results_cc collection
+    - NO LIVE YAHOO CALLS during request/response cycle
+    - Fallback: precomputed_scans collection (legacy)
     """
-    # Get a broader set with relaxed filters to ensure we have options
-    all_opportunities = await screen_covered_calls(
-        limit=100,
-        risk_profile="moderate",
-        dte_mode="all",
-        scan_mode="system",
-        min_dte=None,
-        max_dte=None,
-        min_premium_yield=0.3,  # Relaxed for dashboard to get more options
-        max_premium_yield=20.0,
-        min_otm_pct=0.0,
-        max_otm_pct=15.0,
-        user=user
-    )
+    import time
+    start_time = time.time()
     
-    results = all_opportunities.get("opportunities", all_opportunities.get("results", []))
+    # Get latest EOD run
+    run_id = await _get_latest_eod_run_id()
+    
+    if run_id:
+        # Query directly from scan_results_cc - sorted by score
+        cursor = db.scan_results_cc.find(
+            {"run_id": run_id},
+            {"_id": 0}
+        ).sort("score", -1).limit(100)
+        
+        results = await cursor.to_list(length=100)
+        data_source = "eod_pipeline"
+        
+        # Get run info
+        run_doc = await db.scan_runs.find_one({"run_id": run_id}, {"_id": 0})
+        run_info = {
+            "run_id": run_id,
+            "as_of": run_doc.get("as_of") if run_doc else None,
+            "completed_at": run_doc.get("completed_at") if run_doc else None
+        }
+    else:
+        # Fallback to legacy
+        results = await _get_cc_from_legacy({}, 100)
+        data_source = "precomputed_scans_legacy"
+        run_info = None
+    
+    # Transform results
+    opportunities = [_transform_cc_result(r) for r in results]
     
     # Separate into weekly (DTE <= 14) and monthly (DTE > 14)
-    weekly_opps = [opp for opp in results if opp.get("dte", 0) <= WEEKLY_MAX_DTE]
-    monthly_opps = [opp for opp in results if opp.get("dte", 0) > WEEKLY_MAX_DTE]
+    weekly_opps = [opp for opp in opportunities if opp.get("dte", 0) <= WEEKLY_MAX_DTE]
+    monthly_opps = [opp for opp in opportunities if opp.get("dte", 0) > WEEKLY_MAX_DTE]
     
     # Sort each by score descending
     weekly_opps.sort(key=lambda x: x.get("score", 0), reverse=True)
     monthly_opps.sort(key=lambda x: x.get("score", 0), reverse=True)
     
-    # Take top 5 from each (or as many as available)
+    # Take top 5 from each
     top_weekly = weekly_opps[:5]
     top_monthly = monthly_opps[:5]
     
-    # If we have fewer than 5 weekly, note it but don't fill with monthly
-    # This maintains data integrity - weekly means weekly
-    weekly_count = len(top_weekly)
-    monthly_count = len(top_monthly)
-    
-    # Mark with expiry_type for frontend styling
+    # Mark with expiry_type
     for opp in top_weekly:
         opp["expiry_type"] = "Weekly"
-        opp["metadata"] = opp.get("metadata", {})
-        opp["metadata"]["dte_category"] = "weekly"
     for opp in top_monthly:
         opp["expiry_type"] = "Monthly"
-        opp["metadata"] = opp.get("metadata", {})
-        opp["metadata"]["dte_category"] = "monthly"
     
-    # Combine: Weekly first, then Monthly
+    # Combine
     combined = top_weekly + top_monthly
+    
+    elapsed_ms = (time.time() - start_time) * 1000
     
     return {
         "total": len(combined),
         "opportunities": combined,
-        "weekly_count": weekly_count,
-        "monthly_count": monthly_count,
+        "weekly_count": len(top_weekly),
+        "monthly_count": len(top_monthly),
         "weekly_opportunities": top_weekly,
         "monthly_opportunities": top_monthly,
-        # Data availability note
         "weekly_available": len(weekly_opps),
         "monthly_available": len(monthly_opps),
-        "data_note": f"Weekly: {weekly_count}/5 available, Monthly: {monthly_count}/5 available" if weekly_count < 5 else None,
-        # Preserve metadata from original response
-        "market_bias": all_opportunities.get("market_bias"),
-        "stock_price_source": "yahoo_last_close",  # SINGLE SOURCE OF TRUTH
-        "options_chain_source": "yahoo_live",
+        "run_info": run_info,
+        "data_source": data_source,
+        "live_data_used": False,  # CRITICAL: No live Yahoo calls
         "layer": 3,
-        "architecture": "TOP5_WEEKLY_TOP5_MONTHLY_YAHOO_SINGLE_SOURCE",
-        "live_data_used": True
+        "architecture": "EOD_PIPELINE_READ_MODEL",
+        "latency_ms": round(elapsed_ms, 1)
     }
 
 
