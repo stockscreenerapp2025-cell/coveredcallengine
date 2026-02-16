@@ -760,10 +760,13 @@ async def compute_scan_results(
                 if not bid or bid <= 0:
                     continue
                 
-                premium = bid
+                # PRICING RULE: SELL leg uses BID price
+                premium_bid = bid
+                premium_ask_val = ask if ask and ask > 0 else None
+                premium_used = premium_bid  # SELL rule: use BID
                 
                 # Calculate metrics
-                premium_yield = (premium / stock_price) * 100 if stock_price > 0 else 0
+                premium_yield = (premium_bid / stock_price) * 100 if stock_price > 0 else 0
                 otm_pct = ((strike - stock_price) / stock_price) * 100 if stock_price > 0 else 0
                 
                 # Apply filters
@@ -775,9 +778,13 @@ async def compute_scan_results(
                 # Calculate Greeks
                 greeks = calculate_greeks_simple(stock_price, strike, dte, iv if iv > 0 else 0.30)
                 
-                # Calculate ROI
-                roi_pct = (premium / stock_price) * 100 if stock_price > 0 else 0
+                # Calculate ROI (must use premium_bid per SELL rule)
+                roi_pct = (premium_bid / stock_price) * 100 if stock_price > 0 else 0
                 roi_annualized = roi_pct * (365 / max(dte, 1))
+                
+                # ASSERTION: ROI > 0 requires premium_bid > 0
+                if roi_pct > 0 and premium_bid <= 0:
+                    continue  # Invalid state
                 
                 # Calculate score
                 trade_data = {
@@ -795,38 +802,71 @@ async def compute_scan_results(
                 except Exception:
                     contract_symbol = f"{symbol}_{strike}_{expiry}"
                 
+                # IV validation: store as decimal (0.65) and percent (65.0)
+                iv_decimal = round(iv, 4) if iv and iv > 0 else 0.0
+                iv_percent = round(iv * 100, 1) if iv and iv > 0 else 0.0
+                
+                # === EXPLICIT CC SCHEMA (Feb 2026) ===
                 cc_opp = {
+                    # Run metadata
                     "run_id": run_id,
+                    "as_of": as_of,
+                    "created_at": datetime.now(timezone.utc),
+                    
+                    # Underlying
                     "symbol": symbol,
                     "stock_price": round(stock_price, 2),
-                    "strike": strike,
-                    "expiry": expiry,
-                    "dte": dte,
-                    "dte_category": "weekly" if dte <= 14 else "monthly",
-                    "contract_symbol": contract_symbol,
-                    "premium": round(premium, 2),
-                    "premium_ask": round(ask, 2) if ask else None,
-                    "premium_yield": round(premium_yield, 2),
-                    "otm_pct": round(otm_pct, 2),
-                    "roi_pct": round(roi_pct, 2),
-                    "roi_annualized": round(roi_annualized, 1),
-                    "delta": greeks["delta"],
-                    "gamma": greeks["gamma"],
-                    "theta": greeks["theta"],
-                    "vega": greeks["vega"],
-                    "iv": round(iv, 4) if iv else 0,
-                    "iv_pct": round(iv * 100, 1) if iv else 0,
-                    "open_interest": oi,
-                    "volume": volume,
+                    "stock_price_source": "EOD_SNAPSHOT",
                     "is_etf": symbol_is_etf,
                     "instrument_type": "ETF" if symbol_is_etf else "STOCK",
                     "market_cap": market_cap,
                     "avg_volume": avg_volume,
-                    "score": round(score, 1),
-                    "max_profit": round(premium * 100, 2),
-                    "breakeven": round(stock_price - premium, 2),
-                    "as_of": as_of,
-                    "created_at": datetime.now(timezone.utc)
+                    
+                    # Option contract
+                    "contract_symbol": contract_symbol,
+                    "strike": strike,
+                    "expiry": expiry,
+                    "dte": dte,
+                    "dte_category": "weekly" if dte <= 14 else "monthly",
+                    
+                    # Pricing (EXPLICIT - no ambiguity)
+                    "premium_bid": round(premium_bid, 2),
+                    "premium_ask": round(premium_ask_val, 2) if premium_ask_val else None,
+                    "premium_used": round(premium_used, 2),  # = premium_bid (SELL rule)
+                    "pricing_rule": "SELL_BID",
+                    
+                    # Legacy fields for backward compatibility
+                    "premium": round(premium_bid, 2),  # Alias for premium_bid
+                    
+                    # Economics
+                    "premium_yield": round(premium_yield, 2),
+                    "otm_pct": round(otm_pct, 2),
+                    "roi_pct": round(roi_pct, 2),
+                    "roi_annualized": round(roi_annualized, 1),
+                    "max_profit": round(premium_bid * 100, 2),
+                    "breakeven": round(stock_price - premium_bid, 2),
+                    
+                    # Greeks
+                    "delta": greeks["delta"],
+                    "delta_source": "BLACK_SCHOLES_APPROX",
+                    "gamma": greeks["gamma"],
+                    "theta": greeks["theta"],
+                    "vega": greeks["vega"],
+                    
+                    # IV (explicit units)
+                    "iv": iv_decimal,           # Decimal (0.65)
+                    "iv_pct": iv_percent,       # Percent (65.0)
+                    "iv_rank": None,            # Will be enriched if available
+                    
+                    # Liquidity
+                    "open_interest": oi,
+                    "volume": volume,
+                    
+                    # Analyst (nullable)
+                    "analyst_rating": None,     # Will be enriched if available
+                    
+                    # Scoring
+                    "score": round(score, 1)
                 }
                 
                 cc_opportunities.append(cc_opp)
