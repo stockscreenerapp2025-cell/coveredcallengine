@@ -1269,7 +1269,9 @@ def _transform_pmcc_result(r: Dict) -> Dict:
         "stock_price": r.get("stock_price"),
         
         # MANDATORY MARKET CONTEXT FIELDS (Feb 2026)
-        "stock_price_source": r.get("stock_price_source", "REGULAR_MARKET_PREVIOUS_CLOSE"),
+        "stock_price_source": r.get("stock_price_source", "SESSION_CLOSE"),
+        "session_close_price": r.get("session_close_price"),
+        "prior_close_price": r.get("prior_close_price"),
         "market_status": r.get("market_status", "UNKNOWN"),
         "as_of": r.get("as_of"),
         
