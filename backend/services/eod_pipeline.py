@@ -935,41 +935,119 @@ async def compute_scan_results(
                 if short["strike"] <= leap["strike"]:
                     continue  # Short must be above LEAP
                 
-                net_debit = leap["ask"] - short["bid"]
+                # PRICING RULES:
+                # - LEAP BUY: use ASK price
+                # - Short SELL: use BID price
+                leap_ask = leap["ask"]
+                leap_bid = leap.get("bid", 0)
+                short_bid = short["bid"]
+                short_ask = short.get("ask", 0)
+                
+                # ASSERTION: short_bid must be > 0 for valid PMCC
+                if short_bid <= 0:
+                    continue
+                
+                leap_used = leap_ask  # BUY rule
+                short_used = short_bid  # SELL rule
+                
+                net_debit = leap_ask - short_bid
                 if net_debit <= 0:
                     continue
                 
                 width = short["strike"] - leap["strike"]
                 max_profit = width - net_debit
-                roi_per_cycle = (short["bid"] / leap["ask"]) * 100 if leap["ask"] > 0 else 0
+                
+                # ROI must use actual prices (leap_ask, short_bid)
+                roi_per_cycle = (short_bid / leap_ask) * 100 if leap_ask > 0 else 0
                 roi_annualized = roi_per_cycle * (365 / max(short["dte"], 1))
                 
+                # ASSERTION: ROI > 0 requires short_bid > 0
+                if roi_per_cycle > 0 and short_bid <= 0:
+                    continue  # Invalid state
+                
+                # Build contract symbols
+                try:
+                    leap_exp_fmt = datetime.strptime(leap["expiry"], "%Y-%m-%d").strftime("%y%m%d")
+                    leap_symbol = f"{symbol}{leap_exp_fmt}C{int(leap['strike'] * 1000):08d}"
+                except Exception:
+                    leap_symbol = f"{symbol}_LEAP_{leap['strike']}_{leap['expiry']}"
+                
+                try:
+                    short_exp_fmt = datetime.strptime(short["expiry"], "%Y-%m-%d").strftime("%y%m%d")
+                    short_symbol = f"{symbol}{short_exp_fmt}C{int(short['strike'] * 1000):08d}"
+                except Exception:
+                    short_symbol = f"{symbol}_SHORT_{short['strike']}_{short['expiry']}"
+                
+                # IV from short leg (more relevant for premium decay)
+                short_iv = short.get("iv", 0) or 0
+                iv_decimal = round(short_iv, 4) if short_iv > 0 else 0.0
+                iv_percent = round(short_iv * 100, 1) if short_iv > 0 else 0.0
+                
+                # === EXPLICIT PMCC SCHEMA (Feb 2026) ===
                 pmcc_opp = {
+                    # Run metadata
                     "run_id": run_id,
+                    "as_of": as_of,
+                    "created_at": datetime.now(timezone.utc),
+                    
+                    # Underlying
                     "symbol": symbol,
                     "stock_price": round(stock_price, 2),
+                    "stock_price_source": "EOD_SNAPSHOT",
+                    "is_etf": symbol_is_etf,
+                    "instrument_type": "ETF" if symbol_is_etf else "STOCK",
+                    
+                    # LEAP (Long leg - BUY)
+                    "leap_symbol": leap_symbol,
                     "leap_strike": leap["strike"],
                     "leap_expiry": leap["expiry"],
                     "leap_dte": leap["dte"],
-                    "leap_ask": round(leap["ask"], 2),
+                    "leap_bid": round(leap_bid, 2) if leap_bid else None,
+                    "leap_ask": round(leap_ask, 2),
+                    "leap_used": round(leap_used, 2),  # = leap_ask (BUY rule)
                     "leap_delta": leap["delta"],
+                    
+                    # Short leg (SELL)
+                    "short_symbol": short_symbol,
                     "short_strike": short["strike"],
                     "short_expiry": short["expiry"],
                     "short_dte": short["dte"],
-                    "short_bid": round(short["bid"], 2),
+                    "short_bid": round(short_bid, 2),
+                    "short_ask": round(short_ask, 2) if short_ask else None,
+                    "short_used": round(short_used, 2),  # = short_bid (SELL rule)
+                    
+                    # Pricing rule
+                    "pricing_rule": "BUY_ASK_SELL_BID",
+                    
+                    # Legacy fields for backward compatibility
+                    "short_premium": round(short_bid, 2),  # Alias for short_bid
+                    "leaps_ask": round(leap_ask, 2),       # Alias for leap_ask
+                    
+                    # Economics
                     "net_debit": round(net_debit, 2),
                     "net_debit_total": round(net_debit * 100, 2),
                     "width": round(width, 2),
                     "max_profit": round(max_profit, 2),
                     "max_profit_total": round(max_profit * 100, 2),
                     "breakeven": round(leap["strike"] + net_debit, 2),
-                    "roi_per_cycle": round(roi_per_cycle, 2),
+                    "roi_cycle": round(roi_per_cycle, 2),      # Per cycle
+                    "roi_per_cycle": round(roi_per_cycle, 2),  # Alias
                     "roi_annualized": round(roi_annualized, 1),
-                    "is_etf": symbol_is_etf,
-                    "instrument_type": "ETF" if symbol_is_etf else "STOCK",
-                    "score": round(50 + roi_per_cycle * 5, 1),  # Simple PMCC scoring
-                    "as_of": as_of,
-                    "created_at": datetime.now(timezone.utc)
+                    
+                    # Greeks (from LEAP)
+                    "delta": leap["delta"],
+                    "delta_source": "BLACK_SCHOLES_APPROX",
+                    
+                    # IV (from short leg)
+                    "iv": iv_decimal,           # Decimal (0.65)
+                    "iv_pct": iv_percent,       # Percent (65.0)
+                    "iv_rank": None,            # Will be enriched if available
+                    
+                    # Analyst (nullable)
+                    "analyst_rating": None,     # Will be enriched if available
+                    
+                    # Scoring
+                    "score": round(50 + roi_per_cycle * 5, 1)
                 }
                 
                 pmcc_opportunities.append(pmcc_opp)
