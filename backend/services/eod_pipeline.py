@@ -106,7 +106,24 @@ class EODPipelineResult:
 def fetch_quote_sync(symbol: str) -> Dict:
     """
     Fetch quote from Yahoo Finance (blocking call).
-    Uses previousClose as primary, regularMarketPrice as fallback.
+    
+    PRICE SOURCE RULE (MANDATORY - Feb 2026):
+    =========================================
+    ALWAYS USE: regularMarketPreviousClose
+    This matches Yahoo's "At close" display.
+    
+    DO NOT USE:
+    - previousClose (same value but ambiguous name)
+    - adjClose (adjusted for splits/dividends - different value)
+    - regularMarketPrice (intraday price, not official close)
+    - any derived fallback
+    
+    MARKET STATE HANDLING:
+    - market_status == "CLOSED": Use regularMarketPreviousClose (OFFICIAL_CLOSE)
+    - market_status == "OPEN": Use regularMarketPreviousClose (OFFICIAL_CLOSE)
+    - NO live price substitution - system is deterministic EOD
+    
+    All raw Yahoo fields are stored for debugging.
     """
     try:
         ticker = yf.Ticker(symbol)
@@ -120,24 +137,72 @@ def fetch_quote_sync(symbol: str) -> Dict:
                 "error_detail": "Yahoo returned empty info"
             }
         
-        # Use previousClose as primary (EOD consistency)
-        prev_close = info.get("previousClose")
-        regular_price = info.get("regularMarketPrice")
-        price = prev_close or regular_price
+        # ============================================================
+        # STEP 1: Extract ALL raw Yahoo price fields for debugging
+        # ============================================================
+        raw_prices = {
+            "regularMarketPrice": info.get("regularMarketPrice"),
+            "regularMarketPreviousClose": info.get("regularMarketPreviousClose"),
+            "previousClose": info.get("previousClose"),
+            "open": info.get("open"),
+            "dayHigh": info.get("dayHigh"),
+            "dayLow": info.get("dayLow"),
+            "postMarketPrice": info.get("postMarketPrice"),
+            "preMarketPrice": info.get("preMarketPrice"),
+        }
         
-        if not price or price <= 0:
+        # ============================================================
+        # STEP 2: Get market state
+        # ============================================================
+        market_status = info.get("marketState", "UNKNOWN")  # CLOSED, OPEN, PRE, POST, etc.
+        regular_market_time = info.get("regularMarketTime")  # Unix timestamp
+        
+        # Convert timestamp to ISO string for storage
+        as_of = None
+        if regular_market_time:
+            try:
+                as_of = datetime.fromtimestamp(regular_market_time, tz=timezone.utc).isoformat()
+            except Exception:
+                as_of = None
+        
+        # ============================================================
+        # STEP 3: MANDATORY PRICE SELECTION - regularMarketPreviousClose
+        # This is the official close price that matches Yahoo "At close"
+        # ============================================================
+        selected_price = info.get("regularMarketPreviousClose")
+        stock_price_source = "REGULAR_MARKET_PREVIOUS_CLOSE"
+        
+        # HARD CONSTRAINT: No fallback allowed per user requirements
+        # If regularMarketPreviousClose is missing, fail explicitly
+        if selected_price is None or selected_price <= 0:
             return {
                 "symbol": symbol,
                 "success": False,
-                "error_type": "NO_PRICE",
-                "error_detail": f"previousClose={prev_close}, regularMarketPrice={regular_price}"
+                "error_type": "NO_VALID_PRICE",
+                "error_detail": f"regularMarketPreviousClose={info.get('regularMarketPreviousClose')} is invalid. Raw prices: {raw_prices}",
+                "raw_prices": raw_prices,
+                "market_status": market_status
             }
         
+        # ============================================================
+        # STEP 4: Build response with all context fields
+        # ============================================================
         return {
             "symbol": symbol,
             "success": True,
-            "price": price,
-            "price_source": "previousClose" if prev_close else "regularMarketPrice",
+            
+            # SELECTED PRICE (MANDATORY FIELD)
+            "price": selected_price,
+            "stock_price_source": stock_price_source,
+            
+            # MARKET CONTEXT FIELDS (for debugging and audit)
+            "market_status": market_status,
+            "as_of": as_of,
+            
+            # RAW YAHOO FIELDS (for debugging)
+            "raw_prices": raw_prices,
+            
+            # OTHER METADATA
             "avg_volume": info.get("averageVolume", 0) or info.get("volume", 0),
             "market_cap": info.get("marketCap", 0),
             "bid": info.get("bid", 0),
