@@ -1451,9 +1451,11 @@ async def screen_pmcc(
     - Data is pre-computed by EOD pipeline at 4:10 PM ET daily
     - Fallback: precomputed_scans collection (legacy)
     
-    PMCC STRUCTURE:
-    - Long leg (LEAPS): 365-730 DTE, ITM, delta >= 0.70
-    - Short leg: 7-60 DTE, strike > LEAP strike
+    PMCC STRUCTURE (STRICT INSTITUTIONAL RULES):
+    - Long leg (LEAPS): 365-730 DTE, ITM, delta >= 0.80, OI >= 100, spread <= 5%
+    - Short leg: 30-45 DTE, delta 0.20-0.30, OI >= 100, spread <= 5%
+    - Solvency: width > net_debit
+    - Break-even: short_strike > (leap_strike + net_debit)
     - Net debit = LEAP ask - Short bid
     """
     import time
