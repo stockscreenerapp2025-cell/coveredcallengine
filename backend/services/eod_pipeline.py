@@ -1,10 +1,10 @@
 """
 EOD Snapshot Pipeline
 =====================
-Runs at 4:05 PM ET (Mon-Fri) to:
+Runs at 4:10 PM ET (Mon-Fri) to:
 1. Load latest universe version (1500 symbols)
 2. Fetch underlying prices (previousClose)
-3. Fetch option chains
+3. Fetch option chains (including LEAPS for PMCC)
 4. Compute CC and PMCC results
 5. Write to DB collections
 
@@ -13,6 +13,11 @@ Reliability Controls:
 - Max retries: 1
 - Partial failures allowed
 - Atomic publish of scan_runs
+
+LEAPS Coverage (Feb 2026):
+- Option chain fetch now includes ALL available expirations
+- LEAPS (365+ DTE) explicitly fetched for PMCC eligibility
+- NO_LEAPS_AVAILABLE tracked in audit for symbols without far-dated options
 """
 import os
 import asyncio
@@ -31,6 +36,7 @@ from services.universe_builder import (
     is_etf
 )
 from utils.symbol_normalization import normalize_symbol
+from data.leaps_safe_universe import is_leaps_safe, get_leaps_safe_universe
 
 logger = logging.getLogger(__name__)
 
