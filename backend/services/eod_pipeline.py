@@ -1334,9 +1334,28 @@ async def compute_scan_results(
                             "quality_flags": option_quality_flags
                         })
                 
-                # Short call candidate (7-60 DTE)
+                # Short call candidate (30-45 DTE) - STRICT INSTITUTIONAL RULES
                 if PMCC_MIN_SHORT_DTE <= dte <= PMCC_MAX_SHORT_DTE:
                     if bid and bid > 0:
+                        # Calculate delta for institutional filtering
+                        short_greeks = calculate_greeks_simple(stock_price, strike, dte, iv if iv > 0 else 0.30)
+                        short_delta = short_greeks["delta"]
+                        
+                        # INSTITUTIONAL FILTERS
+                        # 1. Delta range 0.20-0.30
+                        if short_delta < PMCC_MIN_SHORT_DELTA or short_delta > PMCC_MAX_SHORT_DELTA:
+                            continue
+                        
+                        # 2. Minimum open interest >= 100
+                        if oi < PMCC_MIN_SHORT_OI:
+                            continue
+                        
+                        # 3. Bid-ask spread <= 5%
+                        if ask and ask > 0:
+                            spread_pct = ((ask - bid) / bid) * 100
+                            if spread_pct > PMCC_MAX_SHORT_SPREAD_PCT:
+                                continue
+                        
                         short_candidates.append({
                             "strike": strike,
                             "expiry": expiry,
@@ -1350,7 +1369,8 @@ async def compute_scan_results(
                             "display_source": display_source,
                             "iv": iv,
                             "oi": oi,
-                            "quality_flags": option_quality_flags
+                            "quality_flags": option_quality_flags,
+                            "delta": short_delta  # Store calculated delta
                         })
         
         # Match LEAPS with short calls
