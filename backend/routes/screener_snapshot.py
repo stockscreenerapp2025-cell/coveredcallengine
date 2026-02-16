@@ -1564,15 +1564,18 @@ async def get_dashboard_opportunities(
     # Combine
     combined = top_weekly + top_monthly
     
+    # ANALYST ENRICHMENT MERGE (READ-TIME)
+    combined = await _merge_analyst_enrichment(combined)
+    
     elapsed_ms = (time.time() - start_time) * 1000
     
     return {
         "total": len(combined),
         "opportunities": combined,
-        "weekly_count": len(top_weekly),
-        "monthly_count": len(top_monthly),
-        "weekly_opportunities": top_weekly,
-        "monthly_opportunities": top_monthly,
+        "weekly_count": len([o for o in combined if o.get("expiry_type") == "Weekly"]),
+        "monthly_count": len([o for o in combined if o.get("expiry_type") == "Monthly"]),
+        "weekly_opportunities": [o for o in combined if o.get("expiry_type") == "Weekly"],
+        "monthly_opportunities": [o for o in combined if o.get("expiry_type") == "Monthly"],
         "weekly_available": len(weekly_opps),
         "monthly_available": len(monthly_opps),
         "run_info": run_info,
