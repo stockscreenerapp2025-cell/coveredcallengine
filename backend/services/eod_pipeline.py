@@ -692,182 +692,208 @@ async def run_eod_pipeline(db, force_build_universe: bool = False) -> EODPipelin
     
     logger.info(f"[EOD_PIPELINE] Universe: {len(universe)} symbols, version={universe_version}")
     
-    # Step 2: Fetch quotes in BULK batches (reduces rate limiting)
-    logger.info(f"[EOD_PIPELINE] Fetching quotes in bulk batches of {BULK_QUOTE_BATCH_SIZE}...")
+    # ==========================================================================
+    # STAGE 1: BULK QUOTE FETCHING (batched, concurrent)
+    # ==========================================================================
+    logger.info(f"[EOD_PIPELINE] === STAGE 1: QUOTE FETCHING ===")
+    logger.info(f"[EOD_PIPELINE] Config: batch_size={BULK_QUOTE_BATCH_SIZE}, concurrency={QUOTE_CONCURRENCY}")
     
     all_quotes = {}
+    total_quote_batches = (len(universe) + BULK_QUOTE_BATCH_SIZE - 1) // BULK_QUOTE_BATCH_SIZE
+    
     for i in range(0, len(universe), BULK_QUOTE_BATCH_SIZE):
         batch_symbols = universe[i:i + BULK_QUOTE_BATCH_SIZE]
         batch_num = (i // BULK_QUOTE_BATCH_SIZE) + 1
-        total_batches = (len(universe) + BULK_QUOTE_BATCH_SIZE - 1) // BULK_QUOTE_BATCH_SIZE
         
-        logger.info(f"[EOD_PIPELINE] Bulk quote batch {batch_num}/{total_batches}: {len(batch_symbols)} symbols")
+        logger.info(f"[EOD_PIPELINE] Quote batch {batch_num}/{total_quote_batches}: {len(batch_symbols)} symbols")
         
-        # Fetch quotes in bulk with retry logic
+        # Fetch quotes in bulk
         batch_quotes = fetch_bulk_quotes_sync(batch_symbols)
         all_quotes.update(batch_quotes)
         
-        # Small delay between bulk batches to avoid rate limiting
+        # Delay between quote batches
         if i + BULK_QUOTE_BATCH_SIZE < len(universe):
             time.sleep(0.5)
     
-    # Count quote results
-    quote_success_count = sum(1 for q in all_quotes.values() if q.get("success"))
-    quote_failure_count = len(all_quotes) - quote_success_count
-    logger.info(f"[EOD_PIPELINE] Bulk quotes complete: {quote_success_count} success, {quote_failure_count} failures")
+    # Count and categorize quote results
+    for symbol, quote_result in all_quotes.items():
+        if quote_result.get("success"):
+            result.quote_success += 1
+        else:
+            result.quote_failure += 1
+            error_type = quote_result.get("error_type", "UNKNOWN")
+            
+            # Categorize quote failure reason
+            if error_type == "MISSING_QUOTE_FIELDS":
+                reason = "MISSING_QUOTE_FIELDS"
+            elif error_type in ("RATE_LIMITED", "RATE_LIMITED_QUOTE"):
+                reason = "RATE_LIMITED_QUOTE"
+            else:
+                reason = "MISSING_QUOTE"
+            
+            result.add_exclusion("QUOTE", reason, error_type)
+            result.failures.append({
+                "symbol": symbol,
+                "stage": "QUOTE",
+                "error_type": error_type,
+                "error_detail": quote_result.get("error_detail", "No quote data")
+            })
     
-    # Step 3: Fetch option chains and build snapshots
+    logger.info(f"[EOD_PIPELINE] Quote stage complete: {result.quote_success} success, {result.quote_failure} failures")
+    
+    # ==========================================================================
+    # STAGE 2: OPTION CHAIN FETCHING (throttle-safe, sequential batches)
+    # ==========================================================================
+    logger.info(f"[EOD_PIPELINE] === STAGE 2: OPTION CHAIN FETCHING (THROTTLE-SAFE) ===")
+    logger.info(f"[EOD_PIPELINE] Config: concurrency={CHAIN_CONCURRENCY}, batch_size={CHAIN_BATCH_SIZE}, "
+                f"symbol_delay={CHAIN_SYMBOL_DELAY_MS}ms, batch_pause={CHAIN_BATCH_PAUSE_S}s")
+    
     snapshots = []
     audit_records = []
     
-    # Process symbols with successful quotes
+    # Process only symbols with successful quotes
     symbols_with_quotes = [s for s in universe if all_quotes.get(s, {}).get("success")]
+    total_chain_batches = (len(symbols_with_quotes) + CHAIN_BATCH_SIZE - 1) // CHAIN_BATCH_SIZE
     
-    for i in range(0, len(symbols_with_quotes), BATCH_SIZE):
-        batch = symbols_with_quotes[i:i + BATCH_SIZE]
+    logger.info(f"[EOD_PIPELINE] Processing {len(symbols_with_quotes)} symbols in {total_chain_batches} chain batches")
+    
+    for batch_idx in range(0, len(symbols_with_quotes), CHAIN_BATCH_SIZE):
+        batch = symbols_with_quotes[batch_idx:batch_idx + CHAIN_BATCH_SIZE]
+        batch_num = (batch_idx // CHAIN_BATCH_SIZE) + 1
         batch_snapshots = []
         
-        # Fetch option chains with controlled concurrency
-        with ThreadPoolExecutor(max_workers=YAHOO_MAX_CONCURRENCY) as executor:
-            future_to_symbol = {executor.submit(fetch_option_chain_sync, sym): sym for sym in batch}
+        logger.info(f"[EOD_PIPELINE] Chain batch {batch_num}/{total_chain_batches}: {len(batch)} symbols")
+        
+        # Process symbols SEQUENTIALLY within batch (throttle-safe)
+        for sym_idx, symbol in enumerate(batch):
+            quote_result = all_quotes[symbol]
+            result.symbols_processed += 1
             
-            for future in as_completed(future_to_symbol):
-                symbol = future_to_symbol[future]
-                quote_result = all_quotes[symbol]
-                result.symbols_processed += 1
-                result.quote_success += 1
+            # Fetch option chain with retry
+            chain_result = fetch_option_chain_sync(symbol)
+            
+            if chain_result["success"]:
+                result.chain_success += 1
                 
-                chain_result = future.result()
+                has_leaps = chain_result.get("has_leaps", False)
+                leaps_count = chain_result.get("leaps_found", 0)
                 
-                if chain_result["success"]:
-                    result.chain_success += 1
-                    
-                    # Check for LEAPS availability
-                    has_leaps = chain_result.get("has_leaps", False)
-                    leaps_count = chain_result.get("leaps_found", 0)
-                    
-                    # Create snapshot with EXPLICIT PRICE SOURCE + MARKET CONTEXT
-                    snapshot = {
-                        "run_id": run_id,
-                        "symbol": symbol,
-                        
-                        # SELECTED PRICE (based on market state)
-                        "underlying_price": quote_result["price"],
-                        "stock_price_source": quote_result.get("stock_price_source", "SESSION_CLOSE"),
-                        
-                        # BOTH PRICE FIELDS (always stored)
-                        "session_close_price": quote_result.get("session_close_price"),
-                        "prior_close_price": quote_result.get("prior_close_price"),
-                        
-                        # MARKET CONTEXT FIELDS
-                        "market_status": quote_result.get("market_status", "UNKNOWN"),
-                        "as_of": quote_result.get("as_of") or as_of.isoformat() if isinstance(as_of, datetime) else as_of,
-                        "regular_market_time": quote_result.get("regular_market_time"),
-                        
-                        # RAW YAHOO PRICES (for debugging)
-                        "raw_prices": quote_result.get("raw_prices", {}),
-                        
-                        # OTHER METADATA
-                        "avg_volume": quote_result.get("avg_volume", 0) or 0,
-                        "market_cap": quote_result.get("market_cap", 0) or 0,
-                        "option_chain": chain_result["chains"],
-                        "expirations": chain_result["expirations"],
-                        "is_etf": is_etf(symbol),
-                        "has_leaps": has_leaps,
-                        "leaps_count": leaps_count,
-                        "included": True
-                    }
-                    batch_snapshots.append(snapshot)
-                    
-                    # Audit: included - with LEAPS status and price context
-                    audit_record = {
-                        "run_id": run_id,
-                        "symbol": symbol,
-                        "included": True,
-                        "exclude_stage": None,
-                        "exclude_reason": None,
-                        "exclude_detail": None,
-                        
-                        # PRICE CONTEXT FOR AUDIT
-                        "price_used": quote_result["price"],
-                        "stock_price_source": quote_result.get("stock_price_source", "SESSION_CLOSE"),
-                        "session_close_price": quote_result.get("session_close_price"),
-                        "prior_close_price": quote_result.get("prior_close_price"),
-                        "market_status": quote_result.get("market_status", "UNKNOWN"),
-                        "raw_prices": quote_result.get("raw_prices", {}),
-                        
-                        "avg_volume": quote_result.get("avg_volume", 0) or 0,
-                        "has_leaps": has_leaps,
-                        "leaps_count": leaps_count,
-                        "as_of": quote_result.get("as_of") or as_of.isoformat() if isinstance(as_of, datetime) else as_of
-                    }
-                    
-                    # Track NO_LEAPS_AVAILABLE as warning (not exclusion)
-                    if not has_leaps:
-                        audit_record["leaps_warning"] = "NO_LEAPS_AVAILABLE"
-                        logger.debug(f"[EOD_PIPELINE] {symbol}: No LEAPS available (365+ DTE)")
-                    
-                    audit_records.append(audit_record)
+                # Create snapshot
+                snapshot = {
+                    "run_id": run_id,
+                    "symbol": symbol,
+                    "underlying_price": quote_result["price"],
+                    "stock_price_source": quote_result.get("stock_price_source", "SESSION_CLOSE"),
+                    "session_close_price": quote_result.get("session_close_price"),
+                    "prior_close_price": quote_result.get("prior_close_price"),
+                    "market_status": quote_result.get("market_status", "UNKNOWN"),
+                    "as_of": quote_result.get("as_of") or as_of.isoformat() if isinstance(as_of, datetime) else as_of,
+                    "regular_market_time": quote_result.get("regular_market_time"),
+                    "raw_prices": quote_result.get("raw_prices", {}),
+                    "avg_volume": quote_result.get("avg_volume", 0) or 0,
+                    "market_cap": quote_result.get("market_cap", 0) or 0,
+                    "option_chain": chain_result["chains"],
+                    "expirations": chain_result["expirations"],
+                    "is_etf": is_etf(symbol),
+                    "has_leaps": has_leaps,
+                    "leaps_count": leaps_count,
+                    "included": True
+                }
+                batch_snapshots.append(snapshot)
+                
+                # Audit: included
+                audit_records.append({
+                    "run_id": run_id,
+                    "symbol": symbol,
+                    "included": True,
+                    "exclude_stage": None,
+                    "exclude_reason": None,
+                    "exclude_detail": None,
+                    "price_used": quote_result["price"],
+                    "stock_price_source": quote_result.get("stock_price_source", "SESSION_CLOSE"),
+                    "session_close_price": quote_result.get("session_close_price"),
+                    "prior_close_price": quote_result.get("prior_close_price"),
+                    "market_status": quote_result.get("market_status", "UNKNOWN"),
+                    "raw_prices": quote_result.get("raw_prices", {}),
+                    "avg_volume": quote_result.get("avg_volume", 0) or 0,
+                    "has_leaps": has_leaps,
+                    "leaps_count": leaps_count,
+                    "leaps_warning": "NO_LEAPS_AVAILABLE" if not has_leaps else None,
+                    "as_of": as_of
+                })
+            else:
+                result.chain_failure += 1
+                chain_error_type = chain_result.get("error_type", "UNKNOWN")
+                
+                # Categorize chain failure with CLEAR categories
+                if chain_error_type == "RATE_LIMITED":
+                    reason = "RATE_LIMITED_CHAIN"
+                elif chain_error_type == "NO_OPTIONS":
+                    reason = "MISSING_CHAIN"
+                elif chain_error_type in ("CHAIN_FETCH_FAILED", "BAD_CHAIN_DATA"):
+                    reason = "BAD_CHAIN_DATA"
                 else:
-                    result.chain_failure += 1
-                    chain_error_type = chain_result.get("error_type", "UNKNOWN")
-                    result.add_exclusion("OPTIONS_CHAIN", "MISSING_CHAIN", chain_error_type)
-                    result.failures.append({
-                        "symbol": symbol,
-                        "stage": "OPTIONS_CHAIN",
-                        "error_type": chain_error_type,
-                        "error_detail": chain_result.get("error_detail", "Unknown error")
-                    })
-                    
-                    # Audit: excluded
-                    audit_records.append({
-                        "run_id": run_id,
-                        "symbol": symbol,
-                        "included": False,
-                        "exclude_stage": "OPTIONS_CHAIN",
-                        "exclude_reason": "MISSING_CHAIN",
-                        "exclude_detail": chain_result.get("error_detail", "Unknown error"),
-                        "price_used": quote_result["price"],
-                        "avg_volume": quote_result.get("avg_volume", 0) or 0,
-                        "as_of": as_of
-                    })
+                    reason = "MISSING_CHAIN"
+                
+                result.add_exclusion("OPTIONS_CHAIN", reason, chain_error_type)
+                result.failures.append({
+                    "symbol": symbol,
+                    "stage": "OPTIONS_CHAIN",
+                    "error_type": chain_error_type,
+                    "error_detail": chain_result.get("error_detail", "Unknown error")
+                })
+                
+                # Audit: excluded
+                audit_records.append({
+                    "run_id": run_id,
+                    "symbol": symbol,
+                    "included": False,
+                    "exclude_stage": "OPTIONS_CHAIN",
+                    "exclude_reason": reason,
+                    "exclude_detail": chain_result.get("error_detail", "Unknown error"),
+                    "price_used": quote_result["price"],
+                    "avg_volume": quote_result.get("avg_volume", 0) or 0,
+                    "as_of": as_of
+                })
+            
+            # THROTTLE-SAFE: Fixed pacing delay between symbols (250ms default)
+            if sym_idx < len(batch) - 1:
+                time.sleep(CHAIN_SYMBOL_DELAY_MS / 1000.0)
         
         snapshots.extend(batch_snapshots)
         
         # Progress log
         logger.info(
-            f"[EOD_PIPELINE] Chain progress: {result.symbols_processed}/{len(symbols_with_quotes)} "
-            f"(chains: {result.chain_success})"
+            f"[EOD_PIPELINE] Chain batch {batch_num} complete: "
+            f"{result.chain_success}/{result.symbols_processed} success ({result.chain_success * 100 // max(1, result.symbols_processed)}%)"
         )
+        
+        # THROTTLE-SAFE: Pause between batches (2.5s default)
+        if batch_idx + CHAIN_BATCH_SIZE < len(symbols_with_quotes):
+            logger.debug(f"[EOD_PIPELINE] Pausing {CHAIN_BATCH_PAUSE_S}s between chain batches")
+            time.sleep(CHAIN_BATCH_PAUSE_S)
     
-    # Process symbols with failed quotes (add to audit)
+    # Add audit records for symbols that failed at quote stage
     for symbol in universe:
         if symbol not in all_quotes or not all_quotes[symbol].get("success"):
             quote_result = all_quotes.get(symbol, {"error_type": "UNKNOWN", "error_detail": "No quote data"})
-            quote_error_type = quote_result.get("error_type", "UNKNOWN")
-            result.quote_failure += 1
-            result.add_exclusion("QUOTE", "MISSING_QUOTE", quote_error_type)
-            result.failures.append({
-                "symbol": symbol,
-                "stage": "QUOTE",
-                "error_type": quote_error_type,
-                "error_detail": quote_result.get("error_detail", "No quote data")
-            })
-            
-            # Audit: excluded
             audit_records.append({
                 "run_id": run_id,
                 "symbol": symbol,
                 "included": False,
                 "exclude_stage": "QUOTE",
-                "exclude_reason": "MISSING_QUOTE",
+                "exclude_reason": quote_result.get("error_type", "MISSING_QUOTE"),
                 "exclude_detail": quote_result.get("error_detail", "No quote data"),
                 "price_used": 0,
                 "avg_volume": 0,
                 "as_of": as_of
             })
     
-    # Step 4: Persist snapshots
+    logger.info(f"[EOD_PIPELINE] Chain stage complete: {result.chain_success} success, {result.chain_failure} failures")
+    
+    # ==========================================================================
+    # STAGE 3: PERSIST SNAPSHOTS AND AUDIT
+    # ==========================================================================
     if snapshots:
         try:
             await db.symbol_snapshot.insert_many(snapshots)
