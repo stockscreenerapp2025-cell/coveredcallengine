@@ -1012,10 +1012,34 @@ async def compute_scan_results(
                 strike = call.get("strike", 0)
                 bid = call.get("bid", 0)
                 ask = call.get("ask", 0)
+                last_price = call.get("lastPrice", 0) or 0
+                prev_close = call.get("previousClose", 0) or call.get("prevClose", 0) or 0
                 iv = call.get("impliedVolatility", 0) or 0
                 oi = call.get("openInterest", 0) or 0
                 volume = call.get("volume", 0) or 0
                 
+                # ============================================================
+                # OPTION PARITY MODEL: Compute display_price for Yahoo parity
+                # ============================================================
+                mid = round((bid + ask) / 2, 2) if bid > 0 and ask > 0 else None
+                
+                # Determine display_price (what Yahoo shows)
+                if last_price and last_price > 0:
+                    display_price = round(last_price, 2)
+                    display_price_source = "LAST"
+                elif mid is not None:
+                    display_price = mid
+                    display_price_source = "MID"
+                elif prev_close and prev_close > 0:
+                    display_price = round(prev_close, 2)
+                    display_price_source = "PREV_CLOSE"
+                else:
+                    display_price = None
+                    display_price_source = "NONE"
+                
+                # ============================================================
+                # QUALITY FLAGS (expanded)
+                # ============================================================
                 # VALIDATE CC OPTION (HARD RULES)
                 is_valid, quality_flags = validate_cc_option(
                     strike=strike,
@@ -1028,6 +1052,15 @@ async def compute_scan_results(
                 
                 if not is_valid:
                     continue
+                
+                # SOFT FLAGS (for transparency, don't reject)
+                spread_pct = ((ask - bid) / bid * 100) if bid > 0 else 0
+                if spread_pct > 10:
+                    quality_flags.append("WIDE_SPREAD")
+                if oi < 50:
+                    quality_flags.append("LOW_OI")
+                if not last_price or last_price <= 0:
+                    quality_flags.append("NO_LAST")
                 
                 # PRICING RULE: SELL leg uses BID price
                 premium_bid = bid
