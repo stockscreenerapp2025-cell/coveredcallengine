@@ -510,7 +510,7 @@ async def run_eod_pipeline(db, force_build_universe: bool = False) -> EODPipelin
             summary_doc,
             upsert=True
         )
-        logger.info(f"[EOD_PIPELINE] Persisted scan_run_summary")
+        logger.info("[EOD_PIPELINE] Persisted scan_run_summary")
     except Exception as e:
         logger.error(f"[EOD_PIPELINE] Failed to persist summary: {e}")
     
@@ -535,7 +535,7 @@ async def run_eod_pipeline(db, force_build_universe: bool = False) -> EODPipelin
             scan_run_doc,
             upsert=True
         )
-        logger.info(f"[EOD_PIPELINE] Persisted scan_runs (atomic publish)")
+        logger.info("[EOD_PIPELINE] Persisted scan_runs (atomic publish)")
     except Exception as e:
         logger.error(f"[EOD_PIPELINE] Failed to persist scan_runs: {e}")
     
