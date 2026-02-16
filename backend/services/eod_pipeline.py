@@ -1343,8 +1343,11 @@ async def compute_scan_results(
                 iv_decimal = round(short_iv, 4) if short_iv > 0 else 0.0
                 iv_percent = round(short_iv * 100, 1) if short_iv > 0 else 0.0
                 
+                # Combine quality flags from both legs
+                combined_quality_flags = list(set(pmcc_quality_flags + leap.get("quality_flags", []) + short.get("quality_flags", [])))
+                
                 # === EXPLICIT PMCC SCHEMA (Feb 2026) ===
-                # WITH MANDATORY MARKET CONTEXT FIELDS
+                # WITH MANDATORY MARKET CONTEXT FIELDS + OPTION PARITY MODEL
                 pmcc_opp = {
                     # Run metadata
                     "run_id": run_id,
@@ -1371,7 +1374,12 @@ async def compute_scan_results(
                     "leap_dte": leap["dte"],
                     "leap_bid": round(leap_bid, 2) if leap_bid else None,
                     "leap_ask": round(leap_ask, 2),
+                    "leap_mid": leap.get("mid"),
+                    "leap_last": leap.get("last"),
+                    "leap_prev_close": leap.get("prev_close"),
                     "leap_used": round(leap_used, 2),  # = leap_ask (BUY rule)
+                    "leap_display": leap.get("display_price"),
+                    "leap_display_source": leap.get("display_source"),
                     "leap_delta": leap["delta"],
                     
                     # Short leg (SELL)
@@ -1381,7 +1389,12 @@ async def compute_scan_results(
                     "short_dte": short["dte"],
                     "short_bid": round(short_bid, 2),
                     "short_ask": round(short_ask, 2) if short_ask else None,
+                    "short_mid": short.get("mid"),
+                    "short_last": short.get("last"),
+                    "short_prev_close": short.get("prev_close"),
                     "short_used": round(short_used, 2),  # = short_bid (SELL rule)
+                    "short_display": short.get("display_price"),
+                    "short_display_source": short.get("display_source"),
                     
                     # Pricing rule
                     "pricing_rule": "BUY_ASK_SELL_BID",
@@ -1410,8 +1423,8 @@ async def compute_scan_results(
                     "iv_pct": iv_percent,       # Percent (65.0)
                     "iv_rank": None,            # Will be enriched if available
                     
-                    # Quality flags (from validation)
-                    "quality_flags": pmcc_quality_flags,
+                    # Quality flags (combined from validation + soft flags)
+                    "quality_flags": combined_quality_flags,
                     
                     # Analyst (from enrichment)
                     "analyst_rating": analyst_rating,
