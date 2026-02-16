@@ -464,7 +464,7 @@ def fetch_quote_sync(symbol: str) -> Dict:
         }
 
 
-def fetch_option_chain_sync(symbol: str) -> Dict:
+def fetch_option_chain_sync(symbol: str, retry_count: int = 0) -> Dict:
     """
     Fetch option chain from Yahoo Finance (blocking call).
     
@@ -472,6 +472,8 @@ def fetch_option_chain_sync(symbol: str) -> Dict:
     - Near-term (0-60 DTE): All expirations
     - Mid-term (61-364 DTE): Sample every 2nd expiration
     - LEAPS (365+ DTE): All expirations (critical for PMCC)
+    
+    Includes retry logic with exponential backoff for rate limiting.
     """
     try:
         ticker = yf.Ticker(symbol)
@@ -487,7 +489,6 @@ def fetch_option_chain_sync(symbol: str) -> Dict:
             }
         
         # Categorize expirations by DTE
-        from datetime import datetime
         today = datetime.now()
         
         near_term = []  # 0-60 DTE
@@ -574,11 +575,17 @@ def fetch_option_chain_sync(symbol: str) -> Dict:
         
     except Exception as e:
         error_str = str(e)
-        error_type = "UNKNOWN_ERROR"
+        is_rate_limited = "Too Many Requests" in error_str or "Rate limit" in error_str.lower() or "429" in error_str
         
-        if "Too Many Requests" in error_str:
-            error_type = "RATE_LIMITED"
-        elif "404" in error_str:
+        if is_rate_limited and retry_count < YAHOO_MAX_RETRIES:
+            # Exponential backoff with jitter
+            backoff = min(RATE_LIMIT_BACKOFF_BASE * (2 ** retry_count) + random.uniform(0, 1), RATE_LIMIT_MAX_BACKOFF)
+            logger.warning(f"[CHAIN] {symbol}: Rate limited, retry {retry_count + 1}/{YAHOO_MAX_RETRIES} after {backoff:.1f}s")
+            time.sleep(backoff)
+            return fetch_option_chain_sync(symbol, retry_count + 1)
+        
+        error_type = "RATE_LIMITED" if is_rate_limited else "UNKNOWN_ERROR"
+        if "404" in error_str:
             error_type = "HTTP_404"
         
         return {
