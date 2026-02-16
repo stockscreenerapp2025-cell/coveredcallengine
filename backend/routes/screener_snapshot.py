@@ -1239,32 +1239,90 @@ async def _get_pmcc_from_legacy(filters: Dict[str, Any], limit: int) -> List[Dic
 
 def _transform_pmcc_result(r: Dict) -> Dict:
     """Transform stored PMCC result to API response format."""
+    
+    # Get values with proper handling (NO undefined → 0 fallbacks for prices)
+    short_bid = r.get("short_bid") or r.get("short_premium")
+    short_ask = r.get("short_ask")
+    short_used = r.get("short_used") or short_bid
+    leap_ask = r.get("leap_ask") or r.get("leaps_ask")
+    leap_bid = r.get("leap_bid")
+    leap_used = r.get("leap_used") or leap_ask
+    iv_decimal = r.get("iv", 0)
+    iv_percent = r.get("iv_pct", 0)
+    
+    # VALIDATION: If short_bid <= 0, this row is invalid
+    if not short_bid or short_bid <= 0:
+        return None  # Will be filtered out
+    
     return {
+        # === EXPLICIT PMCC SCHEMA ===
+        
+        # Underlying
         "symbol": r.get("symbol"),
         "stock_price": r.get("stock_price"),
+        "stock_price_source": r.get("stock_price_source", "EOD_SNAPSHOT"),
+        "as_of": r.get("as_of"),
+        
+        # LEAP (Long leg - BUY)
+        "leap_symbol": r.get("leap_symbol"),
         "leap_strike": r.get("leap_strike"),
         "leap_expiry": r.get("leap_expiry"),
         "leap_dte": r.get("leap_dte"),
-        "leap_ask": r.get("leap_ask"),
+        "leap_bid": leap_bid,
+        "leap_ask": leap_ask,
+        "leap_used": leap_used,  # = leap_ask (BUY rule)
         "leap_delta": r.get("leap_delta"),
+        
+        # Short leg (SELL)
+        "short_symbol": r.get("short_symbol"),
         "short_strike": r.get("short_strike"),
         "short_expiry": r.get("short_expiry"),
         "short_dte": r.get("short_dte"),
-        "short_bid": r.get("short_bid"),
+        "short_bid": short_bid,
+        "short_ask": short_ask,
+        "short_used": short_used,  # = short_bid (SELL rule)
+        
+        # Pricing rule
+        "pricing_rule": r.get("pricing_rule", "BUY_ASK_SELL_BID"),
+        
+        # Legacy aliases for backward compatibility
+        "short_premium": short_bid,      # UI uses this
+        "leaps_ask": leap_ask,           # UI uses this
+        "leaps_premium": leap_ask,       # UI uses this
+        
+        # Economics
         "net_debit": r.get("net_debit"),
         "net_debit_total": r.get("net_debit_total"),
         "width": r.get("width"),
         "max_profit": r.get("max_profit"),
         "max_profit_total": r.get("max_profit_total"),
         "breakeven": r.get("breakeven"),
-        "roi_per_cycle": r.get("roi_per_cycle"),
+        "roi_cycle": r.get("roi_cycle") or r.get("roi_per_cycle"),
+        "roi_per_cycle": r.get("roi_per_cycle") or r.get("roi_cycle"),
         "roi_annualized": r.get("roi_annualized"),
+        
+        # Greeks
+        "delta": r.get("delta") or r.get("leap_delta"),
+        "delta_source": r.get("delta_source", "BLACK_SCHOLES_APPROX"),
+        
+        # IV (explicit units)
+        "iv": iv_decimal,           # Decimal (0.65)
+        "iv_pct": iv_percent,       # Percent (65.0)
+        "iv_rank": r.get("iv_rank"),  # null if not available
+        
+        # Classification
         "is_etf": r.get("is_etf", False),
         "instrument_type": r.get("instrument_type", "STOCK"),
+        
+        # Analyst (nullable - "N/A" in UI if null)
+        "analyst_rating": r.get("analyst_rating"),
+        
+        # Scoring
         "score": r.get("score", 0),
+        
+        # Metadata
         "data_source": "eod_precomputed",
-        "run_id": r.get("run_id"),
-        "as_of": r.get("as_of")
+        "run_id": r.get("run_id")
     }
 
 
