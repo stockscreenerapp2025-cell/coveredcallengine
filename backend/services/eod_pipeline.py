@@ -862,6 +862,7 @@ async def run_eod_pipeline(db, force_build_universe: bool = False) -> EODPipelin
         "excluded": result.symbols_total - result.chain_success,  # FIXED: total - included
         "excluded_counts_by_reason": result.excluded_by_reason,
         "excluded_counts_by_stage": result.excluded_by_stage,
+        "error_type_counts": result.error_type_counts,  # NEW: Breakdown by error type
         "quote_success_count": result.quote_success,
         "quote_failure_count": result.quote_failure,
         "chain_success_count": result.chain_success,
