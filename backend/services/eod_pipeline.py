@@ -706,7 +706,7 @@ async def compute_scan_results(
                 try:
                     exp_formatted = datetime.strptime(expiry, "%Y-%m-%d").strftime("%y%m%d")
                     contract_symbol = f"{symbol}{exp_formatted}C{int(strike * 1000):08d}"
-                except:
+                except Exception:
                     contract_symbol = f"{symbol}_{strike}_{expiry}"
                 
                 cc_opp = {
