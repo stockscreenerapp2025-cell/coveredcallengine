@@ -1386,8 +1386,8 @@ async def screen_pmcc(
         results = await _get_pmcc_from_legacy(filters, limit)
         data_source = "precomputed_scans_legacy"
     
-    # Transform results to API format
-    opportunities = [_transform_pmcc_result(r) for r in results]
+    # Transform results to API format (filter out None for invalid rows)
+    opportunities = [r for r in (_transform_pmcc_result(r) for r in results) if r is not None]
     
     elapsed_ms = (time.time() - start_time) * 1000
     logging.info(f"PMCC Screener: {len(opportunities)} results in {elapsed_ms:.1f}ms from {data_source}")
