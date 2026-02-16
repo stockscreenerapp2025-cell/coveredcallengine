@@ -806,7 +806,7 @@ async def run_eod_pipeline(db, force_build_universe: bool = False) -> EODPipelin
         except Exception as e:
             logger.error(f"[EOD_PIPELINE] Failed to persist snapshots: {e}")
     
-    # Step 4: Persist audit records
+    # Step 5: Persist audit records
     if audit_records:
         try:
             await db.scan_universe_audit.insert_many(audit_records)
@@ -814,7 +814,7 @@ async def run_eod_pipeline(db, force_build_universe: bool = False) -> EODPipelin
         except Exception as e:
             logger.error(f"[EOD_PIPELINE] Failed to persist audit: {e}")
     
-    # Step 5: Compute CC and PMCC results from snapshots
+    # Step 6: Compute CC and PMCC results from snapshots
     logger.info(f"[EOD_PIPELINE] Computing CC/PMCC opportunities from {len(snapshots)} snapshots...")
     
     cc_opportunities, pmcc_opportunities = await compute_scan_results(
