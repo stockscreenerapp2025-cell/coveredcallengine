@@ -894,6 +894,8 @@ async def run_eod_pipeline(db, force_build_universe: bool = False) -> EODPipelin
     # ==========================================================================
     # STAGE 3: PERSIST SNAPSHOTS AND AUDIT
     # ==========================================================================
+    logger.info(f"[EOD_PIPELINE] === STAGE 3: PERSIST DATA ===")
+    
     if snapshots:
         try:
             await db.symbol_snapshot.insert_many(snapshots)
@@ -901,7 +903,6 @@ async def run_eod_pipeline(db, force_build_universe: bool = False) -> EODPipelin
         except Exception as e:
             logger.error(f"[EOD_PIPELINE] Failed to persist snapshots: {e}")
     
-    # Step 5: Persist audit records
     if audit_records:
         try:
             await db.scan_universe_audit.insert_many(audit_records)
@@ -909,8 +910,11 @@ async def run_eod_pipeline(db, force_build_universe: bool = False) -> EODPipelin
         except Exception as e:
             logger.error(f"[EOD_PIPELINE] Failed to persist audit: {e}")
     
-    # Step 6: Compute CC and PMCC results from snapshots
-    logger.info(f"[EOD_PIPELINE] Computing CC/PMCC opportunities from {len(snapshots)} snapshots...")
+    # ==========================================================================
+    # STAGE 4: COMPUTE CC AND PMCC RESULTS
+    # ==========================================================================
+    logger.info(f"[EOD_PIPELINE] === STAGE 4: COMPUTE OPPORTUNITIES ===")
+    logger.info(f"[EOD_PIPELINE] Computing CC/PMCC from {len(snapshots)} snapshots...")
     
     cc_opportunities, pmcc_opportunities = await compute_scan_results(
         db=db,
@@ -924,31 +928,67 @@ async def run_eod_pipeline(db, force_build_universe: bool = False) -> EODPipelin
     
     logger.info(f"[EOD_PIPELINE] Computed {len(cc_opportunities)} CC, {len(pmcc_opportunities)} PMCC opportunities")
     
-    # Step 7: Finalize and persist run summary
-    result.finalize()
+    # ==========================================================================
+    # STAGE 5: FINALIZE AND PERSIST RUN SUMMARY (with status=COMPLETED)
+    # ==========================================================================
+    logger.info(f"[EOD_PIPELINE] === STAGE 5: FINALIZE RUN ===")
     
-    # Persist scan_run_summary
-    # FIXED: included = chain_success (symbols with BOTH quote AND chain)
-    # FIXED: excluded = total - included (no double counting)
+    # Determine final status
+    # COMPLETED only when: universe processed, scan results written, summary/audit written
+    coverage_ratio = result.get_coverage_ratio()
+    throttle_ratio = result.get_throttle_ratio()
+    
+    if result.chain_success > 0 and len(snapshots) > 0:
+        final_status = "COMPLETED"
+    else:
+        final_status = "FAILED"
+    
+    result.finalize(status=final_status)
+    
+    # Build comprehensive summary document
     summary_doc = {
         "run_id": run_id,
+        "status": final_status,  # CRITICAL: status flag for Data Quality
         "universe_version": universe_version,
         "as_of": as_of,
+        "started_at": result.started_at,
         "completed_at": result.completed_at,
         "duration_seconds": result.duration_seconds,
         "tier_counts": tier_counts,
+        
+        # Universe counts (MATH: included + excluded = total)
         "total_symbols": result.symbols_total,
-        "included": result.chain_success,  # FIXED: Only symbols with successful chains
-        "excluded": result.symbols_total - result.chain_success,  # FIXED: total - included
-        "excluded_counts_by_reason": result.excluded_by_reason,
-        "excluded_counts_by_stage": result.excluded_by_stage,
-        "error_type_counts": result.error_type_counts,  # NEW: Breakdown by error type
+        "included": result.chain_success,
+        "excluded": result.symbols_total - result.chain_success,
+        
+        # Quote stage metrics
         "quote_success_count": result.quote_success,
         "quote_failure_count": result.quote_failure,
+        
+        # Chain stage metrics
         "chain_success_count": result.chain_success,
         "chain_failure_count": result.chain_failure,
+        
+        # Specific failure counters (for Data Quality)
+        "rate_limited_chain_count": result.rate_limited_chain_count,
+        "missing_quote_fields_count": result.missing_quote_fields_count,
+        "bad_chain_data_count": result.bad_chain_data_count,
+        "missing_chain_count": result.missing_chain_count,
+        
+        # Derived metrics (for Data Quality scoring)
+        "coverage_ratio": round(coverage_ratio, 4),
+        "throttle_ratio": round(throttle_ratio, 4),
+        
+        # Opportunity counts
         "cc_count": len(result.cc_opportunities),
         "pmcc_count": len(result.pmcc_opportunities),
+        
+        # Breakdown maps
+        "excluded_counts_by_reason": result.excluded_by_reason,
+        "excluded_counts_by_stage": result.excluded_by_stage,
+        "error_type_counts": result.error_type_counts,
+        
+        # Debug info
         "top_failures": result.failures[:20]
     }
     
