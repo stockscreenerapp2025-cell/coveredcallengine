@@ -925,7 +925,6 @@ def _transform_cc_result(r: Dict) -> Dict:
     symbol = r.get("symbol", "")
     stock_price = r.get("stock_price", 0)
     strike = r.get("strike", 0)
-    premium = r.get("premium", 0)
     dte = r.get("dte", 0)
     
     # Get values with proper fallbacks (NO undefined → 0 fallbacks for prices)
