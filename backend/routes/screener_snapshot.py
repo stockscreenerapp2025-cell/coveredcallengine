@@ -35,17 +35,12 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from database import db
 from utils.auth import get_current_user
 
-# Import data_provider for LIVE options fetching
+# Import data_provider - ONLY for non-scan paths (Watchlist, Simulator)
+# SCAN PATHS (Screener, Dashboard, PMCC) MUST NOT use these for live fetching
 from services.data_provider import (
-    fetch_options_chain, 
-    fetch_stock_quote, 
-    fetch_live_stock_quote,
-    fetch_options_with_cache,
     get_market_state,
-    # PHASE 2: Import cache-first functions
-    get_symbol_snapshot,
-    get_symbol_snapshots_batch,
-    get_cache_metrics
+    # For market sentiment only (not for scan data)
+    fetch_market_sentiment
 )
 
 # IV Rank Service for industry-standard IV metrics
