@@ -1297,27 +1297,42 @@ async def compute_scan_results(
                 if not last_price or last_price <= 0:
                     option_quality_flags.append("NO_LAST")
                 
-                # LEAPS candidate (365-730 DTE, ITM)
+                # LEAPS candidate (365-730 DTE, ITM) - STRICT INSTITUTIONAL RULES
                 if PMCC_MIN_LEAP_DTE <= dte <= PMCC_MAX_LEAP_DTE and strike < stock_price:
                     if ask and ask > 0:
                         greeks = calculate_greeks_simple(stock_price, strike, dte, iv if iv > 0 else 0.30)
-                        if greeks["delta"] >= PMCC_MIN_LEAP_DELTA:
-                            leaps_candidates.append({
-                                "strike": strike,
-                                "expiry": expiry,
-                                "dte": dte,
-                                "ask": ask,
-                                "bid": bid,
-                                "mid": mid,
-                                "last": last_price if last_price > 0 else None,
-                                "prev_close": prev_close if prev_close > 0 else None,
-                                "display_price": display_price,
-                                "display_source": display_source,
-                                "delta": greeks["delta"],
-                                "iv": iv,
-                                "oi": oi,
-                                "quality_flags": option_quality_flags
-                            })
+                        
+                        # INSTITUTIONAL FILTERS
+                        # 1. Delta >= 0.80 (stricter than 0.70)
+                        if greeks["delta"] < PMCC_MIN_LEAP_DELTA:
+                            continue
+                        
+                        # 2. Minimum open interest >= 100
+                        if oi < PMCC_MIN_LEAP_OI:
+                            continue
+                        
+                        # 3. Bid-ask spread <= 5%
+                        if bid and bid > 0:
+                            spread_pct = ((ask - bid) / bid) * 100
+                            if spread_pct > PMCC_MAX_LEAP_SPREAD_PCT:
+                                continue
+                        
+                        leaps_candidates.append({
+                            "strike": strike,
+                            "expiry": expiry,
+                            "dte": dte,
+                            "ask": ask,
+                            "bid": bid,
+                            "mid": mid,
+                            "last": last_price if last_price > 0 else None,
+                            "prev_close": prev_close if prev_close > 0 else None,
+                            "display_price": display_price,
+                            "display_source": display_source,
+                            "delta": greeks["delta"],
+                            "iv": iv,
+                            "oi": oi,
+                            "quality_flags": option_quality_flags
+                        })
                 
                 # Short call candidate (7-60 DTE)
                 if PMCC_MIN_SHORT_DTE <= dte <= PMCC_MAX_SHORT_DTE:
