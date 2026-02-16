@@ -78,6 +78,8 @@ from routes.eod import eod_router  # Canonical EOD data management
 from ai_wallet.routes import ai_wallet_router
 # PayPal Express Checkout + Recurring Profiles
 from routes.paypal import paypal_router
+# EOD Pipeline: Deterministic universe + pre-computed scans
+from routes.eod_pipeline import eod_pipeline_router
 
 # Create routers (still in server.py - to be refactored)
 api_router = APIRouter(prefix="/api")
