@@ -1111,15 +1111,11 @@ async def screen_covered_calls(
 # ============================================================
 # PMCC SCREENER - COMPLETELY ISOLATED FROM CC LOGIC
 # ============================================================
-# PMCC (Poor Man's Covered Call) has DIFFERENT rules than CC:
-# - Long leg (LEAPS): ≥6 months, ITM (strike < stock price), use ASK
-# - Short leg: ≤60 days, strike > long-leg strike, use BID
-# - Net debit = Long-leg ASK - Short-leg BID
-# - NEVER shares filters, expiry rules, or pricing with CC
+# ARCHITECTURE UPDATE (Feb 2026): NO LIVE YAHOO CALLS
+# All data comes from pre-computed scan_results_pmcc collection
 # ============================================================
 
 # PMCC-specific constants (ISOLATED from CC)
-# USER REQUIREMENT: LEAPS must be 12-24 months (365-730 days)
 PMCC_MIN_LEAP_DTE = 365  # 12 months minimum
 PMCC_MAX_LEAP_DTE = 730  # 24 months maximum (~2 years)
 PMCC_MIN_SHORT_DTE = 7
@@ -1129,7 +1125,109 @@ PMCC_MIN_DELTA = 0.70  # Deep ITM for LEAPS
 # PMCC Price filters (different from CC)
 PMCC_STOCK_MIN_PRICE = 30.0
 PMCC_STOCK_MAX_PRICE = 90.0
-# ETFs have NO price limits in PMCC
+
+
+async def _get_pmcc_from_eod(
+    run_id: str,
+    filters: Dict[str, Any],
+    limit: int
+) -> List[Dict]:
+    """
+    Query scan_results_pmcc collection with filters.
+    
+    NO LIVE YAHOO CALLS - reads from pre-computed data only.
+    """
+    query = {"run_id": run_id}
+    
+    # Apply LEAP DTE filter
+    if filters.get("min_leap_dte"):
+        query["leap_dte"] = {"$gte": filters["min_leap_dte"]}
+    if filters.get("max_leap_dte"):
+        if "leap_dte" in query:
+            query["leap_dte"]["$lte"] = filters["max_leap_dte"]
+        else:
+            query["leap_dte"] = {"$lte": filters["max_leap_dte"]}
+    
+    # Apply short DTE filter
+    if filters.get("min_short_dte"):
+        query["short_dte"] = {"$gte": filters["min_short_dte"]}
+    if filters.get("max_short_dte"):
+        if "short_dte" in query:
+            query["short_dte"]["$lte"] = filters["max_short_dte"]
+        else:
+            query["short_dte"] = {"$lte": filters["max_short_dte"]}
+    
+    # Apply delta filter
+    if filters.get("min_delta"):
+        query["leap_delta"] = {"$gte": filters["min_delta"]}
+    
+    try:
+        cursor = db.scan_results_pmcc.find(
+            query,
+            {"_id": 0}
+        ).sort("score", -1).limit(limit)
+        
+        results = await cursor.to_list(length=limit)
+        return results
+    except Exception as e:
+        logging.error(f"Failed to query scan_results_pmcc: {e}")
+        return []
+
+
+async def _get_pmcc_from_legacy(filters: Dict[str, Any], limit: int) -> List[Dict]:
+    """
+    Fallback: Query precomputed_scans collection (legacy).
+    
+    NO LIVE YAHOO CALLS - reads from pre-computed data only.
+    """
+    try:
+        latest = await db.precomputed_scans.find_one(
+            {"type": "pmcc"},
+            sort=[("computed_at", -1)]
+        )
+        
+        if not latest:
+            return []
+        
+        results = latest.get("results", [])
+        results.sort(key=lambda x: x.get("score", 0), reverse=True)
+        return results[:limit]
+        
+    except Exception as e:
+        logging.error(f"Failed to query precomputed_scans for PMCC: {e}")
+        return []
+
+
+def _transform_pmcc_result(r: Dict) -> Dict:
+    """Transform stored PMCC result to API response format."""
+    return {
+        "symbol": r.get("symbol"),
+        "stock_price": r.get("stock_price"),
+        "leap_strike": r.get("leap_strike"),
+        "leap_expiry": r.get("leap_expiry"),
+        "leap_dte": r.get("leap_dte"),
+        "leap_ask": r.get("leap_ask"),
+        "leap_delta": r.get("leap_delta"),
+        "short_strike": r.get("short_strike"),
+        "short_expiry": r.get("short_expiry"),
+        "short_dte": r.get("short_dte"),
+        "short_bid": r.get("short_bid"),
+        "net_debit": r.get("net_debit"),
+        "net_debit_total": r.get("net_debit_total"),
+        "width": r.get("width"),
+        "max_profit": r.get("max_profit"),
+        "max_profit_total": r.get("max_profit_total"),
+        "breakeven": r.get("breakeven"),
+        "roi_per_cycle": r.get("roi_per_cycle"),
+        "roi_annualized": r.get("roi_annualized"),
+        "is_etf": r.get("is_etf", False),
+        "instrument_type": r.get("instrument_type", "STOCK"),
+        "score": r.get("score", 0),
+        "data_source": "eod_precomputed",
+        "run_id": r.get("run_id"),
+        "as_of": r.get("as_of")
+    }
+
 
 @screener_router.get("/pmcc")
 async def screen_pmcc(
@@ -1145,38 +1243,74 @@ async def screen_pmcc(
     """
     Screen for Poor Man's Covered Call (PMCC) opportunities.
     
-    =====================================================
-    PMCC CHAIN SELECTION RULES (COMPLETELY ISOLATED FROM CC):
-    =====================================================
+    ARCHITECTURE (Feb 2026): MONGODB READ-ONLY
+    ==========================================
+    - ALL data comes from pre-computed scan_results_pmcc collection
+    - NO LIVE YAHOO CALLS during request/response cycle
+    - Data is pre-computed by EOD pipeline at 4:10 PM ET daily
+    - Fallback: precomputed_scans collection (legacy)
     
-    LONG LEG (LEAPS CALL):
-    - Expiry must be 12-24 months (365-730 days) from current date
-    - Strike must be BELOW the current stock price (ITM)
-    - Option price = ASK only
-    - Both BID and ASK must be > 0
-    
-    SHORT LEG (CALL):
-    - Expiry must be ≤ 60 days
-    - Strike must be ABOVE the long-leg strike
-    - Option price = BID only
-    - Both BID and ASK must be > 0
-    
-    NET DEBIT CALCULATION:
-    - Net debit = Long-leg ASK - Short-leg BID
-    - LAST price is NEVER used
-    
-    PRICE FILTERS (PMCC-specific):
-    - Stocks: $30-$90
-    - ETFs: No price limits
-    
-    PHASE 2: Uses cache-first approach for stock data
+    PMCC STRUCTURE:
+    - Long leg (LEAPS): 365-730 DTE, ITM, delta >= 0.70
+    - Short leg: 7-60 DTE, strike > LEAP strike
+    - Net debit = LEAP ask - Short bid
     """
-    # ========== MARKET-STATE AWARE PRICING ==========
-    current_market_state = get_market_state()
-    use_live_price = (current_market_state == "OPEN")
-    underlying_price_source = "LIVE" if use_live_price else "LAST_CLOSE"
+    import time
+    start_time = time.time()
     
-    logging.info(f"PMCC Screener: market_state={current_market_state}, price_source={underlying_price_source}")
+    # Build filter dict
+    filters = {
+        "min_leap_dte": min_leap_dte,
+        "max_leap_dte": max_leap_dte,
+        "min_short_dte": min_short_dte,
+        "max_short_dte": max_short_dte,
+        "min_delta": min_delta,
+        "risk_profile": risk_profile
+    }
+    
+    # Try EOD pipeline results first
+    run_id = await _get_latest_eod_run_id()
+    data_source = "eod_pipeline"
+    run_info = None
+    
+    if run_id:
+        results = await _get_pmcc_from_eod(run_id, filters, limit)
+        
+        # Get run metadata
+        run_doc = await db.scan_runs.find_one({"run_id": run_id}, {"_id": 0})
+        if run_doc:
+            run_info = {
+                "run_id": run_id,
+                "as_of": run_doc.get("as_of"),
+                "completed_at": run_doc.get("completed_at")
+            }
+    else:
+        # Fallback to legacy precomputed_scans
+        results = await _get_pmcc_from_legacy(filters, limit)
+        data_source = "precomputed_scans_legacy"
+    
+    # Transform results to API format
+    opportunities = [_transform_pmcc_result(r) for r in results]
+    
+    elapsed_ms = (time.time() - start_time) * 1000
+    logging.info(f"PMCC Screener: {len(opportunities)} results in {elapsed_ms:.1f}ms from {data_source}")
+    
+    return {
+        "total": len(opportunities),
+        "results": opportunities,
+        "opportunities": opportunities,
+        "run_info": run_info,
+        "data_source": data_source,
+        "live_data_used": False,  # CRITICAL: No live Yahoo calls
+        "layer": 3,
+        "filters_applied": filters,
+        "dte_thresholds": {
+            "leap": {"min": min_leap_dte, "max": max_leap_dte},
+            "short": {"min": min_short_dte, "max": max_short_dte}
+        },
+        "architecture": "EOD_PIPELINE_READ_MODEL",
+        "latency_ms": round(elapsed_ms, 1)
+    }
     
     # PHASE 2: Track cache performance
     cache_stats = {"hits": 0, "misses": 0, "symbols_processed": 0, "ask_rejected": 0, "bid_rejected": 0}
