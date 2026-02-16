@@ -1002,20 +1002,28 @@ async def run_eod_pipeline(db, force_build_universe: bool = False) -> EODPipelin
     except Exception as e:
         logger.error(f"[EOD_PIPELINE] Failed to persist summary: {e}")
     
-    # Persist scan_runs (atomic publish)
-    # FIXED: symbols_included = chain_success (consistent with summary)
+    # Persist scan_runs (atomic publish with status flag)
     scan_run_doc = {
         "run_id": run_id,
         "run_type": "EOD",
+        "status": final_status,  # CRITICAL: COMPLETED or FAILED
         "universe_version": universe_version,
         "as_of": as_of,
-        "status": "COMPLETED",
         "created_at": result.started_at,
         "completed_at": result.completed_at,
         "duration_seconds": result.duration_seconds,
-        "symbols_processed": result.symbols_total,  # FIXED: total symbols attempted
-        "symbols_included": result.chain_success,   # FIXED: symbols with both quote AND chain
-        "symbols_excluded": result.symbols_total - result.chain_success  # FIXED: total - included
+        "symbols_total": result.symbols_total,
+        "symbols_included": result.chain_success,
+        "symbols_excluded": result.symbols_total - result.chain_success,
+        "quote_success": result.quote_success,
+        "quote_failure": result.quote_failure,
+        "chain_success": result.chain_success,
+        "chain_failure": result.chain_failure,
+        "rate_limited_chain_count": result.rate_limited_chain_count,
+        "coverage_ratio": round(coverage_ratio, 4),
+        "throttle_ratio": round(throttle_ratio, 4),
+        "cc_count": len(result.cc_opportunities),
+        "pmcc_count": len(result.pmcc_opportunities)
     }
     
     try:
