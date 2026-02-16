@@ -695,7 +695,7 @@ async def run_eod_pipeline(db, force_build_universe: bool = False) -> EODPipelin
     # ==========================================================================
     # STAGE 1: BULK QUOTE FETCHING (batched, concurrent)
     # ==========================================================================
-    logger.info(f"[EOD_PIPELINE] === STAGE 1: QUOTE FETCHING ===")
+    logger.info("[EOD_PIPELINE] === STAGE 1: QUOTE FETCHING ===")
     logger.info(f"[EOD_PIPELINE] Config: batch_size={BULK_QUOTE_BATCH_SIZE}, concurrency={QUOTE_CONCURRENCY}")
     
     all_quotes = {}
@@ -744,7 +744,7 @@ async def run_eod_pipeline(db, force_build_universe: bool = False) -> EODPipelin
     # ==========================================================================
     # STAGE 2: OPTION CHAIN FETCHING (throttle-safe, sequential batches)
     # ==========================================================================
-    logger.info(f"[EOD_PIPELINE] === STAGE 2: OPTION CHAIN FETCHING (THROTTLE-SAFE) ===")
+    logger.info("[EOD_PIPELINE] === STAGE 2: OPTION CHAIN FETCHING (THROTTLE-SAFE) ===")
     logger.info(f"[EOD_PIPELINE] Config: concurrency={CHAIN_CONCURRENCY}, batch_size={CHAIN_BATCH_SIZE}, "
                 f"symbol_delay={CHAIN_SYMBOL_DELAY_MS}ms, batch_pause={CHAIN_BATCH_PAUSE_S}s")
     
@@ -894,7 +894,7 @@ async def run_eod_pipeline(db, force_build_universe: bool = False) -> EODPipelin
     # ==========================================================================
     # STAGE 3: PERSIST SNAPSHOTS AND AUDIT
     # ==========================================================================
-    logger.info(f"[EOD_PIPELINE] === STAGE 3: PERSIST DATA ===")
+    logger.info("[EOD_PIPELINE] === STAGE 3: PERSIST DATA ===")
     
     if snapshots:
         try:
@@ -913,7 +913,7 @@ async def run_eod_pipeline(db, force_build_universe: bool = False) -> EODPipelin
     # ==========================================================================
     # STAGE 4: COMPUTE CC AND PMCC RESULTS
     # ==========================================================================
-    logger.info(f"[EOD_PIPELINE] === STAGE 4: COMPUTE OPPORTUNITIES ===")
+    logger.info("[EOD_PIPELINE] === STAGE 4: COMPUTE OPPORTUNITIES ===")
     logger.info(f"[EOD_PIPELINE] Computing CC/PMCC from {len(snapshots)} snapshots...")
     
     cc_opportunities, pmcc_opportunities = await compute_scan_results(
@@ -931,7 +931,7 @@ async def run_eod_pipeline(db, force_build_universe: bool = False) -> EODPipelin
     # ==========================================================================
     # STAGE 5: FINALIZE AND PERSIST RUN SUMMARY (with status=COMPLETED)
     # ==========================================================================
-    logger.info(f"[EOD_PIPELINE] === STAGE 5: FINALIZE RUN ===")
+    logger.info("[EOD_PIPELINE] === STAGE 5: FINALIZE RUN ===")
     
     # Determine final status
     # COMPLETED only when: universe processed, scan results written, summary/audit written
