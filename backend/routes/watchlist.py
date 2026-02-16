@@ -1,11 +1,12 @@
 """
 Watchlist routes - Enhanced with price tracking and opportunities
 
-DATA FETCHING RULES:
-1. STOCK PRICES: Watchlist and Simulator use LIVE intraday prices (regularMarketPrice)
-2. OPPORTUNITIES: Fetched LIVE from Yahoo Finance, never cached
+DATA FETCHING RULES (Feb 2026 - EOD-ALIGNED):
+1. STOCK PRICES: Default to EOD snapshot (session_close_price) for consistency
+2. OPPORTUNITIES: Use pre-computed scan_results_cc from EOD pipeline
+3. Optional live mode still available via use_live_prices=true
 
-This is different from Screener which uses previous close for stock prices.
+This is now consistent with Screener which uses EOD precomputed data.
 """
 from fastapi import APIRouter, HTTPException, Depends, Query
 from datetime import datetime, timezone
@@ -22,11 +23,11 @@ from database import db
 from models.schemas import WatchlistItemCreate
 from utils.auth import get_current_user
 
-# Import LIVE price functions for Watchlist (Rule #2)
+# Import LIVE price functions for Watchlist (optional live mode)
 from services.data_provider import (
-    fetch_live_stock_quote,  # LIVE intraday prices for Watchlist
-    fetch_live_stock_quotes_batch,  # Batch LIVE prices
-    fetch_options_chain,  # LIVE options fetch
+    fetch_live_stock_quote,  # LIVE intraday prices (optional)
+    fetch_live_stock_quotes_batch,  # Batch LIVE prices (optional)
+    fetch_options_chain,  # LIVE options fetch (optional)
     fetch_stock_quote,  # Previous close (for fallback)
     fetch_stock_quotes_batch  # Batch previous close
 )
