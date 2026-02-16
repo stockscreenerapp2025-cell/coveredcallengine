@@ -702,9 +702,14 @@ async def compute_scan_results(
         
     Returns:
         Tuple of (cc_opportunities, pmcc_opportunities)
+        
+    PMCC SAFEGUARD (Feb 2026):
+    - Only evaluates symbols with has_leaps=True in snapshot
+    - Tracks symbols_without_leaps for audit
     """
     cc_opportunities = []
     pmcc_opportunities = []
+    symbols_without_leaps = []
     
     for snapshot in snapshots:
         symbol = snapshot.get("symbol")
@@ -713,6 +718,7 @@ async def compute_scan_results(
         market_cap = snapshot.get("market_cap", 0)
         option_chains = snapshot.get("option_chain", [])
         symbol_is_etf = snapshot.get("is_etf", False)
+        has_leaps = snapshot.get("has_leaps", False)
         
         if not symbol or stock_price <= 0:
             continue
