@@ -625,128 +625,130 @@ async def run_eod_pipeline(db, force_build_universe: bool = False) -> EODPipelin
     
     logger.info(f"[EOD_PIPELINE] Universe: {len(universe)} symbols, version={universe_version}")
     
-    # Step 2: Fetch quotes and chains in batches
+    # Step 2: Fetch quotes in BULK batches (reduces rate limiting)
+    logger.info(f"[EOD_PIPELINE] Fetching quotes in bulk batches of {BULK_QUOTE_BATCH_SIZE}...")
+    
+    all_quotes = {}
+    for i in range(0, len(universe), BULK_QUOTE_BATCH_SIZE):
+        batch_symbols = universe[i:i + BULK_QUOTE_BATCH_SIZE]
+        batch_num = (i // BULK_QUOTE_BATCH_SIZE) + 1
+        total_batches = (len(universe) + BULK_QUOTE_BATCH_SIZE - 1) // BULK_QUOTE_BATCH_SIZE
+        
+        logger.info(f"[EOD_PIPELINE] Bulk quote batch {batch_num}/{total_batches}: {len(batch_symbols)} symbols")
+        
+        # Fetch quotes in bulk with retry logic
+        batch_quotes = fetch_bulk_quotes_sync(batch_symbols)
+        all_quotes.update(batch_quotes)
+        
+        # Small delay between bulk batches to avoid rate limiting
+        if i + BULK_QUOTE_BATCH_SIZE < len(universe):
+            time.sleep(0.5)
+    
+    # Count quote results
+    quote_success_count = sum(1 for q in all_quotes.values() if q.get("success"))
+    quote_failure_count = len(all_quotes) - quote_success_count
+    logger.info(f"[EOD_PIPELINE] Bulk quotes complete: {quote_success_count} success, {quote_failure_count} failures")
+    
+    # Step 3: Fetch option chains and build snapshots
     snapshots = []
     audit_records = []
     
-    for i in range(0, len(universe), BATCH_SIZE):
-        batch = universe[i:i + BATCH_SIZE]
+    # Process symbols with successful quotes
+    symbols_with_quotes = [s for s in universe if all_quotes.get(s, {}).get("success")]
+    
+    for i in range(0, len(symbols_with_quotes), BATCH_SIZE):
+        batch = symbols_with_quotes[i:i + BATCH_SIZE]
         batch_snapshots = []
         
-        # Fetch quotes using thread pool
+        # Fetch option chains with controlled concurrency
         with ThreadPoolExecutor(max_workers=YAHOO_MAX_CONCURRENCY) as executor:
-            future_to_symbol = {executor.submit(fetch_quote_sync, sym): sym for sym in batch}
+            future_to_symbol = {executor.submit(fetch_option_chain_sync, sym): sym for sym in batch}
             
             for future in as_completed(future_to_symbol):
                 symbol = future_to_symbol[future]
-                quote_result = future.result()
+                quote_result = all_quotes[symbol]
                 result.symbols_processed += 1
+                result.quote_success += 1
                 
-                if quote_result["success"]:
-                    result.quote_success += 1
+                chain_result = future.result()
+                
+                if chain_result["success"]:
+                    result.chain_success += 1
                     
-                    # Fetch option chain
-                    chain_result = fetch_option_chain_sync(symbol)
+                    # Check for LEAPS availability
+                    has_leaps = chain_result.get("has_leaps", False)
+                    leaps_count = chain_result.get("leaps_found", 0)
                     
-                    if chain_result["success"]:
-                        result.chain_success += 1
+                    # Create snapshot with EXPLICIT PRICE SOURCE + MARKET CONTEXT
+                    snapshot = {
+                        "run_id": run_id,
+                        "symbol": symbol,
                         
-                        # Check for LEAPS availability
-                        has_leaps = chain_result.get("has_leaps", False)
-                        leaps_count = chain_result.get("leaps_found", 0)
+                        # SELECTED PRICE (based on market state)
+                        "underlying_price": quote_result["price"],
+                        "stock_price_source": quote_result.get("stock_price_source", "SESSION_CLOSE"),
                         
-                        # Create snapshot with EXPLICIT PRICE SOURCE + MARKET CONTEXT
-                        snapshot = {
-                            "run_id": run_id,
-                            "symbol": symbol,
-                            
-                            # SELECTED PRICE (based on market state)
-                            "underlying_price": quote_result["price"],
-                            "stock_price_source": quote_result.get("stock_price_source", "SESSION_CLOSE"),
-                            
-                            # BOTH PRICE FIELDS (always stored)
-                            "session_close_price": quote_result.get("session_close_price"),
-                            "prior_close_price": quote_result.get("prior_close_price"),
-                            
-                            # MARKET CONTEXT FIELDS
-                            "market_status": quote_result.get("market_status", "UNKNOWN"),
-                            "as_of": quote_result.get("as_of") or as_of.isoformat() if isinstance(as_of, datetime) else as_of,
-                            "regular_market_time": quote_result.get("regular_market_time"),
-                            
-                            # RAW YAHOO PRICES (for debugging)
-                            "raw_prices": quote_result.get("raw_prices", {}),
-                            
-                            # OTHER METADATA
-                            "avg_volume": quote_result["avg_volume"],
-                            "market_cap": quote_result["market_cap"],
-                            "option_chain": chain_result["chains"],
-                            "expirations": chain_result["expirations"],
-                            "is_etf": is_etf(symbol),
-                            "has_leaps": has_leaps,
-                            "leaps_count": leaps_count,
-                            "included": True
-                        }
-                        batch_snapshots.append(snapshot)
+                        # BOTH PRICE FIELDS (always stored)
+                        "session_close_price": quote_result.get("session_close_price"),
+                        "prior_close_price": quote_result.get("prior_close_price"),
                         
-                        # Audit: included - with LEAPS status and price context
-                        audit_record = {
-                            "run_id": run_id,
-                            "symbol": symbol,
-                            "included": True,
-                            "exclude_stage": None,
-                            "exclude_reason": None,
-                            "exclude_detail": None,
-                            
-                            # PRICE CONTEXT FOR AUDIT
-                            "price_used": quote_result["price"],
-                            "stock_price_source": quote_result.get("stock_price_source", "SESSION_CLOSE"),
-                            "session_close_price": quote_result.get("session_close_price"),
-                            "prior_close_price": quote_result.get("prior_close_price"),
-                            "market_status": quote_result.get("market_status", "UNKNOWN"),
-                            "raw_prices": quote_result.get("raw_prices", {}),
-                            
-                            "avg_volume": quote_result["avg_volume"],
-                            "has_leaps": has_leaps,
-                            "leaps_count": leaps_count,
-                            "as_of": quote_result.get("as_of") or as_of.isoformat() if isinstance(as_of, datetime) else as_of
-                        }
+                        # MARKET CONTEXT FIELDS
+                        "market_status": quote_result.get("market_status", "UNKNOWN"),
+                        "as_of": quote_result.get("as_of") or as_of.isoformat() if isinstance(as_of, datetime) else as_of,
+                        "regular_market_time": quote_result.get("regular_market_time"),
                         
-                        # Track NO_LEAPS_AVAILABLE as warning (not exclusion)
-                        if not has_leaps:
-                            audit_record["leaps_warning"] = "NO_LEAPS_AVAILABLE"
-                            logger.debug(f"[EOD_PIPELINE] {symbol}: No LEAPS available (365+ DTE)")
+                        # RAW YAHOO PRICES (for debugging)
+                        "raw_prices": quote_result.get("raw_prices", {}),
                         
-                        audit_records.append(audit_record)
-                    else:
-                        result.chain_failure += 1
-                        result.add_exclusion("OPTIONS_CHAIN", "MISSING_CHAIN")
-                        result.failures.append({
-                            "symbol": symbol,
-                            "stage": "OPTIONS_CHAIN",
-                            "error_type": chain_result["error_type"],
-                            "error_detail": chain_result["error_detail"]
-                        })
+                        # OTHER METADATA
+                        "avg_volume": quote_result.get("avg_volume", 0) or 0,
+                        "market_cap": quote_result.get("market_cap", 0) or 0,
+                        "option_chain": chain_result["chains"],
+                        "expirations": chain_result["expirations"],
+                        "is_etf": is_etf(symbol),
+                        "has_leaps": has_leaps,
+                        "leaps_count": leaps_count,
+                        "included": True
+                    }
+                    batch_snapshots.append(snapshot)
+                    
+                    # Audit: included - with LEAPS status and price context
+                    audit_record = {
+                        "run_id": run_id,
+                        "symbol": symbol,
+                        "included": True,
+                        "exclude_stage": None,
+                        "exclude_reason": None,
+                        "exclude_detail": None,
                         
-                        # Audit: excluded
-                        audit_records.append({
-                            "run_id": run_id,
-                            "symbol": symbol,
-                            "included": False,
-                            "exclude_stage": "OPTIONS_CHAIN",
-                            "exclude_reason": "MISSING_CHAIN",
-                            "exclude_detail": chain_result["error_detail"],
-                            "price_used": quote_result["price"],
-                            "avg_volume": quote_result["avg_volume"],
-                            "as_of": as_of
-                        })
+                        # PRICE CONTEXT FOR AUDIT
+                        "price_used": quote_result["price"],
+                        "stock_price_source": quote_result.get("stock_price_source", "SESSION_CLOSE"),
+                        "session_close_price": quote_result.get("session_close_price"),
+                        "prior_close_price": quote_result.get("prior_close_price"),
+                        "market_status": quote_result.get("market_status", "UNKNOWN"),
+                        "raw_prices": quote_result.get("raw_prices", {}),
+                        
+                        "avg_volume": quote_result.get("avg_volume", 0) or 0,
+                        "has_leaps": has_leaps,
+                        "leaps_count": leaps_count,
+                        "as_of": quote_result.get("as_of") or as_of.isoformat() if isinstance(as_of, datetime) else as_of
+                    }
+                    
+                    # Track NO_LEAPS_AVAILABLE as warning (not exclusion)
+                    if not has_leaps:
+                        audit_record["leaps_warning"] = "NO_LEAPS_AVAILABLE"
+                        logger.debug(f"[EOD_PIPELINE] {symbol}: No LEAPS available (365+ DTE)")
+                    
+                    audit_records.append(audit_record)
                 else:
-                    result.quote_failure += 1
-                    result.add_exclusion("QUOTE", "MISSING_QUOTE")
+                    result.chain_failure += 1
+                    result.add_exclusion("OPTIONS_CHAIN", "MISSING_CHAIN")
                     result.failures.append({
                         "symbol": symbol,
-                        "stage": "QUOTE",
-                        "error_type": quote_result["error_type"],
-                        "error_detail": quote_result["error_detail"]
+                        "stage": "OPTIONS_CHAIN",
+                        "error_type": chain_result["error_type"],
+                        "error_detail": chain_result.get("error_detail", "Unknown error")
                     })
                     
                     # Audit: excluded
@@ -754,11 +756,11 @@ async def run_eod_pipeline(db, force_build_universe: bool = False) -> EODPipelin
                         "run_id": run_id,
                         "symbol": symbol,
                         "included": False,
-                        "exclude_stage": "QUOTE",
-                        "exclude_reason": "MISSING_QUOTE",
-                        "exclude_detail": quote_result["error_detail"],
-                        "price_used": 0,
-                        "avg_volume": 0,
+                        "exclude_stage": "OPTIONS_CHAIN",
+                        "exclude_reason": "MISSING_CHAIN",
+                        "exclude_detail": chain_result.get("error_detail", "Unknown error"),
+                        "price_used": quote_result["price"],
+                        "avg_volume": quote_result.get("avg_volume", 0) or 0,
                         "as_of": as_of
                     })
         
@@ -766,11 +768,37 @@ async def run_eod_pipeline(db, force_build_universe: bool = False) -> EODPipelin
         
         # Progress log
         logger.info(
-            f"[EOD_PIPELINE] Progress: {result.symbols_processed}/{result.symbols_total} "
-            f"(quotes: {result.quote_success}, chains: {result.chain_success})"
+            f"[EOD_PIPELINE] Chain progress: {result.symbols_processed}/{len(symbols_with_quotes)} "
+            f"(chains: {result.chain_success})"
         )
     
-    # Step 3: Persist snapshots
+    # Process symbols with failed quotes (add to audit)
+    for symbol in universe:
+        if symbol not in all_quotes or not all_quotes[symbol].get("success"):
+            quote_result = all_quotes.get(symbol, {"error_type": "UNKNOWN", "error_detail": "No quote data"})
+            result.quote_failure += 1
+            result.add_exclusion("QUOTE", "MISSING_QUOTE")
+            result.failures.append({
+                "symbol": symbol,
+                "stage": "QUOTE",
+                "error_type": quote_result.get("error_type", "UNKNOWN"),
+                "error_detail": quote_result.get("error_detail", "No quote data")
+            })
+            
+            # Audit: excluded
+            audit_records.append({
+                "run_id": run_id,
+                "symbol": symbol,
+                "included": False,
+                "exclude_stage": "QUOTE",
+                "exclude_reason": "MISSING_QUOTE",
+                "exclude_detail": quote_result.get("error_detail", "No quote data"),
+                "price_used": 0,
+                "avg_volume": 0,
+                "as_of": as_of
+            })
+    
+    # Step 4: Persist snapshots
     if snapshots:
         try:
             await db.symbol_snapshot.insert_many(snapshots)
