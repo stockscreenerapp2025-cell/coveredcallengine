@@ -1677,12 +1677,27 @@ async def get_admin_status(user: dict = Depends(get_current_user)):
     tier_counts = get_tier_counts()
     
     # ================================================================
-    # QUERY LATEST SCAN_RUN_SUMMARY (single document, indexed)
+    # QUERY LATEST COMPLETED SCAN RUN (status=COMPLETED only)
     # ================================================================
-    latest_summary = await db.scan_run_summary.find_one(
+    latest_completed = await db.scan_run_summary.find_one(
+        {"status": "COMPLETED"},
+        sort=[("as_of", -1)]
+    )
+    
+    # Also check for any in-progress run
+    latest_any = await db.scan_run_summary.find_one(
         {},
         sort=[("as_of", -1)]
     )
+    
+    run_in_progress = (
+        latest_any and 
+        latest_any.get("run_id") != (latest_completed.get("run_id") if latest_completed else None) and
+        latest_any.get("status") != "COMPLETED"
+    )
+    
+    # Use latest COMPLETED run for Data Quality metrics
+    latest_summary = latest_completed
     
     if latest_summary:
         # Fast path: read pre-computed values from summary document
@@ -1690,7 +1705,15 @@ async def get_admin_status(user: dict = Depends(get_current_user)):
         last_audit_at = latest_summary.get("as_of")
         structure_valid = latest_summary.get("included", 0)
         total_excluded = latest_summary.get("excluded", 0)
-        valid_chains = structure_valid  # Approximation
+        valid_chains = latest_summary.get("chain_success_count", structure_valid)
+        
+        # New metrics for Data Quality scoring
+        coverage_ratio = latest_summary.get("coverage_ratio", 0)
+        throttle_ratio = latest_summary.get("throttle_ratio", 0)
+        rate_limited_chain_count = latest_summary.get("rate_limited_chain_count", 0)
+        missing_quote_fields_count = latest_summary.get("missing_quote_fields_count", 0)
+        run_status = latest_summary.get("status", "UNKNOWN")
+        run_duration = latest_summary.get("duration_seconds", 0)
         
         # Pre-computed exclusion breakdowns
         excluded_counts_by_stage = latest_summary.get("excluded_counts_by_stage", {})
@@ -1700,13 +1723,15 @@ async def get_admin_status(user: dict = Depends(get_current_user)):
         if latest_summary.get("tier_counts"):
             tier_counts = latest_summary["tier_counts"]
         
-        # Legacy format for backward compatibility
+        # Legacy format for backward compatibility + new categories
         excluded_counts = {
             "OUT_OF_RULES": 0,
             "OUT_OF_PRICE_BAND": excluded_counts_by_reason.get("OUT_OF_PRICE_BAND", 0),
             "LOW_LIQUIDITY": excluded_counts_by_reason.get("LOW_LIQUIDITY_RANK", 0),
             "MISSING_QUOTE": excluded_counts_by_reason.get("MISSING_QUOTE", 0),
+            "MISSING_QUOTE_FIELDS": excluded_counts_by_reason.get("MISSING_QUOTE_FIELDS", 0),
             "MISSING_CHAIN": excluded_counts_by_reason.get("MISSING_CHAIN", 0),
+            "RATE_LIMITED_CHAIN": excluded_counts_by_reason.get("RATE_LIMITED_CHAIN", 0),
             "CHAIN_EMPTY": excluded_counts_by_reason.get("CHAIN_EMPTY", 0),
             "BAD_CHAIN_DATA": excluded_counts_by_reason.get("BAD_CHAIN_DATA", 0),
             "MISSING_CONTRACT_FIELDS": excluded_counts_by_reason.get("MISSING_CONTRACT_FIELDS", 0),
@@ -1715,6 +1740,13 @@ async def get_admin_status(user: dict = Depends(get_current_user)):
         
     else:
         # Fallback: Try reading from audit collection (slower path)
+        run_status = "UNKNOWN"
+        run_duration = 0
+        coverage_ratio = 0
+        throttle_ratio = 0
+        rate_limited_chain_count = 0
+        missing_quote_fields_count = 0
+        
         latest_run = await db.scan_universe_audit.find_one(
             {},
             sort=[("as_of", -1)],
