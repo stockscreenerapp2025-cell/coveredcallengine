@@ -475,3 +475,478 @@ def is_production() -> bool:
 def is_manual_run_allowed() -> bool:
     """Check if manual runs are allowed (disabled in production)."""
     return not is_production()
+
+
+# ============================================================
+# CC/PMCC SCAN COMPUTATION
+# ============================================================
+
+# CC Eligibility Constants
+CC_MIN_PRICE = 30.0
+CC_MAX_PRICE = 90.0
+CC_MIN_VOLUME = 1_000_000
+CC_MIN_MARKET_CAP = 5_000_000_000
+CC_MIN_DTE = 7
+CC_MAX_DTE = 45
+CC_MIN_PREMIUM_YIELD = 0.5  # 0.5%
+CC_MAX_PREMIUM_YIELD = 20.0  # 20%
+CC_MIN_OTM_PCT = 0.0
+CC_MAX_OTM_PCT = 20.0
+
+# PMCC Constants
+PMCC_MIN_LEAP_DTE = 365
+PMCC_MAX_LEAP_DTE = 730
+PMCC_MIN_SHORT_DTE = 7
+PMCC_MAX_SHORT_DTE = 60
+PMCC_MIN_DELTA = 0.70
+
+
+def check_cc_eligibility(
+    symbol: str,
+    stock_price: float,
+    market_cap: float,
+    avg_volume: float,
+    symbol_is_etf: bool
+) -> Tuple[bool, str]:
+    """Check if symbol is eligible for CC scanning."""
+    # ETFs are exempt from price checks (SPY ~$600, QQQ ~$530)
+    if symbol_is_etf:
+        if stock_price < 1 or stock_price > 2000:
+            return False, f"ETF price ${stock_price:.2f} outside valid range"
+        return True, "ETF - eligible"
+    
+    # Price check
+    if stock_price < CC_MIN_PRICE:
+        return False, f"Price ${stock_price:.2f} below minimum ${CC_MIN_PRICE}"
+    if stock_price > CC_MAX_PRICE:
+        return False, f"Price ${stock_price:.2f} above maximum ${CC_MAX_PRICE}"
+    
+    # Volume check
+    if avg_volume and avg_volume < CC_MIN_VOLUME:
+        return False, f"Avg volume {avg_volume:,.0f} below minimum {CC_MIN_VOLUME:,.0f}"
+    
+    # Market cap check
+    if market_cap and market_cap < CC_MIN_MARKET_CAP:
+        return False, f"Market cap ${market_cap/1e9:.1f}B below minimum $5B"
+    
+    return True, "Eligible"
+
+
+def calculate_greeks_simple(stock_price: float, strike: float, dte: int, iv: float) -> Dict[str, float]:
+    """Simplified Black-Scholes Greeks calculation for EOD pipeline."""
+    import math
+    
+    if dte <= 0 or iv <= 0 or stock_price <= 0 or strike <= 0:
+        return {"delta": 0.3, "gamma": 0.0, "theta": 0.0, "vega": 0.0}
+    
+    T = max(dte, 1) / 365.0
+    r = 0.05  # Risk-free rate
+    
+    try:
+        d1 = (math.log(stock_price / strike) + (r + 0.5 * iv ** 2) * T) / (iv * math.sqrt(T))
+        
+        # Cumulative normal distribution approximation
+        def norm_cdf(x):
+            return 0.5 * (1 + math.erf(x / math.sqrt(2)))
+        
+        delta = norm_cdf(d1)
+        
+        # Simplified gamma, theta, vega
+        gamma = math.exp(-0.5 * d1 ** 2) / (stock_price * iv * math.sqrt(2 * math.pi * T))
+        theta = -(stock_price * iv * math.exp(-0.5 * d1 ** 2)) / (2 * math.sqrt(2 * math.pi * T))
+        vega = stock_price * math.sqrt(T) * math.exp(-0.5 * d1 ** 2) / math.sqrt(2 * math.pi)
+        
+        return {
+            "delta": round(delta, 4),
+            "gamma": round(gamma, 6),
+            "theta": round(theta, 4),
+            "vega": round(vega, 4)
+        }
+    except Exception:
+        return {"delta": 0.3, "gamma": 0.0, "theta": 0.0, "vega": 0.0}
+
+
+def calculate_cc_score(trade_data: Dict[str, Any]) -> float:
+    """Calculate simplified CC quality score (0-100)."""
+    score = 50.0  # Base score
+    
+    # ROI scoring (max +20)
+    roi_pct = trade_data.get("roi_pct", 0)
+    if 1.0 <= roi_pct <= 3.0:
+        score += 20
+    elif roi_pct > 3.0:
+        score += 15
+    elif roi_pct > 0.5:
+        score += roi_pct * 10
+    
+    # Delta scoring (max +15) - prefer 0.25-0.35
+    delta = trade_data.get("delta", 0.3)
+    if 0.25 <= delta <= 0.35:
+        score += 15
+    elif 0.20 <= delta <= 0.40:
+        score += 10
+    elif 0.15 <= delta <= 0.50:
+        score += 5
+    
+    # OTM% scoring (max +10) - prefer 3-8%
+    otm_pct = trade_data.get("otm_pct", 0)
+    if 3.0 <= otm_pct <= 8.0:
+        score += 10
+    elif 1.0 <= otm_pct <= 12.0:
+        score += 5
+    
+    # Liquidity scoring (max +5)
+    oi = trade_data.get("open_interest", 0)
+    if oi >= 500:
+        score += 5
+    elif oi >= 100:
+        score += 2
+    
+    return min(100, max(0, score))
+
+
+async def compute_scan_results(
+    db,
+    run_id: str,
+    snapshots: List[Dict[str, Any]],
+    as_of: datetime
+) -> Tuple[List[Dict], List[Dict]]:
+    """
+    Compute CC and PMCC opportunities from symbol snapshots.
+    
+    Args:
+        db: MongoDB database instance
+        run_id: EOD pipeline run ID
+        snapshots: List of symbol snapshot documents
+        as_of: Timestamp of the scan
+        
+    Returns:
+        Tuple of (cc_opportunities, pmcc_opportunities)
+    """
+    cc_opportunities = []
+    pmcc_opportunities = []
+    
+    for snapshot in snapshots:
+        symbol = snapshot.get("symbol")
+        stock_price = snapshot.get("underlying_price", 0)
+        avg_volume = snapshot.get("avg_volume", 0)
+        market_cap = snapshot.get("market_cap", 0)
+        option_chains = snapshot.get("option_chain", [])
+        symbol_is_etf = snapshot.get("is_etf", False)
+        
+        if not symbol or stock_price <= 0:
+            continue
+        
+        # Check CC eligibility
+        is_eligible, reason = check_cc_eligibility(
+            symbol, stock_price, market_cap, avg_volume, symbol_is_etf
+        )
+        
+        if not is_eligible:
+            continue
+        
+        # Process option chains for CC opportunities
+        for chain in option_chains:
+            expiry = chain.get("expiry", "")
+            calls = chain.get("calls", [])
+            
+            for call in calls:
+                dte = call.get("daysToExpiration", 0)
+                if not dte:
+                    try:
+                        exp_dt = datetime.strptime(expiry, "%Y-%m-%d")
+                        dte = (exp_dt - datetime.now()).days
+                    except:
+                        continue
+                
+                # DTE filter
+                if dte < CC_MIN_DTE or dte > CC_MAX_DTE:
+                    continue
+                
+                strike = call.get("strike", 0)
+                bid = call.get("bid", 0)
+                ask = call.get("ask", 0)
+                iv = call.get("impliedVolatility", 0) or 0
+                oi = call.get("openInterest", 0) or 0
+                volume = call.get("volume", 0) or 0
+                
+                # Require valid bid
+                if not bid or bid <= 0:
+                    continue
+                
+                premium = bid
+                
+                # Calculate metrics
+                premium_yield = (premium / stock_price) * 100 if stock_price > 0 else 0
+                otm_pct = ((strike - stock_price) / stock_price) * 100 if stock_price > 0 else 0
+                
+                # Apply filters
+                if premium_yield < CC_MIN_PREMIUM_YIELD or premium_yield > CC_MAX_PREMIUM_YIELD:
+                    continue
+                if otm_pct < CC_MIN_OTM_PCT or otm_pct > CC_MAX_OTM_PCT:
+                    continue
+                
+                # Calculate Greeks
+                greeks = calculate_greeks_simple(stock_price, strike, dte, iv if iv > 0 else 0.30)
+                
+                # Calculate ROI
+                roi_pct = (premium / stock_price) * 100 if stock_price > 0 else 0
+                roi_annualized = roi_pct * (365 / max(dte, 1))
+                
+                # Calculate score
+                trade_data = {
+                    "roi_pct": roi_pct,
+                    "delta": greeks["delta"],
+                    "otm_pct": otm_pct,
+                    "open_interest": oi
+                }
+                score = calculate_cc_score(trade_data)
+                
+                # Build contract symbol
+                try:
+                    exp_formatted = datetime.strptime(expiry, "%Y-%m-%d").strftime("%y%m%d")
+                    contract_symbol = f"{symbol}{exp_formatted}C{int(strike * 1000):08d}"
+                except:
+                    contract_symbol = f"{symbol}_{strike}_{expiry}"
+                
+                cc_opp = {
+                    "run_id": run_id,
+                    "symbol": symbol,
+                    "stock_price": round(stock_price, 2),
+                    "strike": strike,
+                    "expiry": expiry,
+                    "dte": dte,
+                    "dte_category": "weekly" if dte <= 14 else "monthly",
+                    "contract_symbol": contract_symbol,
+                    "premium": round(premium, 2),
+                    "premium_ask": round(ask, 2) if ask else None,
+                    "premium_yield": round(premium_yield, 2),
+                    "otm_pct": round(otm_pct, 2),
+                    "roi_pct": round(roi_pct, 2),
+                    "roi_annualized": round(roi_annualized, 1),
+                    "delta": greeks["delta"],
+                    "gamma": greeks["gamma"],
+                    "theta": greeks["theta"],
+                    "vega": greeks["vega"],
+                    "iv": round(iv, 4) if iv else 0,
+                    "iv_pct": round(iv * 100, 1) if iv else 0,
+                    "open_interest": oi,
+                    "volume": volume,
+                    "is_etf": symbol_is_etf,
+                    "instrument_type": "ETF" if symbol_is_etf else "STOCK",
+                    "market_cap": market_cap,
+                    "avg_volume": avg_volume,
+                    "score": round(score, 1),
+                    "max_profit": round(premium * 100, 2),
+                    "breakeven": round(stock_price - premium, 2),
+                    "as_of": as_of,
+                    "created_at": datetime.now(timezone.utc)
+                }
+                
+                cc_opportunities.append(cc_opp)
+        
+        # PMCC opportunities - look for LEAPS + short calls
+        # Find LEAPS (365-730 DTE)
+        leaps_candidates = []
+        short_candidates = []
+        
+        for chain in option_chains:
+            expiry = chain.get("expiry", "")
+            calls = chain.get("calls", [])
+            
+            for call in calls:
+                dte = call.get("daysToExpiration", 0)
+                if not dte:
+                    try:
+                        exp_dt = datetime.strptime(expiry, "%Y-%m-%d")
+                        dte = (exp_dt - datetime.now()).days
+                    except:
+                        continue
+                
+                strike = call.get("strike", 0)
+                bid = call.get("bid", 0)
+                ask = call.get("ask", 0)
+                iv = call.get("impliedVolatility", 0) or 0
+                oi = call.get("openInterest", 0) or 0
+                
+                # LEAPS candidate (365-730 DTE, ITM)
+                if PMCC_MIN_LEAP_DTE <= dte <= PMCC_MAX_LEAP_DTE and strike < stock_price:
+                    if ask and ask > 0:
+                        greeks = calculate_greeks_simple(stock_price, strike, dte, iv if iv > 0 else 0.30)
+                        if greeks["delta"] >= PMCC_MIN_DELTA:
+                            leaps_candidates.append({
+                                "strike": strike,
+                                "expiry": expiry,
+                                "dte": dte,
+                                "ask": ask,
+                                "bid": bid,
+                                "delta": greeks["delta"],
+                                "iv": iv,
+                                "oi": oi
+                            })
+                
+                # Short call candidate (7-60 DTE)
+                if PMCC_MIN_SHORT_DTE <= dte <= PMCC_MAX_SHORT_DTE:
+                    if bid and bid > 0:
+                        short_candidates.append({
+                            "strike": strike,
+                            "expiry": expiry,
+                            "dte": dte,
+                            "bid": bid,
+                            "ask": ask,
+                            "iv": iv,
+                            "oi": oi
+                        })
+        
+        # Match LEAPS with short calls (short strike > leap strike)
+        for leap in leaps_candidates[:3]:  # Limit LEAPS per symbol
+            for short in short_candidates:
+                if short["strike"] <= leap["strike"]:
+                    continue  # Short must be above LEAP
+                
+                net_debit = leap["ask"] - short["bid"]
+                if net_debit <= 0:
+                    continue
+                
+                width = short["strike"] - leap["strike"]
+                max_profit = width - net_debit
+                roi_per_cycle = (short["bid"] / leap["ask"]) * 100 if leap["ask"] > 0 else 0
+                roi_annualized = roi_per_cycle * (365 / max(short["dte"], 1))
+                
+                pmcc_opp = {
+                    "run_id": run_id,
+                    "symbol": symbol,
+                    "stock_price": round(stock_price, 2),
+                    "leap_strike": leap["strike"],
+                    "leap_expiry": leap["expiry"],
+                    "leap_dte": leap["dte"],
+                    "leap_ask": round(leap["ask"], 2),
+                    "leap_delta": leap["delta"],
+                    "short_strike": short["strike"],
+                    "short_expiry": short["expiry"],
+                    "short_dte": short["dte"],
+                    "short_bid": round(short["bid"], 2),
+                    "net_debit": round(net_debit, 2),
+                    "net_debit_total": round(net_debit * 100, 2),
+                    "width": round(width, 2),
+                    "max_profit": round(max_profit, 2),
+                    "max_profit_total": round(max_profit * 100, 2),
+                    "breakeven": round(leap["strike"] + net_debit, 2),
+                    "roi_per_cycle": round(roi_per_cycle, 2),
+                    "roi_annualized": round(roi_annualized, 1),
+                    "is_etf": symbol_is_etf,
+                    "instrument_type": "ETF" if symbol_is_etf else "STOCK",
+                    "score": round(50 + roi_per_cycle * 5, 1),  # Simple PMCC scoring
+                    "as_of": as_of,
+                    "created_at": datetime.now(timezone.utc)
+                }
+                
+                pmcc_opportunities.append(pmcc_opp)
+    
+    # Select best option per symbol (one CC per symbol)
+    cc_by_symbol = {}
+    for opp in cc_opportunities:
+        symbol = opp["symbol"]
+        if symbol not in cc_by_symbol or opp["score"] > cc_by_symbol[symbol]["score"]:
+            cc_by_symbol[symbol] = opp
+    
+    cc_opportunities = sorted(cc_by_symbol.values(), key=lambda x: x["score"], reverse=True)
+    
+    # Select best PMCC per symbol
+    pmcc_by_symbol = {}
+    for opp in pmcc_opportunities:
+        symbol = opp["symbol"]
+        if symbol not in pmcc_by_symbol or opp["score"] > pmcc_by_symbol[symbol]["score"]:
+            pmcc_by_symbol[symbol] = opp
+    
+    pmcc_opportunities = sorted(pmcc_by_symbol.values(), key=lambda x: x["score"], reverse=True)
+    
+    # Persist CC results
+    if cc_opportunities:
+        try:
+            await db.scan_results_cc.insert_many(cc_opportunities)
+            logger.info(f"[EOD_PIPELINE] Persisted {len(cc_opportunities)} CC opportunities")
+        except Exception as e:
+            logger.error(f"[EOD_PIPELINE] Failed to persist CC results: {e}")
+    
+    # Persist PMCC results
+    if pmcc_opportunities:
+        try:
+            await db.scan_results_pmcc.insert_many(pmcc_opportunities)
+            logger.info(f"[EOD_PIPELINE] Persisted {len(pmcc_opportunities)} PMCC opportunities")
+        except Exception as e:
+            logger.error(f"[EOD_PIPELINE] Failed to persist PMCC results: {e}")
+    
+    return cc_opportunities, pmcc_opportunities
+
+
+async def get_latest_scan_run(db) -> Optional[Dict]:
+    """Get the latest completed scan run."""
+    try:
+        return await db.scan_runs.find_one(
+            {"status": "COMPLETED"},
+            sort=[("completed_at", -1)]
+        )
+    except Exception as e:
+        logger.error(f"Failed to get latest scan run: {e}")
+        return None
+
+
+async def get_precomputed_cc_results(db, run_id: str = None, limit: int = 50) -> List[Dict]:
+    """
+    Get pre-computed CC results from the database.
+    
+    Args:
+        db: MongoDB database instance
+        run_id: Specific run ID or None for latest
+        limit: Maximum results to return
+        
+    Returns:
+        List of CC opportunities
+    """
+    try:
+        if not run_id:
+            latest_run = await get_latest_scan_run(db)
+            if not latest_run:
+                return []
+            run_id = latest_run.get("run_id")
+        
+        cursor = db.scan_results_cc.find(
+            {"run_id": run_id},
+            {"_id": 0}
+        ).sort("score", -1).limit(limit)
+        
+        return await cursor.to_list(length=limit)
+    except Exception as e:
+        logger.error(f"Failed to get pre-computed CC results: {e}")
+        return []
+
+
+async def get_precomputed_pmcc_results(db, run_id: str = None, limit: int = 50) -> List[Dict]:
+    """
+    Get pre-computed PMCC results from the database.
+    
+    Args:
+        db: MongoDB database instance
+        run_id: Specific run ID or None for latest
+        limit: Maximum results to return
+        
+    Returns:
+        List of PMCC opportunities
+    """
+    try:
+        if not run_id:
+            latest_run = await get_latest_scan_run(db)
+            if not latest_run:
+                return []
+            run_id = latest_run.get("run_id")
+        
+        cursor = db.scan_results_pmcc.find(
+            {"run_id": run_id},
+            {"_id": 0}
+        ).sort("score", -1).limit(limit)
+        
+        return await cursor.to_list(length=limit)
+    except Exception as e:
+        logger.error(f"Failed to get pre-computed PMCC results: {e}")
+        return []
