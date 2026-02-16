@@ -285,10 +285,15 @@ class EODPipelineResult:
         # Exclusion breakdown
         self.excluded_by_reason: Dict[str, int] = {}
         self.excluded_by_stage: Dict[str, int] = {}
+        
+        # Error type breakdown (NEW)
+        self.error_type_counts: Dict[str, int] = {}
     
-    def add_exclusion(self, stage: str, reason: str):
+    def add_exclusion(self, stage: str, reason: str, error_type: str = None):
         self.excluded_by_reason[reason] = self.excluded_by_reason.get(reason, 0) + 1
         self.excluded_by_stage[stage] = self.excluded_by_stage.get(stage, 0) + 1
+        if error_type:
+            self.error_type_counts[error_type] = self.error_type_counts.get(error_type, 0) + 1
     
     def finalize(self):
         self.completed_at = datetime.now(timezone.utc)
@@ -310,6 +315,7 @@ class EODPipelineResult:
             "pmcc_count": len(self.pmcc_opportunities),
             "excluded_by_reason": self.excluded_by_reason,
             "excluded_by_stage": self.excluded_by_stage,
+            "error_type_counts": self.error_type_counts,
             "top_failures": self.failures[:20]
         }
 
