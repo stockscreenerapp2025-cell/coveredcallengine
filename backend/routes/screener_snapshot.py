@@ -993,6 +993,9 @@ def _transform_cc_result(r: Dict) -> Dict:
         "market_cap": r.get("market_cap"),
         "avg_volume": r.get("avg_volume"),
         
+        # Quality flags
+        "quality_flags": r.get("quality_flags", []),
+        
         # Analyst (nullable - "N/A" in UI if null)
         "analyst_rating": r.get("analyst_rating"),
         
