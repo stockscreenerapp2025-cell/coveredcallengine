@@ -162,6 +162,11 @@ def fetch_quote_sync(symbol: str) -> Dict:
 def fetch_option_chain_sync(symbol: str) -> Dict:
     """
     Fetch option chain from Yahoo Finance (blocking call).
+    
+    UPDATED (Feb 2026): Fetches ALL available expirations including LEAPS.
+    - Near-term (0-60 DTE): All expirations
+    - Mid-term (61-364 DTE): Sample every 2nd expiration
+    - LEAPS (365+ DTE): All expirations (critical for PMCC)
     """
     try:
         ticker = yf.Ticker(symbol)
@@ -176,18 +181,69 @@ def fetch_option_chain_sync(symbol: str) -> Dict:
                 "error_detail": "No expiration dates available"
             }
         
-        # Fetch chains for first 4 expirations (covers ~2 months)
+        # Categorize expirations by DTE
+        from datetime import datetime
+        today = datetime.now()
+        
+        near_term = []  # 0-60 DTE
+        mid_term = []   # 61-364 DTE
+        leaps = []      # 365+ DTE
+        
+        for exp_str in expirations:
+            try:
+                exp_date = datetime.strptime(exp_str, "%Y-%m-%d")
+                dte = (exp_date - today).days
+                
+                if dte <= 60:
+                    near_term.append(exp_str)
+                elif dte <= 364:
+                    mid_term.append(exp_str)
+                else:
+                    leaps.append(exp_str)
+            except ValueError:
+                continue
+        
+        # Select which expirations to fetch
+        # Near-term: all (for CC/short leg)
+        # Mid-term: every 2nd (reduce API calls)
+        # LEAPS: all (critical for PMCC)
+        selected_exps = near_term + mid_term[::2] + leaps
+        
+        # Limit total to prevent excessive API calls
+        # But ALWAYS include all LEAPS
+        if len(selected_exps) > 12:
+            # Keep first 8 near-term + all LEAPS
+            selected_exps = near_term[:8] + leaps
+        
         chains = []
-        for exp_date in expirations[:4]:
+        leaps_found = 0
+        
+        for exp_date in selected_exps:
             try:
                 opt = ticker.option_chain(exp_date)
                 calls = opt.calls.to_dict('records') if hasattr(opt.calls, 'to_dict') else []
                 puts = opt.puts.to_dict('records') if hasattr(opt.puts, 'to_dict') else []
+                
+                # Calculate DTE for this expiry
+                exp_dt = datetime.strptime(exp_date, "%Y-%m-%d")
+                dte = (exp_dt - today).days
+                
+                # Add DTE to each call/put record
+                for call in calls:
+                    call['daysToExpiration'] = dte
+                for put in puts:
+                    put['daysToExpiration'] = dte
+                
                 chains.append({
                     "expiry": exp_date,
+                    "dte": dte,
                     "calls": calls,
                     "puts": puts
                 })
+                
+                if dte >= 365:
+                    leaps_found += 1
+                    
             except Exception:
                 continue
         
@@ -205,7 +261,10 @@ def fetch_option_chain_sync(symbol: str) -> Dict:
             "expirations": [c["expiry"] for c in chains],
             "chains": chains,
             "total_calls": sum(len(c["calls"]) for c in chains),
-            "total_puts": sum(len(c["puts"]) for c in chains)
+            "total_puts": sum(len(c["puts"]) for c in chains),
+            "leaps_found": leaps_found,
+            "has_leaps": leaps_found > 0,
+            "available_leaps_expirations": leaps  # For audit
         }
         
     except Exception as e:
