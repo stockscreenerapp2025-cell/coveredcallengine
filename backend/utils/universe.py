@@ -6,20 +6,50 @@ Manages the scan universe with tiered symbol lists:
 - Tier 1: S&P 500 constituents
 - Tier 2: Nasdaq 100 (net of S&P 500 overlap)
 - Tier 3: ETF whitelist (liquid options ETFs)
+- Tier 4: Liquidity expansion (to reach 1500 total)
 
 Configuration:
-- MAX_SCAN_UNIVERSE: Maximum symbols to scan (env variable, default 700)
+- MAX_SCAN_UNIVERSE: Maximum symbols to scan (env variable, default 1500)
 
 ETF Handling:
 - is_etf(symbol): Returns True if symbol is an ETF
 - ETFs skip fundamental data fetch (no 404 errors)
-- ETFs use relaxed filters (no market cap, earnings checks)
+
+Symbol Normalization:
+- BRK-B -> BRK.B (Yahoo format)
+- All symbols normalized before use
 """
 import os
-from typing import List, Dict, Set, Tuple
 import logging
+from typing import List, Dict, Set, Tuple
+
+# Import from new modular structure
+from services.universe_builder import (
+    get_tier1_symbols,
+    get_tier2_symbols,
+    get_tier3_symbols,
+    get_scan_universe,
+    get_tier_counts,
+    is_etf,
+    build_universe,
+    persist_universe_version,
+    get_latest_universe,
+    TARGET_UNIVERSE_SIZE
+)
+from utils.symbol_normalization import normalize_symbol, normalize_symbols
+from data.etf_whitelist import ETF_WHITELIST
 
 logger = logging.getLogger(__name__)
+
+# Re-export ETF_WHITELIST for backward compatibility
+ETF_WHITELIST = set(normalize_symbols(ETF_WHITELIST))
+
+# Legacy function aliases
+def refresh_universe() -> Tuple[List[str], Dict[str, int]]:
+    """Force rebuild of the scan universe (synchronous version)."""
+    universe = get_scan_universe()
+    tier_counts = get_tier_counts()
+    return universe, tier_counts
 
 # ============================================================
 # ETF WHITELIST (Tier 3) - ~50 liquid options ETFs
