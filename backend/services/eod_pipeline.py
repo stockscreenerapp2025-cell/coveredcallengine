@@ -829,7 +829,7 @@ async def run_eod_pipeline(db, force_build_universe: bool = False) -> EODPipelin
     
     logger.info(f"[EOD_PIPELINE] Computed {len(cc_opportunities)} CC, {len(pmcc_opportunities)} PMCC opportunities")
     
-    # Step 6: Finalize and persist run summary
+    # Step 7: Finalize and persist run summary
     result.finalize()
     
     # Persist scan_run_summary
