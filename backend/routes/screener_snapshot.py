@@ -1906,13 +1906,6 @@ async def get_admin_status(user: dict = Depends(get_current_user)):
         score_medium = 0
         score_low = 0
     
-    # Calculate health score based on data quality
-    # Health score: weighted average of data quality metrics
-    health_score = round(
-        (chain_valid_pct * 0.5) + 
-        (structure_valid_pct * 0.5)
-    ) if structure_valid > 0 else 0
-    
     # Calculate rejected count
     rejected = total_symbols - structure_valid
     
@@ -1921,12 +1914,23 @@ async def get_admin_status(user: dict = Depends(get_current_user)):
     return {
         "run_id": run_id,
         "run_type": "EOD",
-        "health_score": health_score if health_score > 0 else 0,
+        "run_status": run_status if latest_summary else "UNKNOWN",  # NEW: status flag
+        "run_in_progress": run_in_progress,  # NEW: show if another run is in progress
+        "health_score": health_score,
+        "health_status": health_status,  # NEW: CRITICAL/WARNING/HEALTHY
         "last_full_run_at": last_full_run_at.isoformat() if last_full_run_at else None,
+        "run_duration_seconds": run_duration if latest_summary else None,  # NEW
         "market_state": current_market_state,
         "price_source": price_source,
         "underlying_price_source": price_source,  # Alias for frontend compatibility
         "as_of": now_utc.isoformat(),
+        
+        # NEW: Coverage and throttle metrics for debugging
+        "coverage_ratio": round(coverage_ratio, 4) if latest_summary else None,
+        "throttle_ratio": round(throttle_ratio, 4) if latest_summary else None,
+        "rate_limited_chain_count": rate_limited_chain_count if latest_summary else None,
+        "missing_quote_fields_count": missing_quote_fields_count if latest_summary else None,
+        
         "universe": {
             "source": "INDEX_PLUS_LIQUIDITY",
             "notes": "S&P 500 + Nasdaq 100 + ETF whitelist + optional expansion",
