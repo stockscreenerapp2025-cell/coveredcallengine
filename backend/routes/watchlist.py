@@ -610,6 +610,126 @@ async def _get_best_opportunity_live_fallback(symbol: str, api_key: str, underly
         return None
 
 
+async def _get_eod_prices_for_symbols(symbols: List[str]) -> tuple:
+    """
+    Get EOD prices from symbol_snapshot for multiple symbols.
+    
+    Returns:
+        (stock_data_dict, run_info)
+    """
+    try:
+        # Get latest completed run
+        latest_run = await db.scan_runs.find_one(
+            {"status": "COMPLETED"},
+            sort=[("completed_at", -1)]
+        )
+        
+        if not latest_run:
+            return {}, None
+        
+        run_id = latest_run.get("run_id")
+        run_info = {
+            "run_id": run_id,
+            "as_of": latest_run.get("as_of"),
+            "completed_at": latest_run.get("completed_at"),
+            "market_status": "CLOSED"
+        }
+        
+        # Fetch snapshots for all symbols
+        snapshots = await db.symbol_snapshot.find(
+            {"run_id": run_id, "symbol": {"$in": symbols}},
+            {"_id": 0, "symbol": 1, "underlying_price": 1, "stock_price_source": 1,
+             "session_close_price": 1, "prior_close_price": 1, "market_status": 1,
+             "as_of": 1}
+        ).to_list(len(symbols))
+        
+        # Build lookup dict
+        stock_data = {}
+        for snap in snapshots:
+            symbol = snap.get("symbol")
+            stock_data[symbol] = {
+                "price": snap.get("underlying_price"),
+                "stock_price_source": snap.get("stock_price_source", "SESSION_CLOSE"),
+                "session_close_price": snap.get("session_close_price"),
+                "prior_close_price": snap.get("prior_close_price"),
+                "market_status": snap.get("market_status", "CLOSED"),
+                "as_of": snap.get("as_of"),
+                "change": 0,  # Not available in EOD snapshot
+                "change_pct": 0
+            }
+        
+        # Enrich with analyst data
+        enrichments = await db.symbol_enrichment.find(
+            {"symbol": {"$in": symbols}},
+            {"_id": 0, "symbol": 1, "analyst_rating_label": 1}
+        ).to_list(len(symbols))
+        
+        enrichment_map = {e["symbol"]: e for e in enrichments}
+        for symbol, data in stock_data.items():
+            enrich = enrichment_map.get(symbol, {})
+            data["analyst_rating"] = enrich.get("analyst_rating_label")
+        
+        return stock_data, run_info
+        
+    except Exception as e:
+        logging.error(f"Error fetching EOD prices: {e}")
+        return {}, None
+
+
+async def _get_best_opportunity_eod(symbol: str) -> dict:
+    """
+    Get best covered call opportunity from pre-computed EOD scan results.
+    
+    NO LIVE YAHOO CALLS - reads from scan_results_cc collection.
+    """
+    try:
+        # Get latest completed run
+        latest_run = await db.scan_runs.find_one(
+            {"status": "COMPLETED"},
+            sort=[("completed_at", -1)]
+        )
+        
+        if not latest_run:
+            return None
+        
+        run_id = latest_run.get("run_id")
+        
+        # Get best CC opportunity for this symbol (highest score)
+        cc_opp = await db.scan_results_cc.find_one(
+            {"run_id": run_id, "symbol": symbol},
+            {"_id": 0},
+            sort=[("score", -1)]
+        )
+        
+        if not cc_opp:
+            return None
+        
+        # Transform to watchlist opportunity format
+        return {
+            "symbol": symbol,
+            "strike": cc_opp.get("strike"),
+            "expiry": cc_opp.get("expiry"),
+            "dte": cc_opp.get("dte"),
+            "premium": cc_opp.get("premium_bid"),
+            "premium_display": cc_opp.get("premium_display"),
+            "premium_display_source": cc_opp.get("premium_display_source"),
+            "roi": cc_opp.get("roi_annualized"),
+            "delta": cc_opp.get("delta"),
+            "iv": cc_opp.get("iv_pct"),
+            "iv_rank": cc_opp.get("iv_rank"),
+            "open_interest": cc_opp.get("open_interest"),
+            "score": cc_opp.get("score"),
+            "type": "call",
+            "source": "eod_precomputed",
+            "data_source": "scan_results_cc",
+            "quality_flags": cc_opp.get("quality_flags", [])
+        }
+        
+    except Exception as e:
+        logging.error(f"Error getting EOD opportunity for {symbol}: {e}")
+        return None
+
+
 @watchlist_router.get("/")
 async def get_watchlist(
     use_live_prices: bool = Query(False, description="Use LIVE intraday prices instead of EOD (default: EOD)"),
