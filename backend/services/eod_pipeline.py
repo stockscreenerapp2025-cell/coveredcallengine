@@ -45,9 +45,12 @@ logger = logging.getLogger(__name__)
 
 # Configuration
 YAHOO_TIMEOUT_SECONDS = int(os.environ.get("YAHOO_TIMEOUT_SECONDS", "30"))
-YAHOO_MAX_RETRIES = int(os.environ.get("YAHOO_MAX_RETRIES", "1"))
-YAHOO_MAX_CONCURRENCY = int(os.environ.get("YAHOO_SCAN_MAX_CONCURRENCY", "5"))
+YAHOO_MAX_RETRIES = int(os.environ.get("YAHOO_MAX_RETRIES", "2"))
+YAHOO_MAX_CONCURRENCY = int(os.environ.get("YAHOO_SCAN_MAX_CONCURRENCY", "2"))  # Reduced for rate limiting
 BATCH_SIZE = 30
+BULK_QUOTE_BATCH_SIZE = 50  # Symbols per bulk quote request
+RATE_LIMIT_BACKOFF_BASE = 2.0  # Base seconds for exponential backoff
+RATE_LIMIT_MAX_BACKOFF = 30.0  # Maximum backoff seconds
 
 
 class EODPipelineResult:
