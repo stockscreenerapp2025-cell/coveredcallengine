@@ -1225,6 +1225,7 @@ async def compute_scan_results(
                 iv_percent = round(short_iv * 100, 1) if short_iv > 0 else 0.0
                 
                 # === EXPLICIT PMCC SCHEMA (Feb 2026) ===
+                # WITH MANDATORY MARKET CONTEXT FIELDS
                 pmcc_opp = {
                     # Run metadata
                     "run_id": run_id,
@@ -1234,7 +1235,11 @@ async def compute_scan_results(
                     # Underlying
                     "symbol": symbol,
                     "stock_price": round(stock_price, 2),
-                    "stock_price_source": "EOD_SNAPSHOT",
+                    
+                    # MANDATORY MARKET CONTEXT FIELDS
+                    "stock_price_source": snapshot.get("stock_price_source", "REGULAR_MARKET_PREVIOUS_CLOSE"),
+                    "market_status": snapshot.get("market_status", "UNKNOWN"),
+                    
                     "is_etf": symbol_is_etf,
                     "instrument_type": "ETF" if symbol_is_etf else "STOCK",
                     
