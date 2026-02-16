@@ -451,13 +451,18 @@ async def run_eod_pipeline(db, force_build_universe: bool = False) -> EODPipelin
                             "run_id": run_id,
                             "symbol": symbol,
                             
-                            # PRICE (MANDATORY - regularMarketPreviousClose)
+                            # SELECTED PRICE (based on market state)
                             "underlying_price": quote_result["price"],
-                            "stock_price_source": quote_result.get("stock_price_source", "REGULAR_MARKET_PREVIOUS_CLOSE"),
+                            "stock_price_source": quote_result.get("stock_price_source", "SESSION_CLOSE"),
                             
-                            # MARKET CONTEXT FIELDS (for debugging)
+                            # BOTH PRICE FIELDS (always stored)
+                            "session_close_price": quote_result.get("session_close_price"),
+                            "prior_close_price": quote_result.get("prior_close_price"),
+                            
+                            # MARKET CONTEXT FIELDS
                             "market_status": quote_result.get("market_status", "UNKNOWN"),
                             "as_of": quote_result.get("as_of") or as_of.isoformat() if isinstance(as_of, datetime) else as_of,
+                            "regular_market_time": quote_result.get("regular_market_time"),
                             
                             # RAW YAHOO PRICES (for debugging)
                             "raw_prices": quote_result.get("raw_prices", {}),
@@ -485,7 +490,9 @@ async def run_eod_pipeline(db, force_build_universe: bool = False) -> EODPipelin
                             
                             # PRICE CONTEXT FOR AUDIT
                             "price_used": quote_result["price"],
-                            "stock_price_source": quote_result.get("stock_price_source", "REGULAR_MARKET_PREVIOUS_CLOSE"),
+                            "stock_price_source": quote_result.get("stock_price_source", "SESSION_CLOSE"),
+                            "session_close_price": quote_result.get("session_close_price"),
+                            "prior_close_price": quote_result.get("prior_close_price"),
                             "market_status": quote_result.get("market_status", "UNKNOWN"),
                             "raw_prices": quote_result.get("raw_prices", {}),
                             
