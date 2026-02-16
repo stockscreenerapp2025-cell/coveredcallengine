@@ -1082,11 +1082,24 @@ async def compute_scan_results(
                             "oi": oi
                         })
         
-        # Match LEAPS with short calls (short strike > leap strike)
+        # Match LEAPS with short calls
         for leap in leaps_candidates[:3]:  # Limit LEAPS per symbol
             for short in short_candidates:
-                if short["strike"] <= leap["strike"]:
-                    continue  # Short must be above LEAP
+                # VALIDATE PMCC STRUCTURE (HARD RULES)
+                is_valid, pmcc_quality_flags = validate_pmcc_structure(
+                    stock_price=stock_price,
+                    leap_strike=leap["strike"],
+                    leap_ask=leap["ask"],
+                    leap_delta=leap["delta"],
+                    leap_dte=leap["dte"],
+                    short_strike=short["strike"],
+                    short_bid=short["bid"],
+                    short_dte=short["dte"],
+                    short_iv=short.get("iv", 0)
+                )
+                
+                if not is_valid:
+                    continue
                 
                 # PRICING RULES:
                 # - LEAP BUY: use ASK price
@@ -1096,17 +1109,10 @@ async def compute_scan_results(
                 short_bid = short["bid"]
                 short_ask = short.get("ask", 0)
                 
-                # ASSERTION: short_bid must be > 0 for valid PMCC
-                if short_bid <= 0:
-                    continue
-                
                 leap_used = leap_ask  # BUY rule
                 short_used = short_bid  # SELL rule
                 
                 net_debit = leap_ask - short_bid
-                if net_debit <= 0:
-                    continue
-                
                 width = short["strike"] - leap["strike"]
                 max_profit = width - net_debit
                 
@@ -1114,22 +1120,18 @@ async def compute_scan_results(
                 roi_per_cycle = (short_bid / leap_ask) * 100 if leap_ask > 0 else 0
                 roi_annualized = roi_per_cycle * (365 / max(short["dte"], 1))
                 
-                # ASSERTION: ROI > 0 requires short_bid > 0
-                if roi_per_cycle > 0 and short_bid <= 0:
-                    continue  # Invalid state
-                
                 # Build contract symbols
                 try:
                     leap_exp_fmt = datetime.strptime(leap["expiry"], "%Y-%m-%d").strftime("%y%m%d")
-                    leap_symbol = f"{symbol}{leap_exp_fmt}C{int(leap['strike'] * 1000):08d}"
+                    leap_symbol_str = f"{symbol}{leap_exp_fmt}C{int(leap['strike'] * 1000):08d}"
                 except Exception:
-                    leap_symbol = f"{symbol}_LEAP_{leap['strike']}_{leap['expiry']}"
+                    leap_symbol_str = f"{symbol}_LEAP_{leap['strike']}_{leap['expiry']}"
                 
                 try:
                     short_exp_fmt = datetime.strptime(short["expiry"], "%Y-%m-%d").strftime("%y%m%d")
-                    short_symbol = f"{symbol}{short_exp_fmt}C{int(short['strike'] * 1000):08d}"
+                    short_symbol_str = f"{symbol}{short_exp_fmt}C{int(short['strike'] * 1000):08d}"
                 except Exception:
-                    short_symbol = f"{symbol}_SHORT_{short['strike']}_{short['expiry']}"
+                    short_symbol_str = f"{symbol}_SHORT_{short['strike']}_{short['expiry']}"
                 
                 # IV from short leg (more relevant for premium decay)
                 short_iv = short.get("iv", 0) or 0
