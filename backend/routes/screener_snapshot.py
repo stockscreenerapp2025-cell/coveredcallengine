@@ -928,8 +928,83 @@ def _transform_cc_result(r: Dict) -> Dict:
     premium = r.get("premium", 0)
     dte = r.get("dte", 0)
     
+    # Get values with proper fallbacks (NO undefined → 0 fallbacks for prices)
+    premium_bid = r.get("premium_bid") or r.get("premium")
+    premium_ask = r.get("premium_ask")
+    premium_used = r.get("premium_used") or premium_bid
+    iv_decimal = r.get("iv", 0)
+    iv_percent = r.get("iv_pct", 0)
+    
+    # VALIDATION: If no premium_bid, this row is invalid
+    if not premium_bid or premium_bid <= 0:
+        return None  # Will be filtered out
+    
     return {
-        # Nested objects for new schema
+        # === EXPLICIT CC SCHEMA ===
+        
+        # Underlying
+        "symbol": symbol,
+        "stock_price": stock_price,
+        "stock_price_source": r.get("stock_price_source", "EOD_SNAPSHOT"),
+        "as_of": r.get("as_of"),
+        
+        # Option contract
+        "contract_symbol": r.get("contract_symbol"),
+        "strike": strike,
+        "expiry": r.get("expiry"),
+        "dte": dte,
+        "dte_category": r.get("dte_category", "weekly" if dte <= 14 else "monthly"),
+        
+        # Pricing (EXPLICIT)
+        "premium_bid": round(premium_bid, 2),
+        "premium_ask": round(premium_ask, 2) if premium_ask else None,
+        "premium_used": round(premium_used, 2),
+        "pricing_rule": r.get("pricing_rule", "SELL_BID"),
+        
+        # Legacy alias
+        "premium": round(premium_bid, 2),
+        
+        # Economics
+        "premium_yield": r.get("premium_yield", 0),
+        "otm_pct": r.get("otm_pct", 0),
+        "roi_pct": r.get("roi_pct", 0),
+        "roi_annualized": r.get("roi_annualized", 0),
+        "max_profit": r.get("max_profit", premium_bid * 100),
+        "breakeven": r.get("breakeven", stock_price - premium_bid),
+        
+        # Greeks
+        "delta": r.get("delta", 0),
+        "delta_source": r.get("delta_source", "BLACK_SCHOLES_APPROX"),
+        "gamma": r.get("gamma", 0),
+        "theta": r.get("theta", 0),
+        "vega": r.get("vega", 0),
+        
+        # IV (explicit units)
+        "iv": iv_decimal,           # Decimal (0.65)
+        "iv_pct": iv_percent,       # Percent (65.0)
+        "iv_rank": r.get("iv_rank"),  # null if not available
+        
+        # Liquidity
+        "open_interest": r.get("open_interest", 0),
+        "volume": r.get("volume", 0),
+        
+        # Classification
+        "is_etf": r.get("is_etf", False),
+        "instrument_type": r.get("instrument_type", "STOCK"),
+        "market_cap": r.get("market_cap"),
+        "avg_volume": r.get("avg_volume"),
+        
+        # Analyst (nullable - "N/A" in UI if null)
+        "analyst_rating": r.get("analyst_rating"),
+        
+        # Scoring
+        "score": r.get("score", 0),
+        
+        # Metadata
+        "data_source": "eod_precomputed",
+        "run_id": r.get("run_id"),
+        
+        # Nested format for backward compatibility
         "underlying": {
             "symbol": symbol,
             "instrument_type": r.get("instrument_type", "STOCK"),
@@ -943,21 +1018,21 @@ def _transform_cc_result(r: Dict) -> Dict:
             "expiry": r.get("expiry"),
             "dte": dte,
             "contract_symbol": r.get("contract_symbol"),
-            "premium": premium,
-            "bid": premium,
-            "ask": r.get("premium_ask"),
+            "premium": premium_bid,
+            "bid": premium_bid,
+            "ask": premium_ask,
             "delta": r.get("delta", 0),
             "gamma": r.get("gamma", 0),
             "theta": r.get("theta", 0),
             "vega": r.get("vega", 0),
-            "iv": r.get("iv", 0),
-            "iv_pct": r.get("iv_pct", 0),
+            "iv": iv_decimal,
+            "iv_pct": iv_percent,
             "open_interest": r.get("open_interest", 0),
             "volume": r.get("volume", 0)
         },
         "economics": {
-            "max_profit": r.get("max_profit", premium * 100),
-            "breakeven": r.get("breakeven", stock_price - premium),
+            "max_profit": r.get("max_profit", premium_bid * 100),
+            "breakeven": r.get("breakeven", stock_price - premium_bid),
             "roi_pct": r.get("roi_pct", 0),
             "annualized_roi_pct": r.get("roi_annualized", 0),
             "premium_yield": r.get("premium_yield", 0),
@@ -970,36 +1045,7 @@ def _transform_cc_result(r: Dict) -> Dict:
         },
         "scoring": {
             "final_score": r.get("score", 0)
-        },
-        # Legacy flat fields for backward compatibility
-        "symbol": symbol,
-        "strike": strike,
-        "expiry": r.get("expiry"),
-        "dte": dte,
-        "dte_category": r.get("dte_category", "weekly" if dte <= 14 else "monthly"),
-        "stock_price": stock_price,
-        "premium": premium,
-        "premium_ask": r.get("premium_ask"),
-        "premium_yield": r.get("premium_yield", 0),
-        "otm_pct": r.get("otm_pct", 0),
-        "roi_pct": r.get("roi_pct", 0),
-        "roi_annualized": r.get("roi_annualized", 0),
-        "delta": r.get("delta", 0),
-        "gamma": r.get("gamma", 0),
-        "theta": r.get("theta", 0),
-        "vega": r.get("vega", 0),
-        "iv": r.get("iv", 0),
-        "iv_pct": r.get("iv_pct", 0),
-        "open_interest": r.get("open_interest", 0),
-        "volume": r.get("volume", 0),
-        "is_etf": r.get("is_etf", False),
-        "instrument_type": r.get("instrument_type", "STOCK"),
-        "score": r.get("score", 0),
-        "market_cap": r.get("market_cap"),
-        "avg_volume": r.get("avg_volume"),
-        "data_source": "eod_precomputed",
-        "run_id": r.get("run_id"),
-        "as_of": r.get("as_of")
+        }
     }
 
 
