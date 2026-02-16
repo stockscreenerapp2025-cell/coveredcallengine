@@ -862,7 +862,7 @@ const Dashboard = () => {
                         <td>{opp.iv_pct ? `${opp.iv_pct.toFixed(1)}%` : (opp.iv ? `${(opp.iv * 100).toFixed(1)}%` : '-')}</td>
                         <td>
                           <TooltipProvider>
-                            <Tooltip>
+                            <ShadcnTooltip>
                               <TooltipTrigger asChild>
                                 <span className="text-zinc-500 cursor-help">
                                   {opp.iv_rank != null ? `${opp.iv_rank.toFixed(0)}%` : 'N/A'}
@@ -873,7 +873,7 @@ const Dashboard = () => {
                                   <p className="text-xs text-zinc-300">IV Rank not available yet (insufficient history / not computed)</p>
                                 </TooltipContent>
                               )}
-                            </Tooltip>
+                            </ShadcnTooltip>
                           </TooltipProvider>
                         </td>
                         <td className="text-zinc-400">{opp.open_interest ? opp.open_interest.toLocaleString() : '-'}</td>
