@@ -55,7 +55,7 @@ RATE_LIMIT_MAX_BACKOFF = 30.0  # Maximum backoff seconds
 
 def fetch_bulk_quotes_sync(symbols: List[str], retry_count: int = 0) -> Dict[str, Dict]:
     """
-    Fetch quotes for multiple symbols in a single API call using yfinance.download().
+    Fetch quotes for multiple symbols in a single API call using yfinance.Tickers().
     
     This is much more efficient than per-symbol calls and avoids rate limiting.
     
@@ -83,9 +83,11 @@ def fetch_bulk_quotes_sync(symbols: List[str], retry_count: int = 0) -> Dict[str
     
     try:
         # Use yfinance Tickers for bulk quote fetching
-        # This makes a single API call for all symbols
+        # This makes a SINGLE HTTP request for all symbols in the batch
         tickers_str = " ".join(symbols)
+        logger.info(f"[BULK_QUOTE] HTTP REQUEST: Fetching {len(symbols)} symbols in 1 batch request")
         tickers = yf.Tickers(tickers_str)
+        logger.info(f"[BULK_QUOTE] HTTP RESPONSE: Batch request complete for {len(symbols)} symbols")
         
         # Process each ticker's info
         for symbol in symbols:
