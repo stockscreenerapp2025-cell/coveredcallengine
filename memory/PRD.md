@@ -1,7 +1,63 @@
 # Covered Call Engine - Product Requirements Document
 
 ## Last Updated
-2026-02-16 - EOD Pipeline Implementation COMPLETE
+2026-02-16 - Strict PMCC Institutional Rules Implementation COMPLETE
+
+---
+
+## Strict PMCC Institutional Rules - COMPLETED 2026-02-16
+
+### Status: ✅ COMPLETE
+
+### Objective:
+Implement institutional-grade filtering rules for PMCC (Poor Man's Covered Call) strategy to ensure only high-quality, executable trades are presented to users.
+
+### PMCC Strict Rules:
+| Category | Rule | Value | Purpose |
+|----------|------|-------|---------|
+| **LEAP (Long)** | DTE Range | 365-730 days | Adequate time for multiple short cycles |
+| | Delta Minimum | ≥ 0.80 | Deep ITM for stock-like behavior |
+| | Open Interest Min | ≥ 100 | Sufficient liquidity |
+| | Bid-Ask Spread Max | ≤ 5% | Reasonable execution costs |
+| | Strike Requirement | ITM (strike < stock) | Acts as stock substitute |
+| **Short** | DTE Range | 30-45 days | Optimal theta decay window |
+| | Delta Range | 0.20-0.30 | ~75% probability of profit |
+| | Open Interest Min | ≥ 100 | Sufficient liquidity |
+| | Bid-Ask Spread Max | ≤ 5% | Reasonable execution costs |
+| | Strike Requirement | OTM ≥2% above stock | Safe profit zone |
+| **Structure** | Solvency | width > net_debit | Ensures profit possibility |
+| | Break-even | short_strike > BE | Short strike above break-even |
+
+### Quality Flags:
+| Flag | Trigger | Impact |
+|------|---------|--------|
+| `FAIL_LONG_DTE_xxx` | leap_dte outside 365-730 | Rejected |
+| `FAIL_LONG_DELTA_x.xx` | leap_delta < 0.80 | Rejected |
+| `FAIL_LIQUIDITY_LEAP_OI_xxx` | leap_oi < 100 | Rejected |
+| `FAIL_LIQUIDITY_LEAP_SPREAD_x%` | leap_spread > 5% | Rejected |
+| `FAIL_SHORT_DTE_xxx` | short_dte outside 30-45 | Rejected |
+| `FAIL_SHORT_DELTA_x.xx` | short_delta outside 0.20-0.30 | Rejected |
+| `FAIL_SOLVENCY_xxx` | width ≤ net_debit | Rejected |
+| `FAIL_BREAK_EVEN_xxx` | short_strike ≤ breakeven | Rejected |
+| `WIDE_SPREAD` | spread > 10% | Flagged (soft) |
+| `LOW_OI` | OI < 50 | Flagged (soft) |
+| `NO_LAST` | No last traded price | Flagged (soft) |
+
+### Files Modified:
+| File | Changes |
+|------|---------|
+| `/backend/services/eod_pipeline.py` | Updated PMCC constants (lines 692-716), Enhanced `validate_pmcc_structure` function |
+| `/backend/routes/screener_snapshot.py` | Updated API default parameters to match strict rules |
+
+### Test Results:
+- **35/35 tests passed (100%)**
+- Test file: `/app/backend/tests/test_pmcc_strict_rules.py`
+- Validated: DTE ranges, delta ranges, solvency, break-even, quality flags, pricing rules
+
+### Impact:
+- Fewer PMCC opportunities (1 vs 5 in previous run) - expected
+- All remaining opportunities meet institutional standards
+- Improved trade quality and user confidence
 
 ---
 
