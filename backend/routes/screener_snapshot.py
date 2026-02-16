@@ -1236,11 +1236,13 @@ async def screen_covered_calls(
 # ============================================================
 
 # PMCC-specific constants (ISOLATED from CC)
-PMCC_MIN_LEAP_DTE = 365  # 12 months minimum
-PMCC_MAX_LEAP_DTE = 730  # 24 months maximum (~2 years)
-PMCC_MIN_SHORT_DTE = 7
-PMCC_MAX_SHORT_DTE = 60  # ≤60 days
-PMCC_MIN_DELTA = 0.70  # Deep ITM for LEAPS
+# PMCC Constants - STRICT INSTITUTIONAL MODEL (Feb 2026)
+# Must match eod_pipeline.py values exactly
+PMCC_MIN_LEAP_DTE = 365   # 12 months minimum
+PMCC_MAX_LEAP_DTE = 730   # 24 months maximum (~2 years)
+PMCC_MIN_SHORT_DTE = 30   # Minimum 30 days (institutional)
+PMCC_MAX_SHORT_DTE = 45   # Maximum 45 days (institutional)
+PMCC_MIN_DELTA = 0.80     # Deep ITM for LEAPS (institutional)
 
 # PMCC Price filters (different from CC)
 PMCC_STOCK_MIN_PRICE = 30.0
