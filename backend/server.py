@@ -1422,6 +1422,26 @@ async def startup():
         replace_existing=True
     )
     
+    # EOD Pipeline Scheduler - runs at 4:10 PM ET (after market close)
+    # This builds the 1500-symbol universe and pre-computes all scan results
+    async def scheduled_eod_pipeline():
+        """Run the EOD pipeline to pre-compute CC/PMCC scan results."""
+        try:
+            from services.eod_pipeline import run_eod_pipeline
+            logger.info("Starting scheduled EOD pipeline...")
+            result = await run_eod_pipeline(db, force_build_universe=False)
+            logger.info(f"EOD Pipeline completed: {result.run_id}, "
+                       f"CC={len(result.cc_opportunities)}, PMCC={len(result.pmcc_opportunities)}")
+        except Exception as e:
+            logger.error(f"Scheduled EOD pipeline failed: {e}")
+    
+    scheduler.add_job(
+        scheduled_eod_pipeline,
+        CronTrigger(hour=16, minute=10, day_of_week='mon-fri', timezone='America/New_York'),
+        id='eod_pipeline_scan',
+        replace_existing=True
+    )
+    
     # Auto-response scheduler - runs every 5 minutes to check for eligible tickets
     async def process_support_auto_responses():
         """Process pending auto-responses for support tickets"""
