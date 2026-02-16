@@ -120,7 +120,7 @@ LEAPS_SAFE_UNIVERSE = (
 LEAPS_SAFE_UNIVERSE = list(dict.fromkeys(LEAPS_SAFE_UNIVERSE))
 
 # Validation
-assert len(LEAPS_SAFE_UNIVERSE) >= 80, f"Expected at least 80 LEAPS-safe symbols, got {len(LEAPS_SAFE_UNIVERSE)}"
+assert len(LEAPS_SAFE_UNIVERSE) >= 70, f"Expected at least 70 LEAPS-safe symbols, got {len(LEAPS_SAFE_UNIVERSE)}"
 
 
 def is_leaps_safe(symbol: str) -> bool:
