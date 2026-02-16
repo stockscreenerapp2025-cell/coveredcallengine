@@ -260,13 +260,18 @@ def fetch_bulk_quotes_sync(symbols: List[str], retry_count: int = 0) -> Dict[str
 
 
 class EODPipelineResult:
-    """Result of an EOD pipeline run."""
+    """
+    Result of an EOD pipeline run.
+    
+    Tracks all metrics needed for Data Quality scoring and debugging.
+    """
     
     def __init__(self, run_id: str):
         self.run_id = run_id
         self.started_at = datetime.now(timezone.utc)
         self.completed_at = None
         self.duration_seconds = 0
+        self.status = "IN_PROGRESS"  # IN_PROGRESS -> COMPLETED | FAILED
         
         # Counters
         self.symbols_total = 0
@@ -276,33 +281,63 @@ class EODPipelineResult:
         self.chain_success = 0
         self.chain_failure = 0
         
+        # Specific failure counters for Data Quality
+        self.rate_limited_chain_count = 0
+        self.missing_quote_fields_count = 0
+        self.bad_chain_data_count = 0
+        self.missing_chain_count = 0
+        
         # Results
         self.cc_opportunities = []
         self.pmcc_opportunities = []
         
-        # Failures
+        # Failures detail
         self.failures: List[Dict] = []
         
         # Exclusion breakdown
         self.excluded_by_reason: Dict[str, int] = {}
         self.excluded_by_stage: Dict[str, int] = {}
         
-        # Error type breakdown (NEW)
+        # Error type breakdown
         self.error_type_counts: Dict[str, int] = {}
     
     def add_exclusion(self, stage: str, reason: str, error_type: str = None):
+        """
+        Add an exclusion with proper categorization.
+        
+        Reasons (clear categories):
+        - RATE_LIMITED_CHAIN: Yahoo throttled chain request
+        - MISSING_CHAIN: No option chain data returned
+        - BAD_CHAIN_DATA: Chain data malformed or invalid
+        - MISSING_QUOTE_FIELDS: Quote missing required price fields
+        - MISSING_QUOTE: General quote failure
+        """
         self.excluded_by_reason[reason] = self.excluded_by_reason.get(reason, 0) + 1
         self.excluded_by_stage[stage] = self.excluded_by_stage.get(stage, 0) + 1
         if error_type:
             self.error_type_counts[error_type] = self.error_type_counts.get(error_type, 0) + 1
+        
+        # Track specific failure types for Data Quality
+        if reason == "RATE_LIMITED_CHAIN":
+            self.rate_limited_chain_count += 1
+        elif reason == "MISSING_QUOTE_FIELDS":
+            self.missing_quote_fields_count += 1
+        elif reason == "BAD_CHAIN_DATA":
+            self.bad_chain_data_count += 1
+        elif reason == "MISSING_CHAIN":
+            self.missing_chain_count += 1
     
-    def finalize(self):
+    def finalize(self, status: str = "COMPLETED"):
+        """Mark run as complete with final status."""
         self.completed_at = datetime.now(timezone.utc)
         self.duration_seconds = (self.completed_at - self.started_at).total_seconds()
+        self.status = status
     
     def to_summary(self) -> Dict:
+        """Generate summary dict for scan_run_summary collection."""
         return {
             "run_id": self.run_id,
+            "status": self.status,
             "started_at": self.started_at,
             "completed_at": self.completed_at,
             "duration_seconds": round(self.duration_seconds, 2),
@@ -312,6 +347,10 @@ class EODPipelineResult:
             "quote_failure": self.quote_failure,
             "chain_success": self.chain_success,
             "chain_failure": self.chain_failure,
+            "rate_limited_chain_count": self.rate_limited_chain_count,
+            "missing_quote_fields_count": self.missing_quote_fields_count,
+            "bad_chain_data_count": self.bad_chain_data_count,
+            "missing_chain_count": self.missing_chain_count,
             "cc_count": len(self.cc_opportunities),
             "pmcc_count": len(self.pmcc_opportunities),
             "excluded_by_reason": self.excluded_by_reason,
@@ -319,6 +358,18 @@ class EODPipelineResult:
             "error_type_counts": self.error_type_counts,
             "top_failures": self.failures[:20]
         }
+    
+    def get_coverage_ratio(self) -> float:
+        """Calculate coverage ratio for Data Quality scoring."""
+        if self.symbols_total == 0:
+            return 0.0
+        return self.chain_success / self.symbols_total
+    
+    def get_throttle_ratio(self) -> float:
+        """Calculate throttle ratio for Data Quality scoring."""
+        if self.symbols_total == 0:
+            return 0.0
+        return self.rate_limited_chain_count / self.symbols_total
 
 
 def fetch_quote_sync(symbol: str) -> Dict:
