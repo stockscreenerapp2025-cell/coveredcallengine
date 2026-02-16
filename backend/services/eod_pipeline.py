@@ -758,11 +758,12 @@ async def run_eod_pipeline(db, force_build_universe: bool = False) -> EODPipelin
                     audit_records.append(audit_record)
                 else:
                     result.chain_failure += 1
-                    result.add_exclusion("OPTIONS_CHAIN", "MISSING_CHAIN")
+                    chain_error_type = chain_result.get("error_type", "UNKNOWN")
+                    result.add_exclusion("OPTIONS_CHAIN", "MISSING_CHAIN", chain_error_type)
                     result.failures.append({
                         "symbol": symbol,
                         "stage": "OPTIONS_CHAIN",
-                        "error_type": chain_result["error_type"],
+                        "error_type": chain_error_type,
                         "error_detail": chain_result.get("error_detail", "Unknown error")
                     })
                     
