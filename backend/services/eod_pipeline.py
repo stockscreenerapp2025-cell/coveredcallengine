@@ -792,12 +792,13 @@ async def run_eod_pipeline(db, force_build_universe: bool = False) -> EODPipelin
     for symbol in universe:
         if symbol not in all_quotes or not all_quotes[symbol].get("success"):
             quote_result = all_quotes.get(symbol, {"error_type": "UNKNOWN", "error_detail": "No quote data"})
+            quote_error_type = quote_result.get("error_type", "UNKNOWN")
             result.quote_failure += 1
-            result.add_exclusion("QUOTE", "MISSING_QUOTE")
+            result.add_exclusion("QUOTE", "MISSING_QUOTE", quote_error_type)
             result.failures.append({
                 "symbol": symbol,
                 "stage": "QUOTE",
-                "error_type": quote_result.get("error_type", "UNKNOWN"),
+                "error_type": quote_error_type,
                 "error_detail": quote_result.get("error_detail", "No quote data")
             })
             
