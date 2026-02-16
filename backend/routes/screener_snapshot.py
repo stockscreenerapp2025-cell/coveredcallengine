@@ -920,6 +920,67 @@ async def _get_cc_from_legacy(filters: Dict[str, Any], limit: int) -> List[Dict]
         return []
 
 
+# ============================================================
+# ANALYST ENRICHMENT MERGE (READ-TIME)
+# ============================================================
+
+async def _merge_analyst_enrichment(opportunities: List[Dict]) -> List[Dict]:
+    """
+    Merge analyst enrichment data from symbol_enrichment collection.
+    
+    READ-TIME ENRICHMENT (Feb 2026):
+    - Fetches enrichment for all symbols in batch
+    - Merges analyst_rating_label, analyst_rating_value, analyst_opinions, target_price_mean
+    - Does NOT modify or fail if enrichment missing
+    
+    PERFORMANCE: Requires index on symbol_enrichment.symbol (unique)
+    """
+    if not opportunities:
+        return opportunities
+    
+    try:
+        # Extract unique symbols
+        symbols = list(set(opp.get("symbol") for opp in opportunities if opp.get("symbol")))
+        
+        if not symbols:
+            return opportunities
+        
+        # Batch fetch all enrichments (uses index)
+        enrichment_cursor = db.symbol_enrichment.find(
+            {"symbol": {"$in": symbols}},
+            {"_id": 0, "symbol": 1, "analyst_rating_label": 1, "analyst_rating_value": 1, 
+             "analyst_opinions": 1, "target_price_mean": 1, "target_price_high": 1, "target_price_low": 1}
+        )
+        enrichments = await enrichment_cursor.to_list(length=len(symbols))
+        
+        # Build lookup dict
+        enrichment_map = {e["symbol"]: e for e in enrichments}
+        
+        # Merge into opportunities
+        for opp in opportunities:
+            symbol = opp.get("symbol")
+            enrichment = enrichment_map.get(symbol, {})
+            
+            # Merge analyst fields (explicit null if not present)
+            opp["analyst_rating_label"] = enrichment.get("analyst_rating_label")
+            opp["analyst_rating_value"] = enrichment.get("analyst_rating_value")
+            opp["analyst_opinions"] = enrichment.get("analyst_opinions")
+            opp["target_price_mean"] = enrichment.get("target_price_mean")
+            opp["target_price_high"] = enrichment.get("target_price_high")
+            opp["target_price_low"] = enrichment.get("target_price_low")
+            
+            # Legacy field for backward compatibility
+            opp["analyst_rating"] = enrichment.get("analyst_rating_label")
+        
+        logging.debug(f"Enriched {len(enrichments)}/{len(symbols)} symbols with analyst data")
+        return opportunities
+        
+    except Exception as e:
+        logging.warning(f"Analyst enrichment merge failed (non-fatal): {e}")
+        # Return opportunities unchanged - don't break response
+        return opportunities
+
+
 def _transform_cc_result(r: Dict) -> Dict:
     """Transform stored CC result to API response format."""
     symbol = r.get("symbol", "")
