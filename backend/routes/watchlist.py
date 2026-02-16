@@ -612,7 +612,9 @@ async def _get_best_opportunity_live_fallback(symbol: str, api_key: str, underly
 
 async def _get_eod_prices_for_symbols(symbols: List[str]) -> tuple:
     """
-    Get EOD prices from symbol_snapshot for multiple symbols.
+    Get EOD prices from scan_results_cc for multiple symbols.
+    
+    Falls back to symbol_snapshot if available.
     
     Returns:
         (stock_data_dict, run_info)
@@ -635,25 +637,34 @@ async def _get_eod_prices_for_symbols(symbols: List[str]) -> tuple:
             "market_status": "CLOSED"
         }
         
-        # Fetch snapshots for all symbols
-        snapshots = await db.symbol_snapshot.find(
-            {"run_id": run_id, "symbol": {"$in": symbols}},
-            {"_id": 0, "symbol": 1, "underlying_price": 1, "stock_price_source": 1,
-             "session_close_price": 1, "prior_close_price": 1, "market_status": 1,
-             "as_of": 1}
-        ).to_list(len(symbols))
+        # Fetch prices from scan_results_cc (one per symbol, most recent)
+        pipeline = [
+            {"$match": {"run_id": run_id, "symbol": {"$in": symbols}}},
+            {"$sort": {"score": -1}},
+            {"$group": {
+                "_id": "$symbol",
+                "stock_price": {"$first": "$stock_price"},
+                "stock_price_source": {"$first": "$stock_price_source"},
+                "session_close_price": {"$first": "$session_close_price"},
+                "prior_close_price": {"$first": "$prior_close_price"},
+                "market_status": {"$first": "$market_status"},
+                "as_of": {"$first": "$as_of"}
+            }}
+        ]
+        
+        results = await db.scan_results_cc.aggregate(pipeline).to_list(len(symbols))
         
         # Build lookup dict
         stock_data = {}
-        for snap in snapshots:
-            symbol = snap.get("symbol")
+        for doc in results:
+            symbol = doc.get("_id")
             stock_data[symbol] = {
-                "price": snap.get("underlying_price"),
-                "stock_price_source": snap.get("stock_price_source", "SESSION_CLOSE"),
-                "session_close_price": snap.get("session_close_price"),
-                "prior_close_price": snap.get("prior_close_price"),
-                "market_status": snap.get("market_status", "CLOSED"),
-                "as_of": snap.get("as_of"),
+                "price": doc.get("stock_price"),
+                "stock_price_source": doc.get("stock_price_source", "SESSION_CLOSE"),
+                "session_close_price": doc.get("session_close_price"),
+                "prior_close_price": doc.get("prior_close_price"),
+                "market_status": doc.get("market_status", "CLOSED"),
+                "as_of": doc.get("as_of"),
                 "change": 0,  # Not available in EOD snapshot
                 "change_pct": 0
             }
