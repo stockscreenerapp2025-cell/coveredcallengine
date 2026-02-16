@@ -1356,7 +1356,12 @@ def _transform_pmcc_result(r: Dict) -> Dict:
         "leap_dte": r.get("leap_dte"),
         "leap_bid": leap_bid,
         "leap_ask": leap_ask,
+        "leap_mid": r.get("leap_mid"),
+        "leap_last": r.get("leap_last"),
+        "leap_prev_close": r.get("leap_prev_close"),
         "leap_used": leap_used,  # = leap_ask (BUY rule)
+        "leap_display": r.get("leap_display"),
+        "leap_display_source": r.get("leap_display_source", "NONE"),
         "leap_delta": r.get("leap_delta"),
         
         # Short leg (SELL)
@@ -1366,7 +1371,12 @@ def _transform_pmcc_result(r: Dict) -> Dict:
         "short_dte": r.get("short_dte"),
         "short_bid": short_bid,
         "short_ask": short_ask,
+        "short_mid": r.get("short_mid"),
+        "short_last": r.get("short_last"),
+        "short_prev_close": r.get("short_prev_close"),
         "short_used": short_used,  # = short_bid (SELL rule)
+        "short_display": r.get("short_display"),
+        "short_display_source": r.get("short_display_source", "NONE"),
         
         # Pricing rule
         "pricing_rule": r.get("pricing_rule", "BUY_ASK_SELL_BID"),
