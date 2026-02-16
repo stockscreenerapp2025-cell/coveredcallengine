@@ -1377,10 +1377,6 @@ async def compute_scan_results(
         for leap in leaps_candidates[:3]:  # Limit LEAPS per symbol
             for short in short_candidates:
                 # VALIDATE PMCC STRUCTURE (STRICT INSTITUTIONAL RULES)
-                # Calculate short delta for validation
-                short_greeks = calculate_greeks_simple(stock_price, short["strike"], short["dte"], short.get("iv", 0.30))
-                short_delta = short_greeks["delta"]
-                
                 is_valid, pmcc_quality_flags = validate_pmcc_structure(
                     stock_price=stock_price,
                     leap_strike=leap["strike"],
@@ -1392,7 +1388,7 @@ async def compute_scan_results(
                     short_strike=short["strike"],
                     short_bid=short["bid"],
                     short_ask=short.get("ask", 0),
-                    short_delta=short_delta,
+                    short_delta=short.get("delta", 0.25),  # Use stored delta
                     short_dte=short["dte"],
                     short_iv=short.get("iv", 0),
                     short_oi=short.get("oi", 0)
