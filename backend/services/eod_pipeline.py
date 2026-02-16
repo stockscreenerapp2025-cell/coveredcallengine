@@ -55,9 +55,7 @@ RATE_LIMIT_MAX_BACKOFF = 30.0  # Maximum backoff seconds
 
 def fetch_bulk_quotes_sync(symbols: List[str], retry_count: int = 0) -> Dict[str, Dict]:
     """
-    Fetch quotes for multiple symbols in a single API call using yfinance.Tickers().
-    
-    This is much more efficient than per-symbol calls and avoids rate limiting.
+    Fetch quotes for multiple symbols using yfinance.download() for TRUE batch HTTP request.
     
     Args:
         symbols: List of ticker symbols to fetch
@@ -69,12 +67,12 @@ def fetch_bulk_quotes_sync(symbols: List[str], retry_count: int = 0) -> Dict[str
     PRICE SOURCE RULE (MANDATORY - Feb 2026):
     =========================================
     STORE BOTH:
-    - session_close_price = regularMarketPrice (current/last session close)
-    - prior_close_price = regularMarketPreviousClose (prior session close)
+    - session_close_price = Close from download (last trading session)
+    - prior_close_price = Previous day's close
     
     SELECT DETERMINISTICALLY BY MARKET STATE:
-    - CLOSED: stock_price = session_close_price (matches Yahoo "At close")
-    - OPEN: stock_price = prior_close_price (today hasn't closed yet)
+    - CLOSED: stock_price = session_close_price
+    - OPEN: stock_price = prior_close_price
     """
     results = {}
     
@@ -82,80 +80,90 @@ def fetch_bulk_quotes_sync(symbols: List[str], retry_count: int = 0) -> Dict[str
         return results
     
     try:
-        # Use yfinance Tickers for bulk quote fetching
-        # This makes a SINGLE HTTP request for all symbols in the batch
-        tickers_str = " ".join(symbols)
-        logger.info(f"[BULK_QUOTE] HTTP REQUEST: Fetching {len(symbols)} symbols in 1 batch request")
-        tickers = yf.Tickers(tickers_str)
-        logger.info(f"[BULK_QUOTE] HTTP RESPONSE: Batch request complete for {len(symbols)} symbols")
+        # Use yfinance.download() - this makes a TRUE single HTTP request for all symbols
+        logger.info(f"[BULK_QUOTE] HTTP REQUEST: Downloading {len(symbols)} symbols in 1 batch")
         
-        # Process each ticker's info
+        # Download last 2 days of data to get both current close and previous close
+        df = yf.download(
+            tickers=symbols,
+            period="2d",
+            interval="1d",
+            group_by="ticker",
+            auto_adjust=False,
+            progress=False,
+            threads=False  # Single request
+        )
+        
+        logger.info(f"[BULK_QUOTE] HTTP RESPONSE: Download complete, processing {len(symbols)} symbols")
+        
+        # Process each symbol from the downloaded data
         for symbol in symbols:
             try:
-                # Get ticker object from the batch
-                ticker = tickers.tickers.get(symbol)
-                if ticker is None:
-                    results[symbol] = {
-                        "symbol": symbol,
-                        "success": False,
-                        "error_type": "TICKER_NOT_FOUND",
-                        "error_detail": f"Symbol {symbol} not found in batch response"
-                    }
-                    continue
-                
-                # Fast info access (uses cached data from batch request)
-                info = ticker.fast_info if hasattr(ticker, 'fast_info') else None
-                full_info = ticker.info if info is None else None
-                
-                # Extract prices - try fast_info first, then full info
-                if info is not None:
-                    session_close_price = getattr(info, 'last_price', None) or getattr(info, 'regularMarketPrice', None)
-                    prior_close_price = getattr(info, 'previous_close', None) or getattr(info, 'regularMarketPreviousClose', None)
-                    market_cap = getattr(info, 'market_cap', 0) or 0
-                    avg_volume = getattr(info, 'three_month_average_volume', 0) or 0
-                    # fast_info doesn't have market_status, need to get from full info
-                    market_status = "UNKNOWN"
-                    regular_market_time = None
+                # Handle both single-ticker and multi-ticker DataFrame structures
+                if len(symbols) == 1:
+                    symbol_df = df
                 else:
-                    # Fallback to full info
-                    full_info = full_info or ticker.info
-                    if not full_info:
+                    if symbol not in df.columns.get_level_values(0):
                         results[symbol] = {
                             "symbol": symbol,
                             "success": False,
-                            "error_type": "EMPTY_RESPONSE",
-                            "error_detail": "Yahoo returned empty info"
+                            "error_type": "TICKER_NOT_FOUND",
+                            "error_detail": f"Symbol {symbol} not in download response"
                         }
                         continue
-                    
-                    session_close_price = full_info.get("regularMarketPrice")
-                    prior_close_price = full_info.get("regularMarketPreviousClose")
-                    market_cap = full_info.get("marketCap", 0) or 0
-                    avg_volume = full_info.get("averageVolume", 0) or full_info.get("volume", 0) or 0
-                    market_status = full_info.get("marketState", "UNKNOWN")
-                    regular_market_time = full_info.get("regularMarketTime")
+                    symbol_df = df[symbol]
                 
-                # Build raw prices dict for debugging
+                # Check if we have data
+                if symbol_df.empty or len(symbol_df) == 0:
+                    results[symbol] = {
+                        "symbol": symbol,
+                        "success": False,
+                        "error_type": "NO_DATA",
+                        "error_detail": f"No price data returned for {symbol}"
+                    }
+                    continue
+                
+                # Get the most recent row (last trading day)
+                latest = symbol_df.iloc[-1]
+                
+                # Extract prices
+                session_close_price = latest.get('Close')
+                if pd.isna(session_close_price) or session_close_price is None:
+                    session_close_price = latest.get('Adj Close')
+                
+                # Get previous close from the day before, or from Open if only 1 day of data
+                if len(symbol_df) >= 2:
+                    prev_row = symbol_df.iloc[-2]
+                    prior_close_price = prev_row.get('Close')
+                    if pd.isna(prior_close_price) or prior_close_price is None:
+                        prior_close_price = prev_row.get('Adj Close')
+                else:
+                    # Only 1 day of data, use Open as approximation
+                    prior_close_price = latest.get('Open')
+                
+                # Convert numpy types to Python types
+                if hasattr(session_close_price, 'item'):
+                    session_close_price = float(session_close_price.item())
+                if hasattr(prior_close_price, 'item'):
+                    prior_close_price = float(prior_close_price.item())
+                
+                # Validate prices
                 raw_prices = {
-                    "regularMarketPrice": session_close_price,
-                    "regularMarketPreviousClose": prior_close_price,
+                    "session_close": session_close_price,
+                    "prior_close": prior_close_price
                 }
                 
-                # Validate BOTH price fields exist
                 if session_close_price is None and prior_close_price is None:
                     results[symbol] = {
                         "symbol": symbol,
                         "success": False,
                         "error_type": "MISSING_QUOTE_FIELDS",
-                        "error_detail": f"Both price fields are None. Raw prices: {raw_prices}",
-                        "raw_prices": raw_prices,
-                        "market_status": market_status
+                        "error_detail": f"Both price fields are None. Raw: {raw_prices}"
                     }
                     continue
                 
-                # Handle case where only one price is available
+                # Handle missing fields with fallback
                 if session_close_price is None or (isinstance(session_close_price, (int, float)) and session_close_price <= 0):
-                    # Try to use prior_close as fallback
                     if prior_close_price and prior_close_price > 0:
                         session_close_price = prior_close_price
                         logger.warning(f"[BULK_QUOTE] {symbol}: Using prior_close as session_close fallback")
@@ -164,47 +172,26 @@ def fetch_bulk_quotes_sync(symbols: List[str], retry_count: int = 0) -> Dict[str
                             "symbol": symbol,
                             "success": False,
                             "error_type": "NO_SESSION_CLOSE",
-                            "error_detail": f"regularMarketPrice={session_close_price} is invalid. Raw prices: {raw_prices}",
-                            "raw_prices": raw_prices,
-                            "market_status": market_status
+                            "error_detail": f"session_close={session_close_price} invalid"
                         }
                         continue
                 
                 if prior_close_price is None or (isinstance(prior_close_price, (int, float)) and prior_close_price <= 0):
-                    # Try to use session_close as fallback
                     if session_close_price and session_close_price > 0:
                         prior_close_price = session_close_price
                         logger.warning(f"[BULK_QUOTE] {symbol}: Using session_close as prior_close fallback")
-                    else:
-                        results[symbol] = {
-                            "symbol": symbol,
-                            "success": False,
-                            "error_type": "NO_PRIOR_CLOSE",
-                            "error_detail": f"regularMarketPreviousClose={prior_close_price} is invalid. Raw prices: {raw_prices}",
-                            "raw_prices": raw_prices,
-                            "market_status": market_status
-                        }
-                        continue
                 
-                # SELECT stock_price DETERMINISTICALLY BY MARKET STATE
-                if market_status == "CLOSED":
-                    selected_price = session_close_price
-                    stock_price_source = "SESSION_CLOSE"
-                elif market_status in ("OPEN", "PRE", "PREPRE", "POST", "POSTPOST"):
-                    selected_price = prior_close_price
-                    stock_price_source = "PRIOR_CLOSE"
-                else:
-                    # Unknown state: Default to session close
-                    selected_price = session_close_price
-                    stock_price_source = "SESSION_CLOSE_DEFAULT"
+                # Get volume if available
+                avg_volume = latest.get('Volume', 0)
+                if hasattr(avg_volume, 'item'):
+                    avg_volume = int(avg_volume.item())
+                if pd.isna(avg_volume):
+                    avg_volume = 0
                 
-                # Convert timestamp
-                as_of = None
-                if regular_market_time:
-                    try:
-                        as_of = datetime.fromtimestamp(regular_market_time, tz=timezone.utc).isoformat()
-                    except Exception:
-                        as_of = None
+                # Determine market status (default to CLOSED for EOD data)
+                market_status = "CLOSED"
+                stock_price_source = "SESSION_CLOSE"
+                selected_price = session_close_price
                 
                 results[symbol] = {
                     "symbol": symbol,
@@ -214,13 +201,13 @@ def fetch_bulk_quotes_sync(symbols: List[str], retry_count: int = 0) -> Dict[str
                     "session_close_price": session_close_price,
                     "prior_close_price": prior_close_price,
                     "market_status": market_status,
-                    "as_of": as_of,
-                    "regular_market_time": regular_market_time,
+                    "as_of": None,
+                    "regular_market_time": None,
                     "raw_prices": raw_prices,
                     "avg_volume": avg_volume,
-                    "market_cap": market_cap,
-                    "bid": 0,  # Not available in bulk
-                    "ask": 0   # Not available in bulk
+                    "market_cap": 0,  # Not available in download
+                    "bid": 0,
+                    "ask": 0
                 }
                 
             except Exception as e:
@@ -239,7 +226,6 @@ def fetch_bulk_quotes_sync(symbols: List[str], retry_count: int = 0) -> Dict[str
         is_rate_limited = "Too Many Requests" in error_str or "Rate limit" in error_str.lower() or "429" in error_str
         
         if is_rate_limited and retry_count < YAHOO_MAX_RETRIES:
-            # Exponential backoff with jitter
             backoff = min(RATE_LIMIT_BACKOFF_BASE * (2 ** retry_count) + random.uniform(0, 1), RATE_LIMIT_MAX_BACKOFF)
             logger.warning(f"[BULK_QUOTE] Rate limited, retry {retry_count + 1}/{YAHOO_MAX_RETRIES} after {backoff:.1f}s backoff")
             time.sleep(backoff)
