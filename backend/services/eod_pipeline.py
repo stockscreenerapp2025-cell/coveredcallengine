@@ -561,7 +561,7 @@ def is_manual_run_allowed() -> bool:
 # CC/PMCC SCAN COMPUTATION
 # ============================================================
 
-# CC Eligibility Constants
+# CC Eligibility Constants (MATCHING PRODUCTION)
 CC_MIN_PRICE = 30.0
 CC_MAX_PRICE = 90.0
 CC_MIN_VOLUME = 1_000_000
@@ -570,15 +570,22 @@ CC_MIN_DTE = 7
 CC_MAX_DTE = 45
 CC_MIN_PREMIUM_YIELD = 0.5  # 0.5%
 CC_MAX_PREMIUM_YIELD = 20.0  # 20%
-CC_MIN_OTM_PCT = 0.0
-CC_MAX_OTM_PCT = 20.0
+CC_MIN_OTM_PCT = 0.0        # Must be OTM (strike > stock_price)
+CC_MAX_OTM_PCT = 20.0       # Max 20% OTM
+CC_MIN_OPEN_INTEREST = 10   # Minimum OI for liquidity
+CC_MIN_IV = 0.05            # Min 5% IV
+CC_MAX_IV = 2.0             # Max 200% IV
 
-# PMCC Constants
+# PMCC Constants (ENFORCING STRATEGY VALIDITY)
 PMCC_MIN_LEAP_DTE = 365
 PMCC_MAX_LEAP_DTE = 730
 PMCC_MIN_SHORT_DTE = 7
 PMCC_MAX_SHORT_DTE = 60
 PMCC_MIN_DELTA = 0.70
+PMCC_MIN_SHORT_OTM_PCT = 0.02  # Short strike must be >= 2% OTM from stock_price
+PMCC_MIN_IV = 0.05             # Min 5% IV
+PMCC_MAX_IV = 3.0              # Max 300% IV (unless explicitly allowed)
+PMCC_MIN_WIDTH = 1.0           # Minimum spread width
 
 
 def check_cc_eligibility(
@@ -610,6 +617,137 @@ def check_cc_eligibility(
         return False, f"Market cap ${market_cap/1e9:.1f}B below minimum $5B"
     
     return True, "Eligible"
+
+
+def validate_cc_option(
+    strike: float,
+    stock_price: float,
+    bid: float,
+    iv: float,
+    oi: int,
+    dte: int
+) -> Tuple[bool, List[str]]:
+    """
+    Validate a CC option against hard rules.
+    Returns (is_valid, list_of_quality_flags)
+    """
+    flags = []
+    
+    # HARD RULE: Strike must be OTM (strike > stock_price)
+    if strike <= stock_price:
+        flags.append("STRIKE_NOT_OTM")
+        return False, flags
+    
+    # HARD RULE: Bid > 0
+    if not bid or bid <= 0:
+        flags.append("BID_ZERO_OR_NEGATIVE")
+        return False, flags
+    
+    # HARD RULE: DTE within range
+    if dte < CC_MIN_DTE or dte > CC_MAX_DTE:
+        flags.append(f"DTE_OUT_OF_RANGE_{dte}")
+        return False, flags
+    
+    # SOFT RULE: IV sanity check
+    if iv and (iv < CC_MIN_IV or iv > CC_MAX_IV):
+        flags.append(f"IV_EXTREME_{iv:.2f}")
+        # Allow but flag
+    
+    # SOFT RULE: OI check
+    if oi is not None and oi < CC_MIN_OPEN_INTEREST:
+        flags.append(f"LOW_OI_{oi}")
+        # Allow but flag
+    
+    return True, flags
+
+
+def validate_pmcc_structure(
+    stock_price: float,
+    leap_strike: float,
+    leap_ask: float,
+    leap_delta: float,
+    leap_dte: int,
+    short_strike: float,
+    short_bid: float,
+    short_dte: int,
+    short_iv: float
+) -> Tuple[bool, List[str]]:
+    """
+    Validate PMCC structure against strategy rules.
+    Returns (is_valid, list_of_quality_flags)
+    
+    PMCC HARD RULES:
+    - LEAP: ITM (strike < stock_price), delta >= 0.70, ask > 0, DTE 365-730
+    - SHORT: OTM (strike >= stock_price * 1.02), bid > 0, DTE 7-60
+    - STRUCTURE: short_strike > leap_strike, net_debit > 0
+    """
+    flags = []
+    
+    # === LEAP VALIDATION ===
+    
+    # HARD RULE: LEAP must be ITM
+    if leap_strike >= stock_price:
+        flags.append("LEAP_NOT_ITM")
+        return False, flags
+    
+    # HARD RULE: LEAP ask > 0
+    if not leap_ask or leap_ask <= 0:
+        flags.append("LEAP_ASK_INVALID")
+        return False, flags
+    
+    # HARD RULE: LEAP delta >= 0.70
+    if leap_delta < PMCC_MIN_DELTA:
+        flags.append(f"LEAP_DELTA_LOW_{leap_delta:.2f}")
+        return False, flags
+    
+    # HARD RULE: LEAP DTE 365-730
+    if leap_dte < PMCC_MIN_LEAP_DTE or leap_dte > PMCC_MAX_LEAP_DTE:
+        flags.append(f"LEAP_DTE_OUT_OF_RANGE_{leap_dte}")
+        return False, flags
+    
+    # === SHORT VALIDATION ===
+    
+    # HARD RULE: Short bid > 0
+    if not short_bid or short_bid <= 0:
+        flags.append("SHORT_BID_INVALID")
+        return False, flags
+    
+    # HARD RULE: Short strike must be OTM relative to stock_price
+    min_short_strike = stock_price * (1 + PMCC_MIN_SHORT_OTM_PCT)
+    if short_strike < min_short_strike:
+        flags.append(f"SHORT_NOT_OTM_FROM_STOCK")
+        return False, flags
+    
+    # HARD RULE: Short DTE 7-60
+    if short_dte < PMCC_MIN_SHORT_DTE or short_dte > PMCC_MAX_SHORT_DTE:
+        flags.append(f"SHORT_DTE_OUT_OF_RANGE_{short_dte}")
+        return False, flags
+    
+    # === STRUCTURE VALIDATION ===
+    
+    # HARD RULE: short_strike > leap_strike
+    if short_strike <= leap_strike:
+        flags.append("SHORT_STRIKE_NOT_ABOVE_LEAP")
+        return False, flags
+    
+    # HARD RULE: net_debit > 0
+    net_debit = leap_ask - short_bid
+    if net_debit <= 0:
+        flags.append("NEGATIVE_NET_DEBIT")
+        return False, flags
+    
+    # SOFT RULE: Minimum width
+    width = short_strike - leap_strike
+    if width < PMCC_MIN_WIDTH:
+        flags.append(f"NARROW_WIDTH_{width:.2f}")
+        # Allow but flag
+    
+    # SOFT RULE: IV sanity check
+    if short_iv and (short_iv < PMCC_MIN_IV or short_iv > PMCC_MAX_IV):
+        flags.append(f"IV_EXTREME_{short_iv:.2f}")
+        # Allow but flag
+    
+    return True, flags
 
 
 def calculate_greeks_simple(stock_price: float, strike: float, dte: int, iv: float) -> Dict[str, float]:
