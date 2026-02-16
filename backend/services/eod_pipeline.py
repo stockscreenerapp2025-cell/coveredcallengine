@@ -715,7 +715,7 @@ def validate_pmcc_structure(
     # HARD RULE: Short strike must be OTM relative to stock_price
     min_short_strike = stock_price * (1 + PMCC_MIN_SHORT_OTM_PCT)
     if short_strike < min_short_strike:
-        flags.append(f"SHORT_NOT_OTM_FROM_STOCK")
+        flags.append("SHORT_NOT_OTM_FROM_STOCK")
         return False, flags
     
     # HARD RULE: Short DTE 7-60
