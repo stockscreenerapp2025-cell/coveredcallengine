@@ -421,12 +421,23 @@ async def run_eod_pipeline(db, force_build_universe: bool = False) -> EODPipelin
                         has_leaps = chain_result.get("has_leaps", False)
                         leaps_count = chain_result.get("leaps_found", 0)
                         
-                        # Create snapshot
+                        # Create snapshot with EXPLICIT PRICE SOURCE + MARKET CONTEXT
                         snapshot = {
                             "run_id": run_id,
                             "symbol": symbol,
+                            
+                            # PRICE (MANDATORY - regularMarketPreviousClose)
                             "underlying_price": quote_result["price"],
-                            "price_source": quote_result["price_source"],
+                            "stock_price_source": quote_result.get("stock_price_source", "REGULAR_MARKET_PREVIOUS_CLOSE"),
+                            
+                            # MARKET CONTEXT FIELDS (for debugging)
+                            "market_status": quote_result.get("market_status", "UNKNOWN"),
+                            "as_of": quote_result.get("as_of") or as_of.isoformat() if isinstance(as_of, datetime) else as_of,
+                            
+                            # RAW YAHOO PRICES (for debugging)
+                            "raw_prices": quote_result.get("raw_prices", {}),
+                            
+                            # OTHER METADATA
                             "avg_volume": quote_result["avg_volume"],
                             "market_cap": quote_result["market_cap"],
                             "option_chain": chain_result["chains"],
@@ -434,12 +445,11 @@ async def run_eod_pipeline(db, force_build_universe: bool = False) -> EODPipelin
                             "is_etf": is_etf(symbol),
                             "has_leaps": has_leaps,
                             "leaps_count": leaps_count,
-                            "as_of": as_of,
                             "included": True
                         }
                         batch_snapshots.append(snapshot)
                         
-                        # Audit: included - with LEAPS status
+                        # Audit: included - with LEAPS status and price context
                         audit_record = {
                             "run_id": run_id,
                             "symbol": symbol,
@@ -447,11 +457,17 @@ async def run_eod_pipeline(db, force_build_universe: bool = False) -> EODPipelin
                             "exclude_stage": None,
                             "exclude_reason": None,
                             "exclude_detail": None,
+                            
+                            # PRICE CONTEXT FOR AUDIT
                             "price_used": quote_result["price"],
+                            "stock_price_source": quote_result.get("stock_price_source", "REGULAR_MARKET_PREVIOUS_CLOSE"),
+                            "market_status": quote_result.get("market_status", "UNKNOWN"),
+                            "raw_prices": quote_result.get("raw_prices", {}),
+                            
                             "avg_volume": quote_result["avg_volume"],
                             "has_leaps": has_leaps,
                             "leaps_count": leaps_count,
-                            "as_of": as_of
+                            "as_of": quote_result.get("as_of") or as_of.isoformat() if isinstance(as_of, datetime) else as_of
                         }
                         
                         # Track NO_LEAPS_AVAILABLE as warning (not exclusion)
