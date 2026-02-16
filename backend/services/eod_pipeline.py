@@ -384,10 +384,20 @@ async def run_eod_pipeline(db, force_build_universe: bool = False) -> EODPipelin
         except Exception as e:
             logger.error(f"[EOD_PIPELINE] Failed to persist audit: {e}")
     
-    # Step 5: Compute CC and PMCC results (simplified - real logic in precomputed_scans.py)
-    # This is a placeholder - actual computation uses the snapshots
-    result.cc_opportunities = []  # Would be populated by CC scanner
-    result.pmcc_opportunities = []  # Would be populated by PMCC scanner
+    # Step 5: Compute CC and PMCC results from snapshots
+    logger.info(f"[EOD_PIPELINE] Computing CC/PMCC opportunities from {len(snapshots)} snapshots...")
+    
+    cc_opportunities, pmcc_opportunities = await compute_scan_results(
+        db=db,
+        run_id=run_id,
+        snapshots=snapshots,
+        as_of=as_of
+    )
+    
+    result.cc_opportunities = cc_opportunities
+    result.pmcc_opportunities = pmcc_opportunities
+    
+    logger.info(f"[EOD_PIPELINE] Computed {len(cc_opportunities)} CC, {len(pmcc_opportunities)} PMCC opportunities")
     
     # Step 6: Finalize and persist run summary
     result.finalize()
