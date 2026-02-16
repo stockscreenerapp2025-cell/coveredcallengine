@@ -38,9 +38,7 @@ from utils.auth import get_current_user
 # Import data_provider - ONLY for non-scan paths (Watchlist, Simulator)
 # SCAN PATHS (Screener, Dashboard, PMCC) MUST NOT use these for live fetching
 from services.data_provider import (
-    get_market_state,
-    # For market sentiment only (not for scan data)
-    fetch_market_sentiment
+    get_market_state
 )
 
 # IV Rank Service for industry-standard IV metrics
