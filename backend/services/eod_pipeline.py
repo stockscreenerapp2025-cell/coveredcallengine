@@ -968,6 +968,13 @@ async def compute_scan_results(
         except Exception as e:
             logger.error(f"[EOD_PIPELINE] Failed to persist PMCC results: {e}")
     
+    # Log LEAPS coverage stats
+    total_symbols = len(snapshots)
+    symbols_with_leaps = total_symbols - len(symbols_without_leaps)
+    logger.info(f"[EOD_PIPELINE] LEAPS coverage: {symbols_with_leaps}/{total_symbols} symbols have LEAPS")
+    if symbols_without_leaps:
+        logger.debug(f"[EOD_PIPELINE] Symbols without LEAPS: {symbols_without_leaps[:20]}...")
+    
     return cc_opportunities, pmcc_opportunities
 
 
