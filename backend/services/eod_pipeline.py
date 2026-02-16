@@ -689,16 +689,31 @@ CC_MIN_OPEN_INTEREST = 10   # Minimum OI for liquidity
 CC_MIN_IV = 0.05            # Min 5% IV
 CC_MAX_IV = 2.0             # Max 200% IV
 
-# PMCC Constants (ENFORCING STRATEGY VALIDITY)
-PMCC_MIN_LEAP_DTE = 365
-PMCC_MAX_LEAP_DTE = 730
-PMCC_MIN_SHORT_DTE = 7
-PMCC_MAX_SHORT_DTE = 60
-PMCC_MIN_DELTA = 0.70
-PMCC_MIN_SHORT_OTM_PCT = 0.02  # Short strike must be >= 2% OTM from stock_price
-PMCC_MIN_IV = 0.05             # Min 5% IV
-PMCC_MAX_IV = 3.0              # Max 300% IV (unless explicitly allowed)
-PMCC_MIN_WIDTH = 1.0           # Minimum spread width
+# ============================================================
+# PMCC STRATEGY CONSTANTS - STRICT INSTITUTIONAL MODEL (Feb 2026)
+# ============================================================
+# These rules reduce opportunities but ensure institutional-grade trades
+
+# LEAP (Long leg) constraints
+PMCC_MIN_LEAP_DTE = 365          # Minimum 1 year
+PMCC_MAX_LEAP_DTE = 730          # Maximum 2 years
+PMCC_MIN_LEAP_DELTA = 0.80       # Deep ITM (was 0.70)
+PMCC_MIN_LEAP_OI = 100           # Minimum open interest
+PMCC_MAX_LEAP_SPREAD_PCT = 5.0   # Maximum bid-ask spread %
+
+# SHORT (Short leg) constraints
+PMCC_MIN_SHORT_DTE = 30          # Minimum 30 days (was 7)
+PMCC_MAX_SHORT_DTE = 45          # Maximum 45 days (was 60)
+PMCC_MIN_SHORT_DELTA = 0.20      # Minimum delta
+PMCC_MAX_SHORT_DELTA = 0.30      # Maximum delta
+PMCC_MIN_SHORT_OI = 100          # Minimum open interest
+PMCC_MAX_SHORT_SPREAD_PCT = 5.0  # Maximum bid-ask spread %
+PMCC_MIN_SHORT_OTM_PCT = 0.02    # Short strike must be >= 2% OTM from stock_price
+
+# Structure constraints
+PMCC_MIN_IV = 0.05               # Min 5% IV
+PMCC_MAX_IV = 3.0                # Max 300% IV
+PMCC_MIN_WIDTH = 1.0             # Minimum spread width
 
 
 def check_cc_eligibility(
