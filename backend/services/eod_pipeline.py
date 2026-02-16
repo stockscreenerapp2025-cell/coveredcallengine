@@ -1271,7 +1271,9 @@ async def compute_scan_results(
                     "stock_price": round(stock_price, 2),
                     
                     # MANDATORY MARKET CONTEXT FIELDS
-                    "stock_price_source": snapshot.get("stock_price_source", "REGULAR_MARKET_PREVIOUS_CLOSE"),
+                    "stock_price_source": snapshot.get("stock_price_source", "SESSION_CLOSE"),
+                    "session_close_price": snapshot.get("session_close_price"),
+                    "prior_close_price": snapshot.get("prior_close_price"),
                     "market_status": snapshot.get("market_status", "UNKNOWN"),
                     
                     "is_etf": symbol_is_etf,
