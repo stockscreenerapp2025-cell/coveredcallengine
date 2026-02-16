@@ -612,51 +612,73 @@ async def _get_best_opportunity_live_fallback(symbol: str, api_key: str, underly
 
 @watchlist_router.get("/")
 async def get_watchlist(
-    use_live_prices: bool = Query(True, description="Use LIVE intraday prices (Rule #2)"),
+    use_live_prices: bool = Query(False, description="Use LIVE intraday prices instead of EOD (default: EOD)"),
     user: dict = Depends(get_current_user)
 ):
     """
     Get user's watchlist with current prices and opportunities.
     
-    DATA FETCHING RULES:
-    - Stock prices: LIVE intraday prices (regularMarketPrice) - Rule #2
-    - Options: LIVE from Yahoo Finance - Rule #3
+    DATA FETCHING (Feb 2026 - EOD-ALIGNED):
+    =======================================
+    DEFAULT (use_live_prices=false):
+    - Stock prices: EOD session_close_price from symbol_snapshot
+    - Opportunities: Pre-computed from scan_results_cc
+    - NO LIVE YAHOO CALLS in request path
     
-    This is different from Screener which uses previous close for stock prices.
+    OPTIONAL LIVE MODE (use_live_prices=true):
+    - Stock prices: Live intraday from Yahoo
+    - Opportunities: Live option chain fetch
+    
+    Response includes: data_source, as_of, market_status, stock_price_source
     """
     get_massive_api_key, _ = _get_server_functions()
     
     items = await db.watchlist.find({"user_id": user["id"]}, {"_id": 0}).to_list(100)
     
     if not items:
-        return []
+        return {
+            "items": [],
+            "data_source": "eod_pipeline",
+            "as_of": None,
+            "market_status": "UNKNOWN",
+            "stock_price_source": "EOD_SNAPSHOT",
+            "live_data_used": False
+        }
     
     # Get all symbols
     symbols = [item.get("symbol", "") for item in items if item.get("symbol")]
     
-    # Get API key
-    api_key = await get_massive_api_key()
-    
-    # Fetch LIVE stock prices (Rule #2: Watchlist uses live prices)
     if use_live_prices:
+        # OPTIONAL: Live mode - fetch from Yahoo
+        api_key = await get_massive_api_key()
         stock_data = await fetch_live_stock_quotes_batch(symbols, api_key)
+        data_source = "yahoo_live"
+        stock_price_source = "LIVE_INTRADAY"
+        live_data_used = True
+        run_info = None
+        as_of = datetime.now(timezone.utc).isoformat()
+        market_status = "UNKNOWN"
     else:
-        stock_data = await fetch_stock_quotes_batch(symbols, api_key)
+        # DEFAULT: EOD mode - fetch from MongoDB snapshot
+        stock_data, run_info = await _get_eod_prices_for_symbols(symbols)
+        data_source = "eod_pipeline"
+        stock_price_source = "SESSION_CLOSE"
+        live_data_used = False
+        as_of = run_info.get("as_of") if run_info else None
+        market_status = run_info.get("market_status", "CLOSED") if run_info else "UNKNOWN"
     
-    # Enrich items with LIVE prices and LIVE opportunities
+    # Enrich items with prices and opportunities
     enriched_items = []
     for item in items:
         symbol = item.get("symbol", "")
-        live_data = stock_data.get(symbol, {})
+        price_data = stock_data.get(symbol, {})
         
-        # Rule #2: Watchlist uses LIVE intraday prices
-        if live_data.get("price"):
-            current_price = live_data.get("price", 0)
-            price_source = "LIVE_INTRADAY"
-            is_live = live_data.get("is_live", True)
+        # Get current price
+        if price_data.get("price"):
+            current_price = price_data.get("price", 0)
+            is_live = use_live_prices
         else:
             current_price = 0
-            price_source = "UNAVAILABLE"
             is_live = False
         
         price_when_added = item.get("price_when_added", 0)
@@ -672,26 +694,42 @@ async def get_watchlist(
         enriched = {
             **item,
             "current_price": current_price,
-            "price_source": price_source,  # LIVE_INTRADAY for watchlist
+            "stock_price_source": price_data.get("stock_price_source", stock_price_source),
+            "session_close_price": price_data.get("session_close_price"),
+            "prior_close_price": price_data.get("prior_close_price"),
+            "market_status": price_data.get("market_status", market_status),
             "is_live_price": is_live,
-            "change": live_data.get("change", 0),
-            "change_pct": live_data.get("change_pct", 0),
+            "change": price_data.get("change", 0),
+            "change_pct": price_data.get("change_pct", 0),
             "price_when_added": price_when_added,
             "movement": round(movement, 2),
             "movement_pct": round(movement_pct, 2),
-            "analyst_rating": live_data.get("analyst_rating"),
+            "analyst_rating": price_data.get("analyst_rating"),
             "opportunity": None
         }
         
-        # Rule #3: Fetch LIVE opportunities (options chain fetched at request time)
+        # Get opportunity from EOD precomputed or live
         if current_price > 0:
-            opp = await _get_best_opportunity_live(symbol, current_price)
-            enriched["opportunity"] = opp
-            enriched["opportunity_source"] = "yahoo_live" if opp else None
+            if use_live_prices:
+                opp = await _get_best_opportunity_live(symbol, current_price)
+                enriched["opportunity"] = opp
+                enriched["opportunity_source"] = "yahoo_live" if opp else None
+            else:
+                opp = await _get_best_opportunity_eod(symbol)
+                enriched["opportunity"] = opp
+                enriched["opportunity_source"] = "eod_precomputed" if opp else None
         
         enriched_items.append(enriched)
     
-    return enriched_items
+    return {
+        "items": enriched_items,
+        "data_source": data_source,
+        "as_of": as_of,
+        "market_status": market_status,
+        "stock_price_source": stock_price_source,
+        "live_data_used": live_data_used,
+        "run_info": run_info
+    }
 
 
 @watchlist_router.post("/")
