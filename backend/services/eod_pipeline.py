@@ -831,7 +831,12 @@ async def compute_scan_results(
                 
                 cc_opportunities.append(cc_opp)
         
-        # PMCC opportunities - look for LEAPS + short calls
+        # PMCC opportunities - ONLY evaluate if symbol has LEAPS
+        # Skip symbols without LEAPS to prevent false-zero results
+        if not has_leaps:
+            symbols_without_leaps.append(symbol)
+            continue  # Skip PMCC evaluation for this symbol
+        
         # Find LEAPS (365-730 DTE)
         leaps_candidates = []
         short_candidates = []
