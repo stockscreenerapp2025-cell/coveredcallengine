@@ -1012,8 +1012,11 @@ async def compute_scan_results(
                     "open_interest": oi,
                     "volume": volume,
                     
-                    # Analyst (nullable)
-                    "analyst_rating": None,     # Will be enriched if available
+                    # Quality flags (from validation)
+                    "quality_flags": quality_flags,
+                    
+                    # Analyst (from enrichment)
+                    "analyst_rating": analyst_rating,
                     
                     # Scoring
                     "score": round(score, 1)
