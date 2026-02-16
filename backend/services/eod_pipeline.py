@@ -1109,7 +1109,7 @@ async def compute_scan_results(
                 iv_percent = round(iv * 100, 1) if iv and iv > 0 else 0.0
                 
                 # === EXPLICIT CC SCHEMA (Feb 2026) ===
-                # WITH MANDATORY MARKET CONTEXT FIELDS
+                # WITH MANDATORY MARKET CONTEXT FIELDS + OPTION PARITY MODEL
                 cc_opp = {
                     # Run metadata
                     "run_id": run_id,
@@ -1141,8 +1141,15 @@ async def compute_scan_results(
                     # Pricing (EXPLICIT - no ambiguity)
                     "premium_bid": round(premium_bid, 2),
                     "premium_ask": round(premium_ask_val, 2) if premium_ask_val else None,
+                    "premium_mid": mid,  # (bid+ask)/2 when valid
+                    "premium_last": round(last_price, 2) if last_price and last_price > 0 else None,
+                    "premium_prev_close": round(prev_close, 2) if prev_close and prev_close > 0 else None,
                     "premium_used": round(premium_used, 2),  # = premium_bid (SELL rule)
                     "pricing_rule": "SELL_BID",
+                    
+                    # OPTION PARITY MODEL: Display price (matches Yahoo display)
+                    "premium_display": display_price,
+                    "premium_display_source": display_price_source,
                     
                     # Legacy fields for backward compatibility
                     "premium": round(premium_bid, 2),  # Alias for premium_bid
@@ -1171,7 +1178,7 @@ async def compute_scan_results(
                     "open_interest": oi,
                     "volume": volume,
                     
-                    # Quality flags (from validation)
+                    # Quality flags (from validation + soft flags)
                     "quality_flags": quality_flags,
                     
                     # Analyst (from enrichment)
