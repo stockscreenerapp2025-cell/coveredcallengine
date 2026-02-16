@@ -1153,7 +1153,7 @@ async def compute_scan_results(
                     "instrument_type": "ETF" if symbol_is_etf else "STOCK",
                     
                     # LEAP (Long leg - BUY)
-                    "leap_symbol": leap_symbol,
+                    "leap_symbol": leap_symbol_str,
                     "leap_strike": leap["strike"],
                     "leap_expiry": leap["expiry"],
                     "leap_dte": leap["dte"],
@@ -1163,7 +1163,7 @@ async def compute_scan_results(
                     "leap_delta": leap["delta"],
                     
                     # Short leg (SELL)
-                    "short_symbol": short_symbol,
+                    "short_symbol": short_symbol_str,
                     "short_strike": short["strike"],
                     "short_expiry": short["expiry"],
                     "short_dte": short["dte"],
@@ -1198,8 +1198,11 @@ async def compute_scan_results(
                     "iv_pct": iv_percent,       # Percent (65.0)
                     "iv_rank": None,            # Will be enriched if available
                     
-                    # Analyst (nullable)
-                    "analyst_rating": None,     # Will be enriched if available
+                    # Quality flags (from validation)
+                    "quality_flags": pmcc_quality_flags,
+                    
+                    # Analyst (from enrichment)
+                    "analyst_rating": analyst_rating,
                     
                     # Scoring
                     "score": round(50 + roi_per_cycle * 5, 1)
