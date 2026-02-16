@@ -1524,6 +1524,11 @@ async def compute_scan_results(
                     "short_used": round(short_used, 2),  # = short_bid (SELL rule)
                     "short_display": short.get("display_price"),
                     "short_display_source": short.get("display_source"),
+                    "short_delta": short.get("delta"),  # For institutional verification
+                    
+                    # Liquidity (for transparency)
+                    "leap_oi": leap.get("oi", 0),
+                    "short_oi": short.get("oi", 0),
                     
                     # Pricing rule
                     "pricing_rule": "BUY_ASK_SELL_BID",
