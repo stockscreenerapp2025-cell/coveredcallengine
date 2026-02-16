@@ -840,6 +840,8 @@ async def run_eod_pipeline(db, force_build_universe: bool = False) -> EODPipelin
     result.finalize()
     
     # Persist scan_run_summary
+    # FIXED: included = chain_success (symbols with BOTH quote AND chain)
+    # FIXED: excluded = total - included (no double counting)
     summary_doc = {
         "run_id": run_id,
         "universe_version": universe_version,
@@ -848,8 +850,8 @@ async def run_eod_pipeline(db, force_build_universe: bool = False) -> EODPipelin
         "duration_seconds": result.duration_seconds,
         "tier_counts": tier_counts,
         "total_symbols": result.symbols_total,
-        "included": result.quote_success,
-        "excluded": result.quote_failure + result.chain_failure,
+        "included": result.chain_success,  # FIXED: Only symbols with successful chains
+        "excluded": result.symbols_total - result.chain_success,  # FIXED: total - included
         "excluded_counts_by_reason": result.excluded_by_reason,
         "excluded_counts_by_stage": result.excluded_by_stage,
         "quote_success_count": result.quote_success,
