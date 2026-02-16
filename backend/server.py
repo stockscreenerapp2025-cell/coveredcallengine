@@ -1487,6 +1487,24 @@ async def startup():
         replace_existing=True
     )
     
+    # Symbol Enrichment - runs daily at 5:00 AM ET (before market open)
+    async def scheduled_symbol_enrichment():
+        """Run the symbol enrichment job to fetch analyst ratings."""
+        try:
+            from services.symbol_enrichment import run_enrichment_job
+            logger.info("Starting scheduled symbol enrichment job...")
+            result = await run_enrichment_job(db)
+            logger.info(f"Symbol enrichment completed: {result.get('enriched')} symbols enriched")
+        except Exception as e:
+            logger.error(f"Scheduled symbol enrichment failed: {e}")
+    
+    scheduler.add_job(
+        scheduled_symbol_enrichment,
+        CronTrigger(hour=5, minute=0, day_of_week='mon-fri', timezone='America/New_York'),
+        id='symbol_enrichment_job',
+        replace_existing=True
+    )
+    
     # Pre-computed scans - runs at 4:05 PM ET (after market close) on weekdays
     # UPDATED: Moved from 4:45 PM to 4:05 PM for price consistency across all pages
     # Yahoo Finance provides market close data immediately after 4:00 PM
