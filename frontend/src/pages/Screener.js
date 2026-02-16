@@ -1358,8 +1358,23 @@ const Screener = () => {
                         <td className="text-cyan-400 font-medium">{opp.roi_pct?.toFixed(2) || opp.premium_yield?.toFixed(2)}%</td>
                         <td>{opp.delta?.toFixed(2)}</td>
                         <td className="text-yellow-400">{Math.round((1 - opp.delta) * 100)}%</td>
-                        <td>{opp.iv ? `${(opp.iv * 100).toFixed(1)}%` : (opp.implied_volatility ? `${opp.implied_volatility.toFixed(1)}%` : (opp.iv_pct ? `${opp.iv_pct.toFixed(1)}%` : '-'))}</td>
-                        <td>{opp.iv_rank ? `${opp.iv_rank?.toFixed(0)}%` : '-'}</td>
+                        <td>{opp.iv_pct ? `${opp.iv_pct.toFixed(1)}%` : (opp.iv ? `${(opp.iv * 100).toFixed(1)}%` : '-')}</td>
+                        <td>
+                          <TooltipProvider>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <span className="text-zinc-500 cursor-help">
+                                  {opp.iv_rank != null ? `${opp.iv_rank.toFixed(0)}%` : 'N/A'}
+                                </span>
+                              </TooltipTrigger>
+                              {opp.iv_rank == null && (
+                                <TooltipContent className="bg-zinc-800 border-zinc-700 p-2 max-w-xs">
+                                  <p className="text-xs text-zinc-300">IV Rank not available yet (insufficient history / not computed)</p>
+                                </TooltipContent>
+                              )}
+                            </Tooltip>
+                          </TooltipProvider>
+                        </td>
                         <td className="text-zinc-400">{opp.open_interest ? opp.open_interest.toLocaleString() : '-'}</td>
                         {activeScan && (
                           <td>
