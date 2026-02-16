@@ -869,6 +869,13 @@ async def compute_scan_results(
         if not is_eligible:
             continue
         
+        # Fetch analyst enrichment from symbol_enrichment collection
+        analyst_data = await db.symbol_enrichment.find_one(
+            {"symbol": symbol},
+            {"_id": 0, "analyst_rating_label": 1, "analyst_rating_value": 1}
+        ) if db else None
+        analyst_rating = analyst_data.get("analyst_rating_label") if analyst_data else None
+        
         # Process option chains for CC opportunities
         for chain in option_chains:
             expiry = chain.get("expiry", "")
@@ -883,10 +890,6 @@ async def compute_scan_results(
                     except Exception:
                         continue
                 
-                # DTE filter
-                if dte < CC_MIN_DTE or dte > CC_MAX_DTE:
-                    continue
-                
                 strike = call.get("strike", 0)
                 bid = call.get("bid", 0)
                 ask = call.get("ask", 0)
@@ -894,8 +897,17 @@ async def compute_scan_results(
                 oi = call.get("openInterest", 0) or 0
                 volume = call.get("volume", 0) or 0
                 
-                # Require valid bid
-                if not bid or bid <= 0:
+                # VALIDATE CC OPTION (HARD RULES)
+                is_valid, quality_flags = validate_cc_option(
+                    strike=strike,
+                    stock_price=stock_price,
+                    bid=bid,
+                    iv=iv,
+                    oi=oi,
+                    dte=dte
+                )
+                
+                if not is_valid:
                     continue
                 
                 # PRICING RULE: SELL leg uses BID price
