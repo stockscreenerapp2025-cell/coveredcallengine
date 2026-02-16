@@ -1123,8 +1123,8 @@ async def screen_covered_calls(
         results = await _get_cc_from_legacy(filters, limit)
         data_source = "precomputed_scans_legacy"
     
-    # Transform results to API format
-    opportunities = [_transform_cc_result(r) for r in results]
+    # Transform results to API format (filter out None for invalid rows)
+    opportunities = [r for r in (_transform_cc_result(r) for r in results) if r is not None]
     
     elapsed_ms = (time.time() - start_time) * 1000
     logging.info(f"CC Screener: {len(opportunities)} results in {elapsed_ms:.1f}ms from {data_source}")
