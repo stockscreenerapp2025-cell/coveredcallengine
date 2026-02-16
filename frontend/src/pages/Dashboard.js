@@ -15,6 +15,12 @@ import {
   DialogTitle,
 } from '../components/ui/dialog';
 import {
+  Tooltip as ShadcnTooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '../components/ui/tooltip';
+import {
   TrendingUp,
   TrendingDown,
   Activity,
