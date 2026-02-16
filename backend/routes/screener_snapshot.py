@@ -1803,7 +1803,8 @@ async def get_admin_status(user: dict = Depends(get_current_user)):
             excluded_counts_by_reason = {}
             excluded_counts = {
                 "OUT_OF_RULES": 0, "OUT_OF_PRICE_BAND": 0, "LOW_LIQUIDITY": 0,
-                "MISSING_QUOTE": 0, "MISSING_CHAIN": 0, "CHAIN_EMPTY": 0,
+                "MISSING_QUOTE": 0, "MISSING_QUOTE_FIELDS": 0, "MISSING_CHAIN": 0,
+                "RATE_LIMITED_CHAIN": 0, "CHAIN_EMPTY": 0,
                 "BAD_CHAIN_DATA": 0, "MISSING_CONTRACT_FIELDS": 0, "OTHER": 0
             }
     
@@ -1813,16 +1814,43 @@ async def get_admin_status(user: dict = Depends(get_current_user)):
     chain_valid_pct = round((valid_chains / total_symbols * 100), 1) if total_symbols > 0 else 0
     structure_valid_pct = round((structure_valid / total_symbols * 100), 1) if total_symbols > 0 else 0
     
-    # Get last scan run time from precomputed_scans collection
-    last_scan = await db.precomputed_scans.find_one(
-        {"strategy": "covered_call"},
-        sort=[("scan_timestamp", -1)],
-        projection={"scan_timestamp": 1}
+    # Get last COMPLETED scan run time (not partial/failed runs)
+    last_completed_run = await db.scan_runs.find_one(
+        {"status": "COMPLETED"},
+        sort=[("as_of", -1)],
+        projection={"as_of": 1, "completed_at": 1}
     )
-    last_full_run_at = last_scan.get("scan_timestamp") if last_scan else last_audit_at
+    last_full_run_at = last_completed_run.get("completed_at") if last_completed_run else last_audit_at
     
-    # Health score (simplified)
-    health_score = min(100, int(structure_valid_pct + chain_valid_pct) // 2) if structure_valid > 0 else 0
+    # ================================================================
+    # HEALTH SCORE CALCULATION - STATUS-BASED (no flip-flopping)
+    # ================================================================
+    # Thresholds:
+    # - CRITICAL (0-25): status != COMPLETED OR coverage < 25%
+    # - WARNING (26-50): coverage 25-50% OR throttle_ratio > 30%
+    # - HEALTHY (51-100): coverage > 50%
+    #
+    # DO NOT score CRITICAL just because opportunities=0 (strict PMCC may yield 0)
+    
+    if run_status != "COMPLETED":
+        # Status not COMPLETED = CRITICAL
+        health_score = 10
+        health_status = "CRITICAL"
+    elif coverage_ratio < 0.25:
+        # Coverage below 25% = CRITICAL
+        health_score = 20
+        health_status = "CRITICAL"
+    elif coverage_ratio < 0.50 or throttle_ratio > 0.30:
+        # Coverage 25-50% OR high throttle = WARNING
+        health_score = 40 + int(coverage_ratio * 20)
+        health_status = "WARNING"
+    else:
+        # Coverage > 50% = HEALTHY
+        health_score = 60 + int(coverage_ratio * 40)
+        health_status = "HEALTHY"
+    
+    # Cap at 100
+    health_score = min(100, health_score)
     
     # Score distribution (would need to query precomputed_scans for real data)
     scored_trades = structure_valid  # Approximation
