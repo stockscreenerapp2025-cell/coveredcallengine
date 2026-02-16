@@ -1216,8 +1216,35 @@ async def compute_scan_results(
                 strike = call.get("strike", 0)
                 bid = call.get("bid", 0)
                 ask = call.get("ask", 0)
+                last_price = call.get("lastPrice", 0) or 0
+                prev_close = call.get("previousClose", 0) or call.get("prevClose", 0) or 0
                 iv = call.get("impliedVolatility", 0) or 0
                 oi = call.get("openInterest", 0) or 0
+                
+                # Compute display price for Yahoo parity
+                mid = round((bid + ask) / 2, 2) if bid > 0 and ask > 0 else None
+                if last_price and last_price > 0:
+                    display_price = round(last_price, 2)
+                    display_source = "LAST"
+                elif mid is not None:
+                    display_price = mid
+                    display_source = "MID"
+                elif prev_close and prev_close > 0:
+                    display_price = round(prev_close, 2)
+                    display_source = "PREV_CLOSE"
+                else:
+                    display_price = None
+                    display_source = "NONE"
+                
+                # Compute quality flags for this option
+                option_quality_flags = []
+                spread_pct = ((ask - bid) / bid * 100) if bid > 0 else 0
+                if spread_pct > 10:
+                    option_quality_flags.append("WIDE_SPREAD")
+                if oi < 50:
+                    option_quality_flags.append("LOW_OI")
+                if not last_price or last_price <= 0:
+                    option_quality_flags.append("NO_LAST")
                 
                 # LEAPS candidate (365-730 DTE, ITM)
                 if PMCC_MIN_LEAP_DTE <= dte <= PMCC_MAX_LEAP_DTE and strike < stock_price:
@@ -1230,9 +1257,15 @@ async def compute_scan_results(
                                 "dte": dte,
                                 "ask": ask,
                                 "bid": bid,
+                                "mid": mid,
+                                "last": last_price if last_price > 0 else None,
+                                "prev_close": prev_close if prev_close > 0 else None,
+                                "display_price": display_price,
+                                "display_source": display_source,
                                 "delta": greeks["delta"],
                                 "iv": iv,
-                                "oi": oi
+                                "oi": oi,
+                                "quality_flags": option_quality_flags
                             })
                 
                 # Short call candidate (7-60 DTE)
@@ -1244,8 +1277,14 @@ async def compute_scan_results(
                             "dte": dte,
                             "bid": bid,
                             "ask": ask,
+                            "mid": mid,
+                            "last": last_price if last_price > 0 else None,
+                            "prev_close": prev_close if prev_close > 0 else None,
+                            "display_price": display_price,
+                            "display_source": display_source,
                             "iv": iv,
-                            "oi": oi
+                            "oi": oi,
+                            "quality_flags": option_quality_flags
                         })
         
         # Match LEAPS with short calls
