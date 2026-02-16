@@ -798,6 +798,217 @@ async def validate_eod_data(symbols: List[str], trade_date: str = None) -> Dict[
 # ============================================================
 # COVERED CALL SCREENER (LAYER 3 - Strategy Selection)
 # ============================================================
+# ARCHITECTURE UPDATE (Feb 2026): NO LIVE YAHOO CALLS
+# All data comes from pre-computed MongoDB collections
+# ============================================================
+
+async def _get_latest_eod_run_id() -> Optional[str]:
+    """Get the latest completed EOD run_id from scan_runs collection."""
+    try:
+        latest = await db.scan_runs.find_one(
+            {"status": "COMPLETED"},
+            sort=[("completed_at", -1)]
+        )
+        return latest.get("run_id") if latest else None
+    except Exception as e:
+        logging.error(f"Failed to get latest EOD run: {e}")
+        return None
+
+
+async def _get_cc_from_eod(
+    run_id: str,
+    filters: Dict[str, Any],
+    limit: int
+) -> List[Dict]:
+    """
+    Query scan_results_cc collection with filters.
+    
+    NO LIVE YAHOO CALLS - reads from pre-computed data only.
+    """
+    query = {"run_id": run_id}
+    
+    # Apply DTE filter
+    if filters.get("min_dte"):
+        query["dte"] = {"$gte": filters["min_dte"]}
+    if filters.get("max_dte"):
+        if "dte" in query:
+            query["dte"]["$lte"] = filters["max_dte"]
+        else:
+            query["dte"] = {"$lte": filters["max_dte"]}
+    
+    # Apply DTE mode filter
+    if filters.get("dte_mode") == "weekly":
+        query["dte"] = {"$gte": 7, "$lte": 14}
+    elif filters.get("dte_mode") == "monthly":
+        query["dte"] = {"$gte": 21, "$lte": 45}
+    
+    # Apply premium yield filter
+    if filters.get("min_premium_yield"):
+        query["premium_yield"] = {"$gte": filters["min_premium_yield"]}
+    if filters.get("max_premium_yield"):
+        if "premium_yield" in query:
+            query["premium_yield"]["$lte"] = filters["max_premium_yield"]
+        else:
+            query["premium_yield"] = {"$lte": filters["max_premium_yield"]}
+    
+    # Apply OTM% filter
+    if filters.get("min_otm_pct") is not None:
+        query["otm_pct"] = {"$gte": filters["min_otm_pct"]}
+    if filters.get("max_otm_pct"):
+        if "otm_pct" in query:
+            query["otm_pct"]["$lte"] = filters["max_otm_pct"]
+        else:
+            query["otm_pct"] = {"$lte": filters["max_otm_pct"]}
+    
+    # Apply delta filter based on risk profile
+    risk_profile = filters.get("risk_profile", "moderate")
+    if risk_profile == "conservative":
+        query["delta"] = {"$gte": 0.15, "$lte": 0.30}
+    elif risk_profile == "aggressive":
+        query["delta"] = {"$gte": 0.30, "$lte": 0.50}
+    # moderate: no delta filter (use all)
+    
+    try:
+        cursor = db.scan_results_cc.find(
+            query,
+            {"_id": 0}
+        ).sort("score", -1).limit(limit)
+        
+        results = await cursor.to_list(length=limit)
+        return results
+    except Exception as e:
+        logging.error(f"Failed to query scan_results_cc: {e}")
+        return []
+
+
+async def _get_cc_from_legacy(filters: Dict[str, Any], limit: int) -> List[Dict]:
+    """
+    Fallback: Query precomputed_scans collection (legacy).
+    
+    NO LIVE YAHOO CALLS - reads from pre-computed data only.
+    """
+    try:
+        # Find latest CC scan
+        latest = await db.precomputed_scans.find_one(
+            {"type": "cc"},
+            sort=[("computed_at", -1)]
+        )
+        
+        if not latest:
+            return []
+        
+        results = latest.get("results", [])
+        
+        # Apply filters in memory (legacy scans don't have indexed fields)
+        filtered = []
+        for r in results:
+            # DTE filter
+            dte = r.get("dte", 0)
+            if filters.get("min_dte") and dte < filters["min_dte"]:
+                continue
+            if filters.get("max_dte") and dte > filters["max_dte"]:
+                continue
+            
+            # Premium yield filter
+            py = r.get("premium_yield", 0)
+            if filters.get("min_premium_yield") and py < filters["min_premium_yield"]:
+                continue
+            if filters.get("max_premium_yield") and py > filters["max_premium_yield"]:
+                continue
+            
+            filtered.append(r)
+        
+        # Sort by score and limit
+        filtered.sort(key=lambda x: x.get("score", 0), reverse=True)
+        return filtered[:limit]
+        
+    except Exception as e:
+        logging.error(f"Failed to query precomputed_scans: {e}")
+        return []
+
+
+def _transform_cc_result(r: Dict) -> Dict:
+    """Transform stored CC result to API response format."""
+    symbol = r.get("symbol", "")
+    stock_price = r.get("stock_price", 0)
+    strike = r.get("strike", 0)
+    premium = r.get("premium", 0)
+    dte = r.get("dte", 0)
+    
+    return {
+        # Nested objects for new schema
+        "underlying": {
+            "symbol": symbol,
+            "instrument_type": r.get("instrument_type", "STOCK"),
+            "last_price": stock_price,
+            "price_source": "EOD_SNAPSHOT",
+            "market_cap": r.get("market_cap"),
+            "avg_volume": r.get("avg_volume")
+        },
+        "short_call": {
+            "strike": strike,
+            "expiry": r.get("expiry"),
+            "dte": dte,
+            "contract_symbol": r.get("contract_symbol"),
+            "premium": premium,
+            "bid": premium,
+            "ask": r.get("premium_ask"),
+            "delta": r.get("delta", 0),
+            "gamma": r.get("gamma", 0),
+            "theta": r.get("theta", 0),
+            "vega": r.get("vega", 0),
+            "iv": r.get("iv", 0),
+            "iv_pct": r.get("iv_pct", 0),
+            "open_interest": r.get("open_interest", 0),
+            "volume": r.get("volume", 0)
+        },
+        "economics": {
+            "max_profit": r.get("max_profit", premium * 100),
+            "breakeven": r.get("breakeven", stock_price - premium),
+            "roi_pct": r.get("roi_pct", 0),
+            "annualized_roi_pct": r.get("roi_annualized", 0),
+            "premium_yield": r.get("premium_yield", 0),
+            "otm_pct": r.get("otm_pct", 0)
+        },
+        "metadata": {
+            "dte_category": r.get("dte_category", "weekly" if dte <= 14 else "monthly"),
+            "is_etf": r.get("is_etf", False),
+            "data_source": "eod_precomputed"
+        },
+        "scoring": {
+            "final_score": r.get("score", 0)
+        },
+        # Legacy flat fields for backward compatibility
+        "symbol": symbol,
+        "strike": strike,
+        "expiry": r.get("expiry"),
+        "dte": dte,
+        "dte_category": r.get("dte_category", "weekly" if dte <= 14 else "monthly"),
+        "stock_price": stock_price,
+        "premium": premium,
+        "premium_ask": r.get("premium_ask"),
+        "premium_yield": r.get("premium_yield", 0),
+        "otm_pct": r.get("otm_pct", 0),
+        "roi_pct": r.get("roi_pct", 0),
+        "roi_annualized": r.get("roi_annualized", 0),
+        "delta": r.get("delta", 0),
+        "gamma": r.get("gamma", 0),
+        "theta": r.get("theta", 0),
+        "vega": r.get("vega", 0),
+        "iv": r.get("iv", 0),
+        "iv_pct": r.get("iv_pct", 0),
+        "open_interest": r.get("open_interest", 0),
+        "volume": r.get("volume", 0),
+        "is_etf": r.get("is_etf", False),
+        "instrument_type": r.get("instrument_type", "STOCK"),
+        "score": r.get("score", 0),
+        "market_cap": r.get("market_cap"),
+        "avg_volume": r.get("avg_volume"),
+        "data_source": "eod_precomputed",
+        "run_id": r.get("run_id"),
+        "as_of": r.get("as_of")
+    }
+
 
 @screener_router.get("/covered-calls")
 async def screen_covered_calls(
@@ -811,43 +1022,91 @@ async def screen_covered_calls(
     max_premium_yield: float = Query(20.0, le=50),
     min_otm_pct: float = Query(0.0, ge=0),
     max_otm_pct: float = Query(20.0, le=50),
-    use_eod_contract: bool = Query(True, description="ADR-001: Use EOD contract for stock prices"),
+    use_eod_contract: bool = Query(True, description="Deprecated - always uses EOD data"),
     user: dict = Depends(get_current_user)
 ):
     """
     Screen for Covered Call opportunities.
     
-    DATA FETCHING RULES:
-    1. STOCK PRICES: Previous US market close (from EOD contract or previousClose)
-    2. OPTIONS CHAINS: Fetched LIVE from Yahoo Finance at scan time
-    
-    LAYER 3 FEATURES:
-    - CC eligibility filters (price $30-$90, volume ≥1M, market cap ≥$5B)
-    - Earnings ±7 days exclusion
-    - Weekly (7-14 DTE) / Monthly (21-45 DTE) modes
-    - Greeks enrichment (Delta, IV, IV Rank, OI)
+    ARCHITECTURE (Feb 2026): MONGODB READ-ONLY
+    ==========================================
+    - ALL data comes from pre-computed scan_results_cc collection
+    - NO LIVE YAHOO CALLS during request/response cycle
+    - Data is pre-computed by EOD pipeline at 4:10 PM ET daily
+    - Fallback: precomputed_scans collection (legacy)
     
     Args:
         dte_mode: "weekly" (7-14), "monthly" (21-45), or "all" (7-45)
-        scan_mode: "system" (strict filters), "custom", or "manual" (relaxed price)
-        use_eod_contract: If True, uses EOD contract for stock prices.
+        risk_profile: "conservative", "moderate", or "aggressive"
+        scan_mode: "system", "custom", or "manual" (filter strictness)
     """
-    eod_contract = get_eod_contract()
-    snapshot_service = get_snapshot_service()
+    import time
+    start_time = time.time()
     
-    # ========== MARKET-STATE AWARE PRICING ==========
-    current_market_state = get_market_state()
-    use_live_price = (current_market_state == "OPEN")
-    underlying_price_source = "LIVE" if use_live_price else "LAST_CLOSE"
-    
-    logging.info(f"CC Screener: market_state={current_market_state}, price_source={underlying_price_source}")
-    
-    # LAYER 3: Determine DTE range based on mode
+    # Determine DTE range based on mode
     if min_dte is None or max_dte is None:
         auto_min_dte, auto_max_dte = get_dte_range(dte_mode)
         min_dte = min_dte if min_dte is not None else auto_min_dte
         max_dte = max_dte if max_dte is not None else auto_max_dte
     
+    # Build filter dict
+    filters = {
+        "min_dte": min_dte,
+        "max_dte": max_dte,
+        "dte_mode": dte_mode if dte_mode != "all" else None,
+        "min_premium_yield": min_premium_yield,
+        "max_premium_yield": max_premium_yield,
+        "min_otm_pct": min_otm_pct,
+        "max_otm_pct": max_otm_pct,
+        "risk_profile": risk_profile
+    }
+    
+    # Try EOD pipeline results first
+    run_id = await _get_latest_eod_run_id()
+    data_source = "eod_pipeline"
+    run_info = None
+    
+    if run_id:
+        results = await _get_cc_from_eod(run_id, filters, limit)
+        
+        # Get run metadata
+        run_doc = await db.scan_runs.find_one({"run_id": run_id}, {"_id": 0})
+        if run_doc:
+            run_info = {
+                "run_id": run_id,
+                "as_of": run_doc.get("as_of"),
+                "completed_at": run_doc.get("completed_at"),
+                "symbols_processed": run_doc.get("symbols_processed"),
+                "symbols_included": run_doc.get("symbols_included")
+            }
+    else:
+        # Fallback to legacy precomputed_scans
+        results = await _get_cc_from_legacy(filters, limit)
+        data_source = "precomputed_scans_legacy"
+    
+    # Transform results to API format
+    opportunities = [_transform_cc_result(r) for r in results]
+    
+    elapsed_ms = (time.time() - start_time) * 1000
+    logging.info(f"CC Screener: {len(opportunities)} results in {elapsed_ms:.1f}ms from {data_source}")
+    
+    return {
+        "total": len(opportunities),
+        "results": opportunities,
+        "opportunities": opportunities,
+        "symbols_scanned": run_info.get("symbols_processed", 0) if run_info else 0,
+        "symbols_with_results": len(opportunities),
+        "run_info": run_info,
+        "data_source": data_source,
+        "live_data_used": False,  # CRITICAL: No live Yahoo calls
+        "layer": 3,
+        "scan_mode": scan_mode,
+        "dte_mode": dte_mode,
+        "dte_range": {"min": min_dte, "max": max_dte},
+        "filters_applied": filters,
+        "architecture": "EOD_PIPELINE_READ_MODEL",
+        "latency_ms": round(elapsed_ms, 1)
+    }
     # Step 1: Get stock prices - PHASE 2: Use cache-first approach for Yahoo Finance
     # This reduces Yahoo calls by ~70% while still using Yahoo as single source of truth
     # Cache TTL: 12 min during market hours, 3 hours after close
