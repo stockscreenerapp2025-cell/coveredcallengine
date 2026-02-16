@@ -1301,7 +1301,7 @@ async def compute_scan_results(
                 if PMCC_MIN_LEAP_DTE <= dte <= PMCC_MAX_LEAP_DTE and strike < stock_price:
                     if ask and ask > 0:
                         greeks = calculate_greeks_simple(stock_price, strike, dte, iv if iv > 0 else 0.30)
-                        if greeks["delta"] >= PMCC_MIN_DELTA:
+                        if greeks["delta"] >= PMCC_MIN_LEAP_DELTA:
                             leaps_candidates.append({
                                 "strike": strike,
                                 "expiry": expiry,
