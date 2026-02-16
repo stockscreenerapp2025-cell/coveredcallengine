@@ -793,12 +793,17 @@ def validate_pmcc_structure(
     stock_price: float,
     leap_strike: float,
     leap_ask: float,
+    leap_bid: float,
     leap_delta: float,
     leap_dte: int,
+    leap_oi: int,
     short_strike: float,
     short_bid: float,
+    short_ask: float,
+    short_delta: float,
     short_dte: int,
-    short_iv: float
+    short_iv: float,
+    short_oi: int
 ) -> Tuple[bool, List[str]]:
     """
     Validate PMCC structure against strategy rules.
