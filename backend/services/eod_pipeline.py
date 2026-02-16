@@ -346,6 +346,10 @@ async def run_eod_pipeline(db, force_build_universe: bool = False) -> EODPipelin
                     if chain_result["success"]:
                         result.chain_success += 1
                         
+                        # Check for LEAPS availability
+                        has_leaps = chain_result.get("has_leaps", False)
+                        leaps_count = chain_result.get("leaps_found", 0)
+                        
                         # Create snapshot
                         snapshot = {
                             "run_id": run_id,
@@ -357,13 +361,15 @@ async def run_eod_pipeline(db, force_build_universe: bool = False) -> EODPipelin
                             "option_chain": chain_result["chains"],
                             "expirations": chain_result["expirations"],
                             "is_etf": is_etf(symbol),
+                            "has_leaps": has_leaps,
+                            "leaps_count": leaps_count,
                             "as_of": as_of,
                             "included": True
                         }
                         batch_snapshots.append(snapshot)
                         
-                        # Audit: included
-                        audit_records.append({
+                        # Audit: included - with LEAPS status
+                        audit_record = {
                             "run_id": run_id,
                             "symbol": symbol,
                             "included": True,
@@ -372,8 +378,17 @@ async def run_eod_pipeline(db, force_build_universe: bool = False) -> EODPipelin
                             "exclude_detail": None,
                             "price_used": quote_result["price"],
                             "avg_volume": quote_result["avg_volume"],
+                            "has_leaps": has_leaps,
+                            "leaps_count": leaps_count,
                             "as_of": as_of
-                        })
+                        }
+                        
+                        # Track NO_LEAPS_AVAILABLE as warning (not exclusion)
+                        if not has_leaps:
+                            audit_record["leaps_warning"] = "NO_LEAPS_AVAILABLE"
+                            logger.debug(f"[EOD_PIPELINE] {symbol}: No LEAPS available (365+ DTE)")
+                        
+                        audit_records.append(audit_record)
                     else:
                         result.chain_failure += 1
                         result.add_exclusion("OPTIONS_CHAIN", "MISSING_CHAIN")
