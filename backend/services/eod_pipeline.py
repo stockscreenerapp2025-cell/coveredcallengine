@@ -1055,18 +1055,18 @@ CC_MAX_IV = 2.0             # Max 200% IV
 # LEAP (Long leg) constraints
 PMCC_MIN_LEAP_DTE = 365          # Minimum 1 year
 PMCC_MAX_LEAP_DTE = 730          # Maximum 2 years
-PMCC_MIN_LEAP_DELTA = 0.80       # Deep ITM (was 0.70)
+PMCC_MIN_LEAP_DELTA = 0.75       # Deep ITM (was 0.70)
 PMCC_MIN_LEAP_OI = 100           # Minimum open interest
 PMCC_MAX_LEAP_SPREAD_PCT = 5.0   # Maximum bid-ask spread %
 
 # SHORT (Short leg) constraints
 PMCC_MIN_SHORT_DTE = 30          # Minimum 30 days (was 7)
 PMCC_MAX_SHORT_DTE = 45          # Maximum 45 days (was 60)
-PMCC_MIN_SHORT_DELTA = 0.20      # Minimum delta
-PMCC_MAX_SHORT_DELTA = 0.30      # Maximum delta
+PMCC_MIN_SHORT_DELTA = 0.25      # Minimum delta
+PMCC_MAX_SHORT_DELTA = 0.35      # Maximum delta
 PMCC_MIN_SHORT_OI = 100          # Minimum open interest
 PMCC_MAX_SHORT_SPREAD_PCT = 5.0  # Maximum bid-ask spread %
-PMCC_MIN_SHORT_OTM_PCT = 0.02    # Short strike must be >= 2% OTM from stock_price
+PMCC_MIN_SHORT_OTM_PCT = 0.01    # Short strike must be >= 2% OTM from stock_price
 
 # Structure constraints
 PMCC_MIN_IV = 0.05               # Min 5% IV
@@ -1287,13 +1287,14 @@ def validate_pmcc_structure(
     # This ensures the trade can be profitable
     if width <= net_debit:
         flags.append(f"FAIL_SOLVENCY_width{width:.2f}_debit{net_debit:.2f}")
-        return False, flags
-    
-    # HARD RULE: BREAK-EVEN (short_strike > breakeven)
-    # This ensures the short strike is above the break-even point
+        return False, flags    # HARD RULE: BREAK-EVEN (soft flag)
+    # NOTE: With net_debit computed using BUY=ASK and SELL=BID, the break-even inequality
+    # is algebraically equivalent to the hard solvency rule (width > net_debit).
+    # We keep solvency as the single hard gate and treat break-even as a warning flag only
+    # to avoid redundant eliminations.
     if short_strike <= breakeven:
-        flags.append(f"FAIL_BREAK_EVEN_short{short_strike:.2f}_be{breakeven:.2f}")
-        return False, flags
+        flags.append(f"WARN_BREAK_EVEN_short{short_strike:.2f}_be{breakeven:.2f}")
+
     
     # ================================================================
     # SOFT RULES (Flag but don't reject)

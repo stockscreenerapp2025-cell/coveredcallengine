@@ -177,12 +177,17 @@ def validate_pmcc_structure_rules(
         return False, flags
     
     # RULE 2: Break-even check
+# NOTE: With net_debit defined as (BUY=ASK - SELL=BID), the break-even inequality
+# short_strike > (long_strike + net_debit) is algebraically equivalent to the solvency rule
+# (short_strike - long_strike) > net_debit. Therefore, break-even is treated as a SOFT flag
+# to avoid redundant hard rejections while preserving the hard solvency gate.
     is_be_valid, be_reason = validate_pmcc_breakeven(
         long_strike, short_strike, net_debit
     )
     if not is_be_valid:
-        flags.append(be_reason)
-        return False, flags
+        # Soft flag only
+        flags.append(be_reason.replace('FAIL_', 'WARN_'))
+
     
     return True, flags
 

@@ -77,6 +77,48 @@ from .yf_pricing import (
 # Configure logging
 logger = logging.getLogger(__name__)
 
+# ==================== PMCC DEBUG INSTRUMENTATION ====================
+# Lightweight rejection counters to diagnose "0 results" scenarios.
+# Enables quick visibility into which rule is eliminating candidates.
+from collections import defaultdict
+import json
+
+class RejectStats:
+    def __init__(self, sample_limit: int = 10):
+        self.total = 0
+        self.kept = 0
+        self.reasons = defaultdict(int)
+        self.samples = defaultdict(list)
+        self.sample_limit = sample_limit
+
+    def reject(self, reason: str, sample: Optional[Dict[str, Any]] = None):
+        self.reasons[reason] += 1
+        if sample is not None and len(self.samples[reason]) < self.sample_limit:
+            self.samples[reason].append(sample)
+
+    def keep(self):
+        self.kept += 1
+
+    def summary(self) -> Dict[str, Any]:
+        sorted_reasons = sorted(self.reasons.items(), key=lambda x: x[1], reverse=True)
+        return {
+            "total_candidates": self.total,
+            "kept": self.kept,
+            "rejections_total": max(0, self.total - self.kept),
+            "rejection_reasons": [{"reason": r, "count": c} for r, c in sorted_reasons],
+            "samples": {k: v for k, v in self.samples.items()},
+        }
+
+    def log(self, logger_obj=None, prefix: str = "PMCC_DEBUG"):
+        payload = self.summary()
+        txt = json.dumps(payload, default=str, indent=2)
+        if logger_obj:
+            logger_obj.info(f"{prefix} summary:\n{txt}")
+        else:
+            print(f"{prefix} summary:\n{txt}")
+
+
+
 # Constants
 POLYGON_BASE_URL = "https://api.polygon.io"
 HTTP_TIMEOUT = httpx.Timeout(30.0, connect=10.0)
@@ -183,8 +225,8 @@ PMCC_PROFILES = {
         "long_delta_min": 0.70,
         "long_delta_max": 0.80,
         "long_itm_pct": 0.10,  # ITM >= 10%
-        "short_delta_min": 0.20,
-        "short_delta_max": 0.30,
+        "short_delta_min": 0.25,
+        "short_delta_max": 0.35,
         "short_dte_min": 25,
         "short_dte_max": 45,
     },
@@ -196,7 +238,7 @@ PMCC_PROFILES = {
         "long_delta_min": 0.65,
         "long_delta_max": 0.75,
         "short_delta_min": 0.30,
-        "short_delta_max": 0.40,
+        "short_delta_max": 0.45,
         "short_dte_min": 20,
         "short_dte_max": 40,
     },
@@ -1798,6 +1840,7 @@ class PrecomputedScanService:
         fetcher.set_total_symbols(len(symbols))
         
         opportunities = []
+        pmcc_debug = RejectStats(sample_limit=5)
         stats = {
             "total_symbols": len(symbols),
             "passed_technical": 0,
@@ -1840,17 +1883,20 @@ class PrecomputedScanService:
                     fund_results.append(fund_data)
             
             for j, symbol in enumerate(batch):
+                pmcc_debug.total += 1
                 tech_data = tech_results[j]
                 fund_data = fund_results[j]
                 symbol_is_etf = is_etf(symbol)
                 
                 # Handle fetch failures gracefully
                 if tech_data is None:
+                    pmcc_debug.reject("fetch_failed_technical", {"symbol": symbol})
                     continue
                 
                 # Apply technical filters (same as covered call)
                 tech_pass, _ = self.passes_technical_filters(tech_data, cc_profile)
                 if not tech_pass:
+                    pmcc_debug.reject("fails_technical_filters", {"symbol": symbol, "close": tech_data.get("close")})
                     continue
                 stats["passed_technical"] += 1
                 
@@ -1865,16 +1911,19 @@ class PrecomputedScanService:
                     # Stock: Apply fundamental filters
                     # Handle fundamental fetch failure
                     if fund_data is None:
+                        pmcc_debug.reject("fetch_failed_fundamental", {"symbol": symbol})
                         continue
                     
                     # Apply fundamental filters
                     fund_pass, _ = self.passes_fundamental_filters(fund_data, cc_profile)
                     if not fund_pass:
+                        pmcc_debug.reject("fails_fundamental_filters", {"symbol": symbol})
                         continue
                     stats["passed_fundamental"] += 1
                 
                 current_price = tech_data.get("close", 0)
                 if current_price <= 0:
+                    pmcc_debug.reject("missing_underlying_price", {"symbol": symbol, "close": current_price})
                     continue
                 
                 # Fetch LEAPS (long leg) with resilience
@@ -1891,6 +1940,7 @@ class PrecomputedScanService:
                 )
                 
                 if not leaps:
+                    pmcc_debug.reject("no_leaps", {"symbol": symbol, "price": current_price})
                     continue
                 stats["has_leaps"] += 1
                 
@@ -1907,6 +1957,7 @@ class PrecomputedScanService:
                 )
                 
                 if not short_calls:
+                    pmcc_debug.reject("no_short_calls", {"symbol": symbol, "price": current_price})
                     continue
                 stats["has_short_call"] += 1
                 
@@ -1934,6 +1985,20 @@ class PrecomputedScanService:
                 
                 if not is_valid:
                     # Skip this combination - fails solvency or break-even
+                    # Record which rule(s) rejected so "0 results" can be diagnosed quickly.
+                    pmcc_debug.reject("pmcc_structure_rejected", {"symbol": symbol, "flags": structure_flags})
+                    try:
+                        if isinstance(structure_flags, dict):
+                            for k, v in structure_flags.items():
+                                if v:
+                                    pmcc_debug.reject(f"pmcc_rule_{k}", {"symbol": symbol})
+                        elif isinstance(structure_flags, (list, tuple, set)):
+                            for k in structure_flags:
+                                pmcc_debug.reject(f"pmcc_rule_{k}", {"symbol": symbol})
+                        elif isinstance(structure_flags, str) and structure_flags:
+                            pmcc_debug.reject(f"pmcc_rule_{structure_flags}", {"symbol": symbol})
+                    except Exception:
+                        pass
                     logger.debug(f"PMCC_STRUCTURE_REJECTED | symbol={symbol} | flags={structure_flags}")
                     continue
                 
@@ -2016,6 +2081,7 @@ class PrecomputedScanService:
                     "num_analysts": fund_data.get("num_analysts", 0),
                     "target_price": fund_data.get("target_price"),
                 })
+                pmcc_debug.keep()
             
             # Inter-batch delay
             await asyncio.sleep(1.0)
@@ -2042,5 +2108,7 @@ class PrecomputedScanService:
                    f"{stats['passed_fundamental']} passed fund, "
                    f"{stats['has_leaps']} had LEAPS, "
                    f"{stats['has_short_call']} had short calls")
+        pmcc_debug.log(logger_obj=logger, prefix=f"PMCC_DEBUG_{risk_profile}")
+
         
         return opportunities

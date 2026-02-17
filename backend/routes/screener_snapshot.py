@@ -48,8 +48,7 @@ from services.iv_rank_service import (
 )
 
 # Import enrichment service for IV Rank and Analyst data
-from services.enrichment_service import enrich_row, strip_enrichment_debug
-
+# NOTE: Enrichment is DB-only in scan paths (no live Yahoo calls)
 # Import quote cache for after-hours support
 from services.quote_cache_service import get_quote_cache
 
@@ -929,46 +928,53 @@ async def _get_cc_from_legacy(filters: Dict[str, Any], limit: int) -> List[Dict]
 
 async def _merge_analyst_enrichment(opportunities: List[Dict], debug_enrichment: bool = False) -> List[Dict]:
     """
-    Merge analyst enrichment data from symbol_enrichment collection.
-    Falls back to live Yahoo enrichment for missing symbols.
-    
-    READ-TIME ENRICHMENT (Feb 2026):
-    - Fetches enrichment for all symbols in batch from DB
-    - For missing symbols: uses live enrichment_service
-    - Merges analyst_rating_label, analyst_rating_value, analyst_opinions, target_price_mean
-    - Does NOT modify or fail if enrichment missing
-    
+    Merge analyst enrichment data from symbol_enrichment collection (DB-only).
+
+    ARCHITECTURE (Feb 2026): NO LIVE YAHOO CALLS
+    - Fetches enrichment for all symbols in batch from MongoDB (symbol_enrichment)
+    - For missing symbols: leaves analyst fields as-is (typically null) and (optionally) adds debug metadata
+    - Merges: analyst_rating_label, analyst_rating_value, analyst_opinions, target_price_mean/high/low
+    - Non-fatal: never breaks the response if enrichment is missing or query fails
+
     PERFORMANCE: Requires index on symbol_enrichment.symbol (unique)
     """
     if not opportunities:
         return opportunities
-    
+
     try:
         # Extract unique symbols
-        symbols = list(set(opp.get("symbol") for opp in opportunities if opp.get("symbol")))
-        
+        symbols = list({opp.get("symbol") for opp in opportunities if opp.get("symbol")})
+
         if not symbols:
             return opportunities
-        
+
         # Batch fetch all enrichments from DB (uses index)
         enrichment_cursor = db.symbol_enrichment.find(
             {"symbol": {"$in": symbols}},
-            {"_id": 0, "symbol": 1, "analyst_rating_label": 1, "analyst_rating_value": 1, 
-             "analyst_opinions": 1, "target_price_mean": 1, "target_price_high": 1, "target_price_low": 1}
+            {
+                "_id": 0,
+                "symbol": 1,
+                "analyst_rating_label": 1,
+                "analyst_rating_value": 1,
+                "analyst_opinions": 1,
+                "target_price_mean": 1,
+                "target_price_high": 1,
+                "target_price_low": 1,
+            },
         )
         enrichments = await enrichment_cursor.to_list(length=len(symbols))
-        
+
         # Build lookup dict
-        enrichment_map = {e["symbol"]: e for e in enrichments}
-        
-        # Track which symbols need live enrichment
-        missing_symbols = [s for s in symbols if s not in enrichment_map]
-        
+        enrichment_map = {e["symbol"]: e for e in enrichments if e.get("symbol")}
+
         # Merge into opportunities
         for opp in opportunities:
             symbol = opp.get("symbol")
-            enrichment = enrichment_map.get(symbol, {})
-            
+            if not symbol:
+                continue
+
+            enrichment = enrichment_map.get(symbol)
+
             if enrichment:
                 # Use DB enrichment
                 opp["analyst_rating_label"] = enrichment.get("analyst_rating_label")
@@ -977,28 +983,30 @@ async def _merge_analyst_enrichment(opportunities: List[Dict], debug_enrichment:
                 opp["target_price_mean"] = enrichment.get("target_price_mean")
                 opp["target_price_high"] = enrichment.get("target_price_high")
                 opp["target_price_low"] = enrichment.get("target_price_low")
+
+                # Legacy field used by UI
                 opp["analyst_rating"] = enrichment.get("analyst_rating_label")
-                
+
                 if debug_enrichment:
                     opp["enrichment_applied"] = True
                     opp["enrichment_sources"] = {"analyst": "db", "iv_rank": "none"}
             else:
-                # Fall back to live enrichment for missing symbols
-                try:
-                    enrich_row(symbol, opp, skip_iv_rank=True)
-                    strip_enrichment_debug(opp, include_debug=debug_enrichment)
-                except Exception as e:
-                    logging.debug(f"Live enrichment failed for {symbol}: {e}")
-                    if debug_enrichment:
-                        opp["enrichment_applied"] = False
-                        opp["enrichment_sources"] = {"analyst": "none", "iv_rank": "none"}
-        
-        logging.debug(f"Enriched {len(enrichments)}/{len(symbols)} from DB, {len(missing_symbols)} from live")
+                # No fallback: keep deterministic, DB-only behaviour.
+                if debug_enrichment:
+                    opp["enrichment_applied"] = False
+                    opp["enrichment_sources"] = {"analyst": "none", "iv_rank": "none"}
+
+        if debug_enrichment:
+            missing_count = max(len(symbols) - len(enrichment_map), 0)
+            logging.debug(
+                f"Analyst enrichment: {len(enrichment_map)}/{len(symbols)} symbols enriched from DB, "
+                f"{missing_count} missing (no live fallback)."
+            )
+
         return opportunities
-        
+
     except Exception as e:
         logging.warning(f"Analyst enrichment merge failed (non-fatal): {e}")
-        # Return opportunities unchanged - don't break response
         # Return opportunities unchanged - don't break response
         return opportunities
 
@@ -1263,9 +1271,9 @@ async def screen_covered_calls(
 # Must match eod_pipeline.py values exactly
 PMCC_MIN_LEAP_DTE = 365   # 12 months minimum
 PMCC_MAX_LEAP_DTE = 730   # 24 months maximum (~2 years)
-PMCC_MIN_SHORT_DTE = 30   # Minimum 30 days (institutional)
+PMCC_MIN_SHORT_DTE = 21   # Minimum 30 days (institutional)
 PMCC_MAX_SHORT_DTE = 45   # Maximum 45 days (institutional)
-PMCC_MIN_DELTA = 0.80     # Deep ITM for LEAPS (institutional)
+PMCC_MIN_DELTA = 0.75     # Deep ITM for LEAPS (institutional)
 
 # PMCC Price filters (different from CC)
 PMCC_STOCK_MIN_PRICE = 30.0
