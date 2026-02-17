@@ -927,12 +927,14 @@ async def _get_cc_from_legacy(filters: Dict[str, Any], limit: int) -> List[Dict]
 # ANALYST ENRICHMENT MERGE (READ-TIME)
 # ============================================================
 
-async def _merge_analyst_enrichment(opportunities: List[Dict]) -> List[Dict]:
+async def _merge_analyst_enrichment(opportunities: List[Dict], debug_enrichment: bool = False) -> List[Dict]:
     """
     Merge analyst enrichment data from symbol_enrichment collection.
+    Falls back to live Yahoo enrichment for missing symbols.
     
     READ-TIME ENRICHMENT (Feb 2026):
-    - Fetches enrichment for all symbols in batch
+    - Fetches enrichment for all symbols in batch from DB
+    - For missing symbols: uses live enrichment_service
     - Merges analyst_rating_label, analyst_rating_value, analyst_opinions, target_price_mean
     - Does NOT modify or fail if enrichment missing
     
@@ -948,7 +950,7 @@ async def _merge_analyst_enrichment(opportunities: List[Dict]) -> List[Dict]:
         if not symbols:
             return opportunities
         
-        # Batch fetch all enrichments (uses index)
+        # Batch fetch all enrichments from DB (uses index)
         enrichment_cursor = db.symbol_enrichment.find(
             {"symbol": {"$in": symbols}},
             {"_id": 0, "symbol": 1, "analyst_rating_label": 1, "analyst_rating_value": 1, 
@@ -959,27 +961,44 @@ async def _merge_analyst_enrichment(opportunities: List[Dict]) -> List[Dict]:
         # Build lookup dict
         enrichment_map = {e["symbol"]: e for e in enrichments}
         
+        # Track which symbols need live enrichment
+        missing_symbols = [s for s in symbols if s not in enrichment_map]
+        
         # Merge into opportunities
         for opp in opportunities:
             symbol = opp.get("symbol")
             enrichment = enrichment_map.get(symbol, {})
             
-            # Merge analyst fields (explicit null if not present)
-            opp["analyst_rating_label"] = enrichment.get("analyst_rating_label")
-            opp["analyst_rating_value"] = enrichment.get("analyst_rating_value")
-            opp["analyst_opinions"] = enrichment.get("analyst_opinions")
-            opp["target_price_mean"] = enrichment.get("target_price_mean")
-            opp["target_price_high"] = enrichment.get("target_price_high")
-            opp["target_price_low"] = enrichment.get("target_price_low")
-            
-            # Legacy field for backward compatibility
-            opp["analyst_rating"] = enrichment.get("analyst_rating_label")
+            if enrichment:
+                # Use DB enrichment
+                opp["analyst_rating_label"] = enrichment.get("analyst_rating_label")
+                opp["analyst_rating_value"] = enrichment.get("analyst_rating_value")
+                opp["analyst_opinions"] = enrichment.get("analyst_opinions")
+                opp["target_price_mean"] = enrichment.get("target_price_mean")
+                opp["target_price_high"] = enrichment.get("target_price_high")
+                opp["target_price_low"] = enrichment.get("target_price_low")
+                opp["analyst_rating"] = enrichment.get("analyst_rating_label")
+                
+                if debug_enrichment:
+                    opp["enrichment_applied"] = True
+                    opp["enrichment_sources"] = {"analyst": "db", "iv_rank": "none"}
+            else:
+                # Fall back to live enrichment for missing symbols
+                try:
+                    enrich_row(symbol, opp, skip_iv_rank=True)
+                    strip_enrichment_debug(opp, include_debug=debug_enrichment)
+                except Exception as e:
+                    logging.debug(f"Live enrichment failed for {symbol}: {e}")
+                    if debug_enrichment:
+                        opp["enrichment_applied"] = False
+                        opp["enrichment_sources"] = {"analyst": "none", "iv_rank": "none"}
         
-        logging.debug(f"Enriched {len(enrichments)}/{len(symbols)} symbols with analyst data")
+        logging.debug(f"Enriched {len(enrichments)}/{len(symbols)} from DB, {len(missing_symbols)} from live")
         return opportunities
         
     except Exception as e:
         logging.warning(f"Analyst enrichment merge failed (non-fatal): {e}")
+        # Return opportunities unchanged - don't break response
         # Return opportunities unchanged - don't break response
         return opportunities
 
