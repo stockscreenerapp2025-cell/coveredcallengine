@@ -1,0 +1,97 @@
+{
+  "summary": "PMCC Solvency Rule with 20% Tolerance Testing Complete - All 23 tests passed. The fix for PMCC scans returning zero opportunities is verified working correctly.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_pmcc_solvency_tolerance.py",
+    "/app/test_reports/pytest/pytest_pmcc_solvency_tolerance.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "✓ 20% solvency tolerance implemented in pricing_rules.py validate_pmcc_solvency() at line 78",
+    "✓ 20% solvency tolerance implemented in eod_pipeline.py validate_pmcc_structure() at line 1288-1292",
+    "✓ Rule: pass if net_debit <= width * 1.20 (instead of strict width > net_debit)",
+    "✓ PMCC conservative endpoint returns 8 opportunities (previously 0)",
+    "✓ PMCC balanced endpoint returns 1 opportunity",
+    "✓ All returned opportunities pass the 20% tolerance rule",
+    "✓ All returned opportunities would have FAILED the strict rule (width > net_debit)",
+    "✓ API endpoints properly require authentication",
+    "✓ Invalid risk profiles return 400 error"
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_pmcc_solvency_tolerance.py"
+  ],
+  "success_rate": {
+    "backend": "100% (23/23 tests passed)"
+  },
+  "test_credentials": {
+    "email": "admin@premiumhunter.com",
+    "password": "admin123"
+  },
+  "seed_data_creation": "None - tests use existing precomputed scan data",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "PMCC 20% solvency tolerance fix verified. The fix allows PMCC opportunities where net_debit <= width * 1.20 instead of strict width > net_debit. This resulted in 8 conservative PMCC opportunities (PFE, XOM, TFC, ABBV, SLB, HAL, IWM, XLV) that would have been rejected under the strict rule.",
+  "api_verification": {
+    "GET /api/scans/pmcc/conservative": {
+      "status": "200 OK",
+      "total_results": 8,
+      "is_precomputed": true,
+      "computed_at": "2026-02-17T22:55:18.439209+00:00",
+      "sample_results": [
+        {"symbol": "PFE", "width": 4.0, "net_debit": 4.52, "threshold": 4.80, "passes_tolerance": true},
+        {"symbol": "XOM", "width": 30.0, "net_debit": 32.11, "threshold": 36.00, "passes_tolerance": true},
+        {"symbol": "TFC", "width": 10.0, "net_debit": 11.85, "threshold": 12.00, "passes_tolerance": true},
+        {"symbol": "ABBV", "width": 55.0, "net_debit": 56.02, "threshold": 66.00, "passes_tolerance": true},
+        {"symbol": "SLB", "width": 15.0, "net_debit": 15.36, "threshold": 18.00, "passes_tolerance": true}
+      ]
+    },
+    "GET /api/scans/pmcc/balanced": {
+      "status": "200 OK",
+      "total_results": 1
+    },
+    "GET /api/scans/pmcc/aggressive": {
+      "status": "200 OK",
+      "total_results": 0
+    }
+  },
+  "unit_tests": {
+    "test_file": "/app/backend/tests/test_pmcc_solvency_tolerance.py",
+    "tests_passed": 23,
+    "tests_failed": 0,
+    "coverage": [
+      "TestPricingRulesSolvency: 8 tests - validate_pmcc_solvency() unit tests",
+      "TestEODPipelineSolvency: 3 tests - validate_pmcc_structure() unit tests",
+      "TestPricingRulesStructure: 2 tests - validate_pmcc_structure_rules() unit tests",
+      "TestPMCCAPIEndpoints: 7 tests - API endpoint integration tests",
+      "TestSolvencyEdgeCases: 3 tests - Edge case validation"
+    ]
+  },
+  "solvency_rule_verification": {
+    "old_rule": "width > net_debit (strict)",
+    "new_rule": "net_debit <= width * 1.20 (20% tolerance)",
+    "implementation_locations": [
+      "/app/backend/services/pricing_rules.py line 78-108",
+      "/app/backend/services/eod_pipeline.py line 1288-1292"
+    ],
+    "verified_scenarios": [
+      "net_debit == width: PASS (within tolerance)",
+      "net_debit < width: PASS",
+      "net_debit = width * 1.20: PASS (exactly at threshold)",
+      "net_debit between width and width*1.20: PASS",
+      "net_debit > width * 1.20: FAIL",
+      "width <= 0: FAIL (invalid width)"
+    ]
+  },
+  "mocked_apis": {
+    "has_mocked_apis": false,
+    "note": "All data comes from real precomputed scan results - no mocking"
+  }
+}
