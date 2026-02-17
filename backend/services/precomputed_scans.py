@@ -58,6 +58,14 @@ from services.resilient_fetch import (
 # Import universe builder for ETF detection
 from utils.universe import is_etf, get_scan_universe, get_tier_counts
 
+# Import shared pricing rules for global consistency
+from services.pricing_rules import (
+    get_sell_price,
+    get_buy_price,
+    validate_pmcc_structure_rules,
+    compute_pmcc_economics
+)
+
 # Configure logging
 logger = logging.getLogger(__name__)
 
