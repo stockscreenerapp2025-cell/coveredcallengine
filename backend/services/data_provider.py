@@ -287,42 +287,47 @@ _resilient_fetcher = ResilientYahooFetcher(max_concurrent=4)
 def _fetch_live_stock_quote_yahoo_sync(symbol: str) -> Optional[Dict[str, Any]]:
     """
     LIVE quote from Yahoo (blocking):
-    - Can reflect regular session, pre-market, or after-hours depending on timing.
+    - Uses fast_info.last_price when market is OPEN (primary)
+    - Falls back to info.regularMarketPrice if fast_info unavailable
+    - Uses history.Close[-1] when market is CLOSED
+    
+    GLOBAL CONSISTENCY: Uses yf_pricing.get_underlying_price_yf() helper
     """
     try:
+        # Import here to avoid circular import at module load time
+        from services.yf_pricing import get_underlying_price_yf
+        
+        n_et = now_et()
+        market_state = get_market_state(n_et)
+        
+        # Use shared yf_pricing helper for consistency
+        price, price_field_used, price_time = get_underlying_price_yf(symbol, market_state)
+        
+        if not price or price <= 0:
+            return None
+        
+        # Get additional info for change calculation
         import yfinance as yf
         ticker = yf.Ticker(symbol)
         info = ticker.info or {}
-
-        current_price = info.get("regularMarketPrice") or info.get("currentPrice") or info.get("previousClose") or 0
-        previous_close = info.get("previousClose") or current_price or 0
-
-        if not current_price or current_price <= 0:
-            return None
-
-        change = (current_price - previous_close) if previous_close else 0
+        
+        previous_close = info.get("previousClose") or info.get("regularMarketPreviousClose") or price
+        previous_close = _safe_float(previous_close, price)
+        
+        change = (price - previous_close) if previous_close else 0
         change_pct = (change / previous_close * 100) if previous_close else 0
-
-        # Best-effort timestamps (ET)
-        n_et = now_et()
-        ts_et = info.get("regularMarketTime")
-        ts_et_iso = n_et.isoformat()
-        if ts_et:
-            try:
-                ts_et_iso = datetime.fromtimestamp(ts_et, NY).isoformat()
-            except Exception:
-                ts_et_iso = n_et.isoformat()
 
         return {
             "symbol": symbol.upper(),
-            "price": round(float(current_price), 2),
+            "price": round(float(price), 2),
             "previous_close": round(float(previous_close), 2),
             "change": round(float(change), 2),
             "change_pct": round(float(change_pct), 2),
             "source": "yahoo_live",
             "is_live": True,
-            "market_state": get_market_state(n_et),
-            "timestamp_et": ts_et_iso,
+            "market_state": market_state,
+            "price_field_used": price_field_used,  # Added for consistency tracking
+            "timestamp_et": price_time or n_et.isoformat(),
         }
     except Exception as e:
         logging.warning(f"Yahoo live stock quote failed for {symbol}: {e}")
