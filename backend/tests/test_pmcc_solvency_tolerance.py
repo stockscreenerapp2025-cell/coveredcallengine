@@ -129,17 +129,18 @@ class TestEODPipelineSolvency:
     def test_structure_passes_with_20_percent_tolerance(self):
         """Test: PMCC structure passes when net_debit within 20% of width"""
         # width = 10, leap_ask = 15, short_bid = 3, net_debit = 12 (within 20%)
+        # Using tight spreads to pass liquidity checks (spread < 5%)
         is_valid, flags = validate_pmcc_structure(
             stock_price=55.0,
             leap_strike=50.0,  # ITM
             leap_ask=15.0,
-            leap_bid=14.0,
+            leap_bid=14.5,  # Tight spread: (15-14.5)/14.75 = 3.4%
             leap_delta=0.85,
             leap_dte=400,
             leap_oi=200,
             short_strike=60.0,  # OTM, width = 10
             short_bid=3.0,
-            short_ask=3.5,
+            short_ask=3.1,  # Tight spread: (3.1-3.0)/3.05 = 3.3%
             short_delta=0.25,
             short_dte=35,
             short_oi=200,
@@ -156,13 +157,13 @@ class TestEODPipelineSolvency:
             stock_price=55.0,
             leap_strike=50.0,  # ITM
             leap_ask=16.0,
-            leap_bid=15.0,
+            leap_bid=15.5,  # Tight spread
             leap_delta=0.85,
             leap_dte=400,
             leap_oi=200,
             short_strike=60.0,  # OTM, width = 10
             short_bid=3.0,
-            short_ask=3.5,
+            short_ask=3.1,  # Tight spread
             short_delta=0.25,
             short_dte=35,
             short_oi=200,
@@ -180,13 +181,13 @@ class TestEODPipelineSolvency:
             stock_price=55.0,
             leap_strike=50.0,
             leap_ask=12.0,
-            leap_bid=11.0,
+            leap_bid=11.6,  # Tight spread: (12-11.6)/11.8 = 3.4%
             leap_delta=0.85,
             leap_dte=400,
             leap_oi=200,
             short_strike=60.0,  # width = 10
             short_bid=3.0,
-            short_ask=3.5,
+            short_ask=3.1,  # Tight spread
             short_delta=0.25,
             short_dte=35,
             short_oi=200,
