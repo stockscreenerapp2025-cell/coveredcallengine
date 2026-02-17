@@ -388,32 +388,47 @@ def fetch_quote_sync(symbol: str) -> Dict:
     
     PRICE SOURCE RULE (MANDATORY - Feb 2026):
     =========================================
-    STORE BOTH:
-    - session_close_price = regularMarketPrice (current/last session close)
-    - prior_close_price = regularMarketPreviousClose (prior session close)
+    Uses shared yf_pricing.get_underlying_price_yf() for global consistency.
     
-    SELECT DETERMINISTICALLY BY MARKET STATE:
-    - CLOSED: stock_price = session_close_price (matches Yahoo "At close")
-    - OPEN: stock_price = prior_close_price (today hasn't closed yet)
+    MARKET OPEN:
+        - Primary: fast_info["last_price"]
+        - Fallback: info["regularMarketPrice"]
+        
+    MARKET CLOSED:
+        - Use: history(period="5d")["Close"].iloc[-1]
+        - FORBIDDEN: regularMarketPrice (can be stale/after-hours)
     
-    NO live price substitution - system is deterministic EOD.
     All raw Yahoo fields are stored for debugging.
     """
     try:
-        ticker = yf.Ticker(symbol)
-        info = ticker.info
+        # ============================================================
+        # STEP 1: Get market state using shared helper
+        # ============================================================
+        market_state = get_market_state()  # OPEN, EXTENDED, or CLOSED
         
-        if not info:
+        # ============================================================
+        # STEP 2: Get price using shared yf_pricing helper
+        # This enforces identical pricing rules everywhere
+        # ============================================================
+        price, price_field_used, price_time = get_underlying_price_yf(symbol, market_state)
+        
+        if price is None or price <= 0:
             return {
                 "symbol": symbol,
                 "success": False,
-                "error_type": "EMPTY_RESPONSE",
-                "error_detail": "Yahoo returned empty info"
+                "error_type": "NO_VALID_PRICE",
+                "error_detail": f"get_underlying_price_yf returned price={price}, field={price_field_used}",
+                "market_state": market_state
             }
         
         # ============================================================
-        # STEP 1: Extract ALL raw Yahoo price fields for debugging
+        # STEP 3: Get additional metadata from ticker.info
+        # (for debugging and enrichment, NOT for pricing)
         # ============================================================
+        ticker = yf.Ticker(symbol)
+        info = ticker.info or {}
+        
+        # Extract raw prices for debugging only
         raw_prices = {
             "regularMarketPrice": info.get("regularMarketPrice"),
             "regularMarketPreviousClose": info.get("regularMarketPreviousClose"),
@@ -425,83 +440,32 @@ def fetch_quote_sync(symbol: str) -> Dict:
             "preMarketPrice": info.get("preMarketPrice"),
         }
         
-        # ============================================================
-        # STEP 2: Get market state and timestamp
-        # ============================================================
-        market_status = info.get("marketState", "UNKNOWN")  # CLOSED, OPEN, PRE, POST, etc.
-        regular_market_time = info.get("regularMarketTime")  # Unix timestamp (epoch)
+        # Get Yahoo's market state for reference
+        yahoo_market_status = info.get("marketState", "UNKNOWN")
         
-        # Convert timestamp to ISO string for storage
-        as_of = None
-        if regular_market_time:
-            try:
-                as_of = datetime.fromtimestamp(regular_market_time, tz=timezone.utc).isoformat()
-            except Exception:
-                as_of = None
+        # Also store prior close for reference (not used for main price)
+        prior_close_price = info.get("regularMarketPreviousClose") or info.get("previousClose")
         
         # ============================================================
-        # STEP 3: STORE BOTH PRICE FIELDS (ALWAYS)
-        # ============================================================
-        session_close_price = info.get("regularMarketPrice")      # Current/last session close
-        prior_close_price = info.get("regularMarketPreviousClose")  # Prior session close
-        
-        # Validate both prices exist
-        if session_close_price is None or session_close_price <= 0:
-            return {
-                "symbol": symbol,
-                "success": False,
-                "error_type": "NO_SESSION_CLOSE",
-                "error_detail": f"regularMarketPrice={session_close_price} is invalid. Raw prices: {raw_prices}",
-                "raw_prices": raw_prices,
-                "market_status": market_status
-            }
-        
-        if prior_close_price is None or prior_close_price <= 0:
-            return {
-                "symbol": symbol,
-                "success": False,
-                "error_type": "NO_PRIOR_CLOSE",
-                "error_detail": f"regularMarketPreviousClose={prior_close_price} is invalid. Raw prices: {raw_prices}",
-                "raw_prices": raw_prices,
-                "market_status": market_status
-            }
-        
-        # ============================================================
-        # STEP 4: SELECT stock_price DETERMINISTICALLY BY MARKET STATE
-        # ============================================================
-        if market_status == "CLOSED":
-            # Market closed: Use session close (matches Yahoo "At close")
-            selected_price = session_close_price
-            stock_price_source = "SESSION_CLOSE"
-        elif market_status in ("OPEN", "PRE", "PREPRE", "POST", "POSTPOST"):
-            # Market open or extended hours: Use prior close (today hasn't closed)
-            selected_price = prior_close_price
-            stock_price_source = "PRIOR_CLOSE"
-        else:
-            # Unknown state: Default to session close with warning
-            selected_price = session_close_price
-            stock_price_source = "SESSION_CLOSE_DEFAULT"
-            logger.warning(f"[QUOTE] {symbol}: Unknown market_status={market_status}, defaulting to session_close")
-        
-        # ============================================================
-        # STEP 5: Build response with all context fields
+        # STEP 4: Build response with all context fields
         # ============================================================
         return {
             "symbol": symbol,
             "success": True,
             
-            # SELECTED PRICE (based on market state)
-            "price": selected_price,
-            "stock_price_source": stock_price_source,
+            # SELECTED PRICE (from shared yf_pricing helper)
+            "price": round(price, 2),
+            "stock_price_source": price_field_used,  # e.g., "history.Close[-1]" or "fast_info.last_price"
+            "price_time": price_time,
             
-            # BOTH PRICE FIELDS (always stored)
-            "session_close_price": session_close_price,
+            # ADDITIONAL PRICE FIELDS (for reference/debugging)
+            "session_close_price": info.get("regularMarketPrice"),  # May differ from selected price
             "prior_close_price": prior_close_price,
             
             # MARKET CONTEXT FIELDS
-            "market_status": market_status,
-            "as_of": as_of,
-            "regular_market_time": regular_market_time,
+            "market_state": market_state,  # From our internal logic
+            "market_status": yahoo_market_status,  # From Yahoo
+            "as_of": price_time,
             
             # RAW YAHOO FIELDS (for debugging)
             "raw_prices": raw_prices,
