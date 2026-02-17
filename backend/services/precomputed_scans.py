@@ -1903,20 +1903,50 @@ class PrecomputedScanService:
                 best_leap = leaps[0]  # Already sorted by quality
                 best_short = max(short_calls, key=lambda x: x.get("premium_yield", 0))
                 
-                # Calculate PMCC metrics
-                leap_cost = best_leap["premium"] * 100  # Cost to buy LEAP
-                short_premium = best_short["premium"] * 100  # Premium received
-                net_debit = leap_cost - short_premium
+                # ============================================================
+                # GLOBAL CONSISTENCY: Use shared pricing rules
+                # BUY LEAP at ASK, SELL short at BID
+                # ============================================================
+                leap_ask = best_leap["premium"]  # LEAPS use ASK for BUY
+                short_bid = best_short["premium"]  # Short calls use BID for SELL
+                
+                # ============================================================
+                # MANDATORY SAFETY RULES: Solvency + Break-even
+                # These are enforced in precomputed PMCC to match custom PMCC
+                # ============================================================
+                is_valid, structure_flags = validate_pmcc_structure_rules(
+                    long_strike=best_leap["strike"],
+                    short_strike=best_short["strike"],
+                    leap_ask=leap_ask,
+                    short_bid=short_bid
+                )
+                
+                if not is_valid:
+                    # Skip this combination - fails solvency or break-even
+                    logger.debug(f"PMCC_STRUCTURE_REJECTED | symbol={symbol} | flags={structure_flags}")
+                    continue
+                
+                # Use shared economics computation for consistency
+                economics = compute_pmcc_economics(
+                    long_strike=best_leap["strike"],
+                    short_strike=best_short["strike"],
+                    leap_ask=leap_ask,
+                    short_bid=short_bid,
+                    current_price=current_price
+                )
+                
+                # Extract computed values
+                leap_cost = economics["leap_cost"]
+                short_premium = economics["short_premium"]
+                net_debit = economics["net_debit"]
+                net_debit_total = economics["net_debit_total"]
+                max_profit = economics["max_profit"]
+                max_profit_total = economics["max_profit_total"]
+                breakeven = economics["breakeven"]
+                capital_efficiency = economics["capital_efficiency"] or 0
                 
                 # ROI on capital deployed (LEAP cost)
-                roi_pct = (short_premium / leap_cost) * 100 if leap_cost > 0 else 0
-                
-                # Max profit = short strike - leap strike + net credit (if any)
-                max_profit_per_share = best_short["strike"] - best_leap["strike"]
-                max_profit = max_profit_per_share * 100
-                
-                # Capital efficiency vs buying stock
-                capital_efficiency = (current_price * 100) / net_debit if net_debit > 0 else 0
+                roi_pct = economics["roi_per_cycle"]
                 
                 # Calculate score
                 score = 0
@@ -1936,24 +1966,29 @@ class PrecomputedScanService:
                     "stock_price": round(current_price, 2),
                     "risk_profile": risk_profile,
                     "strategy": "pmcc",
-                    # Long leg (LEAP)
+                    # Long leg (LEAP) - BUY at ASK
                     "long_strike": best_leap["strike"],
                     "long_expiry": best_leap["expiry"],
                     "long_dte": best_leap["dte"],
-                    "long_premium": round(best_leap["premium"], 2),
+                    "long_premium": round(leap_ask, 2),  # ASK price used for BUY
                     "long_delta": best_leap["delta"],
                     "long_itm_pct": best_leap.get("itm_pct", 0),
-                    # Short leg
+                    # Short leg - SELL at BID
                     "short_strike": best_short["strike"],
                     "short_expiry": best_short["expiry"],
                     "short_dte": best_short["dte"],
-                    "short_premium": round(best_short["premium"], 2),
+                    "short_premium": round(short_bid, 2),  # BID price used for SELL
                     "short_delta": best_short["delta"],
-                    # Combined metrics
+                    # Combined metrics (from shared computation)
                     "net_debit": round(net_debit, 2),
-                    "roi_pct": round(roi_pct, 2),
+                    "net_debit_total": round(net_debit_total, 2),
+                    "width": economics["width"],
                     "max_profit": round(max_profit, 2),
+                    "max_profit_total": round(max_profit_total, 2),
+                    "breakeven": breakeven,
+                    "roi_pct": round(roi_pct, 2),
                     "capital_efficiency": round(capital_efficiency, 1),
+                    "pricing_rule": economics["pricing_rule"],
                     "score": round(score, 1),
                     # Technical indicators
                     "sma50": tech_data.get("sma50"),
