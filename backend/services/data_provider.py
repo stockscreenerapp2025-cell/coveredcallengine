@@ -369,37 +369,35 @@ def _fetch_stock_quote_yahoo_sync(symbol: str) -> Optional[Dict[str, Any]]:
     """
     Regular-session synced quote (blocking).
 
-    Returns the *most recent completed regular-session close*:
-    - If market is OPEN and Yahoo history includes today's row, use second-to-last close.
-    - Otherwise use last close.
-
+    GLOBAL CONSISTENCY: Uses yf_pricing.get_underlying_price_yf() helper
+    
+    PRICING RULES (Feb 2026):
+    - OPEN: fast_info.last_price (fallback: info.regularMarketPrice)
+    - CLOSED: history(period="5d")["Close"].iloc[-1]
+    
     Also returns post-market fields (best-effort) so display layers can choose safely.
     """
     try:
+        # Import here to avoid circular import at module load time
+        from services.yf_pricing import get_underlying_price_yf
+        
         import yfinance as yf
+        
+        n_et = now_et()
+        market_state = get_market_state(n_et)
+        
+        # Use shared yf_pricing helper for consistency
+        price, price_field_used, price_time = get_underlying_price_yf(symbol, market_state)
+        
+        if not price or price <= 0:
+            return None
+        
+        # Get additional info for metadata (NOT for pricing)
         ticker = yf.Ticker(symbol)
         info = ticker.info or {}
 
-        hist = ticker.history(period="7d")  # small buffer for weekends
-        if hist is None or hist.empty:
-            return None
-
-        n_et = now_et()
-        today = n_et.date()
-        last_date = hist.index[-1].date()
-
-        use_index = -1
-        if get_market_state(n_et) == "OPEN" and last_date == today and len(hist) >= 2:
-            use_index = -2
-
-        close_price = _safe_float(hist["Close"].iloc[use_index], 0.0)
-        close_date = hist.index[use_index].strftime("%Y-%m-%d") if close_price > 0 else None
-
-        if close_price <= 0:
-            return None
-
         # Best-effort extended-hours fields (for display ONLY)
-        regular_price = _safe_float(info.get("regularMarketPrice") or info.get("currentPrice") or close_price, close_price)
+        regular_price = _safe_float(info.get("regularMarketPrice") or info.get("currentPrice") or price, price)
         post_price = info.get("postMarketPrice")
         post_price = _safe_float(post_price, 0.0) if post_price is not None else None
 
@@ -432,16 +430,17 @@ def _fetch_stock_quote_yahoo_sync(symbol: str) -> Optional[Dict[str, Any]]:
 
         return {
             "symbol": symbol.upper(),
-            # SNAPSHOT price: last completed regular-session close
-            "price": round(close_price, 2),
-            "previous_close": round(close_price, 2),
-            "close_date": close_date,
+            # SNAPSHOT price: from shared yf_pricing helper
+            "price": round(price, 2),
+            "previous_close": round(price, 2),  # For snapshot, previous_close = current close
+            "price_field_used": price_field_used,  # e.g., "history.Close[-1]"
+            "close_date": price_time[:10] if price_time and len(price_time) >= 10 else None,
             # Provide regular/post fields for display layers (optional)
-            "regular_price": round(_safe_float(regular_price, close_price), 2),
+            "regular_price": round(_safe_float(regular_price, price), 2),
             "post_price": round(_safe_float(post_price, 0.0), 2) if post_price is not None else None,
             "timestamp_regular_et": ts_regular_et,
             "timestamp_post_et": ts_post_et,
-            "market_state": get_market_state(n_et),
+            "market_state": market_state,
             "timestamp_et": (ts_post_et or ts_regular_et or n_et.isoformat()),
             "analyst_rating": analyst_rating,
             "market_cap": info.get("marketCap", 0),
