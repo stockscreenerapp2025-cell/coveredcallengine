@@ -1678,26 +1678,32 @@ async def get_admin_status(user: dict = Depends(get_current_user)):
     
     # ================================================================
     # QUERY LATEST COMPLETED SCAN RUN (status=COMPLETED only)
+    # Fallback to any latest run if no COMPLETED runs exist (for backward compat)
     # ================================================================
     latest_completed = await db.scan_run_summary.find_one(
         {"status": "COMPLETED"},
         sort=[("as_of", -1)]
     )
     
-    # Also check for any in-progress run
+    # Also check for any latest run (regardless of status)
     latest_any = await db.scan_run_summary.find_one(
         {},
         sort=[("as_of", -1)]
     )
     
-    run_in_progress = (
-        latest_any and 
-        latest_any.get("run_id") != (latest_completed.get("run_id") if latest_completed else None) and
-        latest_any.get("status") != "COMPLETED"
-    )
+    # Determine run_in_progress flag
+    run_in_progress = False
+    if latest_any and latest_completed:
+        run_in_progress = (
+            latest_any.get("run_id") != latest_completed.get("run_id") and
+            latest_any.get("status") not in ("COMPLETED", "FAILED")
+        )
+    elif latest_any and not latest_completed:
+        # No completed runs, check if latest is in progress
+        run_in_progress = latest_any.get("status") not in ("COMPLETED", "FAILED", None)
     
-    # Use latest COMPLETED run for Data Quality metrics
-    latest_summary = latest_completed
+    # Use latest COMPLETED run, or fallback to latest any run (backward compat)
+    latest_summary = latest_completed or latest_any
     
     if latest_summary:
         # Fast path: read pre-computed values from summary document
@@ -1708,11 +1714,24 @@ async def get_admin_status(user: dict = Depends(get_current_user)):
         valid_chains = latest_summary.get("chain_success_count", structure_valid)
         
         # New metrics for Data Quality scoring
-        coverage_ratio = latest_summary.get("coverage_ratio", 0)
+        # Calculate coverage_ratio if not stored (backward compat)
+        total_symbols_from_summary = latest_summary.get("total_symbols", total_symbols)
+        if latest_summary.get("coverage_ratio") is not None:
+            coverage_ratio = latest_summary.get("coverage_ratio", 0)
+        else:
+            coverage_ratio = valid_chains / total_symbols_from_summary if total_symbols_from_summary > 0 else 0
+        
         throttle_ratio = latest_summary.get("throttle_ratio", 0)
         rate_limited_chain_count = latest_summary.get("rate_limited_chain_count", 0)
         missing_quote_fields_count = latest_summary.get("missing_quote_fields_count", 0)
-        run_status = latest_summary.get("status", "UNKNOWN")
+        
+        # Status handling (backward compat: treat missing status as COMPLETED if data exists)
+        run_status = latest_summary.get("status")
+        if run_status is None and structure_valid > 0:
+            run_status = "COMPLETED"  # Assume old successful runs are completed
+        elif run_status is None:
+            run_status = "UNKNOWN"
+        
         run_duration = latest_summary.get("duration_seconds", 0)
         
         # Pre-computed exclusion breakdowns
