@@ -1936,8 +1936,6 @@ class PrecomputedScanService:
                 )
                 
                 # Extract computed values
-                leap_cost = economics["leap_cost"]
-                short_premium = economics["short_premium"]
                 net_debit = economics["net_debit"]
                 net_debit_total = economics["net_debit_total"]
                 max_profit = economics["max_profit"]
