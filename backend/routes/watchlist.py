@@ -35,6 +35,8 @@ from services.data_provider import (
 # CCE Volatility & Greeks Correctness - Use shared services
 from services.greeks_service import calculate_greeks, normalize_iv_fields
 from services.iv_rank_service import get_iv_metrics_for_symbol
+# Import enrichment service for IV Rank and Analyst data
+from services.enrichment_service import enrich_row, strip_enrichment_debug
 
 # ADR-001: Import EOD Price Contract (for backward compat only)
 from services.eod_ingestion_service import (
