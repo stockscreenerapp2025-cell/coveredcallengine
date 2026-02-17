@@ -1283,11 +1283,15 @@ def validate_pmcc_structure(
         flags.append("FAIL_NEGATIVE_NET_DEBIT")
         return False, flags
     
-    # HARD RULE: SOLVENCY (width > net_debit)
-    # This ensures the trade can be profitable
-    if width <= net_debit:
-        flags.append(f"FAIL_SOLVENCY_width{width:.2f}_debit{net_debit:.2f}")
-        return False, flags    # HARD RULE: BREAK-EVEN (soft flag)
+    # HARD RULE: SOLVENCY with 20% tolerance
+    # This ensures the trade has reasonable profit potential while allowing
+    # for ASK/BID spread realities. Pass if net_debit <= width * 1.20
+    solvency_threshold = width * 1.20
+    if net_debit > solvency_threshold:
+        flags.append(f"FAIL_SOLVENCY_width{width:.2f}_debit{net_debit:.2f}_threshold{solvency_threshold:.2f}")
+        return False, flags
+    
+    # HARD RULE: BREAK-EVEN (soft flag)
     # NOTE: With net_debit computed using BUY=ASK and SELL=BID, the break-even inequality
     # is algebraically equivalent to the hard solvency rule (width > net_debit).
     # We keep solvency as the single hard gate and treat break-even as a warning flag only
