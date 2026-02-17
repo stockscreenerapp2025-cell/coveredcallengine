@@ -1020,7 +1020,10 @@ async def get_dashboard_opportunities(
         final_opportunities = top_weekly + top_monthly
         
         # ========== ENRICHMENT: IV Rank + Analyst Data (LAST STEP) ==========
+        logging.info(f"[ENRICHMENT DEBUG] Before: CCL analyst_rating={[o.get('analyst_rating') for o in final_opportunities if o.get('symbol')=='CCL']}")
         final_opportunities = await enrich_rows_batch(final_opportunities)
+        logging.info(f"[ENRICHMENT DEBUG] After: CCL analyst_rating={[o.get('analyst_rating') for o in final_opportunities if o.get('symbol')=='CCL']}")
+        logging.info(f"[ENRICHMENT DEBUG] After: CCL _meta={[o.get('_enrichment_meta') for o in final_opportunities if o.get('symbol')=='CCL']}")
         
         # Handle debug flag
         for opp in final_opportunities:
