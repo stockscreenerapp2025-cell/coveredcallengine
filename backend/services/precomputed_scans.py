@@ -224,9 +224,9 @@ PMCC_PROFILES = {
         "long_dte_max": 730,
         "long_delta_min": 0.70,
         "long_delta_max": 0.80,
-        "long_itm_pct": 0.10,  # ITM >= 10%
-        "short_delta_min": 0.25,
-        "short_delta_max": 0.35,
+        "long_itm_pct": 0.05,  # ITM >= 10%
+        "short_delta_min": 0.20,
+        "short_delta_max": 0.30,
         "short_dte_min": 25,
         "short_dte_max": 45,
     },
@@ -237,8 +237,9 @@ PMCC_PROFILES = {
         "long_dte_max": 730,
         "long_delta_min": 0.65,
         "long_delta_max": 0.75,
+        "long_itm_pct": 0.05,
         "short_delta_min": 0.30,
-        "short_delta_max": 0.45,
+        "short_delta_max": 0.40,
         "short_dte_min": 20,
         "short_dte_max": 40,
     },
