@@ -357,31 +357,17 @@ class PrecomputedScanService:
                 # Get technical indicators from last row (for SMA/RSI/ATR)
                 latest = hist.iloc[-1]
                 
-                # Default to the last available row
-                use_index = -1
-                
-                # If market is OPEN and the last row is from today, use second-to-last row
-                # This gives us the previous market close instead of today's intraday close
-                if not is_market_closed() and last_date == today:
-                    use_index = -2
-                
-                # Safety check: ensure we have enough data for the selected index
-                if len(hist) >= abs(use_index):
-                    latest = hist.iloc[use_index]
-                else:
-                    latest = hist.iloc[-1]
-                
-                close = latest['Close']
-                
                 # Calculate 20-day average volume
                 avg_volume_20d = hist['Volume'].tail(20).mean()
                 
                 # Check for gaps in last 10 days
                 max_gap_10d = hist['daily_change_pct'].tail(10).max()
                 
+                # NOTE: 'close' comes from shared helper, NOT reassigned here
                 return {
                     "symbol": symbol,
-                    "close": float(close),
+                    "close": float(close),  # From get_underlying_price_yf()
+                    "close_field_used": field_used,  # Track which field was used
                     "sma20": float(latest['SMA20']) if pd.notna(latest['SMA20']) else None,
                     "sma50": float(latest['SMA50']) if pd.notna(latest['SMA50']) else None,
                     "sma200": float(latest['SMA200']) if pd.notna(latest['SMA200']) else None,
