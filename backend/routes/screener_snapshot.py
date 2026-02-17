@@ -47,6 +47,9 @@ from services.iv_rank_service import (
     IVMetrics
 )
 
+# Import enrichment service for IV Rank and Analyst data
+from services.enrichment_service import enrich_row, strip_enrichment_debug
+
 # Import quote cache for after-hours support
 from services.quote_cache_service import get_quote_cache
 
