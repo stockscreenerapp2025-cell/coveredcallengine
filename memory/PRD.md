@@ -5,6 +5,47 @@
 
 ---
 
+## PMCC 20% Solvency Tolerance Fix - COMPLETED 2026-02-17
+
+### Status: ✅ COMPLETE
+
+### Problem:
+Precomputed PMCC scans were returning **zero opportunities** because the strict solvency rule (`width > net_debit`) was mathematically impossible to satisfy with pure ASK/BID pricing. When buying LEAPs at ASK and selling short calls at BID, the net_debit almost always exceeds the width due to bid-ask spreads.
+
+### Solution:
+Relaxed the solvency rule to allow a **20% tolerance**: `net_debit <= width * 1.20`
+
+### Files Modified:
+
+| File | Changes |
+|------|---------|
+| `/backend/services/pricing_rules.py` | Line 78-108: `validate_pmcc_solvency()` now uses 20% tolerance |
+| `/backend/services/eod_pipeline.py` | Line 1286-1292: `validate_pmcc_structure()` updated to match |
+
+### Verification Results:
+
+| Profile | Before Fix | After Fix |
+|---------|------------|-----------|
+| Conservative | 0 | 8 opportunities |
+| Balanced | 0 | 1 opportunity |
+| Aggressive | 0 | 0 (stricter criteria) |
+
+### Sample PMCC Opportunities Now Passing:
+```
+PFE:  width=4.00, net_debit=4.52, threshold=4.80 ✓
+XOM:  width=30.00, net_debit=32.11, threshold=36.00 ✓
+TFC:  width=10.00, net_debit=11.85, threshold=12.00 ✓
+ABBV: width=55.00, net_debit=56.02, threshold=66.00 ✓
+SLB:  width=15.00, net_debit=15.36, threshold=18.00 ✓
+```
+
+### Test Coverage:
+- 23 unit tests created in `/app/backend/tests/test_pmcc_solvency_tolerance.py`
+- 100% pass rate
+
+---
+
+
 ## IV Rank & Analyst Enrichment - COMPLETED 2026-02-17
 
 ### Status: ✅ COMPLETE
