@@ -139,8 +139,8 @@ Implement institutional-grade filtering rules for PMCC (Poor Man's Covered Call)
 | `FAIL_LIQUIDITY_LEAP_SPREAD_x%` | leap_spread > 5% | Rejected |
 | `FAIL_SHORT_DTE_xxx` | short_dte outside 30-45 | Rejected |
 | `FAIL_SHORT_DELTA_x.xx` | short_delta outside 0.20-0.30 | Rejected |
-| `FAIL_SOLVENCY_xxx` | width ≤ net_debit | Rejected |
-| `FAIL_BREAK_EVEN_xxx` | short_strike ≤ breakeven | Rejected |
+| `FAIL_SOLVENCY_xxx` | net_debit > width * 1.20 | Rejected (20% tolerance) |
+| `WARN_BREAK_EVEN_xxx` | short_strike ≤ breakeven | Warning (soft flag) |
 | `WIDE_SPREAD` | spread > 10% | Flagged (soft) |
 | `LOW_OI` | OI < 50 | Flagged (soft) |
 | `NO_LAST` | No last traded price | Flagged (soft) |
