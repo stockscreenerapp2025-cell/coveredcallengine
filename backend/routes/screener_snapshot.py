@@ -1462,6 +1462,7 @@ async def screen_pmcc(
     min_short_dte: int = Query(PMCC_MIN_SHORT_DTE, ge=1),
     max_short_dte: int = Query(PMCC_MAX_SHORT_DTE, le=60),
     min_delta: float = Query(PMCC_MIN_DELTA, ge=0.5, le=0.95),
+    debug_enrichment: bool = Query(False, description="Include enrichment debug info"),
     user: dict = Depends(get_current_user)
 ):
     """
