@@ -301,11 +301,14 @@ class PrecomputedScanService:
         Fetch technical indicators for a symbol using Yahoo Finance.
         Returns SMA50, SMA200, RSI14, ATR14, volume data.
         
-        IMPORTANT: Uses PREVIOUS MARKET CLOSE for price consistency.
-        If market is open and last history date is today, use second-to-last row.
+        GLOBAL CONSISTENCY: Uses get_underlying_price_yf() for close price.
         """
         try:
             def _fetch_yahoo():
+                # Import shared helper inside thread to avoid circular imports
+                from services.yf_pricing import get_underlying_price_yf
+                from services.data_provider import get_market_state
+                
                 ticker = yf.Ticker(symbol)
                 # Get 200 days of history for SMA200
                 hist = ticker.history(period="1y")
@@ -334,11 +337,25 @@ class PrecomputedScanService:
                 # Calculate daily change % for gap detection
                 hist['daily_change_pct'] = hist['Close'].pct_change().abs()
                 
-                # PRICE CONSISTENCY FIX: Use PREVIOUS MARKET CLOSE
-                # If market is open and last history date is today, use second-to-last row
-                eastern = pytz.timezone('US/Eastern')
-                today = datetime.now(eastern).date()
-                last_date = hist.index[-1].date()
+                # ============================================================
+                # GLOBAL CONSISTENCY: Use shared yf_pricing helper for close
+                # This ensures precomputed uses IDENTICAL price as Dashboard
+                # ============================================================
+                market_state = get_market_state()
+                close, field_used, price_time = get_underlying_price_yf(symbol, market_state)
+                
+                if close is None or close <= 0:
+                    # Fallback to history if helper fails
+                    close = float(hist['Close'].iloc[-1])
+                    field_used = "history_fallback"
+                
+                # Log for verification (NVDA only for debugging)
+                if symbol == "NVDA":
+                    logger.info(f"[PRECOMPUTED_PRICE_CHECK] symbol={symbol} market_state={market_state} "
+                               f"helper_price={close} field_used={field_used} price_time={price_time}")
+                
+                # Get technical indicators from last row (for SMA/RSI/ATR)
+                latest = hist.iloc[-1]
                 
                 # Default to the last available row
                 use_index = -1
