@@ -41,10 +41,10 @@ import numpy as np
 from concurrent.futures import ThreadPoolExecutor
 
 # Import centralized market status helper
-from services.data_provider import is_market_closed
+from .data_provider import is_market_closed
 
 # Import resilient fetch service for scan timeout handling
-from services.resilient_fetch import (
+from .resilient_fetch import (
     ResilientYahooFetcher,
     fetch_with_resilience,
     get_scan_semaphore,
@@ -59,7 +59,7 @@ from services.resilient_fetch import (
 from utils.universe import is_etf, get_scan_universe, get_tier_counts
 
 # Import shared pricing rules for global consistency
-from services.pricing_rules import (
+from .pricing_rules import (
     get_sell_price,
     get_buy_price,
     validate_pmcc_structure_rules,
@@ -68,7 +68,7 @@ from services.pricing_rules import (
 
 # Import shared yfinance helpers for global consistency
 # ALL underlying price and option chain fetches MUST use these helpers
-from services.yf_pricing import (
+from .yf_pricing import (
     get_underlying_price_yf,
     get_option_chain_yf,
     get_all_expirations_yf
@@ -306,8 +306,8 @@ class PrecomputedScanService:
         try:
             def _fetch_yahoo():
                 # Import shared helper inside thread to avoid circular imports
-                from services.yf_pricing import get_underlying_price_yf
-                from services.data_provider import get_market_state
+                from .yf_pricing import get_underlying_price_yf
+                from .data_provider import get_market_state
                 
                 ticker = yf.Ticker(symbol)
                 # Get 200 days of history for SMA200
@@ -568,7 +568,7 @@ class PrecomputedScanService:
                             
                             # Calculate delta using Black-Scholes
                             # (Removed moneyness-based delta fallback for accuracy)
-                            from services.greeks_service import calculate_greeks, normalize_iv_fields
+                            from .greeks_service import calculate_greeks, normalize_iv_fields
                             
                             iv_data = normalize_iv_fields(iv_raw)
                             T = max(dte, 1) / 365.0
@@ -742,7 +742,7 @@ class PrecomputedScanService:
                                     
                                     # Calculate delta using Black-Scholes
                                     # Note: Polygon doesn't provide IV, so we use proxy sigma
-                                    from services.greeks_service import calculate_greeks
+                                    from .greeks_service import calculate_greeks
                                     
                                     T = max(dte, 1) / 365.0
                                     greeks_result = calculate_greeks(
@@ -1538,7 +1538,7 @@ class PrecomputedScanService:
                                 continue  # Too deep ITM
                             
                             # Calculate delta using Black-Scholes
-                            from services.greeks_service import calculate_greeks, normalize_iv_fields
+                            from .greeks_service import calculate_greeks, normalize_iv_fields
                             
                             iv_raw = row.get('impliedVolatility', 0)
                             iv_data = normalize_iv_fields(iv_raw)
@@ -1698,7 +1698,7 @@ class PrecomputedScanService:
                                             pass
                                     
                                     # Calculate delta using Black-Scholes
-                                    from services.greeks_service import calculate_greeks
+                                    from .greeks_service import calculate_greeks
                                     
                                     T = max(dte, 1) / 365.0
                                     greeks_result = calculate_greeks(
