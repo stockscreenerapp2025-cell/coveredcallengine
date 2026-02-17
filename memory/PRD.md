@@ -1,7 +1,57 @@
 # Covered Call Engine - Product Requirements Document
 
 ## Last Updated
-2026-02-16 - Strict PMCC Institutional Rules Implementation COMPLETE
+2026-02-17 - Global yfinance Pricing Consistency Implementation COMPLETE
+
+---
+
+## Global yfinance Pricing Consistency - COMPLETED 2026-02-17
+
+### Status: ✅ COMPLETE
+
+### Objective:
+Enforce identical yfinance pricing fields across ALL modules (Dashboard, CC, PMCC, Customised Scans, Precomputed Scans, Simulator, Watchlist).
+
+### Single Source of Truth Helpers:
+
+| Helper | File | Purpose |
+|--------|------|---------|
+| `get_underlying_price_yf()` | `/backend/services/yf_pricing.py` | Get stock price using correct field based on market state |
+| `get_option_chain_yf()` | `/backend/services/yf_pricing.py` | Get option chain with consistent column names |
+
+### Pricing Rules (Enforced Globally):
+
+| Market State | Field Used | Forbidden Fields |
+|--------------|------------|------------------|
+| **OPEN** | `fast_info.last_price` (primary), `info.regularMarketPrice` (fallback) | postMarketPrice, preMarketPrice, currentPrice |
+| **CLOSED** | `history(period="5d")["Close"].iloc[-1]` | regularMarketPrice, regularMarketPreviousClose |
+
+### Option Chain Columns (Consistent Everywhere):
+- `bid` (used for SELL)
+- `ask` (used for BUY)
+- `openInterest`
+- `volume`
+- `impliedVolatility`
+- `strike`
+- `lastTradeDate`
+
+### Files Modified:
+
+| File | Changes |
+|------|---------|
+| `/backend/services/yf_pricing.py` | **NEW** - Shared yfinance helpers for price and chain |
+| `/backend/services/pricing_rules.py` | Added solvency/breakeven validation for precomputed PMCC |
+| `/backend/services/eod_pipeline.py` | Updated `fetch_quote_sync` to use `get_underlying_price_yf()` |
+| `/backend/services/data_provider.py` | Updated `_fetch_stock_quote_yahoo_sync` and `_fetch_live_stock_quote_yahoo_sync` to use shared helper |
+| `/backend/services/precomputed_scans.py` | Added imports for shared helpers |
+
+### Verification:
+```
+NVDA Price Consistency Test (Market CLOSED):
+  Dashboard: $182.81 (history.Close[-1])
+  Precomputed (EOD): $182.81 (history.Close[-1])
+  All prices identical: ✅ YES
+```
 
 ---
 
