@@ -1541,6 +1541,7 @@ async def screen_pmcc(
     }
 @screener_router.get("/dashboard-opportunities")
 async def get_dashboard_opportunities(
+    debug_enrichment: bool = Query(False, description="Include enrichment debug info"),
     user: dict = Depends(get_current_user)
 ):
     """
