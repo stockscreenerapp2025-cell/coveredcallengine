@@ -1020,18 +1020,16 @@ async def get_dashboard_opportunities(
         final_opportunities = top_weekly + top_monthly
         
         # ========== ENRICHMENT: IV Rank + Analyst Data (LAST STEP) ==========
-        # Enrich each row synchronously in thread pool for reliability
-        from concurrent.futures import ThreadPoolExecutor
+        # Direct synchronous enrichment for reliability
         from services.enrichment_service import enrich_row
         
-        def _do_enrich(opp):
+        for opp in final_opportunities:
             symbol = opp.get("symbol", "")
             if symbol:
-                enrich_row(symbol, opp)
-            return opp
-        
-        with ThreadPoolExecutor(max_workers=5) as executor:
-            list(executor.map(_do_enrich, final_opportunities))
+                try:
+                    enrich_row(symbol, opp)
+                except Exception as e:
+                    logging.warning(f"Enrichment failed for {symbol}: {e}")
         
         # Handle debug flag
         for opp in final_opportunities:
