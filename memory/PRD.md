@@ -1,7 +1,7 @@
 # Covered Call Engine - Product Requirements Document
 
 ## Last Updated
-2026-02-17 - PMCC 20% Solvency Tolerance Fix COMPLETE
+2026-02-17 - Freeze at Market Close Policy Fix COMPLETE
 
 ---
 
