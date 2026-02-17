@@ -573,6 +573,13 @@ async def screen_covered_calls(
         
         opportunities = sorted(best_by_symbol.values(), key=lambda x: x["score"], reverse=True)
         
+        # ========== ENRICHMENT: IV Rank + Analyst Data (LAST STEP) ==========
+        opportunities = await enrich_rows_batch(opportunities)
+        
+        # Handle debug flag
+        for opp in opportunities:
+            strip_enrichment_debug(opp, include_debug=debug_enrichment)
+        
         # PHASE 2: Log cache performance
         logging.info(f"Custom scan cache stats: {cache_stats}")
         
