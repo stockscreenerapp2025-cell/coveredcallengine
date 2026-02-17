@@ -75,6 +75,8 @@ from services.quality_score import (
 )
 # Import universe builder for ETF detection
 from utils.universe import is_etf, ETF_WHITELIST
+# Import enrichment service for IV Rank and Analyst data
+from services.enrichment_service import enrich_rows_batch, strip_enrichment_debug
 
 screener_router = APIRouter(tags=["Screener"])
 
