@@ -746,6 +746,7 @@ async def _get_best_opportunity_eod(symbol: str) -> dict:
 @watchlist_router.get("/")
 async def get_watchlist(
     use_live_prices: bool = Query(False, description="Use LIVE intraday prices instead of EOD (default: EOD)"),
+    debug_enrichment: bool = Query(False, description="Include enrichment debug info"),
     user: dict = Depends(get_current_user)
 ):
     """
