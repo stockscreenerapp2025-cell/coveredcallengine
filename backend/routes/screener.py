@@ -987,6 +987,13 @@ async def get_dashboard_opportunities(
         # Combine: Weekly first (priority), then Monthly
         final_opportunities = top_weekly + top_monthly
         
+        # ========== ENRICHMENT: IV Rank + Analyst Data (LAST STEP) ==========
+        final_opportunities = await enrich_rows_batch(final_opportunities)
+        
+        # Handle debug flag
+        for opp in final_opportunities:
+            strip_enrichment_debug(opp, include_debug=debug_enrichment)
+        
         weekly_count = len(top_weekly)
         monthly_count = len(top_monthly)
         
