@@ -569,6 +569,7 @@ async def get_simulator_trades(
     strategy_type: Optional[str] = Query(None),
     limit: int = Query(100, ge=1, le=1000),
     skip: int = Query(0, ge=0),
+    debug_enrichment: bool = Query(False, description="Include enrichment debug info"),
     user: dict = Depends(get_current_user)
 ):
     """Get all simulator trades for the user with optional filters"""
@@ -587,6 +588,18 @@ async def get_simulator_trades(
     ).sort("created_at", -1).skip(skip).limit(limit).to_list(limit)
     
     total = await db.simulator_trades.count_documents(query)
+    
+    # ========== ENRICHMENT: IV Rank + Analyst Data (LAST STEP) ==========
+    for trade in trades:
+        sym = trade.get("symbol", "")
+        if sym:
+            enrich_row(
+                sym, trade,
+                stock_price=trade.get("stock_price") or trade.get("entry_stock_price"),
+                expiry=trade.get("expiry") or trade.get("expiration"),
+                iv=trade.get("iv") or trade.get("implied_volatility")
+            )
+            strip_enrichment_debug(trade, include_debug=debug_enrichment)
     
     return {
         "trades": trades,
