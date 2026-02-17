@@ -45,6 +45,8 @@ from services.greeks_service import (
     normalize_iv_fields,
     get_risk_free_rate
 )
+# Import enrichment service for IV Rank and Analyst data
+from services.enrichment_service import enrich_row, strip_enrichment_debug
 
 simulator_router = APIRouter(tags=["Simulator"])
 
