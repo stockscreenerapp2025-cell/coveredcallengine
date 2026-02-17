@@ -5,6 +5,40 @@
 
 ---
 
+## Freeze at Market Close Policy Fix - COMPLETED 2026-02-17
+
+### Status: ✅ COMPLETE
+
+### Problem:
+Price/state mismatches were causing mass rejections due to:
+1. Admin Data Quality reporting "DELAYED" price source during AFTERHOURS/PREMARKET
+2. EOD bulk quote selecting wrong price field during OPEN hours
+
+### Solution:
+
+**A) Admin Data Quality price_source mapping** (`/app/backend/routes/screener_snapshot.py`):
+- Changed: Outside market OPEN (CLOSED, AFTERHOURS, PREMARKET) now reports `price_source = "PREV_CLOSE"`
+- Previously: AFTERHOURS/PREMARKET incorrectly reported "DELAYED"
+
+**B) EOD bulk quote selected price** (`/app/backend/services/eod_pipeline.py`):
+- ALWAYS use `session_close_price` (frozen close from last trading session)
+- OPEN: session_close_price (yesterday's close)
+- CLOSED: session_close_price (today's close after EOD)
+- Both `session_close_price` and `prior_close_price` are still stored for debugging
+
+### Verification:
+```
+Market State: AFTERHOURS
+Price Source: PREV_CLOSE  (was "DELAYED" before fix)
+
+EOD Pipeline (AAPL):
+  price = session_close_price: True
+  stock_price_source: SESSION_CLOSE
+```
+
+---
+
+
 ## PMCC 20% Solvency Tolerance Fix - COMPLETED 2026-02-17
 
 ### Status: ✅ COMPLETE
