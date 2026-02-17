@@ -334,7 +334,8 @@ async def enrich_rows_batch(
                 "enrichment_applied": False,
                 "enrichment_sources": {"analyst": "none", "iv_rank": "none"}
             }
-            tasks.append(asyncio.coroutine(lambda r=row: r)())
+            # Skip enrichment for rows without symbol
+            continue
         else:
             tasks.append(enrich_row_async(
                 symbol, row,
@@ -342,7 +343,10 @@ async def enrich_rows_batch(
                 skip_iv_rank=skip_iv_rank
             ))
     
-    return await asyncio.gather(*tasks)
+    if tasks:
+        await asyncio.gather(*tasks)
+    
+    return rows
 
 
 def strip_enrichment_debug(row: Dict[str, Any], include_debug: bool = False) -> Dict[str, Any]:
