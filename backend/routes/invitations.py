@@ -34,7 +34,7 @@ class InvitationRequest(BaseModel):
 
 # Environment URLs
 ENVIRONMENT_URLS = {
-    "test": "https://trade-insights-146.preview.emergentagent.com",
+    "test": "https://data-integrity-51.preview.emergentagent.com",
     "production": "https://coveredcallengine.com"
 }
 
