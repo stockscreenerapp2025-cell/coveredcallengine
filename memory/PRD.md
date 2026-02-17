@@ -1,7 +1,59 @@
 # Covered Call Engine - Product Requirements Document
 
 ## Last Updated
-2026-02-17 - Global yfinance Pricing Consistency Implementation COMPLETE
+2026-02-17 - IV Rank & Analyst Enrichment Implementation COMPLETE
+
+---
+
+## IV Rank & Analyst Enrichment - COMPLETED 2026-02-17
+
+### Status: ✅ COMPLETE
+
+### Objective:
+Ensure ALL strategy rows returned by live endpoints include consistent, non-null (when available) values for:
+- `iv_rank` (0-100 or null)
+- `analyst_rating` (string or null)
+- `analyst_opinions` (int or null)
+- `target_price_mean/high/low` (numbers or null)
+
+### Implementation:
+
+| File | Purpose |
+|------|---------|
+| `/backend/services/enrichment_service.py` | **NEW** - Single enrichment function for IV Rank + Analyst data |
+| `/backend/routes/screener_snapshot.py` | Updated `_merge_analyst_enrichment()` to fall back to live Yahoo |
+| `/backend/routes/watchlist.py` | Added enrichment at response time |
+| `/backend/routes/simulator.py` | Added enrichment at response time |
+
+### Enrichment Function:
+```python
+enrich_row(symbol, row, *, stock_price, expiry, strike, iv, skip_analyst, skip_iv_rank)
+```
+
+### Analyst Enrichment:
+- Source: Yahoo Finance `ticker.info`
+- Fields: `analyst_rating`, `analyst_opinions`, `target_price_mean/high/low`
+- Rule: If missing → return nulls. Do not fake.
+
+### IV Rank Enrichment:
+- Method: Lightweight chain percentile
+- Uses option chain IVs within ±15% of spot
+- Requires ≥20 valid IV points
+- Rule: Never return 0 unless rank truly computes to 0
+
+### Debug Flag:
+`?debug_enrichment=1` adds to each row:
+- `enrichment_applied`: true/false
+- `enrichment_sources`: { analyst: "yahoo"|"db"|"none", iv_rank: "chain_percentile"|"none" }
+
+### Verified Endpoints:
+```
+CCL Results (debug_enrichment=1):
+  Dashboard Top 10: enrichment_applied=true, analyst="yahoo"
+  Custom CC Scan: enrichment_applied=true, analyst="yahoo"
+  Watchlist: enrichment_applied=true, analyst="yahoo"
+  Simulator: enrichment_applied=true, analyst="yahoo"
+```
 
 ---
 
