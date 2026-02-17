@@ -10,7 +10,7 @@ from datetime import datetime
 
 class LiveDataTester:
     def __init__(self):
-        self.base_url = "https://stockdata-engine.preview.emergentagent.com"
+        self.base_url = "https://trade-insights-146.preview.emergentagent.com"
         self.token = None
         self.session = requests.Session()
         

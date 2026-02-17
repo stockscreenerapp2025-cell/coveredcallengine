@@ -1,50 +1,46 @@
 <analysis>**original_problem_statement:**
-The user initiated a multi-phase project to overhaul the application's data processing and universe management.
-1.  **Phase 1: ETF Handling:** Make Exchange-Traded Funds (ETFs) first-class citizens in scan pipelines by cleanly skipping fundamental data fetching, which is not applicable to them.
-2.  **Phase 2: Universe Expansion:** Expand the symbol universe from a small hardcoded list to a tiered structure including the S&P 500, Nasdaq 100, and an ETF whitelist.
-3.  **UI & Data Quality:** As the universe expanded, the user requested UI enhancements and data integrity fixes.
-4.  **Performance & Scalability:** The expanded universe caused performance bottlenecks (rate limiting, timeouts). This led to a series of requests to optimize database queries with indexes and introduce a read-model for the admin dashboard.
-5.  **Final Architecture (EOD Pipeline):** The final and current user request is to build a deterministic, scalable End-of-Day (EOD) pipeline. This pipeline will build a target ~1500-symbol universe, fetch all required data after market close (including LEAPS for PMCC), pre-compute all scan results (CC & PMCC), and write everything to MongoDB. This makes the frontend UI pages read-only from the database, eliminating live, slow, and unreliable API calls to the data provider during user sessions. The final implementation also required hardening all strategy filtering rules and implementing a separate enrichment pipeline for analyst ratings.
+The user's project focuses on building a deterministic, scalable End-of-Day (EOD) data pipeline to eliminate slow, unreliable live API calls from the user-facing screener pages.
+
+**PRODUCT REQUIREMENTS:**
+1.  **EOD Pipeline:** Ingest a large universe of symbols, fetch all required data (stock quotes, full option chains), pre-compute all scan results (Covered Calls and PMCCs), and write the results to MongoDB.
+2.  **Data Integrity & Transparency:**
+    *   Fix the stock price source to match Yahoo's official At Close value.
+    *   Implement an Option Parity Model to store both execution-realistic prices (bid/ask) and display-friendly prices (last/mid).
+    *   Audit and fix the display of IV, IV Rank, and Analyst Ratings.
+    *   Align all pages to use the EOD pre-computed data by default.
+3.  **Strategy Hardening:** Implement strict, institutional-grade filtering rules for the PMCC strategy.
+4.  **Pipeline Reliability:** Make the EOD pipeline resilient to third-party API rate-limiting (e.g., Yahoo Finance).
+5.  **Data Quality Reporting:** Fix incorrect math in the run summary dashboard and make the health scoring logic robust and based on stable metrics like coverage ratio instead of volatile opportunity counts.
 
 **User's preferred language**: English
 
 **what currently exists?**
-The Deterministic EOD Pipeline is now fully implemented and operational. All primary user-facing screener endpoints (, , ) have been completely refactored to be fast, MongoDB read-only queries. All live  calls have been successfully eliminated from the request/response cycle, resulting in a performance improvement of over 10,000x (from tens of seconds to milliseconds per request).
+The EOD pipeline is fully functional and significantly hardened. It ingests symbols, fetches quotes and option chains in a throttle-safe manner, and pre-computes results for Covered Calls and PMCCs into MongoDB. All main screener endpoints read from this pre-computed data.
 
-The EOD pipeline correctly ingests all available option expirations, including the long-dated LEAPS required for PMCC calculations, fixing the previous PMCC=0 bug. A separate, scheduled enrichment job now fetches analyst ratings and stores them in a  collection, which is then joined into the API responses. The API response schemas for both CC and PMCC strategies have been standardized, hardened, and flattened to ensure data integrity and correct rendering on the UI. All historical filtering logic from the previous production version has been audited and reinstated, with several implicit rules made explicit and more robust.
+Key features and fixes implemented include:
+-   A two-stage, throttle-safe pipeline model that uses bulk fetching for quotes and paced, single-threaded fetching with retries for option chains, dramatically improving reliability against rate-limiting.
+-   Strict, institutional-grade filtering rules for the PMCC strategy have been implemented and validated.
+-   A  flag is now written to run summaries, allowing the frontend to reliably identify the Last Full Run.
+-   The Data Quality dashboard () has been refactored to use the new status flag and calculate its health score based on pipeline coverage, not opportunity count.
+-   Several data integrity issues have been resolved, including stock price sourcing, analyst data enrichment, and UI rendering for various metrics.
 
 **Last working item**:
--   **Last item agent was working:** The agent completed the final phase of the EOD pipeline implementation, focusing on data integrity and rule parity. This involved:
-    1.  Auditing and reinstating all historical filtering rules from the previous production version for both CC and PMCC strategies.
-    2.  Implementing stricter validation and adding a  field to capture soft rule violations.
-    3.  Implementing a new, scheduled service () to fetch and store analyst ratings.
-    4.  Updating the screener API endpoints to join the analyst rating data into the final response.
-    5.  Finalizing and locking the API response schemas for CC and PMCC results.
+-   **Last item agent was working:** A comprehensive overhaul of the EOD pipeline and data quality reporting to ensure stability and accuracy. This involved implementing a two-stage, throttle-safe data fetching model, adding a  flag to mark completed runs, fixing the math in the summary reports, and refactoring the data quality health score logic.
 -   **Status:** USER VERIFICATION PENDING
 -   **Agent Testing Done:** Y
--   **Which testing method agent to use?** both. A full end-to-end test is recommended. The backend testing agent should verify the API responses, including the newly added  and , and confirm that all hard filtering rules are correctly applied. The frontend testing agent should be used to take screenshots of the Screener and PMCC pages to confirm that all columns (especially Premium, IV, and Analyst Rating) are rendering the correct data from the new hardened schema without regressions.
+-   **Which testing method agent to use?** NA
 -   **User Testing Done:** N
 
 **All Pending/In progress Issue list**:
--   **Issue 1: Final verification of the EOD Pipeline and Screener Refactor (P0)**
--   **Issue 2: Inbound email replies not appearing in the support dashboard (P3 - Recurring)**
+-   **Issue 1: Inbound email replies not appearing in the support dashboard (P3 - Recurring)**
 
 **Issues Detail:**
--   **Issue 1: Final verification of the EOD Pipeline and Screener Refactor**
-    -   **Attempted fixes:** The entire feature has been implemented and manually tested by the agent.
+-   **Issue 1: Inbound email replies not appearing in the support dashboard**
+    -   **Attempted fixes:** None in recent sessions. This is a carry-over from a previous fork.
     -   **Next debug checklist:**
-        1.  Run the testing agent as described above to get comprehensive test coverage.
-        2.  Address any regressions or bugs found by the testing agent.
-        3.  Confirm with the user that the functionality meets all requirements.
-    -   **Why fix this issue and what will be achieved with the fix?** This will close out the massive EOD pipeline project, confirming the application is now fast, scalable, and reliable.
-    -   **Status:** USER VERIFICATION PENDING
-    -   **Is recurring issue?** N
-    -   **Should Test frontend/backend/both after fix?** both
-    -   **Blocked on other issue:** None
-
--   **Issue 2: Inbound email replies not appearing in the support dashboard**
-    -   **Attempted fixes:** None in this session. This issue was deprioritized to focus on the EOD pipeline.
-    -   **Next debug checklist:** Trace the IMAP sync logic in  and inspect the APScheduler logs for any errors during the  job.
+        1.  Trace the IMAP sync logic in .
+        2.  Inspect the APScheduler logs for the  job for any errors.
+        3.  Verify the environment variables related to the IMAP server connection in .
     -   **Why fix this issue and what will be achieved with the fix?** To restore core two-way email communication functionality in the admin support tool.
     -   **Status:** NOT STARTED
     -   **Is recurring issue?** Y
@@ -52,28 +48,33 @@ The EOD pipeline correctly ingests all available option expirations, including t
     -   **Blocked on other issue:** None
 
 **In progress Task List**:
-None. The main task is complete and pending user verification.
+-   None
 
 **Upcoming and Future Tasks**
 -   **Upcoming Tasks:**
-    -   (P3) **Fix Pre-existing Bugs:** Address the recurring inbound email issue and verify the Watchlist page functionality after the new EOD data model is in place.
--   **Future Tasks (Backlog):**
+    -   (P3) **Fix Pre-existing Bugs:** Address the recurring inbound email issue in the admin dashboard.
+-   **Future Tasks:**
     -   (P4) **Frontend Refactor:** Decompose the monolithic .
     -   (P4) **Backend Refactor:** Decompose the monolithic .
-    -   (P4) **Consolidate :** Refactor the module to be fully deprecated or utilized by the new services.
-    -   (P4) **Reconcile S&P 500 list** to match the official list of 500 symbols.
+    -   (P4) **Consolidate :** Refactor or deprecate this older module.
+    -   (P4) **Reconcile S&P 500 list:** Ensure the universe matches the official list of 500 symbols.
 
 **Completed work in this session**
--   **EOD Pipeline Implementation:** Completed the core logic for the EOD pipeline in , including universe building, data fetching, and CC/PMCC computation.
--   **Screener Performance Overhaul:** Rewrote the screener endpoints (, , ) in  to be fast, read-only queries against MongoDB, removing ~1000 lines of slow, live  code.
--   **LEAPS Ingestion Fix:** Modified the EOD pipeline to fetch all available option expirations, including LEAPS (365+ DTE), which resolved the issue of PMCC scans always returning zero results.
--   **Data Integrity and Schema Hardening:** Standardized and enforced explicit, flat schemas for all CC and PMCC API responses, fixing UI bugs related to incorrect data units (IV/IV%) and missing values (Premium).
--   **Strategy Rule Parity:** Audited and reinstated all historical filtering logic from the old production system, making implicit rules (like strike OTM) explicit and adding new validation ().
--   **Asynchronous Data Enrichment:** Created a new service  and a daily scheduled job to deterministically fetch and store analyst ratings, which are now joined into the API responses.
+-   **EOD Pipeline & Data Quality Overhaul:**
+    -   Implemented a two-stage, throttle-safe pipeline in  to stabilize data fetching against rate-limiting.
+    -   Added a  flag to  and  collections to reliably identify successful runs.
+    -   Fixed a critical math bug in  where the  count in the run summary was being calculated incorrectly.
+    -   Refactored the  endpoint in  to use the new status flag and base its health score on pipeline coverage, not opportunity count.
+    -   Enhanced the  document with more detailed metrics like , , and a breakdown of failure reasons.
+-   **Strict PMCC Rule Implementation:**
+    -   Updated constants and validation logic in  to enforce strict DTE, delta, liquidity, and solvency rules.
+    -   Updated the default query parameters in the  endpoint in  to align with the new rules.
+    -   Verified the implementation using the testing agent.
+-   **PRD Update:**
+    -   Updated  to document the newly implemented strict PMCC filtering rules.
 
 **Earlier issues found/mentioned but not fixed**
--   The recurring issue of inbound email replies not appearing in the support dashboard.
--   The need to formally verify Watchlist page functionality after major backend data-fetching changes.
+-   **Issue 1:** The recurring issue of inbound email replies not appearing in the support dashboard.
 
 **Known issue recurrence from previous fork**
 -   **Issue recurrence in previous fork:** Inbound email replies not reaching the support dashboard.
@@ -84,63 +85,53 @@ None. The main task is complete and pending user verification.
 
 
 **Key Technical Concepts**
--   **EOD (End-of-Day) Pipeline:** A scheduled, offline process to pre-compute all required data, decoupling the UI from slow live APIs.
--   **Read-Model Pattern:** The screener endpoints now read from pre-aggregated collections (, ), making them extremely fast.
--   **Asynchronous Data Enrichment:** A separate, scheduled job () enriches symbol data without blocking the main data pipeline or user requests.
--   **Deterministic API Schema:** Enforcing strict, flat, and versioned API schemas to prevent data integrity issues between the backend and frontend.
--   **Rule-based Data Validation:** Using explicit functions (, ) to enforce strategy rules at the data-generation layer.
+-   **Two-Stage Throttle-Safe Pipeline:** A pattern to make data ingestion more reliable. Stage 1 performs bulk operations (quotes via ), and Stage 2 performs paced, single-threaded operations (option chains via ) with delays and retries to avoid triggering API rate limits.
+-   **Status-Based Data Quality:** Using a  flag in run logs to reliably identify the latest full run. This prevents in-progress or failed runs from corrupting data quality metrics on the dashboard.
+-   **Coverage-Based Health Scoring:** Basing system health on the percentage of the universe successfully processed (), a stable metric, rather than the volatile number of trade opportunities found.
 
 **key DB schema**
--   ** / :** Store the final, pre-computed screener results with a hardened, flat schema including pricing rules, IV units, and quality flags.
--   **:** Stores underlying prices and full option chains (including LEAPS).
--   **:** Logs metadata for each EOD pipeline run.
--   **:** **(New)** Stores analyst ratings and other static data fetched by a separate daily job. Fields: , , , .
--   **:** Stores versioned lists of the generated universe.
+-   **:**
+    -   **Added:**  (e.g., COMPLETED), , , , , , , , , .
+    -   **Fixed:** The  and  fields now correctly represent the count of symbols that passed vs. failed the entire pipeline (quote + chain stages).
+-   **:**
+    -   **Added:**  (e.g., COMPLETED, FAILED).
 
 **All files of reference**
--   : Contains the primary logic for data fetching, computation, and validation.
--   : Contains the refactored, high-performance screener endpoints that read from the database.
--   : Contains the logic for the new asynchronous analyst rating job.
--   : Wires up the new scheduled jobs.
+-   : The core of the data processing logic. Contains the two-stage pipeline, strategy rules, and summary generation.
+-   : Contains the user-facing screener endpoints and the refactored  data quality endpoint.
+-   : The product requirements document.
 
 **Critical Info for New Agent**
--   The Deterministic EOD Pipeline project is functionally complete. **Do not attempt to re-implement it.** The main user-facing screener endpoints now read from pre-computed data in MongoDB, not from live APIs.
--   Your first task is to **verify the completed work** using the testing agent for both backend and frontend, as described in the Last working item section.
--   After verification is complete and confirmed by the user, the next priority is to address the long-standing, recurring bug with inbound email replies (P3).
--   All filtering logic for CC and PMCC scans now resides in . Any future changes to strategy rules should be made there, not in the  routes.
+-   The user's primary concerns regarding pipeline stability and data integrity have been addressed through significant refactoring of  and . The system is now much more robust.
+-   The next clear task is to address the long-standing (P3) bug concerning inbound email replies not appearing in the admin dashboard. The user has not explicitly requested it in this session, but it is the highest priority pending item.
+-   When working on the email issue, start by investigating  and the associated  scheduler job.
 
 **documents and test reports created in this job**
--    (Updated)
 -   
 
 **Last 10 User Messages and any pending HUMAN messages**
-1.  **User:** Demanded a detailed audit of the new architecture, questioning the data sources and schemas. Discovered the screeners were still using live Yahoo calls.
-2.  **Agent:** Performed the audit and confirmed the discrepancy.
-3.  **User:** Instructed the agent to rip out all live Yahoo calls from the request path and fix the PMCC LEAPS ingestion bug.
-4.  **Agent:** Implemented the performance and LEAPS fixes, resulting in >10,000x speedup and correcting the PMCC results.
-5.  **User:** Pointed out multiple data integrity and schema issues on the UI (incorrect prices, IV, missing premium). Demanded strict, flat schemas and deterministic pricing rules.
-6.  **Agent:** Rewrote the EOD pipeline and API transforms to produce and serve a hardened, explicit schema.
-7.  **User:** Requested a final rule-parity audit, reinforcement of all hard strategy filters (e.g., OTM requirements), and a deterministic solution for fetching analyst ratings.
-8.  **Agent:** Implemented final validation logic, created a separate enrichment service for analyst ratings, and confirmed rule parity.
-9.  **User:** None. The agent has addressed all of the user's requests.
-10. **User:** None.
+1.  **User:** Provided detailed list of strict rules for the PMCC strategy. (COMPLETED)
+2.  **User:** Reported high failure rates in EOD pipeline and requested a fix for rate limiting. (COMPLETED)
+3.  **User:** Reported a math bug in the universe breakdown on the dashboard (). (COMPLETED)
+4.  **User:** Provided a 4-part final request to harden the pipeline: (A) Implement a two-stage, throttle-safe process, (B) Add a  flag, (C) Fix data quality scoring, (D) Add more detailed fields to the run summary. (COMPLETED)
 
 **Project Health Check:**
-*   **Broken:**
-    *   Inbound Email Processing (recurring issue).
-*   **Needs Verification:**
-    *   Watchlist Page functionality post-refactor.
-*   **Fixed:**
-    *   Screener pages (, ) are now highly performant and reliable, running on the new EOD pipeline.
-    *   PMCC results are now correctly calculated due to the LEAPS ingestion fix.
-    *   UI data integrity issues (IV, premium, pricing) have been addressed through schema hardening.
+-   **Broken:**
+    -   Inbound Email Processing (recurring issue).
+-   **Needs Verification:**
+    -   None.
+-   **Fixed:**
+    -   EOD pipeline is now highly resilient to Yahoo Finance rate-limiting.
+    -   Data quality summary math is correct.
+    -   Data quality health score is now based on stable metrics (coverage, run status).
+    -   Last Full Run on the dashboard now correctly identifies the latest  run.
+    -   Strict PMCC rules are implemented and verified.
 
 **3rd Party Integrations**
-*   : Now used exclusively in offline, scheduled jobs (, ). It is no longer used in any live request/response cycle.
-*   : Used for scheduling the EOD pipeline and the symbol enrichment job.
-*   **PayPal**: Integrated for subscriptions, still pending final E2E user verification from a previous session.
-*   : Used for LLM integrations.
-*   usage: openai [-h] [-v] [-b API_BASE] [-k API_KEY] [-p PROXY [PROXY ...]]
+-   : Used for all stock and option data fetching in the EOD pipeline.
+-   : Schedules backend jobs, including the EOD pipeline and the broken email sync.
+-   **PayPal**: Integrated for subscriptions.
+-    & usage: openai [-h] [-v] [-b API_BASE] [-k API_KEY] [-p PROXY [PROXY ...]]
               [-o ORGANIZATION] [-t {openai,azure}]
               [--api-version API_VERSION] [--azure-endpoint AZURE_ENDPOINT]
               [--azure-ad-token AZURE_AD_TOKEN] [-V]
@@ -177,17 +168,17 @@ options:
                         https://www.microsoft.com/en-
                         us/security/business/identity-access/microsoft-entra-
                         id
-  -V, --version         show program's version number and exit SDK: Used for LLM integrations.
+  -V, --version         show program's version number and exit: Used for other LLM-related features.
 
 **Testing status**
--   **Testing agent used after significant changes:** YES (used once mid-way through the refactor)
+-   **Testing agent used after significant changes:** YES
 -   **Troubleshoot agent used after agent stuck in loop:** NO
--   **Test files created:** None.
--   **Known regressions:** None. The intentional performance regression on screeners was fixed.
+-   **Test files created:** None
+-   **Known regressions:** None
 
 **Credentials to test flow:**
-*   Admin user: 
-*   Password: 
+-   Admin user: 
+-   Password: 
 
 **What agent forgot to execute**
-The agent was extremely thorough and addressed all of the user's detailed and demanding requests. Nothing was forgotten. The only outstanding work is to run a final comprehensive test suite over the completed feature set before moving on to the backlog.</analysis>
+-   The agent successfully completed all requested tasks in the last session. The only remaining work is on a pre-existing, lower-priority bug that was not part of the active user requests.</analysis>
