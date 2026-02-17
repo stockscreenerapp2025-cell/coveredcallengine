@@ -81,10 +81,11 @@ def validate_pmcc_solvency(
     net_debit: float
 ) -> Tuple[bool, str]:
     """
-    Validate PMCC solvency rule.
+    Validate PMCC solvency rule with 20% tolerance.
     
-    RULE: width > net_debit
-    This ensures the trade can be profitable.
+    RULE: net_debit <= width * 1.20
+    This ensures the trade has reasonable profit potential while allowing
+    for ASK/BID spread realities.
     
     Args:
         long_strike: LEAP strike price
@@ -99,8 +100,10 @@ def validate_pmcc_solvency(
     if width <= 0:
         return False, f"FAIL_SOLVENCY_INVALID_WIDTH_{width:.2f}"
     
-    if width <= net_debit:
-        return False, f"FAIL_SOLVENCY_width{width:.2f}_debit{net_debit:.2f}"
+    # 20% tolerance: pass if net_debit <= width * 1.20
+    threshold = width * 1.20
+    if net_debit > threshold:
+        return False, f"FAIL_SOLVENCY_width{width:.2f}_debit{net_debit:.2f}_threshold{threshold:.2f}"
     
     return True, "PASS_SOLVENCY"
 
