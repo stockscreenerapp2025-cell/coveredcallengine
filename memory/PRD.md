@@ -127,8 +127,8 @@ Implement institutional-grade filtering rules for PMCC (Poor Man's Covered Call)
 | | Open Interest Min | ≥ 100 | Sufficient liquidity |
 | | Bid-Ask Spread Max | ≤ 5% | Reasonable execution costs |
 | | Strike Requirement | OTM ≥2% above stock | Safe profit zone |
-| **Structure** | Solvency | width > net_debit | Ensures profit possibility |
-| | Break-even | short_strike > BE | Short strike above break-even |
+| **Structure** | Solvency | net_debit ≤ width * 1.20 | 20% tolerance for ASK/BID spreads |
+| | Break-even | short_strike > BE (soft flag) | Warning only, not rejection |
 
 ### Quality Flags:
 | Flag | Trigger | Impact |
