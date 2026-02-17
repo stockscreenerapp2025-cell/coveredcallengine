@@ -1,0 +1,58 @@
+version: "3.9"
+
+services:
+  # --------------------------------------------------
+  # MongoDB (Test Environment)
+  # --------------------------------------------------
+  mongo:
+    image: mongo:7.0
+    container_name: cce_mongo_test
+    restart: unless-stopped
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: db_user
+      MONGO_INITDB_ROOT_PASSWORD: db_password
+      MONGO_INITDB_DATABASE: cce_db
+    volumes:
+      - mongo_data_test:/data/db
+    networks:
+      - cce_test_network
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 20s
+      timeout: 10s
+      retries: 5
+      start_period: 10s
+
+  # --------------------------------------------------
+  # Backend (FastAPI)
+  # --------------------------------------------------
+  backend:
+    build:
+      context: ..
+      dockerfile: backend/Dockerfile
+      target: production
+    container_name: cce_backend_test
+    restart: unless-stopped
+    environment:
+      MONGO_URL: mongodb://db_user:db_password@mongo:27017/cce_db
+      DB_NAME: cce_db
+    ports:
+      - "8000:8000"
+    depends_on:
+      mongo:
+        condition: service_healthy
+    networks:
+      - cce_test_network
+
+# --------------------------------------------------
+# Volumes
+# --------------------------------------------------
+volumes:
+  mongo_data_test:
+
+# --------------------------------------------------
+# Networks
+# --------------------------------------------------
+networks:
+  cce_test_network:
+    driver: bridge
