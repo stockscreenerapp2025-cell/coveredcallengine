@@ -184,6 +184,7 @@ async def screen_covered_calls(
     include_index: bool = Query(False),
     bypass_cache: bool = Query(False),
     enforce_phase4: bool = Query(True),  # PHASE 4: Enable system filters
+    debug_enrichment: bool = Query(False, description="Include enrichment debug info"),
     user: dict = Depends(get_current_user)
 ):
     """
