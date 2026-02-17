@@ -1023,13 +1023,23 @@ async def get_dashboard_opportunities(
         # Direct synchronous enrichment for reliability
         from services.enrichment_service import enrich_row
         
+        print(f"[ENRICHMENT] Starting enrichment for {len(final_opportunities)} opportunities")
+        
         for opp in final_opportunities:
             symbol = opp.get("symbol", "")
             if symbol:
                 try:
+                    before_rating = opp.get("analyst_rating")
                     enrich_row(symbol, opp)
+                    after_rating = opp.get("analyst_rating")
+                    if symbol == "CCL":
+                        print(f"[ENRICHMENT] CCL: before={before_rating}, after={after_rating}")
                 except Exception as e:
-                    logging.warning(f"Enrichment failed for {symbol}: {e}")
+                    print(f"[ENRICHMENT] Error for {symbol}: {e}")
+        
+        # Handle debug flag
+        for opp in final_opportunities:
+            strip_enrichment_debug(opp, include_debug=debug_enrichment)
         
         # Handle debug flag
         for opp in final_opportunities:
