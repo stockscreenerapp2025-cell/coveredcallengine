@@ -41,6 +41,16 @@ from services.universe_builder import (
 from utils.symbol_normalization import normalize_symbol
 from data.leaps_safe_universe import is_leaps_safe, get_leaps_safe_universe
 
+# Import shared yfinance helpers for global consistency
+# ALL underlying price and option chain fetches MUST use these helpers
+from services.yf_pricing import (
+    get_underlying_price_yf,
+    get_option_chain_yf,
+    get_all_expirations_yf,
+    get_underlying_prices_bulk_yf
+)
+from services.data_provider import get_market_state
+
 logger = logging.getLogger(__name__)
 
 # =============================================================================
