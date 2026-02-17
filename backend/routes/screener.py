@@ -217,6 +217,12 @@ async def screen_covered_calls(
     if not bypass_cache:
         cached_data = await funcs['get_cached_data'](cache_key)
         if cached_data:
+            # Apply enrichment to cached data too
+            opps = cached_data.get("opportunities", [])
+            if opps:
+                await enrich_rows_batch(opps)
+                for opp in opps:
+                    strip_enrichment_debug(opp, include_debug=debug_enrichment)
             cached_data["from_cache"] = True
             cached_data["market_closed"] = funcs['is_market_closed']()
             return cached_data
@@ -225,6 +231,12 @@ async def screen_covered_calls(
         if funcs['is_market_closed']():
             ltd_data = await funcs['get_last_trading_day_data'](cache_key)
             if ltd_data:
+                # Apply enrichment to last trading day data too
+                opps = ltd_data.get("opportunities", [])
+                if opps:
+                    await enrich_rows_batch(opps)
+                    for opp in opps:
+                        strip_enrichment_debug(opp, include_debug=debug_enrichment)
                 ltd_data["from_cache"] = True
                 ltd_data["market_closed"] = True
                 return ltd_data
