@@ -1,7 +1,7 @@
 # Covered Call Engine - Product Requirements Document
 
 ## Last Updated
-2026-02-17 - IV Rank & Analyst Enrichment Implementation COMPLETE
+2026-02-17 - PMCC 20% Solvency Tolerance Fix COMPLETE
 
 ---
 
