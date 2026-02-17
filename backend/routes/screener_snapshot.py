@@ -1609,7 +1609,7 @@ async def get_dashboard_opportunities(
     combined = top_weekly + top_monthly
     
     # ANALYST ENRICHMENT MERGE (READ-TIME)
-    combined = await _merge_analyst_enrichment(combined)
+    combined = await _merge_analyst_enrichment(combined, debug_enrichment=debug_enrichment)
     
     elapsed_ms = (time.time() - start_time) * 1000
     
