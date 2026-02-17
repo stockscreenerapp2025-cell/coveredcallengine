@@ -853,6 +853,14 @@ async def get_watchlist(
                 enriched["opportunity"] = opp
                 enriched["opportunity_source"] = "eod_precomputed" if opp else None
         
+        # ========== ENRICHMENT: IV Rank + Analyst Data (LAST STEP) ==========
+        enriched = enrich_row(
+            symbol, enriched,
+            stock_price=current_price,
+            skip_iv_rank=True  # Watchlist items don't have options IV
+        )
+        strip_enrichment_debug(enriched, include_debug=debug_enrichment)
+        
         enriched_items.append(enriched)
     
     return {
