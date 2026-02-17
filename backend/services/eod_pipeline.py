@@ -95,9 +95,11 @@ def fetch_bulk_quotes_sync(symbols: List[str], retry_count: int = 0) -> Dict[str
     - session_close_price = Close from download (last trading session)
     - prior_close_price = Previous day's close
     
-    SELECT DETERMINISTICALLY BY MARKET STATE:
-    - CLOSED: stock_price = session_close_price
-    - OPEN: stock_price = prior_close_price
+    SELECT DETERMINISTICALLY (FREEZE AT MARKET CLOSE):
+    - ALWAYS use session_close_price (frozen close from last trading session)
+    - OPEN: session_close_price (yesterday's close)
+    - CLOSED: session_close_price (today's close after EOD)
+    - Outside market hours: deterministic frozen close (session_close_price)
     """
     results = {}
     

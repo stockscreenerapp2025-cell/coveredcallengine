@@ -1919,14 +1919,12 @@ async def get_admin_status(user: dict = Depends(get_current_user)):
         current_market_state = "AFTERHOURS"
     
     # Determine price source based on market state
+    # FREEZE AT MARKET CLOSE POLICY: Outside OPEN, always report PREV_CLOSE
     if current_market_state == "OPEN":
         price_source = "LIVE"
-    elif current_market_state == "CLOSED":
-        price_source = "PREV_CLOSE"
-    elif current_market_state in ["PREMARKET", "AFTERHOURS"]:
-        price_source = "DELAYED"
     else:
-        price_source = "STALE"
+        # CLOSED, AFTERHOURS, PREMARKET all use frozen previous close
+        price_source = "PREV_CLOSE"
     
     # Get score distribution from precomputed scans
     try:
