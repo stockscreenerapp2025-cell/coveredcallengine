@@ -66,6 +66,14 @@ from services.pricing_rules import (
     compute_pmcc_economics
 )
 
+# Import shared yfinance helpers for global consistency
+# ALL underlying price and option chain fetches MUST use these helpers
+from services.yf_pricing import (
+    get_underlying_price_yf,
+    get_option_chain_yf,
+    get_all_expirations_yf
+)
+
 # Configure logging
 logger = logging.getLogger(__name__)
 
