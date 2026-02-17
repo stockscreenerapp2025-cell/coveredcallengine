@@ -1162,6 +1162,7 @@ async def screen_covered_calls(
     min_otm_pct: float = Query(0.0, ge=0),
     max_otm_pct: float = Query(20.0, le=50),
     use_eod_contract: bool = Query(True, description="Deprecated - always uses EOD data"),
+    debug_enrichment: bool = Query(False, description="Include enrichment debug info"),
     user: dict = Depends(get_current_user)
 ):
     """
