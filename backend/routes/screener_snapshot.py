@@ -1228,7 +1228,7 @@ async def screen_covered_calls(
     opportunities = [r for r in (_transform_cc_result(r) for r in results) if r is not None]
     
     # ANALYST ENRICHMENT MERGE (READ-TIME)
-    opportunities = await _merge_analyst_enrichment(opportunities)
+    opportunities = await _merge_analyst_enrichment(opportunities, debug_enrichment=debug_enrichment)
     
     elapsed_ms = (time.time() - start_time) * 1000
     logging.info(f"CC Screener: {len(opportunities)} results in {elapsed_ms:.1f}ms from {data_source}")
