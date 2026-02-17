@@ -1020,10 +1020,18 @@ async def get_dashboard_opportunities(
         final_opportunities = top_weekly + top_monthly
         
         # ========== ENRICHMENT: IV Rank + Analyst Data (LAST STEP) ==========
-        logging.info(f"[ENRICHMENT DEBUG] Before: CCL analyst_rating={[o.get('analyst_rating') for o in final_opportunities if o.get('symbol')=='CCL']}")
-        final_opportunities = await enrich_rows_batch(final_opportunities)
-        logging.info(f"[ENRICHMENT DEBUG] After: CCL analyst_rating={[o.get('analyst_rating') for o in final_opportunities if o.get('symbol')=='CCL']}")
-        logging.info(f"[ENRICHMENT DEBUG] After: CCL _meta={[o.get('_enrichment_meta') for o in final_opportunities if o.get('symbol')=='CCL']}")
+        # Enrich each row synchronously in thread pool for reliability
+        from concurrent.futures import ThreadPoolExecutor
+        from services.enrichment_service import enrich_row
+        
+        def _do_enrich(opp):
+            symbol = opp.get("symbol", "")
+            if symbol:
+                enrich_row(symbol, opp)
+            return opp
+        
+        with ThreadPoolExecutor(max_workers=5) as executor:
+            list(executor.map(_do_enrich, final_opportunities))
         
         # Handle debug flag
         for opp in final_opportunities:
