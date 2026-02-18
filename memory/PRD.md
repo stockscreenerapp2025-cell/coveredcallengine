@@ -1,7 +1,47 @@
 # Covered Call Engine - Product Requirements Document
 
 ## Last Updated
-2026-02-17 - Freeze at Market Close Policy Fix COMPLETE
+2026-02-18 - NaN Conversion Crash Fix VERIFIED
+
+---
+
+## NaN Conversion Crash Fix in EOD Pipeline - VERIFIED 2026-02-18
+
+### Status: ✅ VERIFIED
+
+### Problem:
+The EOD pipeline was crashing with `ValueError: cannot convert float NaN to integer` when parsing the 'Volume' field from `yfinance`, which sometimes returns `NaN`. This caused 370 symbols to be incorrectly excluded with `MISSING_QUOTE` reason.
+
+### Solution:
+Added `safe_int()` and `safe_float()` helper functions in `/app/backend/services/eod_pipeline.py` that:
+1. Check for `NaN` values BEFORE attempting type casting
+2. Handle numpy scalars correctly
+3. Return safe defaults instead of crashing
+
+### Files Modified:
+
+| File | Changes |
+|------|---------|
+| `/backend/services/eod_pipeline.py` | Lines 91-132: Added `safe_int()` and `safe_float()` helpers |
+
+### Verification Results (EOD Run 2026-02-18):
+
+| Metric | Before Fix | After Fix |
+|--------|------------|-----------|
+| MISSING_QUOTE exclusions | 370 | 0 |
+| Total exclusions | 412 | 33 |
+| NaN-related errors | Multiple crashes | 0 |
+| Symbols included | ~200 | 589 |
+
+### Current Exclusion Breakdown:
+- `MISSING_QUOTE_FIELDS`: 30 (legitimate - both price fields were None)
+- `MISSING_CHAIN`: 3 (legitimate - no option expirations available)
+
+### API Verification:
+```
+GET /api/screener/covered-calls - Returns 3 results ✅
+GET /api/admin/eod-snapshot/status - Returns correct EOD status ✅
+```
 
 ---
 
