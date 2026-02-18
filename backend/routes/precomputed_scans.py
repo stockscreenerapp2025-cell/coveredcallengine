@@ -41,12 +41,25 @@ scans_router = APIRouter(prefix="/scans", tags=["Pre-Computed Scans"])
 
 async def _get_latest_eod_run_id() -> Optional[str]:
     """Get the latest EOD pipeline run_id."""
+    # Try scan_runs first
     latest_run = await db.scan_runs.find_one(
         {"status": "completed"},
         {"run_id": 1, "_id": 0},
         sort=[("completed_at", -1)]
     )
-    return latest_run.get("run_id") if latest_run else None
+    if latest_run and latest_run.get("run_id"):
+        return latest_run.get("run_id")
+    
+    # Fallback: get run_id from most recent scan_results_cc entry
+    latest_cc = await db.scan_results_cc.find_one(
+        {},
+        {"run_id": 1, "_id": 0},
+        sort=[("created_at", -1)]
+    )
+    if latest_cc and latest_cc.get("run_id"):
+        return latest_cc.get("run_id")
+    
+    return None
 
 async def _get_eod_cc_opportunities(
     run_id: str,
