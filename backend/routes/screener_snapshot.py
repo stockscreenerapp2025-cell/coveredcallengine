@@ -34,6 +34,9 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from database import db
 from utils.auth import get_current_user
+import uuid
+import math
+import traceback
 
 # Import data_provider - ONLY for non-scan paths (Watchlist, Simulator)
 # SCAN PATHS (Screener, Dashboard, PMCC) MUST NOT use these for live fetching
