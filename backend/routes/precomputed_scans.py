@@ -209,35 +209,36 @@ def _transform_cc_for_scans(row: Dict) -> Dict:
     return result
 
 def _transform_pmcc_for_scans(row: Dict) -> Dict:
-    """Transform EOD PMCC row to scans API response format with float sanitization."""
+    """Transform EOD PMCC row to scans API response format with 2-decimal monetary precision."""
     result = {
         "symbol": row.get("symbol"),
-        "stock_price": sanitize_float(row.get("stock_price")),
+        # MONETARY: 2-decimal precision
+        "stock_price": sanitize_money(row.get("stock_price")),
         "stock_price_source": row.get("stock_price_source", "SESSION_CLOSE"),
-        "session_close_price": sanitize_float(row.get("session_close_price")),
-        "prior_close_price": sanitize_float(row.get("prior_close_price")),
+        "session_close_price": sanitize_money(row.get("session_close_price")),
+        "prior_close_price": sanitize_money(row.get("prior_close_price")),
         "market_status": row.get("market_status"),
-        # LEAP leg
-        "leap_strike": sanitize_float(row.get("leap_strike")),
+        # LEAP leg (BUY at ASK) - MONETARY: 2-decimal
+        "leap_strike": sanitize_money(row.get("leap_strike")),
         "leap_expiry": row.get("leap_expiry"),
         "leap_dte": row.get("leap_dte"),
-        "leap_ask": sanitize_float(row.get("leap_ask")),
-        "leap_bid": sanitize_float(row.get("leap_bid")),
+        "leap_ask": sanitize_money(row.get("leap_ask")),
+        "leap_bid": sanitize_money(row.get("leap_bid")),
         "leap_delta": sanitize_float(row.get("leap_delta")),
-        # Short leg
-        "short_strike": sanitize_float(row.get("short_strike")),
+        # Short leg (SELL at BID) - MONETARY: 2-decimal
+        "short_strike": sanitize_money(row.get("short_strike")),
         "short_expiry": row.get("short_expiry"),
         "short_dte": row.get("short_dte"),
-        "short_bid": sanitize_float(row.get("short_bid")),
-        "short_ask": sanitize_float(row.get("short_ask")),
+        "short_bid": sanitize_money(row.get("short_bid")),
+        "short_ask": sanitize_money(row.get("short_ask")),
         "short_delta": sanitize_float(row.get("short_delta")),
-        # Economics
-        "net_debit": sanitize_float(row.get("net_debit")),
-        "width": sanitize_float(row.get("width")),
-        "max_profit": sanitize_float(row.get("max_profit")),
-        "breakeven": sanitize_float(row.get("breakeven")),
-        "roi_annualized": sanitize_float(row.get("roi_annualized")),
-        # Greeks & IV
+        # Economics - MONETARY: 2-decimal
+        "net_debit": sanitize_money(row.get("net_debit")),
+        "width": sanitize_money(row.get("width")),
+        "max_profit": sanitize_money(row.get("max_profit")),
+        "breakeven": sanitize_money(row.get("breakeven")),
+        "roi_annualized": sanitize_percentage(row.get("roi_annualized"), 1),
+        # Greeks & IV (non-monetary)
         "iv": sanitize_float(row.get("iv")),
         "iv_pct": sanitize_float(row.get("iv_pct")),
         "iv_rank": sanitize_float(row.get("iv_rank")),
