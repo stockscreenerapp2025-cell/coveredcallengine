@@ -440,7 +440,7 @@ async def get_covered_call_scan(
         "aggressive": {"label": "Premium Hunter", "description": "Strong momentum with premium maximization"}
     }
     
-    return {
+    return sanitize_response({
         "strategy": "covered_call",
         "risk_profile": risk_profile,
         "label": labels[risk_profile]["label"],
@@ -456,7 +456,7 @@ async def get_covered_call_scan(
         "live_data_used": False,
         "latency_ms": round(elapsed_ms, 1),
         "trace_id": trace_id
-    }
+    })
 
 
 @scans_router.get("/pmcc/{risk_profile}")
