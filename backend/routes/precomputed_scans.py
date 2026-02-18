@@ -75,6 +75,13 @@ def sanitize_dict(d: Dict) -> Dict:
             result[key] = value
     return result
 
+def sanitize_response(data: Dict) -> Dict:
+    """
+    Sanitize entire response dict to ensure JSON serializability.
+    Replaces NaN/inf with None.
+    """
+    return sanitize_dict(data)
+
 # ==================== EOD READ HELPERS ====================
 
 async def _get_latest_eod_run_id() -> Optional[str]:
