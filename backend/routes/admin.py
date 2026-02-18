@@ -1684,16 +1684,26 @@ async def get_excluded_symbols(
     if run_id:
         query["run_id"] = run_id
     else:
-        # Find the latest run_id
-        latest = await db.scan_universe_audit.find_one(
+        # CRITICAL: Get latest run_id from eod_run_summary (same source as dashboard counts)
+        # This ensures drilldown matches summary counts
+        latest_summary = await db.eod_run_summary.find_one(
             {},
             sort=[("as_of", -1)],
             projection={"run_id": 1}
         )
-        if latest and latest.get("run_id"):
-            query["run_id"] = latest["run_id"]
+        if latest_summary and latest_summary.get("run_id"):
+            query["run_id"] = latest_summary["run_id"]
         else:
-            return {"total": 0, "items": [], "run_id": None, "reason_filter": reason, "stage_filter": stage}
+            # Fallback to scan_universe_audit if no summary exists
+            latest = await db.scan_universe_audit.find_one(
+                {},
+                sort=[("as_of", -1)],
+                projection={"run_id": 1}
+            )
+            if latest and latest.get("run_id"):
+                query["run_id"] = latest["run_id"]
+            else:
+                return {"total": 0, "items": [], "run_id": None, "reason_filter": reason, "stage_filter": stage}
     
     if reason:
         query["exclude_reason"] = reason
@@ -1708,7 +1718,8 @@ async def get_excluded_symbols(
     cursor = db.scan_universe_audit.find(
         query,
         {"_id": 0, "symbol": 1, "price_used": 1, "avg_volume": 1, "dollar_volume": 1, 
-         "exclude_stage": 1, "exclude_reason": 1, "exclude_detail": 1, "as_of": 1}
+         "exclude_stage": 1, "exclude_reason": 1, "exclude_detail": 1, "as_of": 1,
+         "raw_error_type": 1}  # Include raw error for debugging
     ).sort("symbol", 1).skip(offset).limit(limit)
     
     items = []
@@ -1721,6 +1732,7 @@ async def get_excluded_symbols(
             "exclude_stage": doc.get("exclude_stage"),
             "exclude_reason": doc.get("exclude_reason"),
             "exclude_detail": doc.get("exclude_detail"),
+            "raw_error_type": doc.get("raw_error_type"),  # Include for debugging
             "as_of": doc.get("as_of").isoformat() if doc.get("as_of") else None
         })
     
