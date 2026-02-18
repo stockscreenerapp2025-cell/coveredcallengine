@@ -88,6 +88,49 @@ def safe_multiply(a, b, default=None):
     except (TypeError, ValueError):
         return default
 
+def safe_int(value, default=0):
+    """
+    Safely convert a value to int, handling NaN, None, and numpy scalars.
+    CRITICAL: NaN check MUST happen BEFORE int() cast.
+    """
+    import math
+    if value is None:
+        return default
+    # Handle numpy scalars
+    if hasattr(value, 'item'):
+        value = value.item()
+    # Check for NaN (float NaN != NaN comparison trick)
+    if isinstance(value, float):
+        if math.isnan(value) or math.isinf(value):
+            return default
+    try:
+        return int(value)
+    except (ValueError, TypeError):
+        return default
+
+def safe_float(value, default=None):
+    """
+    Safely convert a value to float, handling NaN, None, and numpy scalars.
+    Returns None for NaN values (not 0, to distinguish missing data).
+    """
+    import math
+    if value is None:
+        return default
+    # Handle numpy scalars
+    if hasattr(value, 'item'):
+        value = value.item()
+    # Check for NaN
+    if isinstance(value, float):
+        if math.isnan(value) or math.isinf(value):
+            return default
+    try:
+        result = float(value)
+        if math.isnan(result) or math.isinf(result):
+            return default
+        return result
+    except (ValueError, TypeError):
+        return default
+
 # =============================================================================
 # PIPELINE CONFIGURATION - TWO-STAGE THROTTLE-SAFE MODEL
 # =============================================================================
