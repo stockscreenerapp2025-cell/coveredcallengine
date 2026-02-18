@@ -243,12 +243,21 @@ def fetch_bulk_quotes_sync(symbols: List[str], retry_count: int = 0) -> Dict[str
                         prior_close_price = session_close_price
                         logger.warning(f"[BULK_QUOTE] {symbol}: Using session_close as prior_close fallback")
                 
-                # Get volume if available
+                # Get volume if available - SAFE CONVERSION (NaN check BEFORE int cast)
                 avg_volume = latest.get('Volume', 0)
+                # Handle numpy scalars and NaN BEFORE any int() conversion
                 if hasattr(avg_volume, 'item'):
-                    avg_volume = int(avg_volume.item())
-                if pd.isna(avg_volume):
+                    # Extract scalar value first (still float)
+                    avg_volume = avg_volume.item()
+                # Now check for NaN/None BEFORE int conversion
+                if avg_volume is None or (isinstance(avg_volume, float) and (pd.isna(avg_volume) or avg_volume != avg_volume)):
                     avg_volume = 0
+                else:
+                    # Safe to convert to int now
+                    try:
+                        avg_volume = int(avg_volume)
+                    except (ValueError, TypeError):
+                        avg_volume = 0
                 
                 # Determine market status (default to CLOSED for EOD data)
                 market_status = "CLOSED"
