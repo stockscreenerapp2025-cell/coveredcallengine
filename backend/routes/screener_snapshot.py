@@ -1066,14 +1066,16 @@ def _transform_cc_result(r: Dict) -> tuple:
     """
     symbol = r.get("symbol", "UNKNOWN")
     try:
-        stock_price = sanitize_float(r.get("stock_price", 0))
-        strike = sanitize_float(r.get("strike", 0))
+        # Use sanitize_money for 2-decimal precision on monetary fields
+        stock_price = sanitize_money(r.get("stock_price", 0))
+        strike = sanitize_money(r.get("strike", 0))
         dte = r.get("dte", 0) or 0
         
         # Get values with proper fallbacks (NO undefined → 0 fallbacks for prices)
-        premium_bid = sanitize_float(r.get("premium_bid") or r.get("premium"))
-        premium_ask = r.get("premium_ask")
-        premium_used = sanitize_float(r.get("premium_used") or premium_bid)
+        # CRITICAL: Use sanitize_money for 2-decimal precision
+        premium_bid = sanitize_money(r.get("premium_bid") or r.get("premium"))
+        premium_ask = sanitize_money(r.get("premium_ask"))
+        premium_used = sanitize_money(r.get("premium_used") or premium_bid)
         iv_decimal = sanitize_float(r.get("iv", 0))
         iv_percent = sanitize_float(r.get("iv_pct", 0))
         
@@ -1081,50 +1083,55 @@ def _transform_cc_result(r: Dict) -> tuple:
         if not premium_bid or premium_bid <= 0:
             return None, {"symbol": symbol, "reason": "invalid_premium_bid"}
         
+        # PRICING POLICY ENFORCEMENT: SELL at BID
+        # premium_used MUST equal premium_bid
+        if premium_used != premium_bid:
+            premium_used = premium_bid  # Force compliance
+        
         result = {
         # === EXPLICIT CC SCHEMA ===
         
-        # Underlying
+        # Underlying (MONETARY: 2-decimal)
         "symbol": symbol,
         "stock_price": stock_price,
         
         # MANDATORY MARKET CONTEXT FIELDS (Feb 2026)
         "stock_price_source": r.get("stock_price_source", "SESSION_CLOSE"),
-        "session_close_price": r.get("session_close_price"),
-        "prior_close_price": r.get("prior_close_price"),
+        "session_close_price": sanitize_money(r.get("session_close_price")),
+        "prior_close_price": sanitize_money(r.get("prior_close_price")),
         "market_status": r.get("market_status", "UNKNOWN"),
         "as_of": r.get("as_of"),
         
-        # Option contract
+        # Option contract (MONETARY: strike 2-decimal)
         "contract_symbol": r.get("contract_symbol"),
         "strike": strike,
         "expiry": r.get("expiry"),
         "dte": dte,
         "dte_category": r.get("dte_category", "weekly" if dte <= 14 else "monthly"),
         
-        # Pricing (EXPLICIT)
-        "premium_bid": round(premium_bid, 2),
-        "premium_ask": round(premium_ask, 2) if premium_ask else None,
-        "premium_mid": r.get("premium_mid"),
-        "premium_last": r.get("premium_last"),
-        "premium_prev_close": r.get("premium_prev_close"),
-        "premium_used": round(premium_used, 2),
+        # Pricing (EXPLICIT - ALL MONETARY 2-decimal)
+        "premium_bid": premium_bid,
+        "premium_ask": premium_ask,
+        "premium_mid": sanitize_money(r.get("premium_mid")),
+        "premium_last": sanitize_money(r.get("premium_last")),
+        "premium_prev_close": sanitize_money(r.get("premium_prev_close")),
+        "premium_used": premium_used,
         "pricing_rule": r.get("pricing_rule", "SELL_BID"),
         
         # OPTION PARITY MODEL: Display price (matches Yahoo)
-        "premium_display": r.get("premium_display"),
+        "premium_display": sanitize_money(r.get("premium_display")),
         "premium_display_source": r.get("premium_display_source", "NONE"),
         
         # Legacy alias
-        "premium": round(premium_bid, 2),
+        "premium": premium_bid,
         
-        # Economics
-        "premium_yield": r.get("premium_yield", 0),
-        "otm_pct": r.get("otm_pct", 0),
-        "roi_pct": r.get("roi_pct", 0),
-        "roi_annualized": r.get("roi_annualized", 0),
-        "max_profit": r.get("max_profit", premium_bid * 100),
-        "breakeven": r.get("breakeven", stock_price - premium_bid),
+        # Economics (MONETARY: 2-decimal)
+        "premium_yield": sanitize_percentage(r.get("premium_yield", 0)),
+        "otm_pct": sanitize_percentage(r.get("otm_pct", 0)),
+        "roi_pct": sanitize_percentage(r.get("roi_pct", 0)),
+        "roi_annualized": sanitize_percentage(r.get("roi_annualized", 0), 1),
+        "max_profit": sanitize_money(r.get("max_profit", premium_bid * 100 if premium_bid else None)),
+        "breakeven": sanitize_money(r.get("breakeven", stock_price - premium_bid if stock_price and premium_bid else None)),
         
         # Greeks
         "delta": r.get("delta", 0),
