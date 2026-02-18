@@ -1540,12 +1540,20 @@ def _transform_pmcc_result(r: Dict) -> Dict:
         "analyst_opinions": r.get("analyst_opinions"),  # Count of opinions if available
         
         # Scoring
-        "score": r.get("score", 0),
+        "score": sanitize_float(r.get("score", 0)),
         
         # Metadata (for mock banner logic)
         "data_source": "eod_precomputed",
         "run_id": r.get("run_id")
-    }
+        }
+        
+        # Sanitize all floats in the result to prevent JSON serialization errors
+        return sanitize_dict_floats(result)
+        
+    except Exception as e:
+        # Log error but don't crash - return None to filter out this row
+        logging.warning(f"TRANSFORM_PMCC_ERROR | symbol={r.get('symbol', 'UNKNOWN')} | error={str(e)[:100]}")
+        return None
 
 
 @screener_router.get("/pmcc")
