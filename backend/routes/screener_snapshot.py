@@ -1466,7 +1466,8 @@ def _transform_pmcc_result(r: Dict) -> tuple:
     """
     Transform stored PMCC result to API response format.
     
-    STABILITY: Sanitizes all float values to prevent JSON serialization errors.
+    STABILITY: Uses sanitize_money for 2-decimal precision on all monetary fields.
+    POLICY: Enforces BUY=ASK for LEAP, SELL=BID for short.
     
     Returns:
         tuple: (transformed_dict, error_info) where error_info is None on success
@@ -1475,12 +1476,13 @@ def _transform_pmcc_result(r: Dict) -> tuple:
     symbol = r.get("symbol", "UNKNOWN")
     try:
         # Get values with proper handling (NO undefined → 0 fallbacks for prices)
-        short_bid = sanitize_float(r.get("short_bid") or r.get("short_premium"))
-        short_ask = r.get("short_ask")
-        short_used = sanitize_float(r.get("short_used") or short_bid)
-        leap_ask = sanitize_float(r.get("leap_ask") or r.get("leaps_ask"))
-        leap_bid = r.get("leap_bid")
-        leap_used = sanitize_float(r.get("leap_used") or leap_ask)
+        # CRITICAL: Use sanitize_money for 2-decimal precision
+        short_bid = sanitize_money(r.get("short_bid") or r.get("short_premium"))
+        short_ask = sanitize_money(r.get("short_ask"))
+        short_used = sanitize_money(r.get("short_used") or short_bid)
+        leap_ask = sanitize_money(r.get("leap_ask") or r.get("leaps_ask"))
+        leap_bid = sanitize_money(r.get("leap_bid"))
+        leap_used = sanitize_money(r.get("leap_used") or leap_ask)
         iv_decimal = sanitize_float(r.get("iv", 0))
         iv_percent = sanitize_float(r.get("iv_pct", 0))
         
@@ -1488,53 +1490,64 @@ def _transform_pmcc_result(r: Dict) -> tuple:
         if not short_bid or short_bid <= 0:
             return None, {"symbol": symbol, "reason": "invalid_short_bid"}
         
+        # PRICING POLICY ENFORCEMENT:
+        # BUY LEAP at ASK: leap_used = leap_ask
+        # SELL short at BID: short_used = short_bid
+        if leap_used != leap_ask:
+            leap_used = leap_ask  # Force compliance
+        if short_used != short_bid:
+            short_used = short_bid  # Force compliance
+        
+        # Stock price (MONETARY: 2-decimal)
+        stock_price = sanitize_money(r.get("stock_price"))
+        
         result = {
         # === EXPLICIT PMCC SCHEMA ===
         
-        # Underlying
-        "symbol": r.get("symbol"),
-        "stock_price": r.get("stock_price"),
+        # Underlying (MONETARY: 2-decimal)
+        "symbol": symbol,
+        "stock_price": stock_price,
         
         # MANDATORY MARKET CONTEXT FIELDS (Feb 2026)
         "stock_price_source": r.get("stock_price_source", "SESSION_CLOSE"),
-        "session_close_price": r.get("session_close_price"),
-        "prior_close_price": r.get("prior_close_price"),
+        "session_close_price": sanitize_money(r.get("session_close_price")),
+        "prior_close_price": sanitize_money(r.get("prior_close_price")),
         "market_status": r.get("market_status", "UNKNOWN"),
         "as_of": r.get("as_of"),
         
-        # LEAP (Long leg - BUY)
+        # LEAP (Long leg - BUY at ASK) - ALL MONETARY 2-decimal
         "leap_symbol": r.get("leap_symbol"),
-        "leap_strike": r.get("leap_strike"),
+        "leap_strike": sanitize_money(r.get("leap_strike")),
         "leap_expiry": r.get("leap_expiry"),
         "leap_dte": r.get("leap_dte"),
         "leap_bid": leap_bid,
         "leap_ask": leap_ask,
-        "leap_mid": r.get("leap_mid"),
-        "leap_last": r.get("leap_last"),
-        "leap_prev_close": r.get("leap_prev_close"),
-        "leap_used": leap_used,  # = leap_ask (BUY rule)
-        "leap_display": r.get("leap_display"),
+        "leap_mid": sanitize_money(r.get("leap_mid")),
+        "leap_last": sanitize_money(r.get("leap_last")),
+        "leap_prev_close": sanitize_money(r.get("leap_prev_close")),
+        "leap_used": leap_used,  # = leap_ask (BUY rule ENFORCED)
+        "leap_display": sanitize_money(r.get("leap_display")),
         "leap_display_source": r.get("leap_display_source", "NONE"),
-        "leap_delta": r.get("leap_delta"),
+        "leap_delta": sanitize_float(r.get("leap_delta")),
         
-        # Short leg (SELL)
+        # Short leg (SELL at BID) - ALL MONETARY 2-decimal
         "short_symbol": r.get("short_symbol"),
-        "short_strike": r.get("short_strike"),
+        "short_strike": sanitize_money(r.get("short_strike")),
         "short_expiry": r.get("short_expiry"),
         "short_dte": r.get("short_dte"),
         "short_bid": short_bid,
         "short_ask": short_ask,
-        "short_mid": r.get("short_mid"),
-        "short_last": r.get("short_last"),
-        "short_prev_close": r.get("short_prev_close"),
-        "short_used": short_used,  # = short_bid (SELL rule)
-        "short_display": r.get("short_display"),
+        "short_mid": sanitize_money(r.get("short_mid")),
+        "short_last": sanitize_money(r.get("short_last")),
+        "short_prev_close": sanitize_money(r.get("short_prev_close")),
+        "short_used": short_used,  # = short_bid (SELL rule ENFORCED)
+        "short_display": sanitize_money(r.get("short_display")),
         "short_display_source": r.get("short_display_source", "NONE"),
         
         # Pricing rule
         "pricing_rule": r.get("pricing_rule", "BUY_ASK_SELL_BID"),
         
-        # Legacy aliases for backward compatibility
+        # Legacy aliases for backward compatibility (MONETARY: 2-decimal)
         "short_premium": short_bid,      # UI uses this
         "leaps_ask": leap_ask,           # UI uses this
         "leaps_premium": leap_ask,       # UI uses this
