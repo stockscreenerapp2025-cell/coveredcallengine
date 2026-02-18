@@ -1552,25 +1552,25 @@ def _transform_pmcc_result(r: Dict) -> tuple:
         "leaps_ask": leap_ask,           # UI uses this
         "leaps_premium": leap_ask,       # UI uses this
         
-        # Economics
-        "net_debit": r.get("net_debit"),
-        "net_debit_total": r.get("net_debit_total"),
-        "width": r.get("width"),
-        "max_profit": r.get("max_profit"),
-        "max_profit_total": r.get("max_profit_total"),
-        "breakeven": r.get("breakeven"),
-        "roi_cycle": r.get("roi_cycle") or r.get("roi_per_cycle"),
-        "roi_per_cycle": r.get("roi_per_cycle") or r.get("roi_cycle"),
-        "roi_annualized": r.get("roi_annualized"),
+        # Economics (ALL MONETARY: 2-decimal)
+        "net_debit": sanitize_money(r.get("net_debit")),
+        "net_debit_total": sanitize_money(r.get("net_debit_total")),
+        "width": sanitize_money(r.get("width")),
+        "max_profit": sanitize_money(r.get("max_profit")),
+        "max_profit_total": sanitize_money(r.get("max_profit_total")),
+        "breakeven": sanitize_money(r.get("breakeven")),
+        "roi_cycle": sanitize_percentage(r.get("roi_cycle") or r.get("roi_per_cycle")),
+        "roi_per_cycle": sanitize_percentage(r.get("roi_per_cycle") or r.get("roi_cycle")),
+        "roi_annualized": sanitize_percentage(r.get("roi_annualized"), 1),
         
-        # Greeks
-        "delta": r.get("delta") or r.get("leap_delta"),
+        # Greeks (NOT monetary - use sanitize_float)
+        "delta": sanitize_float(r.get("delta") or r.get("leap_delta")),
         "delta_source": r.get("delta_source", "BLACK_SCHOLES_APPROX"),
         
         # IV (explicit units)
         "iv": iv_decimal,           # Decimal (0.65)
         "iv_pct": iv_percent,       # Percent (65.0)
-        "iv_rank": r.get("iv_rank"),  # null if not available
+        "iv_rank": sanitize_float(r.get("iv_rank")),  # null if not available
         
         # Classification
         "is_etf": r.get("is_etf", False),
@@ -1593,8 +1593,8 @@ def _transform_pmcc_result(r: Dict) -> tuple:
         "run_id": r.get("run_id")
         }
         
-        # Sanitize all floats in the result to prevent JSON serialization errors
-        return sanitize_dict_floats(result), None
+        # Final sanitization pass with monetary awareness
+        return sanitize_dict_with_money(result), None
         
     except Exception as e:
         # Log error but don't crash - return None to filter out this row
