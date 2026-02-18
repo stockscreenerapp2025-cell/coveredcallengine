@@ -101,10 +101,17 @@ screener_router = APIRouter(tags=["Screener"])
 # ============================================================
 # Prevents Cloudflare 520 errors from NaN/inf float values
 
-def sanitize_float(value, default=0.0):
+def sanitize_float(value, default=None):
     """
     Sanitize a float value to be JSON-compliant.
-    Replaces NaN, inf, -inf with default value.
+    Replaces NaN, inf, -inf with None (not 0, to avoid masking bad data).
+    
+    Args:
+        value: Value to sanitize
+        default: Default value if sanitization fails (default None for visibility)
+    
+    Returns:
+        Sanitized float or default value
     """
     if value is None:
         return default
@@ -116,10 +123,34 @@ def sanitize_float(value, default=0.0):
     except (TypeError, ValueError):
         return default
 
+def safe_divide(numerator, denominator, default=None):
+    """
+    Safe division that returns None instead of NaN/inf on invalid input.
+    
+    Args:
+        numerator: Dividend
+        denominator: Divisor
+        default: Value to return on division by zero or invalid input
+    
+    Returns:
+        Division result or default
+    """
+    if denominator is None or denominator == 0:
+        return default
+    if numerator is None:
+        return default
+    try:
+        result = float(numerator) / float(denominator)
+        if math.isnan(result) or math.isinf(result):
+            return default
+        return result
+    except (TypeError, ValueError, ZeroDivisionError):
+        return default
+
 def sanitize_dict_floats(d: dict) -> dict:
     """
     Recursively sanitize all float values in a dictionary.
-    Handles nested dicts and lists.
+    Handles nested dicts and lists. Converts NaN/inf to None.
     """
     if not isinstance(d, dict):
         return d
