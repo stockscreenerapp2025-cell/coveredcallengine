@@ -1571,7 +1571,7 @@ def _transform_pmcc_result(r: Dict) -> tuple:
         "analyst_opinions": r.get("analyst_opinions"),  # Count of opinions if available
         
         # Scoring
-        "score": sanitize_float(r.get("score", 0)),
+        "score": sanitize_float(r.get("score")),
         
         # Metadata (for mock banner logic)
         "data_source": "eod_precomputed",
@@ -1579,12 +1579,12 @@ def _transform_pmcc_result(r: Dict) -> tuple:
         }
         
         # Sanitize all floats in the result to prevent JSON serialization errors
-        return sanitize_dict_floats(result)
+        return sanitize_dict_floats(result), None
         
     except Exception as e:
         # Log error but don't crash - return None to filter out this row
-        logging.warning(f"TRANSFORM_PMCC_ERROR | symbol={r.get('symbol', 'UNKNOWN')} | error={str(e)[:100]}")
-        return None
+        logging.warning(f"TRANSFORM_PMCC_ERROR | symbol={symbol} | error={str(e)[:100]}")
+        return None, {"symbol": symbol, "reason": f"exception:{str(e)[:50]}"}
 
 
 @screener_router.get("/pmcc")
