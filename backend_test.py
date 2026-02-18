@@ -11,7 +11,7 @@ from datetime import datetime
 from typing import Dict, Any, Optional
 
 class PremiumHunterAPITester:
-    def __init__(self, base_url: str = "https://data-integrity-51.preview.emergentagent.com"):
+    def __init__(self, base_url: str = "https://stable-options-data.preview.emergentagent.com"):
         self.base_url = base_url
         self.token = None
         self.admin_token = None
