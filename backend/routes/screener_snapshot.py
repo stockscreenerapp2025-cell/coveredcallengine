@@ -1060,24 +1060,29 @@ async def _merge_analyst_enrichment(opportunities: List[Dict], debug_enrichment:
 
 
 def _transform_cc_result(r: Dict) -> Dict:
-    """Transform stored CC result to API response format."""
-    symbol = r.get("symbol", "")
-    stock_price = r.get("stock_price", 0)
-    strike = r.get("strike", 0)
-    dte = r.get("dte", 0)
+    """
+    Transform stored CC result to API response format.
     
-    # Get values with proper fallbacks (NO undefined → 0 fallbacks for prices)
-    premium_bid = r.get("premium_bid") or r.get("premium")
-    premium_ask = r.get("premium_ask")
-    premium_used = r.get("premium_used") or premium_bid
-    iv_decimal = r.get("iv", 0)
-    iv_percent = r.get("iv_pct", 0)
-    
-    # VALIDATION: If no premium_bid, this row is invalid
-    if not premium_bid or premium_bid <= 0:
-        return None  # Will be filtered out
-    
-    return {
+    STABILITY: Sanitizes all float values to prevent JSON serialization errors.
+    """
+    try:
+        symbol = r.get("symbol", "")
+        stock_price = sanitize_float(r.get("stock_price", 0))
+        strike = sanitize_float(r.get("strike", 0))
+        dte = r.get("dte", 0) or 0
+        
+        # Get values with proper fallbacks (NO undefined → 0 fallbacks for prices)
+        premium_bid = sanitize_float(r.get("premium_bid") or r.get("premium"))
+        premium_ask = r.get("premium_ask")
+        premium_used = sanitize_float(r.get("premium_used") or premium_bid)
+        iv_decimal = sanitize_float(r.get("iv", 0))
+        iv_percent = sanitize_float(r.get("iv_pct", 0))
+        
+        # VALIDATION: If no premium_bid, this row is invalid
+        if not premium_bid or premium_bid <= 0:
+            return None  # Will be filtered out
+        
+        result = {
         # === EXPLICIT CC SCHEMA ===
         
         # Underlying
