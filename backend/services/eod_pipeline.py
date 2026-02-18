@@ -1556,11 +1556,13 @@ async def compute_scan_results(
                 premium_ask_val = ask if ask and ask > 0 else None
                 premium_used = premium_bid  # SELL rule: use BID
                 
-                # Calculate metrics
-                premium_yield = (premium_bid / stock_price) * 100 if stock_price > 0 else 0
-                otm_pct = ((strike - stock_price) / stock_price) * 100 if stock_price > 0 else 0
+                # Calculate metrics using safe_divide (prevents NaN/inf)
+                premium_yield = safe_divide(premium_bid, stock_price, 0) * 100 if stock_price else None
+                otm_pct = safe_divide(strike - stock_price, stock_price, 0) * 100 if stock_price else None
                 
-                # Apply filters
+                # Apply filters (skip if calculation failed)
+                if premium_yield is None or otm_pct is None:
+                    continue
                 if premium_yield < CC_MIN_PREMIUM_YIELD or premium_yield > CC_MAX_PREMIUM_YIELD:
                     continue
                 if otm_pct < CC_MIN_OTM_PCT or otm_pct > CC_MAX_OTM_PCT:
@@ -1570,11 +1572,11 @@ async def compute_scan_results(
                 greeks = calculate_greeks_simple(stock_price, strike, dte, iv if iv > 0 else 0.30)
                 
                 # Calculate ROI (must use premium_bid per SELL rule)
-                roi_pct = (premium_bid / stock_price) * 100 if stock_price > 0 else 0
-                roi_annualized = roi_pct * (365 / max(dte, 1))
+                roi_pct = safe_divide(premium_bid, stock_price, 0) * 100 if stock_price else None
+                roi_annualized = safe_multiply(roi_pct, safe_divide(365, max(dte, 1), 0)) if roi_pct else None
                 
                 # ASSERTION: ROI > 0 requires premium_bid > 0
-                if roi_pct > 0 and premium_bid <= 0:
+                if roi_pct and roi_pct > 0 and premium_bid <= 0:
                     continue  # Invalid state
                 
                 # Calculate score
