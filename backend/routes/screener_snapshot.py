@@ -1758,8 +1758,12 @@ async def get_dashboard_opportunities(
         data_source = "precomputed_scans_legacy"
         run_info = None
     
-    # Transform results
-    opportunities = [_transform_cc_result(r) for r in results]
+    # Transform results - properly unpack tuple (result, error_info)
+    opportunities = []
+    for r in results:
+        transformed, error_info = _transform_cc_result(r)
+        if transformed is not None:
+            opportunities.append(transformed)
     
     # Separate into weekly (DTE <= 14) and monthly (DTE > 14)
     weekly_opps = [opp for opp in opportunities if opp.get("dte", 0) <= WEEKLY_MAX_DTE]
