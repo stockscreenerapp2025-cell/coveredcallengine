@@ -182,30 +182,30 @@ async def _get_eod_pmcc_opportunities(
     return results, run_info
 
 def _transform_cc_for_scans(row: Dict) -> Dict:
-    """Transform EOD CC row to scans API response format."""
-    return {
+    """Transform EOD CC row to scans API response format with float sanitization."""
+    result = {
         "symbol": row.get("symbol"),
-        "stock_price": row.get("stock_price"),
+        "stock_price": sanitize_float(row.get("stock_price")),
         "stock_price_source": row.get("stock_price_source", "SESSION_CLOSE"),
-        "session_close_price": row.get("session_close_price"),
-        "prior_close_price": row.get("prior_close_price"),
+        "session_close_price": sanitize_float(row.get("session_close_price")),
+        "prior_close_price": sanitize_float(row.get("prior_close_price")),
         "market_status": row.get("market_status"),
-        "strike": row.get("strike"),
+        "strike": sanitize_float(row.get("strike")),
         "expiry": row.get("expiry"),
         "dte": row.get("dte"),
-        "premium": row.get("premium_bid"),  # SELL rule: use BID
-        "premium_bid": row.get("premium_bid"),
-        "premium_ask": row.get("premium_ask"),
-        "premium_yield": row.get("premium_yield"),
-        "roi_pct": row.get("roi_pct"),
-        "roi_annualized": row.get("roi_annualized"),
-        "delta": row.get("delta"),
-        "iv": row.get("iv"),
-        "iv_pct": row.get("iv_pct"),
-        "iv_rank": row.get("iv_rank"),
+        "premium": sanitize_float(row.get("premium_bid")),  # SELL rule: use BID
+        "premium_bid": sanitize_float(row.get("premium_bid")),
+        "premium_ask": sanitize_float(row.get("premium_ask")),
+        "premium_yield": sanitize_float(row.get("premium_yield")),
+        "roi_pct": sanitize_float(row.get("roi_pct")),
+        "roi_annualized": sanitize_float(row.get("roi_annualized")),
+        "delta": sanitize_float(row.get("delta")),
+        "iv": sanitize_float(row.get("iv")),
+        "iv_pct": sanitize_float(row.get("iv_pct")),
+        "iv_rank": sanitize_float(row.get("iv_rank")),
         "open_interest": row.get("open_interest"),
         "volume": row.get("volume"),
-        "score": row.get("score"),
+        "score": sanitize_float(row.get("score")),
         "is_etf": row.get("is_etf", False),
         "instrument_type": row.get("instrument_type", "STOCK"),
         "quality_flags": row.get("quality_flags", []),
@@ -214,10 +214,11 @@ def _transform_cc_for_scans(row: Dict) -> Dict:
         "as_of": row.get("as_of"),
         "run_id": row.get("run_id")
     }
+    return result
 
 def _transform_pmcc_for_scans(row: Dict) -> Dict:
-    """Transform EOD PMCC row to scans API response format."""
-    return {
+    """Transform EOD PMCC row to scans API response format with float sanitization."""
+    result = {
         "symbol": row.get("symbol"),
         "stock_price": row.get("stock_price"),
         "stock_price_source": row.get("stock_price_source", "SESSION_CLOSE"),
