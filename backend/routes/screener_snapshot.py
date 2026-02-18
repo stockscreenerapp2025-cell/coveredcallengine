@@ -96,6 +96,51 @@ from services.quality_score import (
 
 screener_router = APIRouter(tags=["Screener"])
 
+# ============================================================
+# STABILITY: JSON-SAFE FLOAT SANITIZATION
+# ============================================================
+# Prevents Cloudflare 520 errors from NaN/inf float values
+
+def sanitize_float(value, default=0.0):
+    """
+    Sanitize a float value to be JSON-compliant.
+    Replaces NaN, inf, -inf with default value.
+    """
+    if value is None:
+        return default
+    try:
+        f = float(value)
+        if math.isnan(f) or math.isinf(f):
+            return default
+        return f
+    except (TypeError, ValueError):
+        return default
+
+def sanitize_dict_floats(d: dict) -> dict:
+    """
+    Recursively sanitize all float values in a dictionary.
+    Handles nested dicts and lists.
+    """
+    if not isinstance(d, dict):
+        return d
+    
+    result = {}
+    for key, value in d.items():
+        if isinstance(value, float):
+            result[key] = sanitize_float(value)
+        elif isinstance(value, dict):
+            result[key] = sanitize_dict_floats(value)
+        elif isinstance(value, list):
+            result[key] = [
+                sanitize_dict_floats(item) if isinstance(item, dict) 
+                else sanitize_float(item) if isinstance(item, float) 
+                else item 
+                for item in value
+            ]
+        else:
+            result[key] = value
+    return result
+
 # Initialize SnapshotService (singleton) - LEGACY, being replaced by EOD Contract
 import os
 _snapshot_service = None
