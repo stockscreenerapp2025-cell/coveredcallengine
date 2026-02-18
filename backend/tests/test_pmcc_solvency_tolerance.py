@@ -22,7 +22,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 from services.pricing_rules import validate_pmcc_solvency, validate_pmcc_structure_rules
 from services.eod_pipeline import validate_pmcc_structure
 
-BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', 'https://stable-options-data.preview.emergentagent.com').rstrip('/')
+BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', 'https://premium-hunter-3.preview.emergentagent.com').rstrip('/')
 
 
 # ============================================================
