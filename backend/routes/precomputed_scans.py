@@ -519,7 +519,7 @@ async def get_pmcc_scan(
         "aggressive": {"label": "Max Yield Diagonal", "description": "Aggressive PMCC targeting maximum premium yield"}
     }
     
-    return {
+    return sanitize_response({
         "strategy": "pmcc",
         "risk_profile": risk_profile,
         "label": labels[risk_profile]["label"],
@@ -535,7 +535,7 @@ async def get_pmcc_scan(
         "live_data_used": False,
         "latency_ms": round(elapsed_ms, 1),
         "trace_id": trace_id
-    }
+    })
 
 
 # ==================== ADMIN ENDPOINTS ====================
