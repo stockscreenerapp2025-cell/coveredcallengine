@@ -1,7 +1,50 @@
 # Covered Call Engine - Product Requirements Document
 
 ## Last Updated
-2026-02-18 - NaN Conversion Crash Fix VERIFIED
+2026-02-18 - Critical Scan & Watchlist Regression Fix COMPLETE
+
+---
+
+## Critical Scan & Watchlist Regression Fix - COMPLETED 2026-02-18
+
+### Status: ✅ COMPLETE
+
+### Issues Fixed:
+
+1. **Watchlist Runtime Error** (`TypeError: items.map is not a function`)
+   - **Root Cause:** Backend returned `{ items: [...] }` but frontend expected array directly
+   - **Fix:** Updated `Watchlist.js` to extract `items` from response object
+
+2. **Dashboard-Opportunities Cloudflare 520 Error**
+   - **Root Cause:** `_transform_cc_result()` returns tuple `(result, error_info)` but was incorrectly used in list comprehension without unpacking
+   - **Fix:** Changed line 1762 in `screener_snapshot.py` to properly unpack the tuple
+
+3. **Pre-computed Scan Count Mismatch** (28 shown on card, 2 returned)
+   - **Root Cause:** `/api/scans/available` read counts from legacy `precomputed_scans` collection while detail endpoints read from EOD `scan_results_cc` collection
+   - **Fix:** Rewrote `get_available_scans()` to compute counts from EOD collections using same filtering logic as detail endpoints
+
+### Files Modified:
+
+| File | Changes |
+|------|---------|
+| `/frontend/src/pages/Watchlist.js` | Line 65: Extract `items` array from response object |
+| `/backend/routes/screener_snapshot.py` | Lines 1761-1766: Fixed tuple unpacking in dashboard-opportunities |
+| `/backend/routes/precomputed_scans.py` | Lines 263-398: Rewrote `get_available_scans()` to use EOD collections |
+
+### Verification:
+
+| Endpoint | Response |
+|----------|----------|
+| Dashboard Top 10 | `total: 3, weekly: 2, monthly: 1` ✅ |
+| CC Aggressive Scan | `total: 2, opportunities: 2` ✅ |
+| PMCC Conservative | `total: 0, opportunities: 0` ✅ |
+| Watchlist | No runtime error, items displayed ✅ |
+
+### Confirmations:
+- ✅ Filter → Sort → Limit order verified (limit applied after filtering)
+- ✅ Total count matches returned results count
+- ✅ Summary counts match detail results for pre-computed scans
+- ✅ Response schema consistent (`{ total, results/opportunities }`)
 
 ---
 
