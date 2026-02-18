@@ -885,16 +885,28 @@ async def run_eod_pipeline(db, force_build_universe: bool = False) -> EODPipelin
             time.sleep(CHAIN_BATCH_PAUSE_S)
     
     # Add audit records for symbols that failed at quote stage
+    # CRITICAL: Use categorized reason (same as summary) for consistency
     for symbol in universe:
         if symbol not in all_quotes or not all_quotes[symbol].get("success"):
             quote_result = all_quotes.get(symbol, {"error_type": "UNKNOWN", "error_detail": "No quote data"})
+            error_type = quote_result.get("error_type", "UNKNOWN")
+            
+            # Categorize reason EXACTLY as done for the summary (lines 738-743)
+            if error_type == "MISSING_QUOTE_FIELDS":
+                categorized_reason = "MISSING_QUOTE_FIELDS"
+            elif error_type in ("RATE_LIMITED", "RATE_LIMITED_QUOTE"):
+                categorized_reason = "RATE_LIMITED_QUOTE"
+            else:
+                categorized_reason = "MISSING_QUOTE"
+            
             audit_records.append({
                 "run_id": run_id,
                 "symbol": symbol,
                 "included": False,
                 "exclude_stage": "QUOTE",
-                "exclude_reason": quote_result.get("error_type", "MISSING_QUOTE"),
+                "exclude_reason": categorized_reason,  # Use categorized reason, NOT raw error_type
                 "exclude_detail": quote_result.get("error_detail", "No quote data"),
+                "raw_error_type": error_type,  # Keep raw for debugging
                 "price_used": 0,
                 "avg_volume": 0,
                 "as_of": as_of
