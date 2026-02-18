@@ -1460,12 +1460,17 @@ async def _get_pmcc_from_legacy(filters: Dict[str, Any], limit: int) -> List[Dic
         return []
 
 
-def _transform_pmcc_result(r: Dict) -> Dict:
+def _transform_pmcc_result(r: Dict) -> tuple:
     """
     Transform stored PMCC result to API response format.
     
     STABILITY: Sanitizes all float values to prevent JSON serialization errors.
+    
+    Returns:
+        tuple: (transformed_dict, error_info) where error_info is None on success
+               or {"symbol": str, "reason": str} on failure
     """
+    symbol = r.get("symbol", "UNKNOWN")
     try:
         # Get values with proper handling (NO undefined → 0 fallbacks for prices)
         short_bid = sanitize_float(r.get("short_bid") or r.get("short_premium"))
@@ -1479,7 +1484,7 @@ def _transform_pmcc_result(r: Dict) -> Dict:
         
         # VALIDATION: If short_bid <= 0, this row is invalid
         if not short_bid or short_bid <= 0:
-            return None  # Will be filtered out
+            return None, {"symbol": symbol, "reason": "invalid_short_bid"}
         
         result = {
         # === EXPLICIT PMCC SCHEMA ===
