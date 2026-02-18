@@ -1617,6 +1617,7 @@ async def screen_pmcc(
     - Net debit = LEAP ask - Short bid
     """
     import time
+    trace_id = str(uuid.uuid4())[:8]
     start_time = time.time()
     
     # Build filter dict
@@ -1650,14 +1651,31 @@ async def screen_pmcc(
         results = await _get_pmcc_from_legacy(filters, limit)
         data_source = "precomputed_scans_legacy"
     
-    # Transform results to API format (filter out None for invalid rows)
-    opportunities = [r for r in (_transform_pmcc_result(r) for r in results) if r is not None]
+    # Transform results to API format, tracking dropped rows
+    opportunities = []
+    dropped_rows = 0
+    transform_errors = []
+    dropped_symbols = []
+    
+    for r in results:
+        transformed, error_info = _transform_pmcc_result(r)
+        if transformed is not None:
+            opportunities.append(transformed)
+        else:
+            dropped_rows += 1
+            if error_info:
+                transform_errors.append(error_info)
+                dropped_symbols.append(error_info.get("symbol", "UNKNOWN"))
+    
+    # Log dropped symbols with trace_id
+    if dropped_symbols:
+        logging.warning(f"PMCC_DROPPED_ROWS | trace_id={trace_id} | count={dropped_rows} | symbols={dropped_symbols[:20]}")
     
     # ANALYST ENRICHMENT MERGE (READ-TIME)
     opportunities = await _merge_analyst_enrichment(opportunities, debug_enrichment=debug_enrichment)
     
     elapsed_ms = (time.time() - start_time) * 1000
-    logging.info(f"PMCC Screener: {len(opportunities)} results in {elapsed_ms:.1f}ms from {data_source}")
+    logging.info(f"PMCC Screener: {len(opportunities)} results, {dropped_rows} dropped in {elapsed_ms:.1f}ms from {data_source} trace_id={trace_id}")
     
     return {
         "total": len(opportunities),
