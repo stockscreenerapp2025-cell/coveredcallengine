@@ -329,51 +329,73 @@ async def get_covered_call_scan(
     user: dict = Depends(get_current_user)
 ):
     """
-    Get pre-computed covered call scan results.
+    Get covered call scan results from EOD SNAPSHOT READ MODEL.
+    
+    ARCHITECTURE (Feb 2026): UNIFIED EOD READ MODEL
+    ===============================================
+    - Reads from scan_results_cc collection (same as /api/screener/covered-calls)
+    - stock_price_source: SESSION_CLOSE (frozen at market close)
+    - NO LIVE YAHOO CALLS during request/response
+    - Guarantees identical prices with /api/screener/* endpoints
     
     Risk profiles:
-    - conservative: Income Guard (Low Risk)
-    - balanced: Steady Income (Moderate)
-    - aggressive: Premium Hunter (High Premium)
+    - conservative: Income Guard (Low Risk) - delta <= 0.35, score >= 70
+    - balanced: Steady Income (Moderate) - delta 0.25-0.45, score >= 50
+    - aggressive: Premium Hunter (High Premium) - delta >= 0.35, score >= 40
     """
+    import time
+    trace_id = str(uuid.uuid4())[:8]
+    start_time = time.time()
+    
     if risk_profile not in ["conservative", "balanced", "aggressive"]:
         raise HTTPException(
             status_code=400, 
             detail="Invalid risk_profile. Use: conservative, balanced, aggressive"
         )
     
-    service = await get_scan_service()
-    result = await service.get_scan_results("covered_call", risk_profile)
+    # Get latest EOD run
+    run_id = await _get_latest_eod_run_id()
     
-    if not result:
+    if not run_id:
         raise HTTPException(
             status_code=404,
-            detail=f"No pre-computed results for {risk_profile} covered call scan. "
-                   f"Scans run daily at 4:45 PM ET. An admin can trigger a manual scan."
+            detail="No EOD scan results available. Scans run daily at 4:10 PM ET."
         )
     
-    opportunities = result.get("opportunities", [])
+    # Get opportunities from EOD collection
+    results, run_info = await _get_eod_cc_opportunities(
+        run_id, risk_profile, limit, min_score, sector
+    )
     
-    # Apply filters
-    if min_score > 0:
-        opportunities = [o for o in opportunities if o.get("score", 0) >= min_score]
+    # Transform to API response format
+    opportunities = [_transform_cc_for_scans(r) for r in results]
     
-    if sector:
-        opportunities = [o for o in opportunities if o.get("sector", "").lower() == sector.lower()]
+    elapsed_ms = (time.time() - start_time) * 1000
+    logger.info(f"CC Scans: {len(opportunities)} results for {risk_profile} in {elapsed_ms:.1f}ms trace_id={trace_id}")
     
-    # Apply limit
-    opportunities = opportunities[:limit]
+    # Risk profile labels
+    labels = {
+        "conservative": {"label": "Income Guard", "description": "Stable stocks with low volatility and high probability of profit"},
+        "balanced": {"label": "Steady Income", "description": "Slightly bullish stocks with moderate volatility"},
+        "aggressive": {"label": "Premium Hunter", "description": "Strong momentum with premium maximization"}
+    }
     
     return {
         "strategy": "covered_call",
         "risk_profile": risk_profile,
-        "label": result.get("label", ""),
-        "description": result.get("description", ""),
+        "label": labels[risk_profile]["label"],
+        "description": labels[risk_profile]["description"],
         "opportunities": opportunities,
         "total": len(opportunities),
-        "computed_at": result.get("computed_at"),
-        "computed_date": result.get("computed_date"),
-        "is_precomputed": True
+        "computed_at": run_info.get("completed_at"),
+        "as_of": run_info.get("as_of"),
+        "run_id": run_info.get("run_id"),
+        "is_precomputed": True,
+        "architecture": "EOD_PIPELINE_READ_MODEL",
+        "stock_price_source": "SESSION_CLOSE",
+        "live_data_used": False,
+        "latency_ms": round(elapsed_ms, 1),
+        "trace_id": trace_id
     }
 
 
@@ -386,49 +408,73 @@ async def get_pmcc_scan(
     user: dict = Depends(get_current_user)
 ):
     """
-    Get pre-computed PMCC scan results.
+    Get PMCC scan results from EOD SNAPSHOT READ MODEL.
+    
+    ARCHITECTURE (Feb 2026): UNIFIED EOD READ MODEL
+    ===============================================
+    - Reads from scan_results_pmcc collection (same as /api/screener/pmcc)
+    - stock_price_source: SESSION_CLOSE (frozen at market close)
+    - NO LIVE YAHOO CALLS during request/response
+    - Guarantees identical prices with /api/screener/* endpoints
     
     Risk profiles:
-    - conservative: Capital Efficient Income (Low Risk)
-    - balanced: Leveraged Income (Moderate)
-    - aggressive: Max Yield Diagonal (High Premium)
+    - conservative: Capital Efficient Income (Low Risk) - score >= 60
+    - balanced: Leveraged Income (Moderate) - score >= 45
+    - aggressive: Max Yield Diagonal (High Premium) - score >= 30
     """
+    import time
+    trace_id = str(uuid.uuid4())[:8]
+    start_time = time.time()
+    
     if risk_profile not in ["conservative", "balanced", "aggressive"]:
         raise HTTPException(
             status_code=400,
             detail="Invalid risk_profile. Use: conservative, balanced, aggressive"
         )
     
-    service = await get_scan_service()
-    result = await service.get_scan_results("pmcc", risk_profile)
+    # Get latest EOD run
+    run_id = await _get_latest_eod_run_id()
     
-    if not result:
+    if not run_id:
         raise HTTPException(
             status_code=404,
-            detail=f"No pre-computed results for {risk_profile} PMCC scan. "
-                   f"Scans run daily at 4:45 PM ET. An admin can trigger a manual scan."
+            detail="No EOD scan results available. Scans run daily at 4:10 PM ET."
         )
     
-    opportunities = result.get("opportunities", [])
+    # Get opportunities from EOD collection
+    results, run_info = await _get_eod_pmcc_opportunities(
+        run_id, risk_profile, limit, min_score, sector
+    )
     
-    # Apply filters
-    if min_score > 0:
-        opportunities = [o for o in opportunities if o.get("score", 0) >= min_score]
+    # Transform to API response format
+    opportunities = [_transform_pmcc_for_scans(r) for r in results]
     
-    if sector:
-        opportunities = [o for o in opportunities if o.get("sector", "").lower() == sector.lower()]
+    elapsed_ms = (time.time() - start_time) * 1000
+    logger.info(f"PMCC Scans: {len(opportunities)} results for {risk_profile} in {elapsed_ms:.1f}ms trace_id={trace_id}")
     
-    opportunities = opportunities[:limit]
+    # Risk profile labels
+    labels = {
+        "conservative": {"label": "Capital Efficient Income", "description": "Low risk PMCC with strong safety margins"},
+        "balanced": {"label": "Leveraged Income", "description": "Moderate risk PMCC with balanced yield"},
+        "aggressive": {"label": "Max Yield Diagonal", "description": "Aggressive PMCC targeting maximum premium yield"}
+    }
     
     return {
         "strategy": "pmcc",
         "risk_profile": risk_profile,
-        "label": result.get("label", ""),
-        "description": result.get("description", ""),
+        "label": labels[risk_profile]["label"],
+        "description": labels[risk_profile]["description"],
         "opportunities": opportunities,
         "total": len(opportunities),
-        "computed_at": result.get("computed_at"),
-        "is_precomputed": True
+        "computed_at": run_info.get("completed_at"),
+        "as_of": run_info.get("as_of"),
+        "run_id": run_info.get("run_id"),
+        "is_precomputed": True,
+        "architecture": "EOD_PIPELINE_READ_MODEL",
+        "stock_price_source": "SESSION_CLOSE",
+        "live_data_used": False,
+        "latency_ms": round(elapsed_ms, 1),
+        "trace_id": trace_id
     }
 
 
