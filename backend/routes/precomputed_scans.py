@@ -57,9 +57,6 @@ def sanitize_response(data: Dict) -> Dict:
     Uses monetary-aware sanitization.
     """
     return sanitize_dict_with_money(data)
-    Replaces NaN/inf with None.
-    """
-    return sanitize_dict(data)
 
 # ==================== EOD READ HELPERS ====================
 
