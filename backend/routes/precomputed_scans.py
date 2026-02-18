@@ -3,19 +3,30 @@ Pre-Computed Scans Routes
 =========================
 API endpoints for accessing pre-computed scan results.
 
+ARCHITECTURE (Feb 2026): UNIFIED EOD SNAPSHOT READ MODEL
+=========================================================
+All /api/scans/* endpoints now read from the same EOD pipeline collections
+as /api/screener/* endpoints, ensuring consistent pricing:
+- scan_results_cc for Covered Calls
+- scan_results_pmcc for PMCC
+- stock_price_source: SESSION_CLOSE (frozen at market close)
+- No Yahoo live calls during request/response
+
 Endpoints:
 - GET /api/scans/available - List all available scans with metadata
-- GET /api/scans/covered-call/{risk_profile} - Get CC scan results
-- GET /api/scans/pmcc/{risk_profile} - Get PMCC scan results
+- GET /api/scans/covered-call/{risk_profile} - Get CC scan results from EOD
+- GET /api/scans/pmcc/{risk_profile} - Get PMCC scan results from EOD
 - POST /api/scans/trigger/{strategy}/{risk_profile} - Manually trigger scan (admin)
 - POST /api/scans/trigger-all - Trigger all scans (admin)
 """
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from typing import Optional
+from typing import Optional, Dict, List
 import logging
 import sys
+import uuid
 from pathlib import Path
+from datetime import datetime, timezone
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
@@ -25,6 +36,178 @@ from utils.auth import get_current_user, get_admin_user
 logger = logging.getLogger(__name__)
 
 scans_router = APIRouter(prefix="/scans", tags=["Pre-Computed Scans"])
+
+# ==================== EOD READ HELPERS ====================
+
+async def _get_latest_eod_run_id() -> Optional[str]:
+    """Get the latest EOD pipeline run_id."""
+    latest_run = await db.scan_runs.find_one(
+        {"status": "completed"},
+        {"run_id": 1, "_id": 0},
+        sort=[("completed_at", -1)]
+    )
+    return latest_run.get("run_id") if latest_run else None
+
+async def _get_eod_cc_opportunities(
+    run_id: str,
+    risk_profile: str,
+    limit: int,
+    min_score: float,
+    sector: Optional[str]
+) -> tuple:
+    """
+    Get Covered Call opportunities from EOD scan_results_cc.
+    Returns (opportunities, run_info).
+    """
+    # Build query based on risk profile scoring thresholds
+    query = {"run_id": run_id}
+    
+    # Risk profile determines score thresholds
+    if risk_profile == "conservative":
+        query["score"] = {"$gte": 70}
+        query["delta"] = {"$lte": 0.35}  # Lower delta = more conservative
+    elif risk_profile == "balanced":
+        query["score"] = {"$gte": 50}
+        query["delta"] = {"$gte": 0.25, "$lte": 0.45}
+    elif risk_profile == "aggressive":
+        query["score"] = {"$gte": 40}
+        query["delta"] = {"$gte": 0.35}
+    
+    if min_score > 0:
+        query["score"] = {"$gte": min_score}
+    
+    # Note: sector filtering would need sector data in the collection
+    
+    results = await db.scan_results_cc.find(
+        query,
+        {"_id": 0}
+    ).sort("score", -1).limit(limit).to_list(limit)
+    
+    # Get run metadata
+    run_doc = await db.scan_runs.find_one({"run_id": run_id}, {"_id": 0})
+    run_info = {
+        "run_id": run_id,
+        "as_of": run_doc.get("as_of") if run_doc else None,
+        "completed_at": run_doc.get("completed_at") if run_doc else None
+    }
+    
+    return results, run_info
+
+async def _get_eod_pmcc_opportunities(
+    run_id: str,
+    risk_profile: str,
+    limit: int,
+    min_score: float,
+    sector: Optional[str]
+) -> tuple:
+    """
+    Get PMCC opportunities from EOD scan_results_pmcc.
+    Returns (opportunities, run_info).
+    """
+    query = {"run_id": run_id}
+    
+    # Risk profile determines thresholds
+    if risk_profile == "conservative":
+        query["score"] = {"$gte": 60}
+    elif risk_profile == "balanced":
+        query["score"] = {"$gte": 45}
+    elif risk_profile == "aggressive":
+        query["score"] = {"$gte": 30}
+    
+    if min_score > 0:
+        query["score"] = {"$gte": min_score}
+    
+    results = await db.scan_results_pmcc.find(
+        query,
+        {"_id": 0}
+    ).sort("score", -1).limit(limit).to_list(limit)
+    
+    # Get run metadata
+    run_doc = await db.scan_runs.find_one({"run_id": run_id}, {"_id": 0})
+    run_info = {
+        "run_id": run_id,
+        "as_of": run_doc.get("as_of") if run_doc else None,
+        "completed_at": run_doc.get("completed_at") if run_doc else None
+    }
+    
+    return results, run_info
+
+def _transform_cc_for_scans(row: Dict) -> Dict:
+    """Transform EOD CC row to scans API response format."""
+    return {
+        "symbol": row.get("symbol"),
+        "stock_price": row.get("stock_price"),
+        "stock_price_source": row.get("stock_price_source", "SESSION_CLOSE"),
+        "session_close_price": row.get("session_close_price"),
+        "prior_close_price": row.get("prior_close_price"),
+        "market_status": row.get("market_status"),
+        "strike": row.get("strike"),
+        "expiry": row.get("expiry"),
+        "dte": row.get("dte"),
+        "premium": row.get("premium_bid"),  # SELL rule: use BID
+        "premium_bid": row.get("premium_bid"),
+        "premium_ask": row.get("premium_ask"),
+        "premium_yield": row.get("premium_yield"),
+        "roi_pct": row.get("roi_pct"),
+        "roi_annualized": row.get("roi_annualized"),
+        "delta": row.get("delta"),
+        "iv": row.get("iv"),
+        "iv_pct": row.get("iv_pct"),
+        "iv_rank": row.get("iv_rank"),
+        "open_interest": row.get("open_interest"),
+        "volume": row.get("volume"),
+        "score": row.get("score"),
+        "is_etf": row.get("is_etf", False),
+        "instrument_type": row.get("instrument_type", "STOCK"),
+        "quality_flags": row.get("quality_flags", []),
+        "analyst_rating": row.get("analyst_rating"),
+        "contract_symbol": row.get("contract_symbol"),
+        "as_of": row.get("as_of"),
+        "run_id": row.get("run_id")
+    }
+
+def _transform_pmcc_for_scans(row: Dict) -> Dict:
+    """Transform EOD PMCC row to scans API response format."""
+    return {
+        "symbol": row.get("symbol"),
+        "stock_price": row.get("stock_price"),
+        "stock_price_source": row.get("stock_price_source", "SESSION_CLOSE"),
+        "session_close_price": row.get("session_close_price"),
+        "prior_close_price": row.get("prior_close_price"),
+        "market_status": row.get("market_status"),
+        # LEAP leg
+        "leap_strike": row.get("leap_strike"),
+        "leap_expiry": row.get("leap_expiry"),
+        "leap_dte": row.get("leap_dte"),
+        "leap_ask": row.get("leap_ask"),
+        "leap_bid": row.get("leap_bid"),
+        "leap_delta": row.get("leap_delta"),
+        # Short leg
+        "short_strike": row.get("short_strike"),
+        "short_expiry": row.get("short_expiry"),
+        "short_dte": row.get("short_dte"),
+        "short_bid": row.get("short_bid"),
+        "short_ask": row.get("short_ask"),
+        "short_delta": row.get("short_delta"),
+        # Economics
+        "net_debit": row.get("net_debit"),
+        "width": row.get("width"),
+        "max_profit": row.get("max_profit"),
+        "breakeven": row.get("breakeven"),
+        "roi_annualized": row.get("roi_annualized"),
+        # Greeks & IV
+        "iv": row.get("iv"),
+        "iv_pct": row.get("iv_pct"),
+        "iv_rank": row.get("iv_rank"),
+        # Metadata
+        "score": row.get("score"),
+        "is_etf": row.get("is_etf", False),
+        "instrument_type": row.get("instrument_type", "STOCK"),
+        "quality_flags": row.get("quality_flags", []),
+        "analyst_rating": row.get("analyst_rating"),
+        "as_of": row.get("as_of"),
+        "run_id": row.get("run_id")
+    }
 
 
 async def get_scan_service():
