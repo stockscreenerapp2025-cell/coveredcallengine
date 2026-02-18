@@ -170,23 +170,27 @@ async def _get_eod_pmcc_opportunities(
     return results, run_info
 
 def _transform_cc_for_scans(row: Dict) -> Dict:
-    """Transform EOD CC row to scans API response format with float sanitization."""
+    """Transform EOD CC row to scans API response format with 2-decimal monetary precision."""
     result = {
         "symbol": row.get("symbol"),
-        "stock_price": sanitize_float(row.get("stock_price")),
+        # MONETARY: 2-decimal precision
+        "stock_price": sanitize_money(row.get("stock_price")),
         "stock_price_source": row.get("stock_price_source", "SESSION_CLOSE"),
-        "session_close_price": sanitize_float(row.get("session_close_price")),
-        "prior_close_price": sanitize_float(row.get("prior_close_price")),
+        "session_close_price": sanitize_money(row.get("session_close_price")),
+        "prior_close_price": sanitize_money(row.get("prior_close_price")),
         "market_status": row.get("market_status"),
-        "strike": sanitize_float(row.get("strike")),
+        "strike": sanitize_money(row.get("strike")),
         "expiry": row.get("expiry"),
         "dte": row.get("dte"),
-        "premium": sanitize_float(row.get("premium_bid")),  # SELL rule: use BID
-        "premium_bid": sanitize_float(row.get("premium_bid")),
-        "premium_ask": sanitize_float(row.get("premium_ask")),
-        "premium_yield": sanitize_float(row.get("premium_yield")),
-        "roi_pct": sanitize_float(row.get("roi_pct")),
-        "roi_annualized": sanitize_float(row.get("roi_annualized")),
+        # PRICING POLICY: SELL at BID (2-decimal)
+        "premium": sanitize_money(row.get("premium_bid")),  # SELL rule: use BID
+        "premium_bid": sanitize_money(row.get("premium_bid")),
+        "premium_ask": sanitize_money(row.get("premium_ask")),
+        # Percentages
+        "premium_yield": sanitize_percentage(row.get("premium_yield")),
+        "roi_pct": sanitize_percentage(row.get("roi_pct")),
+        "roi_annualized": sanitize_percentage(row.get("roi_annualized"), 1),
+        # Greeks (non-monetary)
         "delta": sanitize_float(row.get("delta")),
         "iv": sanitize_float(row.get("iv")),
         "iv_pct": sanitize_float(row.get("iv_pct")),
