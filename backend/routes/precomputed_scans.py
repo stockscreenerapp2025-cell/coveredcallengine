@@ -265,15 +265,69 @@ async def get_available_scans(user: dict = Depends(get_current_user)):
     """
     Get list of all available pre-computed scans with metadata.
     Returns scan types, last computed time, and result counts.
+    
+    CRITICAL FIX (Feb 2026): Counts now computed from EOD pipeline collections
+    (scan_results_cc, scan_results_pmcc) using the same filtering logic as
+    the detail endpoints, ensuring summary counts match returned results.
     """
-    service = await get_scan_service()
-    scans = await service.get_all_scan_metadata()
+    # Get latest EOD run
+    run_id = await _get_latest_eod_run_id()
     
-    # Group by strategy
-    covered_calls = [s for s in scans if s.get("strategy") == "covered_call"]
-    pmcc = [s for s in scans if s.get("strategy") == "pmcc"]
+    # Get run metadata for computed_at timestamp
+    run_info = None
+    if run_id:
+        run_doc = await db.scan_runs.find_one({"run_id": run_id}, {"_id": 0})
+        if run_doc:
+            run_info = {
+                "run_id": run_id,
+                "as_of": run_doc.get("as_of"),
+                "completed_at": run_doc.get("completed_at")
+            }
     
-    # Define all scan buttons (even if not computed yet)
+    # Compute CC counts using SAME filtering logic as detail endpoint
+    cc_counts = {}
+    if run_id:
+        # Conservative: score >= 70, delta <= 0.35
+        cc_counts["conservative"] = await db.scan_results_cc.count_documents({
+            "run_id": run_id,
+            "score": {"$gte": 70},
+            "delta": {"$lte": 0.35}
+        })
+        # Balanced: score >= 50, delta 0.25-0.45
+        cc_counts["balanced"] = await db.scan_results_cc.count_documents({
+            "run_id": run_id,
+            "score": {"$gte": 50},
+            "delta": {"$gte": 0.25, "$lte": 0.45}
+        })
+        # Aggressive: score >= 40, delta >= 0.35
+        cc_counts["aggressive"] = await db.scan_results_cc.count_documents({
+            "run_id": run_id,
+            "score": {"$gte": 40},
+            "delta": {"$gte": 0.35}
+        })
+    
+    # Compute PMCC counts using SAME filtering logic as detail endpoint
+    pmcc_counts = {}
+    if run_id:
+        # Conservative: score >= 60
+        pmcc_counts["conservative"] = await db.scan_results_pmcc.count_documents({
+            "run_id": run_id,
+            "score": {"$gte": 60}
+        })
+        # Balanced: score >= 45
+        pmcc_counts["balanced"] = await db.scan_results_pmcc.count_documents({
+            "run_id": run_id,
+            "score": {"$gte": 45}
+        })
+        # Aggressive: score >= 30
+        pmcc_counts["aggressive"] = await db.scan_results_pmcc.count_documents({
+            "run_id": run_id,
+            "score": {"$gte": 30}
+        })
+    
+    computed_at = run_info.get("completed_at") if run_info else None
+    
+    # Build response with accurate counts from EOD collections
     all_scans = {
         "covered_call": [
             {
@@ -281,27 +335,27 @@ async def get_available_scans(user: dict = Depends(get_current_user)):
                 "label": "Income Guard",
                 "description": "Stable stocks with low volatility and high probability of profit",
                 "button_text": "Income Guard – Covered Call (Low Risk)",
-                "available": False,
-                "count": 0,
-                "computed_at": None
+                "available": run_id is not None,
+                "count": cc_counts.get("conservative", 0),
+                "computed_at": computed_at
             },
             {
                 "risk_profile": "balanced",
                 "label": "Steady Income",
                 "description": "Slightly bullish stocks with moderate volatility",
                 "button_text": "Steady Income – Covered Call (Balanced)",
-                "available": False,
-                "count": 0,
-                "computed_at": None
+                "available": run_id is not None,
+                "count": cc_counts.get("balanced", 0),
+                "computed_at": computed_at
             },
             {
                 "risk_profile": "aggressive",
                 "label": "Premium Hunter",
                 "description": "Strong momentum with premium maximization",
                 "button_text": "Premium Hunter – Covered Call (Aggressive)",
-                "available": False,
-                "count": 0,
-                "computed_at": None
+                "available": run_id is not None,
+                "count": cc_counts.get("aggressive", 0),
+                "computed_at": computed_at
             }
         ],
         "pmcc": [
@@ -310,53 +364,35 @@ async def get_available_scans(user: dict = Depends(get_current_user)):
                 "label": "Capital Efficient Income",
                 "description": "PMCC with stable underlying and high delta LEAPS",
                 "button_text": "Capital Efficient Income – PMCC (Low Risk)",
-                "available": False,
-                "count": 0,
-                "computed_at": None
+                "available": run_id is not None,
+                "count": pmcc_counts.get("conservative", 0),
+                "computed_at": computed_at
             },
             {
                 "risk_profile": "balanced",
                 "label": "Leveraged Income",
                 "description": "Moderate risk PMCC with balanced LEAPS selection",
                 "button_text": "Leveraged Income – PMCC (Balanced)",
-                "available": False,
-                "count": 0,
-                "computed_at": None
+                "available": run_id is not None,
+                "count": pmcc_counts.get("balanced", 0),
+                "computed_at": computed_at
             },
             {
                 "risk_profile": "aggressive",
                 "label": "Max Yield Diagonal",
                 "description": "Aggressive PMCC targeting maximum premium yield",
                 "button_text": "Max Yield Diagonal – PMCC (Aggressive)",
-                "available": False,
-                "count": 0,
-                "computed_at": None
+                "available": run_id is not None,
+                "count": pmcc_counts.get("aggressive", 0),
+                "computed_at": computed_at
             }
         ]
     }
     
-    # Merge with actual data
-    for scan in covered_calls:
-        profile = scan.get("risk_profile")
-        for s in all_scans["covered_call"]:
-            if s["risk_profile"] == profile:
-                s["available"] = True
-                s["count"] = scan.get("count", 0)
-                s["computed_at"] = scan.get("computed_at")
-                s["label"] = scan.get("label", s["label"])
-                s["description"] = scan.get("description", s["description"])
-    
-    for scan in pmcc:
-        profile = scan.get("risk_profile")
-        for s in all_scans["pmcc"]:
-            if s["risk_profile"] == profile:
-                s["available"] = True
-                s["count"] = scan.get("count", 0)
-                s["computed_at"] = scan.get("computed_at")
-    
     return {
         "scans": all_scans,
-        "total_scans": len(scans),
+        "total_scans": 6,  # Always 6 scan types defined
+        "run_id": run_id,
         "message": "Use GET /api/scans/{strategy}/{risk_profile} to fetch results"
     }
 
