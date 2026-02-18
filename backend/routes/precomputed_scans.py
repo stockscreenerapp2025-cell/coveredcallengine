@@ -34,50 +34,29 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from database import db
 from utils.auth import get_current_user, get_admin_user
-import math
+
+# Import pricing utilities for stabilization (MASTER PATCH)
+from utils.pricing_utils import (
+    sanitize_float,
+    sanitize_money,
+    sanitize_percentage,
+    sanitize_dict_with_money,
+    MONETARY_FIELDS
+)
 
 logger = logging.getLogger(__name__)
 
 scans_router = APIRouter(prefix="/scans", tags=["Pre-Computed Scans"])
 
 # ==================== STABILITY HELPERS ====================
-
-def sanitize_float(value, default=None):
-    """Sanitize float values to prevent JSON serialization errors."""
-    if value is None:
-        return default
-    try:
-        f = float(value)
-        if math.isnan(f) or math.isinf(f):
-            return default
-        return f
-    except (TypeError, ValueError):
-        return default
-
-def sanitize_dict(d: Dict) -> Dict:
-    """Recursively sanitize all float values in a dictionary."""
-    if not isinstance(d, dict):
-        return d
-    result = {}
-    for key, value in d.items():
-        if isinstance(value, float):
-            result[key] = sanitize_float(value)
-        elif isinstance(value, dict):
-            result[key] = sanitize_dict(value)
-        elif isinstance(value, list):
-            result[key] = [
-                sanitize_dict(item) if isinstance(item, dict)
-                else sanitize_float(item) if isinstance(item, float)
-                else item
-                for item in value
-            ]
-        else:
-            result[key] = value
-    return result
+# Using centralized pricing_utils for consistency across all endpoints
 
 def sanitize_response(data: Dict) -> Dict:
     """
     Sanitize entire response dict to ensure JSON serializability.
+    Uses monetary-aware sanitization.
+    """
+    return sanitize_dict_with_money(data)
     Replaces NaN/inf with None.
     """
     return sanitize_dict(data)
