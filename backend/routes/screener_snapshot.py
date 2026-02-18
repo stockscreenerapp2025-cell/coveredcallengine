@@ -108,43 +108,16 @@ from services.quality_score import (
 screener_router = APIRouter(tags=["Screener"])
 
 # ============================================================
-# STABILITY: JSON-SAFE FLOAT SANITIZATION
+# STABILITY: PRICING PRECISION HELPERS (MASTER STABILIZATION PATCH)
 # ============================================================
-# Prevents Cloudflare 520 errors from NaN/inf float values
-
-def sanitize_float(value, default=None):
-    """
-    Sanitize a float value to be JSON-compliant.
-    Replaces NaN, inf, -inf with None (not 0, to avoid masking bad data).
-    
-    Args:
-        value: Value to sanitize
-        default: Default value if sanitization fails (default None for visibility)
-    
-    Returns:
-        Sanitized float or default value
-    """
-    if value is None:
-        return default
-    try:
-        f = float(value)
-        if math.isnan(f) or math.isinf(f):
-            return default
-        return f
-    except (TypeError, ValueError):
-        return default
+# - sanitize_float: General floats, no rounding
+# - sanitize_money: Monetary values, STRICT 2-decimal precision
+# - sanitize_dict_with_money: Full dict sanitization
+# Imported from utils.pricing_utils
 
 def safe_divide(numerator, denominator, default=None):
     """
     Safe division that returns None instead of NaN/inf on invalid input.
-    
-    Args:
-        numerator: Dividend
-        denominator: Divisor
-        default: Value to return on division by zero or invalid input
-    
-    Returns:
-        Division result or default
     """
     if denominator is None or denominator == 0:
         return default
@@ -158,30 +131,10 @@ def safe_divide(numerator, denominator, default=None):
     except (TypeError, ValueError, ZeroDivisionError):
         return default
 
+# Alias for backward compatibility
 def sanitize_dict_floats(d: dict) -> dict:
-    """
-    Recursively sanitize all float values in a dictionary.
-    Handles nested dicts and lists. Converts NaN/inf to None.
-    """
-    if not isinstance(d, dict):
-        return d
-    
-    result = {}
-    for key, value in d.items():
-        if isinstance(value, float):
-            result[key] = sanitize_float(value)
-        elif isinstance(value, dict):
-            result[key] = sanitize_dict_floats(value)
-        elif isinstance(value, list):
-            result[key] = [
-                sanitize_dict_floats(item) if isinstance(item, dict) 
-                else sanitize_float(item) if isinstance(item, float) 
-                else item 
-                for item in value
-            ]
-        else:
-            result[key] = value
-    return result
+    """Alias for sanitize_dict_with_money for backward compatibility."""
+    return sanitize_dict_with_money(d)
 
 # Initialize SnapshotService (singleton) - LEGACY, being replaced by EOD Contract
 import os
