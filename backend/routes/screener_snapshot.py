@@ -1691,7 +1691,12 @@ async def screen_pmcc(
             "short": {"min": min_short_dte, "max": max_short_dte}
         },
         "architecture": "EOD_PIPELINE_READ_MODEL",
-        "latency_ms": round(elapsed_ms, 1)
+        "latency_ms": round(elapsed_ms, 1),
+        "meta": {
+            "dropped_rows": dropped_rows,
+            "transform_errors": len(transform_errors),
+            "trace_id": trace_id
+        }
     }
 @screener_router.get("/dashboard-opportunities")
 async def get_dashboard_opportunities(
