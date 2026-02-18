@@ -1435,23 +1435,27 @@ async def _get_pmcc_from_legacy(filters: Dict[str, Any], limit: int) -> List[Dic
 
 
 def _transform_pmcc_result(r: Dict) -> Dict:
-    """Transform stored PMCC result to API response format."""
+    """
+    Transform stored PMCC result to API response format.
     
-    # Get values with proper handling (NO undefined → 0 fallbacks for prices)
-    short_bid = r.get("short_bid") or r.get("short_premium")
-    short_ask = r.get("short_ask")
-    short_used = r.get("short_used") or short_bid
-    leap_ask = r.get("leap_ask") or r.get("leaps_ask")
-    leap_bid = r.get("leap_bid")
-    leap_used = r.get("leap_used") or leap_ask
-    iv_decimal = r.get("iv", 0)
-    iv_percent = r.get("iv_pct", 0)
-    
-    # VALIDATION: If short_bid <= 0, this row is invalid
-    if not short_bid or short_bid <= 0:
-        return None  # Will be filtered out
-    
-    return {
+    STABILITY: Sanitizes all float values to prevent JSON serialization errors.
+    """
+    try:
+        # Get values with proper handling (NO undefined → 0 fallbacks for prices)
+        short_bid = sanitize_float(r.get("short_bid") or r.get("short_premium"))
+        short_ask = r.get("short_ask")
+        short_used = sanitize_float(r.get("short_used") or short_bid)
+        leap_ask = sanitize_float(r.get("leap_ask") or r.get("leaps_ask"))
+        leap_bid = r.get("leap_bid")
+        leap_used = sanitize_float(r.get("leap_used") or leap_ask)
+        iv_decimal = sanitize_float(r.get("iv", 0))
+        iv_percent = sanitize_float(r.get("iv_pct", 0))
+        
+        # VALIDATION: If short_bid <= 0, this row is invalid
+        if not short_bid or short_bid <= 0:
+            return None  # Will be filtered out
+        
+        result = {
         # === EXPLICIT PMCC SCHEMA ===
         
         # Underlying
