@@ -38,6 +38,17 @@ import uuid
 import math
 import traceback
 
+# Import pricing utilities for stabilization
+from utils.pricing_utils import (
+    sanitize_float,
+    sanitize_money,
+    sanitize_percentage,
+    sanitize_dict_with_money,
+    enforce_pricing_policy_cc,
+    enforce_pricing_policy_pmcc,
+    MONETARY_FIELDS
+)
+
 # Import data_provider - ONLY for non-scan paths (Watchlist, Simulator)
 # SCAN PATHS (Screener, Dashboard, PMCC) MUST NOT use these for live fetching
 from services.data_provider import (
