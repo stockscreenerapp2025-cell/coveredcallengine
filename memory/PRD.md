@@ -1,7 +1,51 @@
 # Covered Call Engine - Product Requirements Document
 
 ## Last Updated
-2026-02-18 - Critical Scan & Watchlist Regression Fix COMPLETE
+2025-12-XX - System Architecture Documentation COMPLETE
+
+---
+
+## System Architecture Documentation - COMPLETED 2025-12
+
+### Status: ✅ COMPLETE
+
+### Deliverable:
+Created comprehensive system architecture reference document at `/app/CCE_SYSTEM_ARCHITECTURE_REFERENCE.md`
+
+### Contents:
+| Section | Description |
+|---------|-------------|
+| System Overview | Tech stack, business logic, data flow |
+| Architecture Layers | EOD Pipeline, Chain Validator, Screener Routes |
+| User-Facing Pages | Dashboard, Screener, PMCC, Simulator, Watchlist |
+| Admin Panel Deep Dive | All admin endpoints with data flows |
+| Core Modules | Payments, Scheduled Jobs, LLM/API Keys |
+| Function Impact Matrix | Critical functions with callers, dependencies, failure behaviors |
+| Silent Fallback Inventory | Complete list of silent vs explicit fallbacks |
+| Charts/Fundamentals/Technicals Sourcing Map | Data sources for all UI elements |
+| Database Schema Reference | Collection schemas with indexes |
+| Scheduled Jobs | Job registry and execution flows |
+| Third-Party Integrations | Yahoo Finance, PayPal, OpenAI, APScheduler |
+| Completeness Checklist | Verification of all mandatory sections |
+
+### Key Documentation Highlights:
+- **Pricing Rules**: BUY=ASK, SELL=BID (no exceptions)
+- **Market State Logic**: OPEN/EXTENDED/CLOSED with field priorities
+- **IV Rank Bootstrap**: 50 neutral default when < 5 samples
+- **AI Guard**: 5-step check (entitlement → rate limit → concurrency → balance → deduct)
+- **EOD Pipeline**: 16:10 ET Mon-Fri, ~1500 symbols
+
+### Files Referenced:
+- Backend routes: admin.py, screener_snapshot.py, simulator.py, watchlist.py, paypal.py
+- Services: eod_pipeline.py, data_provider.py, yf_pricing.py, pricing_rules.py
+- AI Wallet: guard.py, wallet_service.py, routes.py
+- Frontend: Dashboard.js, Screener.js, PMCC.js, Simulator.js
+
+---
+
+## Previous Updates
+
+### 2026-02-18 - Critical Scan & Watchlist Regression Fix COMPLETE
 
 ---
 
