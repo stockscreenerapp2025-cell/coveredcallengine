@@ -220,37 +220,37 @@ def _transform_pmcc_for_scans(row: Dict) -> Dict:
     """Transform EOD PMCC row to scans API response format with float sanitization."""
     result = {
         "symbol": row.get("symbol"),
-        "stock_price": row.get("stock_price"),
+        "stock_price": sanitize_float(row.get("stock_price")),
         "stock_price_source": row.get("stock_price_source", "SESSION_CLOSE"),
-        "session_close_price": row.get("session_close_price"),
-        "prior_close_price": row.get("prior_close_price"),
+        "session_close_price": sanitize_float(row.get("session_close_price")),
+        "prior_close_price": sanitize_float(row.get("prior_close_price")),
         "market_status": row.get("market_status"),
         # LEAP leg
-        "leap_strike": row.get("leap_strike"),
+        "leap_strike": sanitize_float(row.get("leap_strike")),
         "leap_expiry": row.get("leap_expiry"),
         "leap_dte": row.get("leap_dte"),
-        "leap_ask": row.get("leap_ask"),
-        "leap_bid": row.get("leap_bid"),
-        "leap_delta": row.get("leap_delta"),
+        "leap_ask": sanitize_float(row.get("leap_ask")),
+        "leap_bid": sanitize_float(row.get("leap_bid")),
+        "leap_delta": sanitize_float(row.get("leap_delta")),
         # Short leg
-        "short_strike": row.get("short_strike"),
+        "short_strike": sanitize_float(row.get("short_strike")),
         "short_expiry": row.get("short_expiry"),
         "short_dte": row.get("short_dte"),
-        "short_bid": row.get("short_bid"),
-        "short_ask": row.get("short_ask"),
-        "short_delta": row.get("short_delta"),
+        "short_bid": sanitize_float(row.get("short_bid")),
+        "short_ask": sanitize_float(row.get("short_ask")),
+        "short_delta": sanitize_float(row.get("short_delta")),
         # Economics
-        "net_debit": row.get("net_debit"),
-        "width": row.get("width"),
-        "max_profit": row.get("max_profit"),
-        "breakeven": row.get("breakeven"),
-        "roi_annualized": row.get("roi_annualized"),
+        "net_debit": sanitize_float(row.get("net_debit")),
+        "width": sanitize_float(row.get("width")),
+        "max_profit": sanitize_float(row.get("max_profit")),
+        "breakeven": sanitize_float(row.get("breakeven")),
+        "roi_annualized": sanitize_float(row.get("roi_annualized")),
         # Greeks & IV
-        "iv": row.get("iv"),
-        "iv_pct": row.get("iv_pct"),
-        "iv_rank": row.get("iv_rank"),
+        "iv": sanitize_float(row.get("iv")),
+        "iv_pct": sanitize_float(row.get("iv_pct")),
+        "iv_rank": sanitize_float(row.get("iv_rank")),
         # Metadata
-        "score": row.get("score"),
+        "score": sanitize_float(row.get("score")),
         "is_etf": row.get("is_etf", False),
         "instrument_type": row.get("instrument_type", "STOCK"),
         "quality_flags": row.get("quality_flags", []),
@@ -258,6 +258,7 @@ def _transform_pmcc_for_scans(row: Dict) -> Dict:
         "as_of": row.get("as_of"),
         "run_id": row.get("run_id")
     }
+    return result
 
 
 async def get_scan_service():
