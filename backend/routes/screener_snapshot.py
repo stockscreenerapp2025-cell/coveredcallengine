@@ -1197,7 +1197,7 @@ def _transform_cc_result(r: Dict) -> Dict:
             "roi_pct": r.get("roi_pct", 0),
             "annualized_roi_pct": r.get("roi_annualized", 0),
             "premium_yield": r.get("premium_yield", 0),
-            "otm_pct": r.get("otm_pct", 0)
+            "otm_pct": sanitize_float(r.get("otm_pct", 0))
         },
         "metadata": {
             "dte_category": r.get("dte_category", "weekly" if dte <= 14 else "monthly"),
@@ -1205,9 +1205,17 @@ def _transform_cc_result(r: Dict) -> Dict:
             "data_source": "eod_precomputed"
         },
         "scoring": {
-            "final_score": r.get("score", 0)
+            "final_score": sanitize_float(r.get("score", 0))
         }
-    }
+        }
+        
+        # Sanitize all floats in the result to prevent JSON serialization errors
+        return sanitize_dict_floats(result)
+        
+    except Exception as e:
+        # Log error but don't crash - return None to filter out this row
+        logging.warning(f"TRANSFORM_CC_ERROR | symbol={r.get('symbol', 'UNKNOWN')} | error={str(e)[:100]}")
+        return None
 
 
 @screener_router.get("/covered-calls")
