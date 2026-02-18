@@ -1250,75 +1250,97 @@ async def screen_covered_calls(
         scan_mode: "system", "custom", or "manual" (filter strictness)
     """
     import time
+    trace_id = str(uuid.uuid4())[:8]
     start_time = time.time()
     
-    # Determine DTE range based on mode
-    if min_dte is None or max_dte is None:
-        auto_min_dte, auto_max_dte = get_dte_range(dte_mode)
-        min_dte = min_dte if min_dte is not None else auto_min_dte
-        max_dte = max_dte if max_dte is not None else auto_max_dte
-    
-    # Build filter dict
-    filters = {
-        "min_dte": min_dte,
-        "max_dte": max_dte,
-        "dte_mode": dte_mode if dte_mode != "all" else None,
-        "min_premium_yield": min_premium_yield,
-        "max_premium_yield": max_premium_yield,
-        "min_otm_pct": min_otm_pct,
-        "max_otm_pct": max_otm_pct,
-        "risk_profile": risk_profile
-    }
-    
-    # Try EOD pipeline results first
-    run_id = await _get_latest_eod_run_id()
-    data_source = "eod_pipeline"
-    run_info = None
-    
-    if run_id:
-        results = await _get_cc_from_eod(run_id, filters, limit)
+    try:
+        # Determine DTE range based on mode
+        if min_dte is None or max_dte is None:
+            auto_min_dte, auto_max_dte = get_dte_range(dte_mode)
+            min_dte = min_dte if min_dte is not None else auto_min_dte
+            max_dte = max_dte if max_dte is not None else auto_max_dte
         
-        # Get run metadata
-        run_doc = await db.scan_runs.find_one({"run_id": run_id}, {"_id": 0})
-        if run_doc:
-            run_info = {
-                "run_id": run_id,
-                "as_of": run_doc.get("as_of"),
-                "completed_at": run_doc.get("completed_at"),
-                "symbols_processed": run_doc.get("symbols_processed"),
-                "symbols_included": run_doc.get("symbols_included")
+        # Build filter dict
+        filters = {
+            "min_dte": min_dte,
+            "max_dte": max_dte,
+            "dte_mode": dte_mode if dte_mode != "all" else None,
+            "min_premium_yield": min_premium_yield,
+            "max_premium_yield": max_premium_yield,
+            "min_otm_pct": min_otm_pct,
+            "max_otm_pct": max_otm_pct,
+            "risk_profile": risk_profile
+        }
+        
+        # Try EOD pipeline results first
+        run_id = await _get_latest_eod_run_id()
+        data_source = "eod_pipeline"
+        run_info = None
+        
+        if run_id:
+            results = await _get_cc_from_eod(run_id, filters, limit)
+            
+            # Get run metadata
+            run_doc = await db.scan_runs.find_one({"run_id": run_id}, {"_id": 0})
+            if run_doc:
+                run_info = {
+                    "run_id": run_id,
+                    "as_of": run_doc.get("as_of"),
+                    "completed_at": run_doc.get("completed_at"),
+                    "symbols_processed": run_doc.get("symbols_processed"),
+                    "symbols_included": run_doc.get("symbols_included")
+                }
+        else:
+            # Fallback to legacy precomputed_scans
+            results = await _get_cc_from_legacy(filters, limit)
+            data_source = "precomputed_scans_legacy"
+        
+        # Transform results to API format (filter out None for invalid rows)
+        # Per-row exceptions are caught in _transform_cc_result
+        opportunities = [r for r in (_transform_cc_result(r) for r in results) if r is not None]
+        
+        # ANALYST ENRICHMENT MERGE (READ-TIME)
+        opportunities = await _merge_analyst_enrichment(opportunities, debug_enrichment=debug_enrichment)
+        
+        elapsed_ms = (time.time() - start_time) * 1000
+        logging.info(f"CC Screener: {len(opportunities)} results in {elapsed_ms:.1f}ms from {data_source} trace_id={trace_id}")
+        
+        return {
+            "total": len(opportunities),
+            "results": opportunities,
+            "opportunities": opportunities,
+            "symbols_scanned": run_info.get("symbols_processed", 0) if run_info else 0,
+            "symbols_with_results": len(opportunities),
+            "run_info": run_info,
+            "data_source": data_source,
+            "live_data_used": False,  # CRITICAL: No live Yahoo calls
+            "layer": 3,
+            "scan_mode": scan_mode,
+            "dte_mode": dte_mode,
+            "dte_range": {"min": min_dte, "max": max_dte},
+            "filters_applied": filters,
+            "architecture": "EOD_PIPELINE_READ_MODEL",
+            "latency_ms": round(elapsed_ms, 1)
+        }
+        
+    except Exception as e:
+        # STABILITY: Return JSON 500 instead of letting Cloudflare mask the error
+        elapsed_ms = (time.time() - start_time) * 1000
+        error_msg = str(e)[:500]
+        tb = traceback.format_exc()
+        
+        logging.error(f"COVERED_CALLS_ERROR | trace_id={trace_id} | error={error_msg}")
+        logging.error(f"COVERED_CALLS_TRACEBACK | trace_id={trace_id}\n{tb}")
+        
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "error": error_msg,
+                "endpoint": "/api/screener/covered-calls",
+                "trace_id": trace_id,
+                "latency_ms": round(elapsed_ms, 1)
             }
-    else:
-        # Fallback to legacy precomputed_scans
-        results = await _get_cc_from_legacy(filters, limit)
-        data_source = "precomputed_scans_legacy"
-    
-    # Transform results to API format (filter out None for invalid rows)
-    opportunities = [r for r in (_transform_cc_result(r) for r in results) if r is not None]
-    
-    # ANALYST ENRICHMENT MERGE (READ-TIME)
-    opportunities = await _merge_analyst_enrichment(opportunities, debug_enrichment=debug_enrichment)
-    
-    elapsed_ms = (time.time() - start_time) * 1000
-    logging.info(f"CC Screener: {len(opportunities)} results in {elapsed_ms:.1f}ms from {data_source}")
-    
-    return {
-        "total": len(opportunities),
-        "results": opportunities,
-        "opportunities": opportunities,
-        "symbols_scanned": run_info.get("symbols_processed", 0) if run_info else 0,
-        "symbols_with_results": len(opportunities),
-        "run_info": run_info,
-        "data_source": data_source,
-        "live_data_used": False,  # CRITICAL: No live Yahoo calls
-        "layer": 3,
-        "scan_mode": scan_mode,
-        "dte_mode": dte_mode,
-        "dte_range": {"min": min_dte, "max": max_dte},
-        "filters_applied": filters,
-        "architecture": "EOD_PIPELINE_READ_MODEL",
-        "latency_ms": round(elapsed_ms, 1)
-    }
+        )
 
 # ============================================================
 # PMCC SCREENER - COMPLETELY ISOLATED FROM CC LOGIC
