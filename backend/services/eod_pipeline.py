@@ -203,11 +203,18 @@ def fetch_bulk_quotes_sync(symbols: List[str], retry_count: int = 0) -> Dict[str
                     # Only 1 day of data, use Open as approximation
                     prior_close_price = latest.get('Open')
                 
-                # Convert numpy types to Python types
+                # Convert numpy types to Python types - SAFE CONVERSION (NaN check BEFORE float cast)
                 if hasattr(session_close_price, 'item'):
-                    session_close_price = float(session_close_price.item())
+                    val = session_close_price.item()
+                    session_close_price = None if (val is None or pd.isna(val)) else float(val)
+                elif session_close_price is not None and pd.isna(session_close_price):
+                    session_close_price = None
+                    
                 if hasattr(prior_close_price, 'item'):
-                    prior_close_price = float(prior_close_price.item())
+                    val = prior_close_price.item()
+                    prior_close_price = None if (val is None or pd.isna(val)) else float(val)
+                elif prior_close_price is not None and pd.isna(prior_close_price):
+                    prior_close_price = None
                 
                 # Validate prices
                 raw_prices = {
