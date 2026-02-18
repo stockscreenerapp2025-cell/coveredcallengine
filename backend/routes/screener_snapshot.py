@@ -2185,6 +2185,127 @@ async def get_admin_status(user: dict = Depends(get_current_user)):
 
 
 # ============================================================
+# CSV EXPORT (MASTER STABILIZATION PATCH)
+# ============================================================
+# Always includes headers + metadata, even with 0 opportunities
+
+@screener_router.get("/covered-calls/export.csv")
+async def export_covered_calls_csv(
+    mode: str = Query("opportunities", regex="^(opportunities|decisions)$"),
+    limit: int = Query(200, ge=1, le=500),
+    user: dict = Depends(get_current_user)
+):
+    """
+    Export Covered Call opportunities as CSV.
+    
+    RELIABILITY: ALWAYS writes header + metadata rows, even with 0 opportunities.
+    
+    Modes:
+    - opportunities: Standard export with trade data
+    - decisions: Diagnostic mode showing include/exclude decisions per symbol
+    """
+    from fastapi.responses import Response
+    from datetime import datetime, timezone
+    
+    # Get latest run info
+    run_id = await _get_latest_eod_run_id()
+    run_doc = await db.scan_runs.find_one({"run_id": run_id}, {"_id": 0}) if run_id else None
+    
+    market_state = get_market_state()
+    if market_state == "EXTENDED":
+        market_state = "AFTERHOURS"
+    
+    # Metadata for CSV
+    meta = {
+        "run_id": run_id or "NO_RUN",
+        "as_of": run_doc.get("as_of", "") if run_doc else "",
+        "market_state": market_state,
+        "export_time": datetime.now(timezone.utc).isoformat()
+    }
+    
+    if mode == "decisions":
+        # Diagnostic mode: show all symbols with include/exclude status
+        header = "symbol,included,rejection_reason,rejection_stage,stock_price,stock_price_source,run_id"
+        lines = [header]
+        
+        # Add metadata row
+        lines.append(f"# META: run_id={meta['run_id']},as_of={meta['as_of']},market_state={meta['market_state']}")
+        
+        # Get all audit records for this run
+        if run_id:
+            cursor = db.scan_universe_audit.find(
+                {"run_id": run_id},
+                {"_id": 0}
+            ).sort("symbol", 1)
+            
+            async for doc in cursor:
+                lines.append(
+                    f"{doc.get('symbol', '')},"
+                    f"{doc.get('included', False)},"
+                    f"{doc.get('exclude_reason', '')},"
+                    f"{doc.get('exclude_stage', '')},"
+                    f"{doc.get('price_used', '')},"
+                    f"{doc.get('stock_price_source', 'SESSION_CLOSE')},"
+                    f"{run_id}"
+                )
+        
+        csv_content = "\n".join(lines)
+        return Response(
+            content=csv_content,
+            media_type="text/csv",
+            headers={"Content-Disposition": f"attachment; filename=cc_decisions_{run_id or 'latest'}.csv"}
+        )
+    
+    else:
+        # Standard opportunities export
+        header = "symbol,stock_price,strike,expiry,dte,premium_bid,premium_ask,premium_yield,roi_pct,roi_annualized,delta,iv,score,stock_price_source,run_id"
+        lines = [header]
+        
+        # Add metadata row
+        lines.append(f"# META: run_id={meta['run_id']},as_of={meta['as_of']},market_state={meta['market_state']},total_symbols=0,included=0,excluded=0")
+        
+        # Get opportunities
+        if run_id:
+            filters = {"min_dte": 7, "max_dte": 45}
+            results = await _get_cc_from_eod(run_id, filters, limit)
+            
+            # Update metadata with counts
+            total_count = await db.scan_universe_audit.count_documents({"run_id": run_id}) if run_id else 0
+            included_count = await db.scan_results_cc.count_documents({"run_id": run_id}) if run_id else 0
+            
+            # Rewrite metadata line
+            lines[1] = f"# META: run_id={meta['run_id']},as_of={meta['as_of']},market_state={meta['market_state']},total_symbols={total_count},included={included_count},excluded={total_count - included_count}"
+            
+            for r in results:
+                # Use sanitize_money for 2-decimal precision
+                lines.append(
+                    f"{r.get('symbol', '')},"
+                    f"{sanitize_money(r.get('stock_price', 0))},"
+                    f"{sanitize_money(r.get('strike', 0))},"
+                    f"{r.get('expiry', '')},"
+                    f"{r.get('dte', 0)},"
+                    f"{sanitize_money(r.get('premium_bid', 0))},"
+                    f"{sanitize_money(r.get('premium_ask', 0))},"
+                    f"{sanitize_percentage(r.get('premium_yield', 0))},"
+                    f"{sanitize_percentage(r.get('roi_pct', 0))},"
+                    f"{sanitize_percentage(r.get('roi_annualized', 0), 1)},"
+                    f"{sanitize_float(r.get('delta', 0))},"
+                    f"{sanitize_float(r.get('iv', 0))},"
+                    f"{sanitize_float(r.get('score', 0))},"
+                    f"{r.get('stock_price_source', 'SESSION_CLOSE')},"
+                    f"{run_id}"
+                )
+        
+        csv_content = "\n".join(lines)
+        return Response(
+            content=csv_content,
+            media_type="text/csv",
+            headers={"Content-Disposition": f"attachment; filename=covered_calls_{run_id or 'latest'}.csv"}
+        )
+
+
+
+# ============================================================
 # SNAPSHOT HEALTH CHECK (Anti-Panic Control)
 # ============================================================
 
