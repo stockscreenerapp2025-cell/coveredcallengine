@@ -54,6 +54,41 @@ from services.data_provider import get_market_state
 logger = logging.getLogger(__name__)
 
 # =============================================================================
+# STABILITY: SAFE DIVISION HELPERS
+# =============================================================================
+
+def safe_divide(numerator, denominator, default=None):
+    """
+    Safe division that returns None instead of NaN/inf on invalid input.
+    Prevents JSON serialization errors from NaN/inf values.
+    """
+    import math
+    if denominator is None or denominator == 0:
+        return default
+    if numerator is None:
+        return default
+    try:
+        result = float(numerator) / float(denominator)
+        if math.isnan(result) or math.isinf(result):
+            return default
+        return result
+    except (TypeError, ValueError, ZeroDivisionError):
+        return default
+
+def safe_multiply(a, b, default=None):
+    """Safe multiplication that returns None on invalid input."""
+    import math
+    if a is None or b is None:
+        return default
+    try:
+        result = float(a) * float(b)
+        if math.isnan(result) or math.isinf(result):
+            return default
+        return result
+    except (TypeError, ValueError):
+        return default
+
+# =============================================================================
 # PIPELINE CONFIGURATION - TWO-STAGE THROTTLE-SAFE MODEL
 # =============================================================================
 
