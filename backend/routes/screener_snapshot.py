@@ -1299,15 +1299,32 @@ async def screen_covered_calls(
             results = await _get_cc_from_legacy(filters, limit)
             data_source = "precomputed_scans_legacy"
         
-        # Transform results to API format (filter out None for invalid rows)
+        # Transform results to API format, tracking dropped rows
         # Per-row exceptions are caught in _transform_cc_result
-        opportunities = [r for r in (_transform_cc_result(r) for r in results) if r is not None]
+        opportunities = []
+        dropped_rows = 0
+        transform_errors = []
+        dropped_symbols = []
+        
+        for r in results:
+            transformed, error_info = _transform_cc_result(r)
+            if transformed is not None:
+                opportunities.append(transformed)
+            else:
+                dropped_rows += 1
+                if error_info:
+                    transform_errors.append(error_info)
+                    dropped_symbols.append(error_info.get("symbol", "UNKNOWN"))
+        
+        # Log dropped symbols with trace_id
+        if dropped_symbols:
+            logging.warning(f"CC_DROPPED_ROWS | trace_id={trace_id} | count={dropped_rows} | symbols={dropped_symbols[:20]}")
         
         # ANALYST ENRICHMENT MERGE (READ-TIME)
         opportunities = await _merge_analyst_enrichment(opportunities, debug_enrichment=debug_enrichment)
         
         elapsed_ms = (time.time() - start_time) * 1000
-        logging.info(f"CC Screener: {len(opportunities)} results in {elapsed_ms:.1f}ms from {data_source} trace_id={trace_id}")
+        logging.info(f"CC Screener: {len(opportunities)} results, {dropped_rows} dropped in {elapsed_ms:.1f}ms from {data_source} trace_id={trace_id}")
         
         return {
             "total": len(opportunities),
@@ -1324,7 +1341,12 @@ async def screen_covered_calls(
             "dte_range": {"min": min_dte, "max": max_dte},
             "filters_applied": filters,
             "architecture": "EOD_PIPELINE_READ_MODEL",
-            "latency_ms": round(elapsed_ms, 1)
+            "latency_ms": round(elapsed_ms, 1),
+            "meta": {
+                "dropped_rows": dropped_rows,
+                "transform_errors": len(transform_errors),
+                "trace_id": trace_id
+            }
         }
         
     except Exception as e:
