@@ -1852,9 +1852,10 @@ async def compute_scan_results(
                 width = short["strike"] - leap["strike"]
                 max_profit = width - net_debit
                 
-                # ROI must use actual prices (leap_ask, short_bid)
-                roi_per_cycle = (short_bid / leap_ask) * 100 if leap_ask > 0 else 0
-                roi_annualized = roi_per_cycle * (365 / max(short["dte"], 1))
+                # ROI must use actual prices (leap_ask, short_bid) - safe division
+                roi_per_cycle = safe_divide(short_bid, leap_ask, 0)
+                roi_per_cycle = roi_per_cycle * 100 if roi_per_cycle else None
+                roi_annualized = safe_multiply(roi_per_cycle, safe_divide(365, max(short["dte"], 1), 0)) if roi_per_cycle else None
                 
                 # Build contract symbols
                 try:
