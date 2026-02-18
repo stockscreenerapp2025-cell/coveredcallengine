@@ -1059,14 +1059,18 @@ async def _merge_analyst_enrichment(opportunities: List[Dict], debug_enrichment:
         return opportunities
 
 
-def _transform_cc_result(r: Dict) -> Dict:
+def _transform_cc_result(r: Dict) -> tuple:
     """
     Transform stored CC result to API response format.
     
     STABILITY: Sanitizes all float values to prevent JSON serialization errors.
+    
+    Returns:
+        tuple: (transformed_dict, error_info) where error_info is None on success
+               or {"symbol": str, "reason": str} on failure
     """
+    symbol = r.get("symbol", "UNKNOWN")
     try:
-        symbol = r.get("symbol", "")
         stock_price = sanitize_float(r.get("stock_price", 0))
         strike = sanitize_float(r.get("strike", 0))
         dte = r.get("dte", 0) or 0
@@ -1080,7 +1084,7 @@ def _transform_cc_result(r: Dict) -> Dict:
         
         # VALIDATION: If no premium_bid, this row is invalid
         if not premium_bid or premium_bid <= 0:
-            return None  # Will be filtered out
+            return None, {"symbol": symbol, "reason": "invalid_premium_bid"}
         
         result = {
         # === EXPLICIT CC SCHEMA ===
