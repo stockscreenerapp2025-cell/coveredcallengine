@@ -14,6 +14,7 @@ COPY backend/requirements.txt .
 RUN pip install --upgrade pip \
     && pip install --prefix=/install --no-cache-dir -r requirements.txt
 
+
 # ============================================================
 # Stage 2: Production runtime image
 # ============================================================
@@ -23,6 +24,9 @@ RUN groupadd --system appgroup && \
     useradd --system --gid appgroup --no-create-home appuser
 
 WORKDIR /app
+
+# ✅ VERY IMPORTANT — Fix import issue
+ENV PYTHONPATH=/app/backend
 
 COPY --from=builder /install /usr/local
 COPY backend/ ./backend/
@@ -35,4 +39,10 @@ EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=10s --start-period=15s --retries=3 \
     CMD curl -f http://localhost:8000/health || exit 1
 
-CMD ["python", "-m", "uvicorn", "backend.server:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "4", "--loop", "asyncio", "--no-access-log"]
+# ✅ Run from backend as root module
+CMD ["python", "-m", "uvicorn", "server:app",
+     "--host", "0.0.0.0",
+     "--port", "8000",
+     "--workers", "4",
+     "--loop", "asyncio",
+     "--no-access-log"]
