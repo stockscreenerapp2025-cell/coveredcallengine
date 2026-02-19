@@ -1,21 +1,23 @@
 # ============================================================
 # Stage 1: Node builder — compile React app
 # ============================================================
-FROM node:20-alpine AS builder
+FROM node:18-alpine AS builder
 
 WORKDIR /app
 
-# Copy package files first for layer cache
+# Copy package files first (better layer caching)
 COPY frontend/package.json ./
 
+# Install dependencies
 RUN npm install --legacy-peer-deps
 
-# Copy source and build
-COPY frontend/ .
+# Copy full source
+COPY frontend/ ./
 
-# Set production env for optimal build
+# Production environment
 ENV NODE_ENV=production
 
+# Build React app
 RUN npm run build
 
 # ============================================================
@@ -26,10 +28,10 @@ FROM nginx:1.27-alpine AS production
 # Remove default nginx config
 RUN rm /etc/nginx/conf.d/default.conf
 
-# Copy custom nginx config
+# Copy built files from builder
 COPY --from=builder /app/build /usr/share/nginx/html
 
-# Nginx config: SPA routing + gzip + security headers
+# Create optimized nginx config
 RUN cat > /etc/nginx/conf.d/app.conf << 'EOF'
 server {
     listen 80;
@@ -53,14 +55,14 @@ server {
     add_header X-XSS-Protection "1; mode=block" always;
     add_header Referrer-Policy "strict-origin-when-cross-origin" always;
 
-    # Cache static assets aggressively
+    # Cache static assets
     location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot)$ {
         expires 1y;
         add_header Cache-Control "public, immutable";
         access_log off;
     }
 
-    # API proxy to backend
+    # Proxy API to backend container
     location /api/ {
         proxy_pass http://backend:8000/;
         proxy_http_version 1.1;
@@ -70,11 +72,10 @@ server {
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_cache_bypass $http_upgrade;
         proxy_read_timeout 90s;
     }
 
-    # SPA fallback — all routes serve index.html
+    # SPA fallback
     location / {
         try_files $uri $uri/ /index.html;
     }
