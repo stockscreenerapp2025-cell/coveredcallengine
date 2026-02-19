@@ -5,6 +5,30 @@
 
 ---
 
+## Forensic Invariant Audit - COMPLETED 2025-12
+
+### Status: ✅ COMPLETE
+
+### Deliverable:
+Created forensic audit document at `/app/CCE_FORENSIC_INVARIANT_AUDIT.md`
+
+### Key Findings Summary:
+| Classification | Count | Examples |
+|----------------|-------|----------|
+| Policy Drift | 4 | Simulator uses LIVE prices while scans use EOD |
+| Bypassed Shared Util | 2 | Different transform functions for same data |
+| Silent Fallback | 6 | `or` clauses allowing generic `premium` instead of `bid` |
+| Timing Misalignment | 2 | Non-atomic quote/chain fetch (~6 min gap) |
+| Snapshot Misalignment | 1 | Single `as_of` for all symbols |
+
+### Critical Deviations:
+- **B1**: CC premium may use non-BID value via `or` fallback
+- **C1**: PMCC economics may use wrong prices via `or` fallback
+- **H1**: Quote and chain fetched sequentially with 250ms delays (not atomic)
+- **F1**: Different transform functions produce slightly different outputs
+
+---
+
 ## System Architecture Documentation - COMPLETED 2025-12
 
 ### Status: ✅ COMPLETE
