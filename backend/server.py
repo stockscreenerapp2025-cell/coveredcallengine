@@ -50,6 +50,10 @@ JWT_ALGORITHM = "HS256"
 # Create the main app
 app = FastAPI(title="Covered Call Engine - Options Trading Platform")
 
+@app.get("/health")
+def health():
+    return {"status": "ok"}
+
 from backend.routes.auth import auth_router
 from backend.routes.watchlist import watchlist_router
 from backend.routes.news import news_router
