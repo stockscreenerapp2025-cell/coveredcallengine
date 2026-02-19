@@ -6,9 +6,9 @@ FROM node:20-alpine AS builder
 WORKDIR /app
 
 # Copy package files first for layer cache
-COPY frontend/package.json frontend/package-lock.json* ./
+COPY frontend/package.json ./
 
-RUN npm ci --prefer-offline
+RUN npm install --legacy-peer-deps
 
 # Copy source and build
 COPY frontend/ .
