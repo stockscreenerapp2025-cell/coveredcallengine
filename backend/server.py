@@ -50,22 +50,22 @@ JWT_ALGORITHM = "HS256"
 # Create the main app
 app = FastAPI(title="Covered Call Engine - Options Trading Platform")
 
-# Import external routers (refactored)
-from routes.auth import auth_router
-from routes.watchlist import watchlist_router
-from routes.news import news_router
-from routes.chatbot import chatbot_router
-from routes.ai import ai_router
-from routes.subscription import subscription_router
-from routes.stocks import stocks_router
-from routes.options import options_router
-from routes.admin import admin_router
-from routes.portfolio import portfolio_router
-from routes.screener import screener_router
-from routes.simulator import simulator_router
-from routes.support import support_router
-from routes.invitations import invitation_router
-from routes.precomputed_scans import scans_router
+from backend.routes.auth import auth_router
+from backend.routes.watchlist import watchlist_router
+from backend.routes.news import news_router
+from backend.routes.chatbot import chatbot_router
+from backend.routes.ai import ai_router
+from backend.routes.subscription import subscription_router
+from backend.routes.stocks import stocks_router
+from backend.routes.options import options_router
+from backend.routes.admin import admin_router
+from backend.routes.portfolio import portfolio_router
+from backend.routes.screener import screener_router
+from backend.routes.simulator import simulator_router
+from backend.routes.support import support_router
+from backend.routes.invitations import invitation_router
+from backend.routes.precomputed_scans import scans_router
+
 
 # Create routers (still in server.py - to be refactored)
 api_router = APIRouter(prefix="/api")
