@@ -1288,23 +1288,38 @@ async def startup():
     await db.invitations.create_index([("email", 1), ("status", 1)])
     
     # Create default admin if not exists (production only - credentials should be changed immediately)
+        # Create default admin if not exists
     admin = await db.users.find_one({"is_admin": True})
+
     if not admin:
-        # Generate a secure random password for first-time setup
         import secrets
         temp_password = secrets.token_urlsafe(16)
+
         admin_doc = {
-            "id": str(uuid.uuid4()),
+            "_id": str(uuid.uuid4()),
             "email": "admin@coveredcallengine.com",
             "name": "Admin",
             "password": hash_password(temp_password),
             "is_admin": True,
             "created_at": datetime.now(timezone.utc).isoformat()
         }
-        await db.users.insert_one(admin_doc)
-        # Log to server only - never expose in UI
-        logger.warning(f"FIRST RUN: Default admin created. Email: admin@coveredcallengine.com, Temp Password: {temp_password}")
-        logger.warning("SECURITY: Change the admin password immediately after first login!")
+
+        result = await db.users.update_one(
+            {"email": "admin@coveredcallengine.com"},
+            {"$setOnInsert": admin_doc},
+            upsert=True
+        )
+
+        if result.upserted_id:
+           logger.warning(
+               f"FIRST RUN: Default admin created. "
+               f"Email: admin@coveredcallengine.com, "
+               f"Temp Password: {temp_password}"
+            )
+           logger.warning(
+               "SECURITY: Change the admin password immediately after first login!"
+            )
+
     
     # Start the scheduler for automated price updates
     # Run at 4:30 PM ET (after market close) on weekdays
