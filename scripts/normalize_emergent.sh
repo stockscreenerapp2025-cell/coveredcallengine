@@ -11,7 +11,7 @@ cd "$ROOT_DIR"
 # --------------------------------------------------
 # 1. Remove emergentintegrations from requirements.txt
 # --------------------------------------------------
-echo "[1/5] Checking requirements.txt..."
+echo "[1/6] Checking requirements.txt..."
 if grep -q "emergentintegrations" backend/requirements.txt; then
     sed -i '/emergentintegrations/d' backend/requirements.txt
     echo "  ✅ Removed emergentintegrations from requirements.txt"
@@ -22,7 +22,7 @@ fi
 # --------------------------------------------------
 # 2. Fix health check endpoint in docker-compose files
 # --------------------------------------------------
-echo "[2/5] Fixing health check endpoints..."
+echo "[2/6] Fixing health check endpoints..."
 if grep -q 'localhost:8000/health"' docker/docker-compose.prod.yml 2>/dev/null; then
     sed -i 's|http://localhost:8000/health|http://localhost:8000/api/health|g' docker/docker-compose.prod.yml
     echo "  ✅ Fixed health endpoint in docker-compose.prod.yml"
@@ -40,7 +40,7 @@ fi
 # --------------------------------------------------
 # 3. Remove Emergent branding from index.html
 # --------------------------------------------------
-echo "[3/5] Removing Emergent branding from frontend..."
+echo "[3/6] Removing Emergent branding from frontend..."
 INDEX_HTML="frontend/public/index.html"
 
 if grep -qi "emergent" "$INDEX_HTML" 2>/dev/null; then
@@ -69,41 +69,50 @@ else
 fi
 
 # --------------------------------------------------
-# 4. Fix ajv dependency conflict in frontend
+# 4. Fix frontend Dockerfile - downgrade Node 20 to Node 18
+#    (Node 20 breaks ajv-keywords used by react-scripts/craco)
 # --------------------------------------------------
-echo "[4/5] Fixing frontend ajv dependency..."
-if [ -f "frontend/package.json" ]; then
-    cat > /tmp/fix_ajv.py << 'PYEOF'
-import json
-
-with open('frontend/package.json', 'r') as f:
-    pkg = json.load(f)
-
-if 'dependencies' not in pkg:
-    pkg['dependencies'] = {}
-
-# Force ajv v8 to fix ajv-keywords compatibility with Node 20
-pkg['dependencies']['ajv'] = '^8.0.0'
-
-with open('frontend/package.json', 'w') as f:
-    json.dump(pkg, f, indent=2)
-
-print('ajv dependency fixed')
-PYEOF
-    python3 /tmp/fix_ajv.py
-    echo "  ✅ Fixed ajv dependency in package.json"
-
-    # Remove package-lock.json to force clean install with fixed deps
-    if [ -f "frontend/package-lock.json" ]; then
-        rm frontend/package-lock.json
-        echo "  ✅ Removed package-lock.json (will regenerate cleanly)"
-    fi
+echo "[4/6] Fixing frontend Dockerfile Node version..."
+FRONTEND_DOCKERFILE="frontend/Dockerfile"
+if grep -q "node:20" "$FRONTEND_DOCKERFILE" 2>/dev/null; then
+    sed -i 's|node:20-alpine|node:18-alpine|g' "$FRONTEND_DOCKERFILE"
+    sed -i 's|node:20|node:18|g' "$FRONTEND_DOCKERFILE"
+    echo "  ✅ Downgraded Node 20 → Node 18 in frontend Dockerfile"
+else
+    echo "  ✅ Frontend Dockerfile Node version already correct"
 fi
 
 # --------------------------------------------------
-# 5. Ensure .env files exist on server
+# 5. Fix frontend API URL - remove undefined REACT_APP_BACKEND_URL
+#    (Emergent sets this to an env var that doesn't exist on VPS)
 # --------------------------------------------------
-echo "[5/5] Checking environment files..."
+echo "[5/6] Fixing frontend API base URL..."
+API_JS="frontend/src/lib/api.js"
+if grep -q "process.env.REACT_APP_BACKEND_URL" "$API_JS" 2>/dev/null; then
+    cat > /tmp/fix_api.py << 'PYEOF'
+with open('frontend/src/lib/api.js', 'r') as f:
+    content = f.read()
+
+content = content.replace(
+    'const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;',
+    'const BACKEND_URL = "";  // Use relative URL - same domain'
+)
+
+with open('frontend/src/lib/api.js', 'w') as f:
+    f.write(content)
+
+print('api.js fixed')
+PYEOF
+    python3 /tmp/fix_api.py
+    echo "  ✅ Fixed API base URL to use relative path"
+else
+    echo "  ✅ API base URL already correct"
+fi
+
+# --------------------------------------------------
+# 6. Ensure .env files exist on server
+# --------------------------------------------------
+echo "[6/6] Checking environment files..."
 if [ ! -f "$ROOT_DIR/.env.production" ]; then
     echo "  ❌ ERROR: .env.production not found"
     exit 1
