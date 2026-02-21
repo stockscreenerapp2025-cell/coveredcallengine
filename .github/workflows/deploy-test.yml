@@ -8,6 +8,8 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -18,8 +20,34 @@ jobs:
           host: ${{ secrets.TEST_SERVER_HOST }}
           username: ${{ secrets.TEST_SERVER_USER }}
           password: ${{ secrets.TEST_SERVER_PASSWORD }}
+          command_timeout: 10m
           script: |
+            set -e
             cd /opt/covered-call-engine
+
+            echo "==> Pulling latest code..."
+            git config pull.rebase false
             git pull origin develop
-            docker compose --env-file .env.test -f docker/docker-compose.test.yml down
+
+            echo "==> Removing emergentintegrations if present..."
+            sed -i '/emergentintegrations/d' backend/requirements.txt
+
+            echo "==> Stopping old containers..."
+            docker compose --env-file .env.test -f docker/docker-compose.test.yml down --remove-orphans
+
+            echo "==> Building and starting test containers..."
             docker compose --env-file .env.test -f docker/docker-compose.test.yml up -d --build
+
+            echo "==> Waiting for containers to be healthy..."
+            sleep 30
+
+            echo "==> Health check..."
+            HEALTH=$(docker exec cce_backend_test curl -sf http://localhost:8000/api/health || echo "FAILED")
+            if echo "$HEALTH" | grep -q "healthy"; then
+              echo "==> Test deployment successful!"
+              docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
+            else
+              echo "==> Health check failed on test environment!"
+              docker logs cce_backend_test --tail 50
+              exit 1
+            fi

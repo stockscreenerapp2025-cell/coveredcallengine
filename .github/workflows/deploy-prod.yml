@@ -8,6 +8,8 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -18,8 +20,36 @@ jobs:
           host: ${{ secrets.PROD_SERVER_HOST }}
           username: ${{ secrets.PROD_SERVER_USER }}
           password: ${{ secrets.PROD_SERVER_PASSWORD }}
+          command_timeout: 10m
           script: |
+            set -e
             cd /opt/covered-call-engine
+
+            echo "==> Pulling latest code..."
+            git config pull.rebase false
             git pull origin main
-            docker compose --env-file .env.production -f docker/docker-compose.prod.yml down
+
+            echo "==> Removing emergentintegrations if present..."
+            sed -i '/emergentintegrations/d' backend/requirements.txt
+
+            echo "==> Stopping old containers..."
+            docker compose --env-file .env.production -f docker/docker-compose.prod.yml down --remove-orphans
+
+            echo "==> Building and starting production containers..."
             docker compose --env-file .env.production -f docker/docker-compose.prod.yml up -d --build
+
+            echo "==> Waiting for containers to be healthy..."
+            sleep 30
+
+            echo "==> Health check..."
+            HEALTH=$(docker exec cce_backend curl -sf http://localhost:8000/api/health || echo "FAILED")
+            if echo "$HEALTH" | grep -q "healthy"; then
+              echo "==> Production deployment successful!"
+              docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
+            else
+              echo "==> Health check failed! Rolling back..."
+              docker compose --env-file .env.production -f docker/docker-compose.prod.yml down --remove-orphans
+              docker compose --env-file .env.production -f docker/docker-compose.prod.yml up -d
+              echo "==> Rollback complete. Previous version restored."
+              exit 1
+            fi
