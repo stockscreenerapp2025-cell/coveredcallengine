@@ -33,4 +33,4 @@ if [[ $FAIL -gt 0 ]]; then
   exit 1
 fi
 
-echo "=== All smoke tests passed ✅ ==="
+echo "=== All smoke tests passed ✅ =="
