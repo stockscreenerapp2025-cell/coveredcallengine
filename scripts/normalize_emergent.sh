@@ -69,22 +69,28 @@ else
 fi
 
 # --------------------------------------------------
-# 4. Fix frontend Dockerfile - downgrade Node 20 to Node 18
-#    (Node 20 breaks ajv-keywords used by react-scripts/craco)
+# 4. Fix frontend Dockerfile - fix ajv dependency and Node version
+#    ajv-keywords requires ajv v6 which must be explicitly installed
 # --------------------------------------------------
-echo "[4/6] Fixing frontend Dockerfile Node version..."
+echo "[4/6] Fixing frontend Dockerfile..."
 FRONTEND_DOCKERFILE="frontend/Dockerfile"
-if grep -q "node:20" "$FRONTEND_DOCKERFILE" 2>/dev/null; then
-    sed -i 's|node:20-alpine|node:18-alpine|g' "$FRONTEND_DOCKERFILE"
-    sed -i 's|node:20|node:18|g' "$FRONTEND_DOCKERFILE"
-    echo "  ✅ Downgraded Node 20 → Node 18 in frontend Dockerfile"
+
+# Fix Node version - use Node 18 for stability
+sed -i 's|node:20-alpine|node:18-alpine|g' "$FRONTEND_DOCKERFILE"
+sed -i 's|node:20|node:18|g' "$FRONTEND_DOCKERFILE"
+
+# Fix ajv issue - add explicit ajv install before npm run build
+if ! grep -q "npm install ajv" "$FRONTEND_DOCKERFILE"; then
+    sed -i 's|RUN npm run build|RUN npm install ajv@^6.12.6 --legacy-peer-deps \&\& npm run build|g' "$FRONTEND_DOCKERFILE"
+    echo "  ✅ Added ajv@6 install to fix build error"
 else
-    echo "  ✅ Frontend Dockerfile Node version already correct"
+    echo "  ✅ ajv fix already in Dockerfile"
 fi
+
+echo "  ✅ Frontend Dockerfile fixed"
 
 # --------------------------------------------------
 # 5. Fix frontend API URL - remove undefined REACT_APP_BACKEND_URL
-#    (Emergent sets this to an env var that doesn't exist on VPS)
 # --------------------------------------------------
 echo "[5/6] Fixing frontend API base URL..."
 API_JS="frontend/src/lib/api.js"
