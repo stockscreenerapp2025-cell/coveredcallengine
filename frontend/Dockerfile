@@ -5,18 +5,21 @@ FROM node:20-alpine AS builder
 
 WORKDIR /app
 
-# Copy package files first for layer cache
-COPY frontend/package.json ./
+# Copy BOTH package.json and package-lock.json
+# This ensures deterministic installs inside Docker
+COPY frontend/package.json frontend/package-lock.json ./
 
-RUN npm install --legacy-peer-deps
+# Use npm ci for clean, lockfile-based install
+RUN npm ci --legacy-peer-deps
 
-# Copy source and build
+# Copy full frontend source
 COPY frontend/ .
 
-# Set production env for optimal build
+# Production mode build
 ENV NODE_ENV=production
 
 RUN npm run build
+
 
 # ============================================================
 # Stage 2: Nginx — serve static assets
@@ -26,10 +29,10 @@ FROM nginx:1.27-alpine AS production
 # Remove default nginx config
 RUN rm /etc/nginx/conf.d/default.conf
 
-# Copy built React app
+# Copy built React app from builder stage
 COPY --from=builder /app/build /usr/share/nginx/html
 
-# Write nginx config with correct backend proxy
+# Write nginx config
 RUN cat > /etc/nginx/conf.d/app.conf << 'EOF'
 server {
     listen 80;
@@ -57,7 +60,7 @@ server {
         access_log off;
     }
 
-    # API proxy to backend — uses Docker service name (works in both compose setups)
+    # API proxy to backend (Docker service name)
     location /api/ {
         proxy_pass http://backend:8000/api/;
         proxy_http_version 1.1;
@@ -71,7 +74,7 @@ server {
         proxy_connect_timeout 10s;
     }
 
-    # SPA fallback — all routes serve index.html
+    # SPA fallback
     location / {
         try_files $uri $uri/ /index.html;
     }
