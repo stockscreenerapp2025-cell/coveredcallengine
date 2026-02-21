@@ -24,6 +24,12 @@ import {
   DialogTrigger,
 } from '../components/ui/dialog';
 import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '../components/ui/tooltip';
+import {
   Accordion,
   AccordionContent,
   AccordionItem,
@@ -71,12 +77,12 @@ const Screener = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [marketStatus, setMarketStatus] = useState(null);
   const [dataInfo, setDataInfo] = useState(null);
-  
+
   // Pre-computed scans state
   const [availableScans, setAvailableScans] = useState(null);
   const [activeScan, setActiveScan] = useState(null);
   const [scanLoading, setScanLoading] = useState(false);
-  
+
   // Simulator state
   const [simulateModalOpen, setSimulateModalOpen] = useState(false);
   const [simulateOpp, setSimulateOpp] = useState(null);
@@ -86,30 +92,38 @@ const Screener = () => {
   // Handle adding to simulator
   const handleSimulate = async () => {
     if (!simulateOpp) return;
-    
+
     setSimulateLoading(true);
     try {
+      // LAYER 3 CONTRACT: IV is stored as percentage (39.5 = 39.5%)
+      // short_call_iv should be stored as DECIMAL for calculation compatibility (0.395)
+      let ivPct = simulateOpp.short_call?.implied_volatility ||
+                  simulateOpp.implied_volatility ||
+                  simulateOpp.iv || 0;
+
+      // If IV is already in percentage form (> 1), convert to decimal for storage
+      const ivDecimal = ivPct > 1 ? ivPct / 100 : ivPct;
+
       const tradeData = {
         symbol: simulateOpp.symbol,
         strategy_type: 'covered_call',
-        underlying_price: simulateOpp.stock_price,
-        short_call_strike: simulateOpp.strike,
-        short_call_expiry: simulateOpp.expiry,
-        short_call_premium: simulateOpp.premium,
-        short_call_delta: simulateOpp.delta,
-        short_call_iv: simulateOpp.iv,
-        short_call_iv_rank: simulateOpp.iv_rank,
-        short_call_open_interest: simulateOpp.open_interest,
+        underlying_price: simulateOpp.underlying?.last_price || simulateOpp.stock_price,
+        short_call_strike: simulateOpp.short_call?.strike || simulateOpp.strike,
+        short_call_expiry: simulateOpp.short_call?.expiry || simulateOpp.expiry,
+        short_call_premium: simulateOpp.short_call?.premium || simulateOpp.premium,
+        short_call_delta: simulateOpp.short_call?.delta || simulateOpp.delta,
+        short_call_iv: ivDecimal,  // Store as decimal (0.395)
         contracts: simulateContracts,
         scan_parameters: {
-          score: simulateOpp.score,
-          roi_pct: simulateOpp.roi_pct,
-          dte: simulateOpp.dte,
-          iv_rank: simulateOpp.iv_rank,
-          open_interest: simulateOpp.open_interest
+          score: simulateOpp.scoring?.final_score || simulateOpp.score,
+          roi_pct: simulateOpp.economics?.roi_pct || simulateOpp.roi_pct,
+          dte: simulateOpp.short_call?.dte || simulateOpp.dte,
+          iv_rank: simulateOpp.short_call?.iv_rank || simulateOpp.iv_rank,
+          open_interest: simulateOpp.short_call?.open_interest || simulateOpp.open_interest,
+          iv_pct: ivPct  // Store percentage for display
         }
       };
-      
+
       await simulatorApi.addTrade(tradeData);
       toast.success(`Added ${simulateOpp.symbol} to Simulator!`);
       setSimulateModalOpen(false);
@@ -201,22 +215,24 @@ const Screener = () => {
   });
 
   useEffect(() => {
-    // On initial load, fetch available scans and auto-run custom scan
+    // On initial load, load Custom Scan by default (user preference)
+    // Pre-computed scans available via Quick Scans buttons
     const initializeData = async () => {
       fetchSavedFilters();
       fetchMarketStatus();
-      
+
       try {
         const res = await scansApi.getAvailable();
         setAvailableScans(res.data.scans);
+
+        // Default to Custom Scan - user can click Quick Scans for pre-computed
+        fetchOpportunities();
       } catch (error) {
-        console.log('Could not fetch available scans:', error);
+        console.log('Could not fetch available scans, loading custom scan:', error);
+        fetchOpportunities();
       }
-      
-      // Auto-run custom scan to show results immediately
-      fetchOpportunities();
     };
-    
+
     initializeData();
   }, []);
 
@@ -272,8 +288,9 @@ const Screener = () => {
     try {
       // Only pass filter values that are set (not empty strings)
       const params = { bypass_cache: bypassCache };
-      
+
       if (roiFilters.minRoi !== '' && roiFilters.minRoi !== undefined) params.min_roi = roiFilters.minRoi;
+      if (expirationFilters.minDte !== '' && expirationFilters.minDte !== undefined) params.min_dte = expirationFilters.minDte;
       if (expirationFilters.maxDte !== '' && expirationFilters.maxDte !== undefined) params.max_dte = expirationFilters.maxDte;
       if (greeksFilters.minDelta !== '' && greeksFilters.minDelta !== undefined) params.min_delta = greeksFilters.minDelta;
       if (greeksFilters.maxDelta !== '' && greeksFilters.maxDelta !== undefined) params.max_delta = greeksFilters.maxDelta;
@@ -283,33 +300,21 @@ const Screener = () => {
       if (optionsFilters.minOpenInterest !== '' && optionsFilters.minOpenInterest !== undefined) params.min_open_interest = optionsFilters.minOpenInterest;
       if (expirationFilters.expirationType === 'weekly') params.weekly_only = true;
       if (expirationFilters.expirationType === 'monthly') params.monthly_only = true;
-      
+
       // Security type filters
       params.include_stocks = stockFilters.includeStocks;
       params.include_etfs = stockFilters.includeETFs;
       params.include_index = stockFilters.includeIndex;
-      
+
       const response = await screenerApi.getCoveredCalls(params);
-      
+
       let results = response.data.opportunities || [];
       setDataInfo({
         from_cache: response.data.from_cache,
         market_closed: response.data.market_closed,
-        is_last_trading_day: response.data.is_last_trading_day,
-        is_precomputed_fallback: response.data.is_precomputed_fallback,
-        precomputed_profile: response.data.precomputed_profile,
-        data_freshness_score: response.data.data_freshness_score,
-        data_note: response.data.data_note,
-        fetched_at: response.data.fetched_at,
-        computed_at: response.data.computed_at,
-        data_source: response.data.data_source,
-        // New Two-Source model metadata
-        metadata: response.data.metadata,
-        t1_data: response.data.t1_data,
-        weekly_count: response.data.weekly_count,
-        monthly_count: response.data.monthly_count
+        is_last_trading_day: response.data.is_last_trading_day
       });
-      
+
       // Client-side filtering for moneyness
       if (optionsFilters.moneyness !== 'all') {
         results = results.filter(o => {
@@ -330,7 +335,7 @@ const Screener = () => {
           return probOTM >= minProb && probOTM <= maxProb;
         });
       }
-      
+
       setOpportunities(results);
     } catch (error) {
       console.error('Screener fetch error:', error);
@@ -442,11 +447,15 @@ const Screener = () => {
   };
 
   const exportToCSV = () => {
-    const headers = ['Symbol', 'Stock Price', 'Strike', 'Expiry', 'DTE', 'Premium', 'ROI %', 'Delta', 'Prob OTM', 'IV', 'IV Rank', 'Volume', 'OI', 'Score'];
+    const headers = ['Symbol', 'Stock Price', 'Strike', 'Expiry', 'DTE', 'Premium', 'ROI %', 'Delta', 'Prob OTM', 'IV %', 'IV Rank', 'Volume', 'OI', 'Score', 'Analyst'];
     const rows = sortedOpportunities.map(o => [
-      o.symbol, o.stock_price, o.strike, o.expiry, o.dte, o.premium, o.roi_pct, o.delta, Math.round((1-o.delta)*100), o.iv, o.iv_rank, o.volume, o.open_interest, o.score
+      o.symbol, o.stock_price, o.strike, o.expiry, o.dte, o.premium, o.roi_pct, o.delta, Math.round((1-o.delta)*100), 
+      o.iv_pct || (o.iv ? (o.iv * 100).toFixed(1) : ''), 
+      o.iv_rank != null ? o.iv_rank : 'N/A', 
+      o.volume, o.open_interest, o.score,
+      o.analyst_rating_label || o.analyst_rating || 'N/A'
     ]);
-    
+
     const csv = [headers, ...rows].map(row => row.join(',')).join('\n');
     const blob = new Blob([csv], { type: 'text/csv' });
     const url = URL.createObjectURL(blob);
@@ -472,51 +481,27 @@ const Screener = () => {
     </th>
   );
 
-  // Get metadata from dataInfo
-  const metadata = dataInfo?.metadata || dataInfo?.t1_data;
-  const equityDate = metadata?.equity_price_date || metadata?.data_date;
-  const optionsSnapshot = metadata?.options_snapshot_time;
-
   return (
     <div className="space-y-6" data-testid="screener-page">
-      {/* Two-Source Data Model Banner */}
-      <div className="glass-card p-3 bg-zinc-800/50 border-emerald-500/30">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-2">
-          <div className="flex flex-wrap items-center gap-4">
-            <div className="flex items-center gap-2">
-              <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-              <span className="text-emerald-400 font-medium text-sm">Two-Source Data</span>
+      {/* Market Status Banner */}
+      {marketStatus && !marketStatus.is_open && (
+        <div className="glass-card p-3 flex items-center justify-between bg-zinc-800/50 border-amber-500/30">
+          <div className="flex items-center gap-3">
+            {marketStatus.is_weekend ? (
+              <Moon className="w-5 h-5 text-amber-400" />
+            ) : (
+              <Clock className="w-5 h-5 text-amber-400" />
+            )}
+            <div>
+              <span className="text-amber-400 font-medium">{marketStatus.reason}</span>
+              <span className="text-zinc-400 ml-2 text-sm">• {marketStatus.data_note}</span>
             </div>
-            <div className="flex items-center gap-2 text-sm">
-              <span className="text-zinc-500">Equity:</span>
-              <span className="text-white font-medium">
-                {equityDate || marketStatus?.t1_data?.date || 'Loading...'} (T-1 Close)
-              </span>
-            </div>
-            {optionsSnapshot && (
-              <div className="flex items-center gap-2 text-sm">
-                <span className="text-zinc-500">Options Snapshot:</span>
-                <span className="text-white">{optionsSnapshot}</span>
-              </div>
-            )}
           </div>
-          <div className="flex items-center gap-2">
-            {dataInfo?.weekly_count !== undefined && (
-              <Badge className="bg-blue-500/20 text-blue-400 border-blue-500/30 text-xs">
-                {dataInfo.weekly_count} Weekly
-              </Badge>
-            )}
-            {dataInfo?.monthly_count !== undefined && (
-              <Badge className="bg-violet-500/20 text-violet-400 border-violet-500/30 text-xs">
-                {dataInfo.monthly_count} Monthly
-              </Badge>
-            )}
-            <Badge className="bg-emerald-500/20 text-emerald-400 border-emerald-500/30 text-xs">
-              {marketStatus?.current_time_et || 'Loading...'}
-            </Badge>
-          </div>
+          <Badge className="bg-amber-500/20 text-amber-400 border-amber-500/30">
+            {marketStatus.current_time_et}
+          </Badge>
         </div>
-      </div>
+      )}
 
       {/* Pre-Computed Scan Buttons */}
       <Card className="glass-card" data-testid="precomputed-scans">
@@ -529,7 +514,7 @@ const Screener = () => {
             </Badge>
           </CardTitle>
           <p className="text-sm text-zinc-400 mt-1">
-            AI-powered scans with technical + fundamental filters. Updated daily after market close (4 PM ET).
+            AI-powered scans with technical + fundamental filters. Updated daily at market close.
           </p>
         </CardHeader>
         <CardContent>
@@ -673,36 +658,12 @@ const Screener = () => {
             Covered Call Screener
           </h1>
           <p className="text-zinc-400 mt-1">
-            {dataInfo?.is_precomputed 
+            {dataInfo?.is_precomputed
               ? `Showing ${dataInfo.label} pre-computed results`
-              : dataInfo?.from_cache && marketStatus && !marketStatus.is_open 
-                ? "Showing data from last market session" 
+              : dataInfo?.from_cache && marketStatus && !marketStatus.is_open
+                ? "Showing data from last market session"
                 : "Advanced filtering for optimal premium opportunities"}
           </p>
-          {/* Data Freshness Indicator */}
-          {dataInfo && (
-            <div className="mt-2 flex items-center gap-2 text-xs">
-              <span className={`inline-flex items-center px-2 py-0.5 rounded-full ${
-                dataInfo.data_freshness_score === 100 
-                  ? 'bg-emerald-500/20 text-emerald-400' 
-                  : dataInfo.data_freshness_score >= 80 
-                    ? 'bg-yellow-500/20 text-yellow-400'
-                    : 'bg-red-500/20 text-red-400'
-              }`}>
-                {dataInfo.data_freshness_score === 100 ? '● Live Data' : 
-                 dataInfo.is_precomputed_fallback ? '● Pre-computed Data' :
-                 dataInfo.from_cache ? '● Cached Data' : '● Data'}
-              </span>
-              {dataInfo.data_note && (
-                <span className="text-zinc-500">{dataInfo.data_note}</span>
-              )}
-              {dataInfo.fetched_at && (
-                <span className="text-zinc-600">
-                  • {new Date(dataInfo.fetched_at).toLocaleTimeString()}
-                </span>
-              )}
-            </div>
-          )}
         </div>
         <div className="flex flex-wrap gap-3">
           <Button
@@ -792,7 +753,7 @@ const Screener = () => {
             </CardHeader>
             <CardContent className="space-y-2">
               <Accordion type="multiple" defaultValue={[]} className="w-full">
-                
+
                 {/* Days to Expiration */}
                 <AccordionItem value="expiration" className="border-zinc-800">
                   <AccordionTrigger className="text-sm font-medium hover:no-underline">
@@ -805,8 +766,8 @@ const Screener = () => {
                     {/* Expiration Type Selection */}
                     <div>
                       <Label className="text-xs text-zinc-400 mb-3 block">Expiration Type</Label>
-                      <RadioGroup 
-                        value={expirationFilters.expirationType} 
+                      <RadioGroup
+                        value={expirationFilters.expirationType}
                         onValueChange={(value) => setExpirationFilters(f => ({ ...f, expirationType: value }))}
                         className="space-y-2"
                       >
@@ -868,7 +829,7 @@ const Screener = () => {
                       <div className="flex items-center gap-2 mt-2">
                         <Input
                           type="number"
-                          value={stockFilters.minPrice || ""}
+                          value={stockFilters.minPrice || ""} placeholder="Min"
                           onChange={(e) => setStockFilters(f => ({ ...f, minPrice: parseFloat(e.target.value) || 0 }))}
                           className="input-dark w-24 text-center"
                           placeholder="Min"
@@ -877,7 +838,7 @@ const Screener = () => {
                         <span className="text-zinc-500">to</span>
                         <Input
                           type="number"
-                          value={stockFilters.maxPrice || ""}
+                          value={stockFilters.maxPrice || ""} placeholder="Max"
                           onChange={(e) => setStockFilters(f => ({ ...f, maxPrice: parseFloat(e.target.value) || 1000 }))}
                           className="input-dark w-24 text-center"
                           placeholder="Max"
@@ -935,7 +896,7 @@ const Screener = () => {
                       <Label className="text-xs text-zinc-400">Minimum Option Volume</Label>
                       <Input
                         type="number"
-                        value={optionsFilters.minVolume || ""}
+                        value={optionsFilters.minVolume || ""} placeholder="Min"
                         onChange={(e) => setOptionsFilters(f => ({ ...f, minVolume: parseInt(e.target.value) || 0 }))}
                         className="input-dark mt-2"
                         placeholder="0"
@@ -946,14 +907,14 @@ const Screener = () => {
                       <Label className="text-xs text-zinc-400">Minimum Open Interest</Label>
                       <Input
                         type="number"
-                        value={optionsFilters.minOpenInterest || ""}
+                        value={optionsFilters.minOpenInterest || ""} placeholder="Min"
                         onChange={(e) => setOptionsFilters(f => ({ ...f, minOpenInterest: parseInt(e.target.value) || 0 }))}
                         className="input-dark mt-2"
                         placeholder="100"
                         data-testid="min-oi-input"
                       />
                     </div>
-                    
+
                     {/* Moneyness Dropdown */}
                     <div className="pt-2 border-t border-zinc-800">
                       <Label className="text-xs text-zinc-400">Moneyness</Label>
@@ -1012,7 +973,7 @@ const Screener = () => {
                       <Input
                         type="number"
                         step="0.01"
-                        value={greeksFilters.maxTheta || ""}
+                        value={greeksFilters.maxTheta || ""} placeholder="Max"
                         onChange={(e) => setGreeksFilters(f => ({ ...f, maxTheta: parseFloat(e.target.value) || 0 }))}
                         className="input-dark mt-2"
                         placeholder="-0.05"
@@ -1359,14 +1320,13 @@ const Screener = () => {
                       {activeScan && <th>Sector</th>}
                       <SortHeader field="score" label="Score" />
                       <th>Analyst</th>
-                      <SortHeader field="days_to_earnings" label="Earnings" />
                       <th className="text-center">Action</th>
                     </tr>
                   </thead>
                   <tbody>
                     {sortedOpportunities.map((opp, index) => (
-                      <tr 
-                        key={index} 
+                      <tr
+                        key={index}
                         data-testid={`screener-row-${opp.symbol}`}
                         className="cursor-pointer hover:bg-zinc-800/50 transition-colors"
                         onClick={() => {
@@ -1379,13 +1339,14 @@ const Screener = () => {
                         <td className="font-semibold text-white">
                           <div className="flex items-center gap-2">
                             {opp.symbol}
-                            {(opp.expiry_type || opp.timeframe) && (
+                            {/* Show W/M badge for ALL results based on DTE */}
+                            {opp.dte && (
                               <Badge className={`text-xs ${
-                                (opp.expiry_type === 'weekly' || opp.timeframe === 'weekly')
-                                  ? 'bg-blue-500/20 text-blue-400 border-blue-500/30' 
+                                opp.dte <= 14
+                                  ? 'bg-cyan-500/20 text-cyan-400 border-cyan-500/30'
                                   : 'bg-purple-500/20 text-purple-400 border-purple-500/30'
                               }`}>
-                                {(opp.expiry_type === 'weekly' || opp.timeframe === 'weekly') ? 'W' : 'M'}
+                                {opp.dte <= 14 ? 'W' : 'M'}
                               </Badge>
                             )}
                           </div>
@@ -1401,8 +1362,23 @@ const Screener = () => {
                         <td className="text-cyan-400 font-medium">{opp.roi_pct?.toFixed(2) || opp.premium_yield?.toFixed(2)}%</td>
                         <td>{opp.delta?.toFixed(2)}</td>
                         <td className="text-yellow-400">{Math.round((1 - opp.delta) * 100)}%</td>
-                        <td>{opp.iv ? `${(opp.iv * 100).toFixed(1)}%` : (opp.iv_pct ? `${opp.iv_pct.toFixed(1)}%` : '-')}</td>
-                        <td>{opp.iv_rank ? `${opp.iv_rank?.toFixed(0)}%` : '-'}</td>
+                        <td>{opp.iv_pct ? `${opp.iv_pct.toFixed(1)}%` : (opp.iv ? `${(opp.iv * 100).toFixed(1)}%` : '-')}</td>
+                        <td>
+                          <TooltipProvider>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <span className="text-zinc-500 cursor-help">
+                                  {opp.iv_rank != null ? `${opp.iv_rank.toFixed(0)}%` : 'N/A'}
+                                </span>
+                              </TooltipTrigger>
+                              {opp.iv_rank == null && (
+                                <TooltipContent className="bg-zinc-800 border-zinc-700 p-2 max-w-xs">
+                                  <p className="text-xs text-zinc-300">IV Rank not available yet (insufficient history / not computed)</p>
+                                </TooltipContent>
+                              )}
+                            </Tooltip>
+                          </TooltipProvider>
+                        </td>
                         <td className="text-zinc-400">{opp.open_interest ? opp.open_interest.toLocaleString() : '-'}</td>
                         {activeScan && (
                           <td>
@@ -1410,44 +1386,58 @@ const Screener = () => {
                           </td>
                         )}
                         <td>
-                          <Badge className={`${
-                            opp.score >= 50 ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' :
-                            opp.score >= 35 ? 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30' : 
-                            'bg-cyan-500/20 text-cyan-400 border-cyan-500/30'
-                          }`}>
-                            {opp.score?.toFixed(0)}
-                          </Badge>
+                          <TooltipProvider>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Badge className={`cursor-pointer ${
+                                  opp.score >= 50 ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' :
+                                  opp.score >= 35 ? 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30' :
+                                  'bg-cyan-500/20 text-cyan-400 border-cyan-500/30'
+                                }`}>
+                                  {opp.score?.toFixed(0)}
+                                </Badge>
+                              </TooltipTrigger>
+                              <TooltipContent className="bg-zinc-800 border-zinc-700 p-3 max-w-xs">
+                                {opp.score_breakdown?.pillars ? (
+                                  <div className="space-y-2">
+                                    <p className="font-semibold text-zinc-200 mb-2">Score Breakdown</p>
+                                    {Object.values(opp.score_breakdown.pillars).map((pillar, idx) => (
+                                      <div key={idx} className="text-xs">
+                                        <div className="flex justify-between text-zinc-300">
+                                          <span>{pillar.name}</span>
+                                          <span className="text-emerald-400">{pillar.actual_score}/{pillar.max_score}</span>
+                                        </div>
+                                        <div className="w-full bg-zinc-700 h-1 rounded-full mt-1">
+                                          <div
+                                            className="bg-emerald-500 h-1 rounded-full"
+                                            style={{width: `${pillar.percentage}%`}}
+                                          />
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                ) : (
+                                  <p className="text-zinc-400 text-xs">Score: {opp.score?.toFixed(1)}</p>
+                                )}
+                              </TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
                         </td>
                         <td>
-                          {opp.analyst_rating ? (
+                          {(opp.analyst_rating_label || opp.analyst_rating) ? (
                             <Badge className={`text-xs ${
-                              opp.analyst_rating === 'Strong Buy' 
+                              (opp.analyst_rating_label || opp.analyst_rating) === 'Strong Buy'
                                 ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30'
-                                : opp.analyst_rating === 'Buy'
+                                : (opp.analyst_rating_label || opp.analyst_rating) === 'Buy'
                                   ? 'bg-green-500/20 text-green-400 border-green-500/30'
-                                  : opp.analyst_rating === 'Hold'
+                                  : (opp.analyst_rating_label || opp.analyst_rating) === 'Hold'
                                     ? 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30'
                                     : 'bg-red-500/20 text-red-400 border-red-500/30'
                             }`}>
-                              {opp.analyst_rating}
+                              {opp.analyst_rating_label || opp.analyst_rating}
                             </Badge>
                           ) : (
-                            <span className="text-zinc-600 text-xs">-</span>
-                          )}
-                        </td>
-                        <td>
-                          {opp.days_to_earnings !== null && opp.days_to_earnings !== undefined && opp.days_to_earnings >= 0 ? (
-                            <Badge className={`text-xs ${
-                              opp.days_to_earnings <= 7 
-                                ? 'bg-red-500/20 text-red-400 border-red-500/30'
-                                : opp.days_to_earnings <= 14
-                                  ? 'bg-amber-500/20 text-amber-400 border-amber-500/30'
-                                  : 'bg-zinc-500/20 text-zinc-400 border-zinc-500/30'
-                            }`}>
-                              {opp.days_to_earnings}d
-                            </Badge>
-                          ) : (
-                            <span className="text-zinc-600 text-xs">-</span>
+                            <span className="text-zinc-600 text-xs">N/A</span>
                           )}
                         </td>
                         <td className="text-center">
@@ -1517,7 +1507,7 @@ const Screener = () => {
                   <span className="text-white">{simulateOpp.dte} days</span>
                 </div>
               </div>
-              
+
               <div>
                 <Label>Number of Contracts</Label>
                 <Input
@@ -1532,7 +1522,7 @@ const Screener = () => {
                   Capital required: ${((simulateOpp.stock_price || 0) * 100 * simulateContracts).toLocaleString()}
                 </p>
               </div>
-              
+
               <div className="flex gap-2 pt-2">
                 <Button
                   variant="outline"
@@ -1555,7 +1545,7 @@ const Screener = () => {
       </Dialog>
 
       {/* Stock Detail Modal */}
-      <StockDetailModal 
+      <StockDetailModal
         symbol={selectedStock}
         isOpen={isModalOpen}
         onClose={() => {

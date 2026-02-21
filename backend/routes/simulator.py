@@ -1,6 +1,25 @@
 """
 Simulator Routes - Trade simulation and management endpoints
 Designed for forward-running simulation of covered call and PMCC strategies
+
+DATA FETCHING RULES:
+- Rule #2: Simulator and Watchlist use LIVE intraday prices (regularMarketPrice)
+- This ensures accurate P&L tracking during market hours
+
+TRADE LIFECYCLE MODEL:
+Covered Call (CC):
+  - OPEN: Call sold, position active
+  - EXPIRED: Call expires OTM (win)
+  - ASSIGNED: Shares called away (win for CC, loss risk for PMCC)
+  - CLOSED: Manually closed or finalized
+
+PMCC:
+  - OPEN: Long LEAPS + short call active
+  - ROLLED: Short call closed and replaced with new short call
+  - ASSIGNED: Short call assigned (BAD - avoid this!)
+  - CLOSED: PMCC fully exited
+
+CRITICAL RULE: ASSIGNED = CLOSED for analytics/reporting purposes
 """
 from fastapi import APIRouter, Depends, Query, HTTPException
 from pydantic import BaseModel
@@ -17,10 +36,30 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from database import db
 from utils.auth import get_current_user
 
+# Import LIVE price function for simulator (Rule #2)
+from services.data_provider import fetch_live_stock_quote, fetch_options_chain
+
+# CCE Volatility & Greeks Correctness - Use shared Greeks service
+from services.greeks_service import (
+    calculate_greeks as calculate_greeks_bs,
+    normalize_iv_fields,
+    get_risk_free_rate
+)
+# Import enrichment service for IV Rank and Analyst data
+from services.enrichment_service import enrich_row, strip_enrichment_debug
+
 simulator_router = APIRouter(tags=["Simulator"])
+
+# Valid lifecycle statuses
+CC_STATUSES = ["open", "expired", "assigned", "closed"]
+PMCC_STATUSES = ["open", "rolled", "assigned", "closed"]
+ALL_STATUSES = ["open", "rolled", "expired", "assigned", "closed"]
+COMPLETED_STATUSES = ["expired", "assigned", "closed"]  # For analytics - ASSIGNED = CLOSED
 
 
 # ==================== BLACK-SCHOLES CALCULATIONS ====================
+# NOTE: These local functions are kept for backward compatibility.
+# New code should use services/greeks_service.py
 
 def calculate_d1_d2(S, K, T, r, sigma):
     """Calculate d1 and d2 for Black-Scholes"""
@@ -53,51 +92,32 @@ def calculate_call_price(S, K, T, r, sigma):
 
 def calculate_greeks(S, K, T, r, sigma):
     """
-    Calculate option Greeks
+    Calculate option Greeks using shared greeks_service.
+    
+    CCE VOLATILITY & GREEKS CORRECTNESS:
+    This function now delegates to the shared greeks_service for consistency.
+    
     S: Current stock price
     K: Strike price
     T: Time to expiration (in years)
-    r: Risk-free rate (default 5%)
-    sigma: Implied volatility
+    r: Risk-free rate (default from env or 4.5%)
+    sigma: Implied volatility (decimal form)
     
-    Returns: dict with delta, gamma, theta, vega
+    Returns: dict with delta, gamma, theta, vega, option_value
     """
-    if T <= 0 or sigma <= 0:
-        # At expiry or invalid inputs
-        delta = 1.0 if S > K else 0.0
-        return {
-            "delta": delta,
-            "gamma": 0,
-            "theta": 0,
-            "vega": 0,
-            "option_value": max(0, S - K)
-        }
+    # Delegate to shared Greeks service
+    greeks_result = calculate_greeks_bs(
+        S=S, K=K, T=T, sigma=sigma, option_type="call", r=r
+    )
     
-    d1, d2 = calculate_d1_d2(S, K, T, r, sigma)
-    if d1 is None:
-        return {"delta": 0, "gamma": 0, "theta": 0, "vega": 0, "option_value": 0}
-    
-    # Delta
-    delta = norm_cdf(d1)
-    
-    # Gamma
-    gamma = norm_pdf(d1) / (S * sigma * math.sqrt(T))
-    
-    # Theta (per day)
-    theta = (-(S * norm_pdf(d1) * sigma) / (2 * math.sqrt(T)) - r * K * math.exp(-r * T) * norm_cdf(d2)) / 365
-    
-    # Vega (per 1% change in IV)
-    vega = S * math.sqrt(T) * norm_pdf(d1) / 100
-    
-    # Option value
-    option_value = calculate_call_price(S, K, T, r, sigma)
-    
+    # Return in legacy format for backward compatibility
     return {
-        "delta": round(delta, 4),
-        "gamma": round(gamma, 6),
-        "theta": round(theta, 4),
-        "vega": round(vega, 4),
-        "option_value": round(option_value, 2)
+        "delta": greeks_result.delta,
+        "gamma": greeks_result.gamma,
+        "theta": greeks_result.theta,
+        "vega": greeks_result.vega,
+        "option_value": greeks_result.option_value,
+        "delta_source": greeks_result.delta_source  # New field
     }
 
 
@@ -117,8 +137,6 @@ class SimulatorTradeEntry(BaseModel):
     short_call_premium: float
     short_call_delta: Optional[float] = None
     short_call_iv: Optional[float] = None
-    short_call_iv_rank: Optional[float] = None
-    short_call_open_interest: Optional[int] = None
     
     # For PMCC - LEAPS details
     leaps_strike: Optional[float] = None
@@ -135,7 +153,7 @@ class SimulatorTradeEntry(BaseModel):
 
 
 class TradeRuleCreate(BaseModel):
-    """Model for creating trade management rules (legacy - preserved for future use)"""
+    """Model for creating trade management rules"""
     name: str
     description: Optional[str] = None
     rule_type: str  # "profit_target", "stop_loss", "time_based", "delta_target", "roll", "custom"
@@ -150,675 +168,6 @@ class TradeRuleCreate(BaseModel):
     # Priority and settings
     priority: int = 0
     is_enabled: bool = True
-
-
-class FeeSettings(BaseModel):
-    """User's transaction fee configuration"""
-    per_contract_fee: float = 0.65  # Default $0.65 per contract
-    base_commission: float = 0.0  # Base commission per trade
-    assignment_fee: float = 0.0  # Fee for assignment
-
-
-class IncomeSettings(BaseModel):
-    """User's income optimization settings"""
-    target_roi_per_week: float = 1.5  # Default 1.5% per week target
-    premium_exit_threshold: float = 80.0  # Close when 80%+ premium captured
-    premium_auto_exit: float = 90.0  # Auto-close at 90% captured
-    min_improvement_multiplier: float = 2.0  # Require 2x fees for any action
-    dte_warning_threshold: int = 14  # Warning at 14 DTE
-    dte_force_decision: int = 7  # Force decision at 7 DTE
-    pmcc_width_protection_pct: float = 25.0  # Roll if width < 25% of original
-    pmcc_leaps_min_dte: int = 180  # Warning if LEAPS < 180 DTE
-
-
-# ==================== INCOME-OPTIMISED DECISION ENGINE ====================
-
-async def get_redeployment_roi(user_id: str, strategy_type: str, risk_profile: str = "balanced") -> Dict[str, Any]:
-    """
-    Get expected ROI for redeployment using tiered fallback:
-    1. Average ROI from recent pre-computed scans (same strategy/risk)
-    2. User's historical average ROI
-    3. Configurable target (fallback)
-    """
-    result = {
-        "source": None,
-        "roi_per_day": None,
-        "roi_per_week": None,
-        "confidence": "low"
-    }
-    
-    # 1. Try pre-computed scans first (most objective)
-    try:
-        scan = await db.precomputed_scans.find_one(
-            {"strategy": strategy_type, "risk_profile": risk_profile},
-            {"_id": 0, "opportunities": 1, "computed_at": 1}
-        )
-        
-        if scan and scan.get("opportunities"):
-            opps = scan["opportunities"]
-            if len(opps) >= 5:
-                # Calculate median ROI per week from scans
-                rois = []
-                for opp in opps:
-                    roi_pct = opp.get("roi_pct") or opp.get("premium_yield", 0)
-                    dte = opp.get("dte", 30) or 30
-                    if roi_pct and dte > 0:
-                        roi_per_week = (roi_pct / dte) * 7
-                        rois.append(roi_per_week)
-                
-                if rois:
-                    rois.sort()
-                    median_roi = rois[len(rois) // 2]
-                    result["source"] = "precomputed_scan"
-                    result["roi_per_week"] = round(median_roi, 3)
-                    result["roi_per_day"] = round(median_roi / 7, 4)
-                    result["confidence"] = "high"
-                    result["sample_size"] = len(rois)
-                    return result
-    except Exception as e:
-        logging.warning(f"Could not fetch pre-computed scan ROI: {e}")
-    
-    # 2. Try user's historical average
-    try:
-        closed_trades = await db.simulator_trades.find(
-            {
-                "user_id": user_id,
-                "status": {"$in": ["closed", "expired"]},
-                "strategy_type": strategy_type,
-                "realized_pnl": {"$exists": True}
-            },
-            {"_id": 0, "realized_pnl": 1, "capital_deployed": 1, "days_held": 1}
-        ).sort("updated_at", -1).limit(20).to_list(20)
-        
-        if len(closed_trades) >= 5:
-            rois_per_week = []
-            for t in closed_trades:
-                pnl = t.get("realized_pnl", 0)
-                capital = t.get("capital_deployed", 0)
-                days = t.get("days_held", 1) or 1
-                if capital > 0:
-                    roi_pct = (pnl / capital) * 100
-                    roi_per_week = (roi_pct / days) * 7
-                    rois_per_week.append(roi_per_week)
-            
-            if rois_per_week:
-                avg_roi = sum(rois_per_week) / len(rois_per_week)
-                result["source"] = "user_history"
-                result["roi_per_week"] = round(avg_roi, 3)
-                result["roi_per_day"] = round(avg_roi / 7, 4)
-                result["confidence"] = "medium"
-                result["sample_size"] = len(rois_per_week)
-                return result
-    except Exception as e:
-        logging.warning(f"Could not fetch user history ROI: {e}")
-    
-    # 3. Fallback to user settings or default
-    try:
-        user_settings = await db.simulator_settings.find_one(
-            {"user_id": user_id},
-            {"_id": 0, "income_settings": 1}
-        )
-        target = 1.5  # Default 1.5% per week
-        if user_settings and user_settings.get("income_settings"):
-            target = user_settings["income_settings"].get("target_roi_per_week", 1.5)
-        
-        result["source"] = "target_default"
-        result["roi_per_week"] = target
-        result["roi_per_day"] = round(target / 7, 4)
-        result["confidence"] = "low"
-        return result
-    except:
-        result["source"] = "fallback"
-        result["roi_per_week"] = 1.5
-        result["roi_per_day"] = 0.214
-        result["confidence"] = "low"
-        return result
-
-
-def calculate_transaction_fees(contracts: int, fee_settings: Dict) -> Dict[str, float]:
-    """Calculate total transaction fees for a trade action"""
-    per_contract = fee_settings.get("per_contract_fee", 0.65)
-    base = fee_settings.get("base_commission", 0)
-    
-    # Round-trip = open + close
-    one_way = (contracts * per_contract) + base
-    round_trip = one_way * 2
-    # Roll fees = close current + open new (both legs)
-    roll_fees = round_trip * 2  # 4 transactions total for a roll
-    
-    return {
-        "one_way": round(one_way, 2),
-        "round_trip": round(round_trip, 2),
-        "roll_total": round(roll_fees, 2),
-        "per_contract": per_contract
-    }
-
-
-def calculate_roll_economics(
-    current_option_value: float,
-    entry_premium: float,
-    expected_new_premium: float,
-    contracts: int,
-    fees: Dict,
-    capital_deployed: float,
-    new_dte: int = 30
-) -> Dict[str, Any]:
-    """
-    Calculate explicit roll economics for income-optimised decision.
-    
-    Net Roll Value = New Premium - Cost to Close - Total Roll Fees
-    """
-    # Cost to close = current option value (what you pay to buy back)
-    cost_to_close = current_option_value * 100 * contracts
-    
-    # New premium collected
-    new_premium_value = expected_new_premium * 100 * contracts
-    
-    # Total roll fees (close + open = 4 transactions)
-    roll_fees = fees["roll_total"]
-    
-    # Net roll value
-    net_roll_value = new_premium_value - cost_to_close - roll_fees
-    
-    # Expire value (if let expire worthless)
-    remaining_premium = (entry_premium - current_option_value) * 100 * contracts
-    expire_value = remaining_premium  # Zero fees if expire
-    
-    # ROI calculations
-    roll_roi_pct = (net_roll_value / capital_deployed * 100) if capital_deployed > 0 else 0
-    roll_roi_per_day = (roll_roi_pct / new_dte) if new_dte > 0 else 0
-    
-    # Is roll economically justified?
-    roll_justified = (
-        net_roll_value > expire_value and
-        net_roll_value >= 2 * roll_fees and
-        new_dte >= 14
-    )
-    
-    return {
-        "cost_to_close": round(cost_to_close, 2),
-        "new_premium_value": round(new_premium_value, 2),
-        "roll_fees": round(roll_fees, 2),
-        "net_roll_value": round(net_roll_value, 2),
-        "expire_value": round(expire_value, 2),
-        "roll_vs_expire_diff": round(net_roll_value - expire_value, 2),
-        "roll_roi_pct": round(roll_roi_pct, 2),
-        "roll_roi_per_day": round(roll_roi_per_day, 4),
-        "new_dte": new_dte,
-        "roll_justified": roll_justified,
-        "justification": (
-            "Roll economically justified" if roll_justified else
-            f"Roll not justified: {'net < expire' if net_roll_value <= expire_value else ''}"
-            f"{'net < 2x fees' if net_roll_value < 2 * roll_fees else ''}"
-            f"{'new DTE too short' if new_dte < 14 else ''}"
-        )
-    }
-
-
-def evaluate_income_rules(trade: dict, current_price: float, settings: dict, redeployment_roi: dict) -> Dict[str, Any]:
-    """
-    Evaluate all income-optimised rules and return decision analysis.
-    
-    REVISED LOGIC (Income-Optimised):
-    - At 1 DTE: "hold" means "let expire", not "do nothing because fees are high"
-    - Explicit roll economics calculation
-    - Assignment acceptance as valid exit path
-    
-    Returns recommendations:
-    - expire_worthless: Let option expire (income maximised, zero fees)
-    - accept_assignment: Accept ITM assignment (valid exit)
-    - roll_up_out: Roll up and out (economically justified)
-    - roll_down_out: Roll down and out (income rescue)
-    - hold: Continue holding (trade performing)
-    - close: Close position early
-    - consider_close: Soft recommendation to close
-    """
-    income_settings = settings.get("income_settings", {})
-    fee_settings = settings.get("fee_settings", {})
-    
-    # Extract trade data
-    entry_premium = trade.get("short_call_premium", 0)
-    current_option_value = trade.get("current_option_value", 0)
-    premium_captured_pct = trade.get("premium_capture_pct", 0)
-    dte_remaining = trade.get("dte_remaining", 30)
-    days_held = trade.get("days_held", 0) or 1
-    capital_deployed = trade.get("capital_deployed", 0)
-    current_delta = trade.get("current_delta", 0.3)
-    unrealized_pnl = trade.get("unrealized_pnl", 0)
-    strategy_type = trade.get("strategy_type", "covered_call")
-    contracts = trade.get("contracts", 1)
-    strike = trade.get("short_call_strike", 0)
-    entry_price = trade.get("entry_underlying_price", current_price)
-    
-    # Calculate fees
-    fees = calculate_transaction_fees(contracts, fee_settings)
-    
-    # Calculate current ROI per day
-    if capital_deployed > 0 and days_held > 0:
-        current_roi_total = (unrealized_pnl / capital_deployed) * 100
-        current_roi_per_day = current_roi_total / days_held
-    else:
-        current_roi_total = 0
-        current_roi_per_day = 0
-    
-    # Redeployment ROI
-    redeploy_roi_per_day = redeployment_roi.get("roi_per_day", 0.214)
-    redeploy_roi_per_week = redeployment_roi.get("roi_per_week", 1.5)
-    
-    # Get thresholds from settings
-    premium_exit_threshold = income_settings.get("premium_exit_threshold", 80)
-    premium_auto_exit = income_settings.get("premium_auto_exit", 90)
-    dte_warning = income_settings.get("dte_warning_threshold", 14)
-    dte_force = income_settings.get("dte_force_decision", 7)
-    min_improvement_mult = income_settings.get("min_improvement_multiplier", 2.0)
-    
-    # Calculate key values
-    remaining_premium_value = (entry_premium - current_option_value) * 100 * contracts
-    remaining_option_value = current_option_value * 100 * contracts
-    remaining_value_pct = (current_option_value / entry_premium * 100) if entry_premium > 0 else 0
-    is_otm = current_price < strike if strike > 0 else True
-    is_itm = not is_otm
-    
-    # Estimate new premium for roll (using redeployment data)
-    # Assume rolling to 30 DTE with similar delta
-    estimated_new_premium = entry_premium * (redeploy_roi_per_week / 100 * 4.3)  # ~30 days
-    estimated_new_premium = max(estimated_new_premium, entry_premium * 0.8)  # At least 80% of original
-    
-    # Calculate roll economics
-    roll_economics = calculate_roll_economics(
-        current_option_value=current_option_value,
-        entry_premium=entry_premium,
-        expected_new_premium=estimated_new_premium,
-        contracts=contracts,
-        fees=fees,
-        capital_deployed=capital_deployed,
-        new_dte=30
-    )
-    
-    # Initialize decision analysis
-    analysis = {
-        "trade_id": trade.get("id"),
-        "symbol": trade.get("symbol"),
-        "strategy_type": strategy_type,
-        "current_metrics": {
-            "premium_captured_pct": round(premium_captured_pct, 1),
-            "dte_remaining": dte_remaining,
-            "days_held": days_held,
-            "current_delta": round(current_delta, 3),
-            "unrealized_pnl": round(unrealized_pnl, 2),
-            "current_roi_total_pct": round(current_roi_total, 2),
-            "current_roi_per_day": round(current_roi_per_day, 4),
-            "current_option_value": round(current_option_value, 2),
-            "remaining_premium": round(entry_premium - current_option_value, 2),
-            "remaining_value_pct": round(remaining_value_pct, 1),
-            "is_otm": is_otm,
-            "is_itm": is_itm,
-            "strike": strike,
-            "current_price": round(current_price, 2)
-        },
-        "redeployment": {
-            "expected_roi_per_day": round(redeploy_roi_per_day, 4),
-            "expected_roi_per_week": round(redeploy_roi_per_week, 3),
-            "source": redeployment_roi.get("source", "unknown"),
-            "confidence": redeployment_roi.get("confidence", "low")
-        },
-        "fees": fees,
-        "roll_economics": roll_economics,
-        "rules_triggered": [],
-        "recommendation": "hold",
-        "recommendation_reason": "",
-        "comparison": {}
-    }
-    
-    # ==================== 1 DTE SPECIAL LOGIC (Income-Optimised) ====================
-    
-    if dte_remaining <= 1:
-        # CASE A: OTM & Near Worthless → LET EXPIRE
-        if is_otm and remaining_value_pct <= 10:
-            analysis["rules_triggered"].append({
-                "rule": "expire_worthless",
-                "severity": "info",
-                "message": f"Option near worthless ({remaining_value_pct:.1f}% remaining) and OTM. Let expire to maximise income with zero fees.",
-                "action": "expire_worthless"
-            })
-            analysis["recommendation"] = "expire_worthless"
-            analysis["recommendation_reason"] = f"Income Maximised – Let expire worthless. Remaining value ${remaining_option_value:.2f} captured with zero fees."
-            
-            # Comparison shows expire is best
-            analysis["comparison"] = {
-                "expire_worthless": {
-                    "value": round(remaining_premium_value, 2),
-                    "description": "Let option expire worthless (zero fees, maximum theta capture)",
-                    "risk": "None - option is OTM and near worthless",
-                    "recommended": True
-                },
-                "close_now": {
-                    "value": round(remaining_premium_value - fees["one_way"], 2),
-                    "description": f"Close now (pay ${fees['one_way']:.2f} fees for no benefit)",
-                    "risk": "Unnecessary fee expense",
-                    "recommended": False
-                },
-                "roll": {
-                    "value": round(roll_economics["net_roll_value"], 2),
-                    "description": f"Roll to new cycle (pay ${roll_economics['roll_fees']:.2f} fees)",
-                    "risk": "Destroys ROI - fees exceed benefit at 1 DTE",
-                    "recommended": False
-                }
-            }
-            return analysis
-        
-        # CASE B: ITM / High Assignment Risk
-        if is_itm or current_delta >= 0.60:
-            # Calculate assignment ROI
-            assignment_profit = (strike - entry_price + entry_premium) * 100 * contracts
-            assignment_roi = (assignment_profit / capital_deployed * 100) if capital_deployed > 0 else 0
-            assignment_roi_per_day = (assignment_roi / days_held) if days_held > 0 else 0
-            
-            # Calculate CSP potential (if we accept assignment and sell CSP)
-            csp_premium_estimate = entry_premium * 0.8  # Estimate 80% of CC premium for CSP
-            csp_roi_per_week = (csp_premium_estimate / strike * 100) * (7 / 30)  # Weekly ROI
-            
-            analysis["assignment_analysis"] = {
-                "assignment_profit": round(assignment_profit, 2),
-                "assignment_roi_pct": round(assignment_roi, 2),
-                "assignment_roi_per_day": round(assignment_roi_per_day, 4),
-                "csp_roi_per_week_estimate": round(csp_roi_per_week, 3),
-                "roll_roi_per_day": roll_economics["roll_roi_per_day"]
-            }
-            
-            # Decision: Accept assignment vs Roll
-            # Accept if: total return meets target OR CSP ROI > rolled CC ROI
-            target_roi_per_week = income_settings.get("target_roi_per_week", 1.5)
-            achieved_roi_per_week = assignment_roi_per_day * 7
-            
-            accept_assignment = (
-                achieved_roi_per_week >= target_roi_per_week or
-                csp_roi_per_week > roll_economics["roll_roi_per_day"] * 7
-            )
-            
-            if accept_assignment:
-                analysis["rules_triggered"].append({
-                    "rule": "accept_assignment",
-                    "severity": "info",
-                    "message": f"Assignment accepted – ROI {assignment_roi:.1f}% ({assignment_roi_per_day:.3f}%/day) meets target. Income cycle continues via CSP.",
-                    "action": "accept_assignment"
-                })
-                analysis["recommendation"] = "accept_assignment"
-                analysis["recommendation_reason"] = f"Accept assignment at ${strike:.2f}. Total ROI: {assignment_roi:.1f}%. Continue income cycle with Cash-Secured Put."
-            else:
-                # Check if roll is economically justified
-                if roll_economics["roll_justified"]:
-                    analysis["rules_triggered"].append({
-                        "rule": "roll_itm",
-                        "severity": "high",
-                        "message": f"ITM at 1 DTE. Roll economically justified: net roll ${roll_economics['net_roll_value']:.2f} > expire ${roll_economics['expire_value']:.2f}",
-                        "action": "roll_up_out"
-                    })
-                    analysis["recommendation"] = "roll_up_out"
-                    analysis["recommendation_reason"] = f"Roll up and out to avoid assignment. Net roll value: ${roll_economics['net_roll_value']:.2f}"
-                else:
-                    analysis["rules_triggered"].append({
-                        "rule": "accept_assignment_default",
-                        "severity": "info",
-                        "message": f"Roll not economically justified at 1 DTE. Accept assignment as valid exit.",
-                        "action": "accept_assignment"
-                    })
-                    analysis["recommendation"] = "accept_assignment"
-                    analysis["recommendation_reason"] = f"Roll not justified (net ${roll_economics['net_roll_value']:.2f} < fees). Accept assignment at ${strike:.2f}."
-            
-            analysis["comparison"] = {
-                "accept_assignment": {
-                    "value": round(assignment_profit, 2),
-                    "description": f"Accept assignment at ${strike:.2f}, then sell CSP",
-                    "risk": "Stock called away, but income cycle continues",
-                    "recommended": accept_assignment
-                },
-                "roll_up_out": {
-                    "value": round(roll_economics["net_roll_value"], 2),
-                    "description": f"Roll to avoid assignment (fees: ${roll_economics['roll_fees']:.2f})",
-                    "risk": "High fees at 1 DTE may destroy ROI",
-                    "recommended": roll_economics["roll_justified"] and not accept_assignment
-                },
-                "expire_assigned": {
-                    "value": round(assignment_profit, 2),
-                    "description": "Let expire ITM (same as accept assignment)",
-                    "risk": "Assignment is certain",
-                    "recommended": False
-                }
-            }
-            return analysis
-        
-        # CASE C: OTM but with residual value > 10%
-        # Compare expire vs roll
-        if roll_economics["roll_justified"]:
-            analysis["rules_triggered"].append({
-                "rule": "roll_economics_positive",
-                "severity": "medium",
-                "message": f"Roll may be justified: net roll ${roll_economics['net_roll_value']:.2f} vs expire ${roll_economics['expire_value']:.2f}",
-                "action": "evaluate_roll"
-            })
-            # But at 1 DTE, usually better to expire
-            if roll_economics["roll_vs_expire_diff"] > fees["roll_total"]:
-                analysis["recommendation"] = "roll_down_out"
-                analysis["recommendation_reason"] = f"Roll down and out for income rescue. Net improvement: ${roll_economics['roll_vs_expire_diff']:.2f}"
-            else:
-                analysis["recommendation"] = "expire_worthless"
-                analysis["recommendation_reason"] = f"Let expire – roll improvement ${roll_economics['roll_vs_expire_diff']:.2f} doesn't justify fees ${fees['roll_total']:.2f}"
-        else:
-            analysis["rules_triggered"].append({
-                "rule": "expire_preferred",
-                "severity": "info",
-                "message": f"At 1 DTE with {remaining_value_pct:.1f}% remaining value. Let expire to avoid unnecessary fees.",
-                "action": "expire_worthless"
-            })
-            analysis["recommendation"] = "expire_worthless"
-            analysis["recommendation_reason"] = f"Let expire – rolling not economically justified at 1 DTE."
-        
-        analysis["comparison"] = {
-            "expire_worthless": {
-                "value": round(remaining_premium_value, 2),
-                "description": "Let option expire (capture remaining premium, zero fees)",
-                "risk": "Small gamma risk if price moves significantly",
-                "recommended": analysis["recommendation"] == "expire_worthless"
-            },
-            "roll": {
-                "value": round(roll_economics["net_roll_value"], 2),
-                "description": f"Roll to new cycle (fees: ${roll_economics['roll_fees']:.2f})",
-                "risk": "High fees relative to benefit",
-                "recommended": analysis["recommendation"] in ["roll_up_out", "roll_down_out"]
-            }
-        }
-        return analysis
-    
-    # ==================== STANDARD RULES (DTE > 1) ====================
-    
-    # Rule 1: Premium Efficiency Exit (Primary)
-    if premium_captured_pct >= premium_auto_exit:
-        analysis["rules_triggered"].append({
-            "rule": "premium_efficiency_auto",
-            "severity": "high",
-            "message": f"Auto-exit threshold reached: {premium_captured_pct:.1f}% premium captured (≥{premium_auto_exit}%)",
-            "action": "close"
-        })
-    elif premium_captured_pct >= premium_exit_threshold:
-        analysis["rules_triggered"].append({
-            "rule": "premium_efficiency",
-            "severity": "medium",
-            "message": f"Exit threshold reached: {premium_captured_pct:.1f}% premium captured (≥{premium_exit_threshold}%)",
-            "action": "recommend_close"
-        })
-    
-    # Rule 2: ROI per Day Comparison (Most Important)
-    if current_roi_per_day < redeploy_roi_per_day and days_held >= 7:
-        improvement = redeploy_roi_per_day - current_roi_per_day
-        analysis["rules_triggered"].append({
-            "rule": "roi_per_day",
-            "severity": "medium",
-            "message": f"Capital efficiency declining: current {current_roi_per_day:.3f}%/day vs redeployment {redeploy_roi_per_day:.3f}%/day",
-            "potential_improvement": f"+{improvement:.3f}%/day",
-            "action": "recommend_close"
-        })
-    
-    # Rule 3: Time-to-Expiry Efficiency (but NOT force close)
-    if dte_remaining <= dte_force:
-        # At low DTE, evaluate roll vs hold, not force close
-        if roll_economics["roll_justified"]:
-            analysis["rules_triggered"].append({
-                "rule": "dte_roll_opportunity",
-                "severity": "medium",
-                "message": f"Low DTE ({dte_remaining}d) - Roll may be beneficial: net ${roll_economics['net_roll_value']:.2f}",
-                "action": "evaluate_roll"
-            })
-        else:
-            analysis["rules_triggered"].append({
-                "rule": "dte_hold_to_expiry",
-                "severity": "low",
-                "message": f"Low DTE ({dte_remaining}d) - Hold to expiry preferred (roll not justified)",
-                "action": "hold"
-            })
-    elif dte_remaining <= dte_warning:
-        analysis["rules_triggered"].append({
-            "rule": "dte_warning",
-            "severity": "medium",
-            "message": f"Low DTE warning: {dte_remaining} DTE remaining (≤{dte_warning}). Evaluate roll opportunity.",
-            "action": "evaluate_roll_or_close"
-        })
-    
-    # Rule 4: Roll-Up Rule (Upside Management)
-    remaining_premium_pct = 100 - premium_captured_pct
-    if current_delta > 0.45 and remaining_premium_pct < 30:
-        if roll_economics["roll_justified"]:
-            analysis["rules_triggered"].append({
-                "rule": "roll_up",
-                "severity": "medium",
-                "message": f"Roll-up opportunity: delta {current_delta:.2f} (>0.45) with {remaining_premium_pct:.1f}% premium remaining. Roll economics positive.",
-                "action": "recommend_roll_up"
-            })
-        else:
-            analysis["rules_triggered"].append({
-                "rule": "roll_up_not_justified",
-                "severity": "low",
-                "message": f"Delta high ({current_delta:.2f}) but roll not economically justified. Consider holding.",
-                "action": "hold"
-            })
-    
-    # Rule 5: Roll-Down Rule (Income Recovery)
-    if remaining_value_pct < 20 and dte_remaining > 14:
-        analysis["rules_triggered"].append({
-            "rule": "roll_down",
-            "severity": "low",
-            "message": f"Roll-down opportunity: option at {remaining_value_pct:.1f}% value with {dte_remaining} DTE. Can capture more premium.",
-            "action": "recommend_roll_down"
-        })
-    
-    # Rule 6: Assignment Risk (ITM with time remaining)
-    if is_itm and dte_remaining <= 7 and dte_remaining > 1:
-        assignment_profit = (strike - entry_price + entry_premium) * 100 * contracts
-        assignment_roi = (assignment_profit / capital_deployed * 100) if capital_deployed > 0 else 0
-        
-        analysis["rules_triggered"].append({
-            "rule": "assignment_risk",
-            "severity": "medium",
-            "message": f"ITM with {dte_remaining} DTE. Assignment ROI if called: {assignment_roi:.1f}%",
-            "action": "evaluate_roll_or_accept"
-        })
-    
-    # PMCC-Specific Rules
-    if strategy_type == "pmcc":
-        leaps_strike = trade.get("leaps_strike", 0)
-        leaps_dte = trade.get("leaps_dte_remaining", 365)
-        short_strike = trade.get("short_call_strike", 0)
-        
-        # Rule 7A: PMCC Width Protection
-        if leaps_strike > 0 and short_strike > 0:
-            original_width = short_strike - leaps_strike
-            current_width = short_strike - current_price
-            width_pct = (current_width / original_width * 100) if original_width > 0 else 100
-            protection_threshold = income_settings.get("pmcc_width_protection_pct", 25)
-            
-            if width_pct < protection_threshold:
-                analysis["rules_triggered"].append({
-                    "rule": "pmcc_width_protection",
-                    "severity": "high",
-                    "message": f"PMCC width at risk: current width {width_pct:.1f}% of original (threshold: {protection_threshold}%)",
-                    "action": "roll_required"
-                })
-        
-        # Rule 7B: PMCC LEAPS Time Rule
-        leaps_min_dte = income_settings.get("pmcc_leaps_min_dte", 180)
-        if leaps_dte < leaps_min_dte:
-            analysis["rules_triggered"].append({
-                "rule": "pmcc_leaps_time",
-                "severity": "high",
-                "message": f"LEAPS time decay risk: only {leaps_dte} DTE remaining on LEAPS (minimum: {leaps_min_dte})",
-                "action": "restructure_or_close"
-            })
-    
-    # ==================== GENERATE RECOMMENDATION (DTE > 1) ====================
-    
-    min_improvement_required = fees["round_trip"] * min_improvement_mult
-    
-    # Calculate comparison scenarios
-    hold_to_expiry_value = entry_premium * 100 * contracts
-    close_now_value = remaining_premium_value - fees["one_way"]
-    
-    analysis["comparison"] = {
-        "hold_to_expiry": {
-            "value": round(hold_to_expiry_value, 2),
-            "description": "Maximum premium if option expires worthless",
-            "risk": "Assignment risk if ITM, gamma/theta risk"
-        },
-        "close_now": {
-            "value": round(close_now_value, 2),
-            "description": f"Close position now (premium: ${remaining_premium_value:.2f} - fees: ${fees['one_way']:.2f})",
-            "risk": "Foregoes remaining time value"
-        },
-        "roll": {
-            "value": round(roll_economics["net_roll_value"], 2),
-            "description": f"Roll to new cycle (net after ${roll_economics['roll_fees']:.2f} fees)",
-            "risk": "Execution risk, market conditions may change",
-            "justified": roll_economics["roll_justified"]
-        }
-    }
-    
-    # Determine final recommendation based on rules triggered
-    high_severity_rules = [r for r in analysis["rules_triggered"] if r.get("severity") == "high"]
-    medium_severity_rules = [r for r in analysis["rules_triggered"] if r.get("severity") == "medium"]
-    
-    if high_severity_rules:
-        rule = high_severity_rules[0]
-        if "roll" in rule.get("action", "").lower() and roll_economics["roll_justified"]:
-            analysis["recommendation"] = "roll_up_out" if "up" in rule.get("action", "").lower() else "roll"
-            analysis["recommendation_reason"] = f"{rule['message']} Net roll value: ${roll_economics['net_roll_value']:.2f}"
-        elif "close" in rule.get("action", "").lower():
-            if close_now_value > min_improvement_required:
-                analysis["recommendation"] = "close"
-                analysis["recommendation_reason"] = f"{rule['message']} Net after fees: ${close_now_value:.2f}"
-            else:
-                analysis["recommendation"] = "hold"
-                analysis["recommendation_reason"] = f"Close suggested but fee gate not met (${close_now_value:.2f} < ${min_improvement_required:.2f})"
-        elif "restructure" in rule.get("action", "").lower():
-            analysis["recommendation"] = "restructure"
-            analysis["recommendation_reason"] = rule["message"]
-        else:
-            analysis["recommendation"] = "evaluate"
-            analysis["recommendation_reason"] = rule["message"]
-    elif medium_severity_rules:
-        rule = medium_severity_rules[0]
-        if "roll" in rule.get("action", "").lower() and roll_economics["roll_justified"]:
-            analysis["recommendation"] = "consider_roll"
-            analysis["recommendation_reason"] = f"{rule['message']} Roll is economically justified."
-        elif close_now_value > min_improvement_required and premium_captured_pct >= premium_exit_threshold:
-            analysis["recommendation"] = "consider_close"
-            analysis["recommendation_reason"] = f"{rule['message']} Early exit may improve capital efficiency."
-        else:
-            analysis["recommendation"] = "hold"
-            analysis["recommendation_reason"] = "Trade performing within parameters. Hold to capture remaining premium."
-    else:
-        analysis["recommendation"] = "hold"
-        analysis["recommendation_reason"] = "No action required – trade performing within parameters."
-    
-    return analysis
 
 
 # ==================== HELPER FUNCTIONS ====================
@@ -1092,13 +441,56 @@ async def add_simulator_trade(trade: SimulatorTradeEntry, user: dict = Depends(g
     except:
         dte = 30  # Default
     
+    
+    # -------------------------------------------------------------------
+    # Simulator IV normalization + fill (minimal, simulator-only)
+    # - Normalizes IV units (e.g., 30 -> 0.30) to prevent 3000% bugs
+    # - If IV missing, attempts a one-time fill from options chain by expiry+nearest strike
+    # -------------------------------------------------------------------
+    normalized_short_iv = None
+    short_iv_source = "PAYLOAD"
+
+    try:
+        if getattr(trade, "short_call_iv", None) is not None:
+            normalized_short_iv = normalize_iv_fields(trade.short_call_iv)["iv"]
+    except Exception:
+        normalized_short_iv = None
+
+    if not normalized_short_iv or normalized_short_iv <= 0:
+        try:
+            chain = await fetch_options_chain(
+                symbol=trade.symbol.upper(),
+                api_key=None,
+                option_type="call",
+                min_dte=max(1, dte - 7),
+                max_dte=dte + 7,
+                current_price=trade.underlying_price
+            )
+            candidates = [o for o in chain if o.get("expiry") == trade.short_call_expiry]
+            if candidates:
+                closest = min(
+                    candidates,
+                    key=lambda o: abs(float(o.get("strike") or 0) - float(trade.short_call_strike))
+                )
+                iv_raw = closest.get("implied_volatility") or 0
+                if iv_raw:
+                    normalized_short_iv = normalize_iv_fields(iv_raw)["iv"]
+                    if normalized_short_iv and normalized_short_iv > 0:
+                        short_iv_source = f"CHAIN:{closest.get('source', 'yahoo')}"
+        except Exception:
+            pass
+
+    if not normalized_short_iv or normalized_short_iv <= 0:
+        normalized_short_iv = 0.30
+        short_iv_source = "DEFAULT_0.30"
+
     # Create simulator trade document
     trade_doc = {
         "id": trade_id,
         "user_id": user["id"],
         "symbol": trade.symbol.upper(),
         "strategy_type": trade.strategy_type,
-        "status": "active",  # active, closed, expired, assigned
+        "status": "open",  # Lifecycle: open, rolled (PMCC), expired, assigned, closed
         
         # Entry snapshot (immutable)
         "entry_date": entry_date,
@@ -1109,9 +501,8 @@ async def add_simulator_trade(trade: SimulatorTradeEntry, user: dict = Depends(g
         "short_call_expiry": trade.short_call_expiry,
         "short_call_premium": trade.short_call_premium,
         "short_call_delta": trade.short_call_delta,
-        "short_call_iv": trade.short_call_iv,
-        "short_call_iv_rank": trade.short_call_iv_rank,
-        "short_call_open_interest": trade.short_call_open_interest,
+        "short_call_iv": normalized_short_iv,
+        "short_call_iv_source": short_iv_source,
         
         # PMCC LEAPS details (if applicable)
         "leaps_strike": trade.leaps_strike,
@@ -1173,11 +564,12 @@ async def add_simulator_trade(trade: SimulatorTradeEntry, user: dict = Depends(g
 
 @simulator_router.get("/trades")
 async def get_simulator_trades(
-    status: Optional[str] = Query(None, description="Filter by status: active, closed, expired, assigned"),
+    status: Optional[str] = Query(None, description="Filter by status: open, rolled, expired, assigned, closed"),
     symbol: Optional[str] = Query(None),
     strategy_type: Optional[str] = Query(None),
     limit: int = Query(100, ge=1, le=1000),
     skip: int = Query(0, ge=0),
+    debug_enrichment: bool = Query(False, description="Include enrichment debug info"),
     user: dict = Depends(get_current_user)
 ):
     """Get all simulator trades for the user with optional filters"""
@@ -1196,6 +588,18 @@ async def get_simulator_trades(
     ).sort("created_at", -1).skip(skip).limit(limit).to_list(limit)
     
     total = await db.simulator_trades.count_documents(query)
+    
+    # ========== ENRICHMENT: IV Rank + Analyst Data (LAST STEP) ==========
+    for trade in trades:
+        sym = trade.get("symbol", "")
+        if sym:
+            enrich_row(
+                sym, trade,
+                stock_price=trade.get("stock_price") or trade.get("entry_stock_price"),
+                expiry=trade.get("expiry") or trade.get("expiration"),
+                iv=trade.get("iv") or trade.get("implied_volatility")
+            )
+            strip_enrichment_debug(trade, include_debug=debug_enrichment)
     
     return {
         "trades": trades,
@@ -1236,8 +640,8 @@ async def close_simulator_trade(
     if not trade:
         raise HTTPException(status_code=404, detail="Trade not found")
     
-    if trade.get("status") != "active":
-        raise HTTPException(status_code=400, detail="Trade is not active")
+    if trade.get("status") not in ["open", "rolled"]:
+        raise HTTPException(status_code=400, detail="Trade is not open or rolled")
     
     now = datetime.now(timezone.utc)
     
@@ -1285,13 +689,205 @@ async def close_simulator_trade(
     }
 
 
-@simulator_router.post("/update-prices")
-async def update_simulator_prices(user: dict = Depends(get_current_user)):
-    """Manually trigger price update for user's active trades"""
-    funcs = _get_server_functions()
+class PMCCRollRequest(BaseModel):
+    """Request model for rolling a PMCC short call"""
+    new_strike: float
+    new_expiry: str  # YYYY-MM-DD
+    new_premium: float
+    new_delta: Optional[float] = None
+    new_iv: Optional[float] = None
+
+
+@simulator_router.post("/trades/{trade_id}/roll")
+async def roll_pmcc_short_call(
+    trade_id: str,
+    roll_request: PMCCRollRequest,
+    user: dict = Depends(get_current_user)
+):
+    """
+    Roll a PMCC short call to a new expiration/strike.
     
+    PMCC ROLL RULES (per spec):
+    - Short call is closed (premium captured)
+    - New short call is opened with new strike/expiry
+    - Trade status changes to "rolled"
+    - This prevents assignment by moving the short call up/out
+    
+    CRITICAL: In PMCC, you do NOT want the short call to be assigned.
+    Roll before that happens!
+    """
+    
+    trade = await db.simulator_trades.find_one({"id": trade_id, "user_id": user["id"]})
+    if not trade:
+        raise HTTPException(status_code=404, detail="Trade not found")
+    
+    if trade.get("strategy_type") != "pmcc":
+        raise HTTPException(status_code=400, detail="Roll is only available for PMCC trades")
+    
+    if trade.get("status") not in ["open", "rolled"]:
+        raise HTTPException(status_code=400, detail="Trade must be open or previously rolled to roll again")
+    
+    now = datetime.now(timezone.utc)
+    
+    # Calculate premium captured from old short call
+    old_premium = trade.get("short_call_premium", 0)
+    old_option_value = trade.get("current_option_value", 0)
+    premium_captured = (old_premium - old_option_value) * 100 * trade["contracts"]
+    
+    # Get roll count
+    roll_count = trade.get("roll_count", 0) + 1
+    
+    # Calculate new DTE
+    try:
+        new_expiry_dt = datetime.strptime(roll_request.new_expiry, "%Y-%m-%d")
+        new_dte = (new_expiry_dt - datetime.now()).days
+    except:
+        new_dte = 30
+    
+    # Update trade document
+    update_doc = {
+        "status": "rolled",  # Mark as rolled
+        "short_call_strike": roll_request.new_strike,
+        "short_call_expiry": roll_request.new_expiry,
+        "short_call_premium": roll_request.new_premium,
+        "short_call_delta": roll_request.new_delta or 0.30,
+        "short_call_iv": roll_request.new_iv or trade.get("short_call_iv", 0.30),
+        "dte_remaining": new_dte,
+        "roll_count": roll_count,
+        "last_roll_date": now.strftime("%Y-%m-%d"),
+        "premium_received": trade.get("premium_received", 0) + (roll_request.new_premium * 100 * trade["contracts"]),
+        "total_premium_captured": trade.get("total_premium_captured", 0) + premium_captured,
+        "updated_at": now.isoformat()
+    }
+    
+    # Update breakeven
+    leaps_premium = trade.get("leaps_premium", 0)
+    total_short_premium = (trade.get("total_premium_captured", 0) + premium_captured + roll_request.new_premium * 100 * trade["contracts"]) / (100 * trade["contracts"])
+    update_doc["breakeven"] = trade.get("leaps_strike", 0) + (leaps_premium - total_short_premium)
+    
+    await db.simulator_trades.update_one(
+        {"id": trade_id},
+        {
+            "$set": update_doc,
+            "$push": {"action_log": {
+                "action": "rolled",
+                "timestamp": now.isoformat(),
+                "details": f"Rolled short call #{roll_count}: Old ${trade['short_call_strike']} → New ${roll_request.new_strike} exp {roll_request.new_expiry}. Premium captured: ${premium_captured:.2f}. New premium: ${roll_request.new_premium * 100:.2f}"
+            }}
+        }
+    )
+    
+    return {
+        "message": f"PMCC short call rolled successfully (roll #{roll_count})",
+        "premium_captured": round(premium_captured, 2),
+        "new_strike": roll_request.new_strike,
+        "new_expiry": roll_request.new_expiry,
+        "new_premium": roll_request.new_premium,
+        "total_premium_received": round(update_doc["premium_received"], 2),
+        "roll_count": roll_count
+    }
+
+
+@simulator_router.get("/trades/{trade_id}/roll-suggestions")
+async def get_roll_suggestions(
+    trade_id: str,
+    user: dict = Depends(get_current_user)
+):
+    """
+    Get suggestions for rolling a PMCC short call.
+    
+    PMCC DOWNSIDE PROTECTION RULE:
+    - Short call strike must be above LEAPS breakeven
+    - Premium should offset LEAPS theta decay
+    - Never increase downside risk
+    """
+    
+    trade = await db.simulator_trades.find_one({"id": trade_id, "user_id": user["id"]}, {"_id": 0})
+    if not trade:
+        raise HTTPException(status_code=404, detail="Trade not found")
+    
+    if trade.get("strategy_type") != "pmcc":
+        raise HTTPException(status_code=400, detail="Roll suggestions only available for PMCC trades")
+    
+    current_price = trade.get("current_underlying_price", trade.get("entry_underlying_price"))
+    leaps_strike = trade.get("leaps_strike", 0)
+    current_short_strike = trade.get("short_call_strike", 0)
+    current_dte = trade.get("dte_remaining", 0)
+    
+    # Calculate risk metrics
+    short_to_stock_ratio = (current_short_strike / current_price * 100) if current_price > 0 else 0
+    
+    # Determine if roll is urgent
+    roll_urgency = "low"
+    roll_reason = []
+    
+    if current_dte <= 7:
+        roll_urgency = "high"
+        roll_reason.append(f"Only {current_dte} DTE remaining - roll soon to avoid assignment risk")
+    elif current_dte <= 14:
+        roll_urgency = "medium"
+        roll_reason.append(f"{current_dte} DTE - consider rolling to capture remaining theta")
+    
+    if current_price >= current_short_strike * 0.95:
+        roll_urgency = "high"
+        roll_reason.append(f"Stock price ${current_price:.2f} is within 5% of strike ${current_short_strike} - HIGH ASSIGNMENT RISK")
+    elif current_price >= current_short_strike * 0.90:
+        roll_urgency = "medium"
+        roll_reason.append("Stock price approaching strike - monitor closely")
+    
+    # Suggest new strikes (roll up and out)
+    suggestions = []
+    
+    # Roll out same strike (extend DTE)
+    suggestions.append({
+        "type": "roll_out",
+        "description": "Roll out (extend expiration, same strike)",
+        "suggested_strike": current_short_strike,
+        "suggested_dte": 30,
+        "rationale": "Capture more theta decay without changing strike"
+    })
+    
+    # Roll up and out (higher strike, extend DTE)
+    roll_up_strike = round(current_price * 1.05, 2)  # 5% above current price
+    suggestions.append({
+        "type": "roll_up_and_out",
+        "description": "Roll up and out (higher strike, extend expiration)",
+        "suggested_strike": roll_up_strike,
+        "suggested_dte": 45,
+        "rationale": "Move strike above current price to reduce assignment risk"
+    })
+    
+    # Aggressive roll (higher strike, same DTE)
+    if current_dte > 14:
+        suggestions.append({
+            "type": "roll_up",
+            "description": "Roll up (higher strike, similar expiration)",
+            "suggested_strike": round(current_price * 1.03, 2),
+            "suggested_dte": current_dte,
+            "rationale": "Quick adjustment to reduce delta exposure"
+        })
+    
+    return {
+        "trade_id": trade_id,
+        "symbol": trade.get("symbol"),
+        "current_price": current_price,
+        "current_short_strike": current_short_strike,
+        "current_dte": current_dte,
+        "leaps_strike": leaps_strike,
+        "roll_urgency": roll_urgency,
+        "roll_reasons": roll_reason,
+        "suggestions": suggestions,
+        "warning": "In PMCC, short call assignment should be AVOIDED. Roll before the short call goes ITM!"
+    }
+async def update_simulator_prices(user: dict = Depends(get_current_user)):
+    """
+    Manually trigger LIVE price update for user's active trades.
+    
+    DATA RULE #2: Simulator uses LIVE intraday prices (regularMarketPrice)
+    for accurate P&L tracking during market hours.
+    """
     active_trades = await db.simulator_trades.find(
-        {"user_id": user["id"], "status": "active"},
+        {"user_id": user["id"], "status": {"$in": ["open", "rolled"]}},
         {"_id": 0}
     ).to_list(1000)
     
@@ -1301,15 +897,16 @@ async def update_simulator_prices(user: dict = Depends(get_current_user)):
     # Get unique symbols
     symbols = list(set(t["symbol"] for t in active_trades))
     
-    # Fetch current prices
+    # Fetch LIVE intraday prices (Rule #2)
     price_cache = {}
     for symbol in symbols:
         try:
-            quote = await funcs['fetch_stock_quote'](symbol)
+            # Use LIVE stock quote (regularMarketPrice)
+            quote = await fetch_live_stock_quote(symbol)
             if quote and quote.get("price"):
                 price_cache[symbol] = quote["price"]
         except Exception as e:
-            logging.warning(f"Could not fetch price for {symbol}: {e}")
+            logging.warning(f"Could not fetch live price for {symbol}: {e}")
     
     now = datetime.now(timezone.utc)
     risk_free_rate = 0.05  # 5% risk-free rate
@@ -1340,7 +937,13 @@ async def update_simulator_prices(user: dict = Depends(get_current_user)):
             days_held = trade.get("days_held", 0)
         
         # Calculate current Greeks and option value
-        iv = trade.get("short_call_iv") or 0.30  # Default 30% IV
+        iv_raw = trade.get("short_call_iv")
+        try:
+            iv = normalize_iv_fields(iv_raw)["iv"] if iv_raw else 0.30
+        except Exception:
+            iv = 0.30
+        if not iv or iv <= 0:
+            iv = 0.30  # Default 30% IV
         greeks = calculate_greeks(
             S=current_price,
             K=trade["short_call_strike"],
@@ -1408,7 +1011,7 @@ async def update_simulator_prices(user: dict = Depends(get_current_user)):
     if user_rules:
         # Re-fetch active trades with updated prices
         updated_trades = await db.simulator_trades.find(
-            {"user_id": user["id"], "status": "active"},
+            {"user_id": user["id"], "status": {"$in": ["open", "rolled"]}},
             {"_id": 0}
         ).to_list(1000)
         
@@ -1453,7 +1056,7 @@ async def get_simulator_summary(user: dict = Depends(get_current_user)):
             "by_status": {}
         }
     
-    active_trades = [t for t in all_trades if t.get("status") == "active"]
+    active_trades = [t for t in all_trades if t.get("status") in ["open", "rolled"]]
     closed_trades = [t for t in all_trades if t.get("status") in ["closed", "expired", "assigned"]]
     
     # Calculate P&L
@@ -1473,7 +1076,7 @@ async def get_simulator_summary(user: dict = Depends(get_current_user)):
     for strategy in ["covered_call", "pmcc"]:
         strategy_trades = [t for t in all_trades if t.get("strategy_type") == strategy]
         strategy_closed = [t for t in strategy_trades if t.get("status") in ["closed", "expired", "assigned"]]
-        strategy_active = [t for t in strategy_trades if t.get("status") == "active"]
+        strategy_active = [t for t in strategy_trades if t.get("status") in ["open", "rolled"]]
         
         by_strategy[strategy] = {
             "total": len(strategy_trades),
@@ -1485,7 +1088,7 @@ async def get_simulator_summary(user: dict = Depends(get_current_user)):
     
     # By status
     by_status = {}
-    for status in ["active", "closed", "expired", "assigned"]:
+    for status in ["open", "rolled", "closed", "expired", "assigned"]:
         status_trades = [t for t in all_trades if t.get("status") == status]
         by_status[status] = len(status_trades)
     
@@ -1501,256 +1104,6 @@ async def get_simulator_summary(user: dict = Depends(get_current_user)):
         "by_strategy": by_strategy,
         "by_status": by_status
     }
-
-
-# ==================== INCOME-OPTIMISED ENDPOINTS ====================
-
-@simulator_router.get("/decision/{trade_id}")
-async def get_trade_decision_analysis(trade_id: str, user: dict = Depends(get_current_user)):
-    """
-    Get income-optimised decision analysis for a specific trade.
-    Evaluates all rules and returns recommendation: hold, close, roll, or accept assignment.
-    """
-    funcs = _get_server_functions()
-    
-    # Get the trade
-    trade = await db.simulator_trades.find_one(
-        {"id": trade_id, "user_id": user["id"]},
-        {"_id": 0}
-    )
-    
-    if not trade:
-        raise HTTPException(status_code=404, detail="Trade not found")
-    
-    if trade.get("status") != "active":
-        raise HTTPException(status_code=400, detail="Decision analysis only available for active trades")
-    
-    # Get user settings
-    settings = await db.simulator_settings.find_one(
-        {"user_id": user["id"]},
-        {"_id": 0}
-    )
-    
-    if not settings:
-        settings = {
-            "fee_settings": {"per_contract_fee": 0.65, "base_commission": 0},
-            "income_settings": {
-                "target_roi_per_week": 1.5,
-                "premium_exit_threshold": 80,
-                "premium_auto_exit": 90,
-                "min_improvement_multiplier": 2.0,
-                "dte_warning_threshold": 14,
-                "dte_force_decision": 7,
-                "pmcc_width_protection_pct": 25,
-                "pmcc_leaps_min_dte": 180
-            }
-        }
-    
-    # Get current price
-    try:
-        quote = await funcs['fetch_stock_quote'](trade["symbol"])
-        current_price = quote.get("price", trade.get("current_underlying_price", 0))
-    except:
-        current_price = trade.get("current_underlying_price", trade.get("entry_underlying_price", 0))
-    
-    # Get redeployment ROI estimate
-    strategy_type = trade.get("strategy_type", "covered_call")
-    strategy_map = {"covered_call": "covered_call", "pmcc": "pmcc"}
-    
-    redeployment_roi = await get_redeployment_roi(
-        user_id=user["id"],
-        strategy_type=strategy_map.get(strategy_type, "covered_call"),
-        risk_profile="balanced"
-    )
-    
-    # Run decision analysis
-    analysis = evaluate_income_rules(trade, current_price, settings, redeployment_roi)
-    
-    return analysis
-
-
-@simulator_router.post("/settings/income")
-async def update_income_settings(
-    settings: IncomeSettings,
-    user: dict = Depends(get_current_user)
-):
-    """Update user's income optimization settings"""
-    
-    now = datetime.now(timezone.utc)
-    
-    await db.simulator_settings.update_one(
-        {"user_id": user["id"]},
-        {
-            "$set": {
-                "income_settings": settings.dict(),
-                "updated_at": now.isoformat()
-            },
-            "$setOnInsert": {
-                "user_id": user["id"],
-                "created_at": now.isoformat()
-            }
-        },
-        upsert=True
-    )
-    
-    return {"message": "Income settings updated", "settings": settings.dict()}
-
-
-@simulator_router.post("/settings/fees")
-async def update_fee_settings(
-    settings: FeeSettings,
-    user: dict = Depends(get_current_user)
-):
-    """Update user's transaction fee settings"""
-    
-    now = datetime.now(timezone.utc)
-    
-    await db.simulator_settings.update_one(
-        {"user_id": user["id"]},
-        {
-            "$set": {
-                "fee_settings": settings.dict(),
-                "updated_at": now.isoformat()
-            },
-            "$setOnInsert": {
-                "user_id": user["id"],
-                "created_at": now.isoformat()
-            }
-        },
-        upsert=True
-    )
-    
-    return {"message": "Fee settings updated", "settings": settings.dict()}
-
-
-@simulator_router.get("/settings")
-async def get_simulator_settings(user: dict = Depends(get_current_user)):
-    """Get user's simulator settings including income and fee configurations"""
-    
-    settings = await db.simulator_settings.find_one(
-        {"user_id": user["id"]},
-        {"_id": 0}
-    )
-    
-    # Return defaults if no settings exist
-    if not settings:
-        settings = {
-            "user_id": user["id"],
-            "fee_settings": {
-                "per_contract_fee": 0.65,
-                "base_commission": 0,
-                "assignment_fee": 0
-            },
-            "income_settings": {
-                "target_roi_per_week": 1.5,
-                "premium_exit_threshold": 80,
-                "premium_auto_exit": 90,
-                "min_improvement_multiplier": 2.0,
-                "dte_warning_threshold": 14,
-                "dte_force_decision": 7,
-                "pmcc_width_protection_pct": 25,
-                "pmcc_leaps_min_dte": 180
-            }
-        }
-    
-    return settings
-
-
-@simulator_router.get("/decisions/all")
-async def get_all_decisions(user: dict = Depends(get_current_user)):
-    """Get decision analysis for all active trades"""
-    funcs = _get_server_functions()
-    
-    # Get all active trades
-    active_trades = await db.simulator_trades.find(
-        {"user_id": user["id"], "status": "active"},
-        {"_id": 0}
-    ).to_list(100)
-    
-    if not active_trades:
-        return {"decisions": [], "summary": {"total": 0}}
-    
-    # Get user settings
-    settings = await db.simulator_settings.find_one(
-        {"user_id": user["id"]},
-        {"_id": 0}
-    )
-    
-    if not settings:
-        settings = {
-            "fee_settings": {"per_contract_fee": 0.65, "base_commission": 0},
-            "income_settings": {
-                "target_roi_per_week": 1.5,
-                "premium_exit_threshold": 80,
-                "premium_auto_exit": 90,
-                "min_improvement_multiplier": 2.0,
-                "dte_warning_threshold": 14,
-                "dte_force_decision": 7,
-                "pmcc_width_protection_pct": 25,
-                "pmcc_leaps_min_dte": 180
-            }
-        }
-    
-    # Get unique symbols and fetch prices
-    symbols = list(set(t["symbol"] for t in active_trades))
-    price_cache = {}
-    for symbol in symbols:
-        try:
-            quote = await funcs['fetch_stock_quote'](symbol)
-            if quote and quote.get("price"):
-                price_cache[symbol] = quote["price"]
-        except:
-            pass
-    
-    decisions = []
-    action_required = 0
-    close_recommended = 0
-    roll_recommended = 0
-    
-    for trade in active_trades:
-        current_price = price_cache.get(trade["symbol"], trade.get("current_underlying_price", 0))
-        
-        # Get redeployment ROI
-        redeployment_roi = await get_redeployment_roi(
-            user_id=user["id"],
-            strategy_type=trade.get("strategy_type", "covered_call"),
-            risk_profile="balanced"
-        )
-        
-        analysis = evaluate_income_rules(trade, current_price, settings, redeployment_roi)
-        decisions.append(analysis)
-        
-        # Count recommendations
-        rec = analysis.get("recommendation", "hold")
-        if rec in ["close", "consider_close"]:
-            close_recommended += 1
-        if rec in ["roll", "roll_up", "roll_down"]:
-            roll_recommended += 1
-        if rec != "hold":
-            action_required += 1
-    
-    return {
-        "decisions": decisions,
-        "summary": {
-            "total": len(active_trades),
-            "action_required": action_required,
-            "close_recommended": close_recommended,
-            "roll_recommended": roll_recommended,
-            "hold": len(active_trades) - action_required
-        }
-    }
-
-
-@simulator_router.get("/redeployment-roi")
-async def get_redeployment_roi_estimate(
-    strategy_type: str = Query("covered_call", description="covered_call or pmcc"),
-    risk_profile: str = Query("balanced", description="conservative, balanced, or aggressive"),
-    user: dict = Depends(get_current_user)
-):
-    """Get current redeployment ROI estimate with source information"""
-    
-    roi = await get_redeployment_roi(user["id"], strategy_type, risk_profile)
-    return roi
 
 
 @simulator_router.delete("/clear")
@@ -1848,100 +1201,296 @@ async def get_trade_rules(
 
 @simulator_router.get("/rules/templates")
 async def get_rule_templates(user: dict = Depends(get_current_user)):
-    """Get pre-built rule templates"""
+    """
+    Get pre-built rule templates for Income Strategy Trade Management.
+    
+    CORE PRINCIPLE:
+    For CC and PMCC, loss is NOT managed via stop-loss.
+    Loss is managed via time, premium decay, rolling, and assignment logic.
+    
+    Categories:
+    - Premium Harvesting: Hold to expiry for max premium capture
+    - Expiry Management: OTM/ITM expiry handling
+    - Assignment Awareness: Alerts only (no forced actions)
+    - Rolling Rules: Core income logic (roll instead of close)
+    - PMCC-Specific: Short leg management
+    """
     
     templates = [
+        # ============ PREMIUM HARVESTING (No Early Close) ============
         {
-            "id": "profit_50",
-            "name": "50% Profit Target",
-            "description": "Close trade when 50% of max premium is captured",
-            "rule_type": "profit_target",
-            "conditions": [{"field": "premium_capture_pct", "operator": ">=", "value": 50}],
-            "action": "close",
-            "action_params": {"reason": "profit_target_50pct"},
-            "priority": 10
+            "id": "hold_to_expiry",
+            "name": "Hold to Expiry – Premium Capture",
+            "description": "Hold option until expiry to maximise premium capture and avoid brokerage costs",
+            "category": "premium_harvesting",
+            "rule_type": "income_strategy",
+            "conditions": [
+                {"field": "option_moneyness", "operator": "==", "value": "OTM"},
+                {"field": "dte_remaining", "operator": ">", "value": 0}
+            ],
+            "action": {"action_type": "hold", "reason": "premium_capture"},
+            "action_params": {"message": "Income strategy prefers expiry over early exit"},
+            "priority": 1,
+            "is_default": True,
+            "ui_hint": "Brokerage-aware strategy"
+        },
+        
+        # ============ EXPIRY-BASED DECISIONS (Primary Controls) ============
+        {
+            "id": "expiry_otm",
+            "name": "Expiry Management – OTM",
+            "description": "Allow option to expire worthless when out-of-the-money. Full premium realised.",
+            "category": "expiry_management",
+            "rule_type": "expiry",
+            "conditions": [
+                {"field": "dte_remaining", "operator": "==", "value": 0},
+                {"field": "option_moneyness", "operator": "==", "value": "OTM"}
+            ],
+            "action": {"action_type": "expire", "reason": "otm_expiry"},
+            "action_params": {"outcome": "expired", "message": "Option expired worthless - Full premium captured"},
+            "priority": 100,
+            "is_default": True
         },
         {
-            "id": "profit_75",
-            "name": "75% Profit Target",
-            "description": "Close trade when 75% of max premium is captured",
+            "id": "expiry_itm_assignment",
+            "name": "Expiry Management – ITM (Assignment Expected)",
+            "description": "Prepare for assignment when option finishes in-the-money. Assignment is a valid income outcome.",
+            "category": "expiry_management",
+            "rule_type": "expiry",
+            "conditions": [
+                {"field": "dte_remaining", "operator": "==", "value": 0},
+                {"field": "option_moneyness", "operator": "==", "value": "ITM"}
+            ],
+            "action": {"action_type": "assignment", "reason": "itm_assignment"},
+            "action_params": {"outcome": "assigned", "message": "Option assigned - executing assignment logic"},
+            "priority": 100,
+            "is_default": True,
+            "ui_hint": "Assignment is a valid income outcome"
+        },
+        
+        # ============ ASSIGNMENT AWARENESS (Alerts Only) ============
+        {
+            "id": "assignment_risk_alert",
+            "name": "Assignment Risk Alert",
+            "description": "Alert when short call is likely to be assigned. Consider rolling to avoid assignment.",
+            "category": "assignment_awareness",
+            "rule_type": "alert",
+            "conditions": [
+                {"field": "current_delta", "operator": ">=", "value": 0.70},
+                {"field": "dte_remaining", "operator": "<=", "value": 7}
+            ],
+            "action": {"action_type": "alert", "reason": "high_assignment_risk"},
+            "action_params": {"message": "High assignment probability detected. Consider rolling to avoid assignment.", "severity": "warning"},
+            "priority": 90,
+            "is_default": True,
+            "ui_hint": "Alert only - no forced action"
+        },
+        {
+            "id": "assignment_imminent_alert",
+            "name": "Assignment Imminent Alert",
+            "description": "Critical alert when assignment is very likely (deep ITM near expiry).",
+            "category": "assignment_awareness",
+            "rule_type": "alert",
+            "conditions": [
+                {"field": "current_delta", "operator": ">=", "value": 0.85},
+                {"field": "dte_remaining", "operator": "<=", "value": 3}
+            ],
+            "action": {"action_type": "alert", "reason": "assignment_imminent"},
+            "action_params": {"message": "CRITICAL: Assignment highly likely. Roll immediately or accept assignment.", "severity": "critical"},
+            "priority": 95,
+            "is_default": True
+        },
+        
+        # ============ ROLLING RULES (Core Income Logic) ============
+        {
+            "id": "roll_itm_near_expiry",
+            "name": "Roll Short Call – ITM Near Expiry",
+            "description": "Roll the short call forward to avoid assignment and continue income generation. Prefer same or higher strike with net credit.",
+            "category": "rolling",
+            "rule_type": "roll",
+            "conditions": [
+                {"field": "option_moneyness", "operator": "==", "value": "ITM"},
+                {"field": "dte_remaining", "operator": "<=", "value": 7}
+            ],
+            "action": {"action_type": "roll", "reason": "itm_near_expiry"},
+            "action_params": {
+                "roll_strategy": "roll_out",
+                "target_dte": 30,
+                "strike_preference": "same_or_higher",
+                "credit_required": True,
+                "message": "Roll short call out in time. Prefer same strike or higher with net credit ≥ $0"
+            },
+            "priority": 80,
+            "is_default": True
+        },
+        {
+            "id": "roll_delta_based",
+            "name": "Roll Short Call – Delta Based",
+            "description": "Roll when delta suggests rising assignment risk. Target lower delta (0.25-0.35) with later expiry.",
+            "category": "rolling",
+            "rule_type": "roll",
+            "conditions": [
+                {"field": "current_delta", "operator": ">=", "value": 0.75},
+                {"field": "dte_remaining", "operator": ">", "value": 7}
+            ],
+            "action": {"action_type": "roll", "reason": "high_delta"},
+            "action_params": {
+                "roll_strategy": "roll_up_and_out",
+                "target_delta_min": 0.25,
+                "target_delta_max": 0.35,
+                "credit_preferred": True,
+                "message": "Roll to lower delta (0.25-0.35) with later expiry. Net credit preferred."
+            },
+            "priority": 75,
+            "is_default": True
+        },
+        {
+            "id": "roll_suggestion_market_aware",
+            "name": "Suggested Roll – Market-Aware",
+            "description": "System provides recommended strike prices when rolling, based on current market conditions.",
+            "category": "rolling",
+            "rule_type": "suggestion",
+            "conditions": [
+                {"field": "roll_triggered", "operator": "==", "value": True}
+            ],
+            "action": {"action_type": "suggest", "reason": "market_aware_roll"},
+            "action_params": {
+                "new_expiry_range_days": [14, 30],
+                "strike_selection": "above_current_price",
+                "target_delta": [0.25, 0.35],
+                "prefer": ["net_credit", "iv_rank_improvement"],
+                "message": "Suggestion only — user confirms execution"
+            },
+            "priority": 70,
+            "is_default": False,
+            "ui_hint": "System-guided suggestion"
+        },
+        
+        # ============ PMCC-SPECIFIC RULES (Short Leg Focused) ============
+        {
+            "id": "pmcc_manage_short_only",
+            "name": "PMCC – Manage Short Call Only",
+            "description": "Long LEAPS are not closed unless exercised or explicitly exited. All rolling applies only to short call.",
+            "category": "pmcc_specific",
+            "rule_type": "pmcc",
+            "strategy_type": "pmcc",
+            "conditions": [
+                {"field": "strategy_type", "operator": "==", "value": "pmcc"}
+            ],
+            "action": {"action_type": "manage_short", "reason": "pmcc_structure"},
+            "action_params": {
+                "manage": "short_call_only",
+                "long_leaps": "hold",
+                "message": "Long LEAPS remain open across cycles. Rolling applies to short call only."
+            },
+            "priority": 85,
+            "is_default": True,
+            "strategy_type": "pmcc"
+        },
+        {
+            "id": "pmcc_assignment_handling",
+            "name": "PMCC Assignment Handling",
+            "description": "Handle short call assignment using the long LEAPS efficiently. Choose to exercise or close LEAPS.",
+            "category": "pmcc_specific",
+            "rule_type": "pmcc",
+            "strategy_type": "pmcc",
+            "conditions": [
+                {"field": "strategy_type", "operator": "==", "value": "pmcc"},
+                {"field": "status", "operator": "==", "value": "assigned"}
+            ],
+            "action": {"action_type": "prompt", "reason": "pmcc_assignment"},
+            "action_params": {
+                "options": [
+                    {"id": "exercise_leaps", "label": "Exercise LEAPS (if ITM and profitable)"},
+                    {"id": "close_leaps", "label": "Close LEAPS at market"}
+                ],
+                "message": "Short call assigned. Long LEAPS available to cover. Select preferred action."
+            },
+            "priority": 95,
+            "is_default": True,
+            "strategy_type": "pmcc"
+        },
+        {
+            "id": "pmcc_roll_before_assignment",
+            "name": "PMCC – Roll Before Assignment",
+            "description": "For PMCC, always prefer rolling the short call over accepting assignment. Assignment should be avoided.",
+            "category": "pmcc_specific",
+            "rule_type": "pmcc",
+            "strategy_type": "pmcc",
+            "conditions": [
+                {"field": "strategy_type", "operator": "==", "value": "pmcc"},
+                {"field": "current_delta", "operator": ">=", "value": 0.65},
+                {"field": "dte_remaining", "operator": "<=", "value": 14}
+            ],
+            "action": {"action_type": "roll", "reason": "pmcc_avoid_assignment"},
+            "action_params": {
+                "roll_strategy": "roll_up_and_out",
+                "urgency": "high",
+                "message": "PMCC: Roll short call to avoid assignment and preserve LEAPS structure"
+            },
+            "priority": 88,
+            "is_default": True,
+            "strategy_type": "pmcc"
+        },
+        
+        # ============ BROKERAGE-AWARE CONTROLS ============
+        {
+            "id": "avoid_early_close",
+            "name": "Avoid Early Close",
+            "description": "Avoid closing positions early to reduce brokerage impact. Income strategy prefers holding to expiry.",
+            "category": "brokerage_aware",
+            "rule_type": "guidance",
+            "conditions": [],
+            "action": {"action_type": "guidance", "reason": "brokerage_awareness"},
+            "action_params": {"message": "Brokerage-aware strategy - early close not recommended"},
+            "priority": 1,
+            "is_default": True,
+            "ui_hint": "Brokerage-aware strategy"
+        },
+        
+        # ============ INFORMATIONAL (Non-Action) ============
+        {
+            "id": "income_strategy_reminder",
+            "name": "Income Strategy Reminder",
+            "description": "This strategy prioritises time decay, assignment management, and capital efficiency. Unrealised losses do not imply trade failure.",
+            "category": "informational",
+            "rule_type": "info",
+            "conditions": [],
+            "action": {"action_type": "info", "reason": "strategy_philosophy"},
+            "action_params": {"message": "Unrealised losses do not imply trade failure. Manage via time and rolling."},
+            "priority": 0,
+            "is_default": False,
+            "ui_hint": "Non-action guidance"
+        },
+        
+        # ============ OPTIONAL/ADVANCED (De-emphasized) ============
+        {
+            "id": "profit_75_optional",
+            "name": "[Optional] 75% Profit Target",
+            "description": "Close trade when 75% of max premium is captured. Use sparingly - increases brokerage costs.",
+            "category": "optional_advanced",
             "rule_type": "profit_target",
             "conditions": [{"field": "premium_capture_pct", "operator": ">=", "value": 75}],
-            "action": "close",
-            "action_params": {"reason": "profit_target_75pct"},
-            "priority": 10
+            "action": {"action_type": "close", "reason": "profit_target_75pct"},
+            "action_params": {"message": "Optional: Early profit taking (increases brokerage)"},
+            "priority": 10,
+            "is_default": False,
+            "is_advanced": True,
+            "ui_hint": "Advanced - increases brokerage"
         },
         {
-            "id": "stop_loss_100",
-            "name": "100% Stop Loss",
-            "description": "Close trade when loss equals initial premium received",
-            "rule_type": "stop_loss",
-            "conditions": [{"field": "premium_capture_pct", "operator": "<=", "value": -100}],
-            "action": "close",
-            "action_params": {"reason": "stop_loss_100pct"},
-            "priority": 20
-        },
-        {
-            "id": "stop_loss_200",
-            "name": "200% Stop Loss",
-            "description": "Close trade when loss is 2x initial premium",
+            "id": "stop_loss_200_optional",
+            "name": "[Advanced] 200% Stop Loss",
+            "description": "Close trade when loss is 2x initial premium. NOT recommended for income strategies.",
+            "category": "optional_advanced",
             "rule_type": "stop_loss",
             "conditions": [{"field": "premium_capture_pct", "operator": "<=", "value": -200}],
-            "action": "close",
-            "action_params": {"reason": "stop_loss_200pct"},
-            "priority": 20
-        },
-        {
-            "id": "dte_7_close",
-            "name": "Close at 7 DTE",
-            "description": "Close trade when 7 days or less remain",
-            "rule_type": "time_based",
-            "conditions": [{"field": "dte_remaining", "operator": "<=", "value": 7}],
-            "action": "close",
-            "action_params": {"reason": "dte_close_7days"},
-            "priority": 5
-        },
-        {
-            "id": "dte_14_close",
-            "name": "Close at 14 DTE",
-            "description": "Close trade when 14 days or less remain",
-            "rule_type": "time_based",
-            "conditions": [{"field": "dte_remaining", "operator": "<=", "value": 14}],
-            "action": "close",
-            "action_params": {"reason": "dte_close_14days"},
-            "priority": 5
-        },
-        {
-            "id": "delta_high_alert",
-            "name": "High Delta Alert",
-            "description": "Alert when delta exceeds 0.70 (getting ITM)",
-            "rule_type": "delta_target",
-            "conditions": [{"field": "current_delta", "operator": ">=", "value": 0.70}],
-            "action": "alert",
-            "action_params": {"message": "Warning: Option delta above 0.70 - consider rolling"},
-            "priority": 15
-        },
-        {
-            "id": "combined_profit_dte",
-            "name": "Take Profit or Close at DTE",
-            "description": "Close at 50% profit OR when DTE reaches 21",
-            "rule_type": "custom",
-            "conditions": [
-                {"field": "premium_capture_pct", "operator": ">=", "value": 50}
-            ],
-            "action": "close",
-            "action_params": {"reason": "combined_exit"},
-            "priority": 10
-        },
-        {
-            "id": "theta_decay_target",
-            "name": "Theta Decay Target",
-            "description": "Alert when daily theta decay exceeds $5",
-            "rule_type": "custom",
-            "conditions": [{"field": "current_theta", "operator": "<=", "value": -5}],
-            "action": "alert",
-            "action_params": {"message": "High theta decay - good time to hold for premium capture"},
-            "priority": 3
+            "action": {"action_type": "close", "reason": "stop_loss_200pct"},
+            "action_params": {"message": "Advanced: Stop-loss exit (not typical for income strategy)"},
+            "priority": 20,
+            "is_default": False,
+            "is_advanced": True,
+            "ui_hint": "Advanced - not recommended"
         }
     ]
     
@@ -1986,7 +1535,7 @@ async def evaluate_rules_now(user: dict = Depends(get_current_user)):
         return {"message": "No active rules", "results": []}
     
     active_trades = await db.simulator_trades.find(
-        {"user_id": user["id"], "status": "active"},
+        {"user_id": user["id"], "status": {"$in": ["open", "rolled"]}},
         {"_id": 0}
     ).to_list(1000)
     
@@ -2086,7 +1635,16 @@ async def get_action_logs(
 
 @simulator_router.get("/pmcc-summary")
 async def get_pmcc_summary(user: dict = Depends(get_current_user)):
-    """Get PMCC-specific summary statistics with position details for frontend tracker"""
+    """
+    Get PMCC-specific summary statistics.
+    
+    PMCC Tracker Purpose (per spec):
+    - Track cumulative premium income vs LEAPS decay
+    - Show PMCC trades in OPEN, ROLLED, ASSIGNED status
+    - Monitor downside protection status
+    
+    Response format matches frontend expectations.
+    """
     
     pmcc_trades = await db.simulator_trades.find(
         {"user_id": user["id"], "strategy_type": "pmcc"},
@@ -2095,100 +1653,110 @@ async def get_pmcc_summary(user: dict = Depends(get_current_user)):
     
     if not pmcc_trades:
         return {
-            "summary": [],
             "overall": {
-                "total_pmcc_positions": 0,
-                "active_positions": 0,
                 "total_leaps_investment": 0,
                 "total_premium_income": 0,
                 "overall_income_ratio": 0,
-                "realized_pnl": 0,
-                "unrealized_pnl": 0
-            }
+                "total_unrealized_pnl": 0,
+                "total_pmcc_positions": 0,
+                "active_positions": 0
+            },
+            "summary": []
         }
     
-    active = [t for t in pmcc_trades if t.get("status") == "active"]
+    # Active includes OPEN, ROLLED, and legacy ACTIVE status (per spec visibility rules)
+    active = [t for t in pmcc_trades if t.get("status") in ["open", "rolled", "active"]]
     completed = [t for t in pmcc_trades if t.get("status") in ["closed", "expired", "assigned"]]
     
+    # Overall stats
     total_leaps_cost = sum((t.get("leaps_premium", 0) * 100 * t.get("contracts", 1)) for t in pmcc_trades)
-    total_premium = sum(t.get("premium_received", 0) for t in pmcc_trades)
+    total_premium = sum((t.get("premium_received") or 0) for t in pmcc_trades)
     
     premium_ratio = (total_premium / total_leaps_cost * 100) if total_leaps_cost > 0 else 0
     
-    realized_pnl = sum(t.get("realized_pnl", 0) or t.get("final_pnl", 0) for t in completed)
-    unrealized_pnl = sum(t.get("unrealized_pnl", 0) for t in active)
+    realized_pnl = sum((t.get("realized_pnl") or t.get("final_pnl") or 0) for t in completed)
+    unrealized_pnl = sum((t.get("unrealized_pnl") or 0) for t in active)
     
-    # Build individual position summaries for the tracker
-    position_summaries = []
+    # Build per-position summary array for the frontend
+    # This should show OPEN, ROLLED, and ASSIGNED trades (per spec)
+    summary = []
+    now = datetime.now()
+    
     for trade in pmcc_trades:
-        leaps_cost = (trade.get("leaps_premium", 0) * 100 * trade.get("contracts", 1))
-        total_premium_received = trade.get("premium_received", 0)
-        income_to_cost_ratio = (total_premium_received / leaps_cost * 100) if leaps_cost > 0 else 0
-        
-        # Calculate days to LEAPS expiry
-        days_to_leaps_expiry = trade.get("leaps_dte_remaining", 0)
-        if not days_to_leaps_expiry and trade.get("leaps_expiry"):
+        if trade.get("status") in ["open", "rolled", "active", "assigned"]:  # Show all except closed/expired
+            leaps_cost = (trade.get("leaps_premium", 0) * 100 * trade.get("contracts", 1))
+            premium_collected = trade.get("premium_received", 0) or 0
+            income_ratio = (premium_collected / leaps_cost * 100) if leaps_cost > 0 else 0
+            
+            # Calculate days to LEAPS expiry
+            days_to_leaps_expiry = 0
             try:
-                leaps_exp_dt = datetime.strptime(trade["leaps_expiry"], "%Y-%m-%d")
-                days_to_leaps_expiry = (leaps_exp_dt - datetime.now()).days
+                leaps_expiry_dt = datetime.strptime(trade.get("leaps_expiry", ""), "%Y-%m-%d")
+                days_to_leaps_expiry = (leaps_expiry_dt - now).days
             except:
                 days_to_leaps_expiry = 365
-        
-        # Calculate estimated LEAPS decay based on days elapsed
-        days_held = trade.get("days_held", 0)
-        initial_dte = trade.get("initial_dte", 365) or 365
-        if initial_dte > 0:
-            # Rough theta decay estimate - accelerates as expiry approaches
-            time_elapsed_pct = (days_held / initial_dte) * 100
-            # Use sqrt approximation for time decay
-            estimated_leaps_decay_pct = min(100, (days_held / initial_dte) ** 0.5 * 100)
-        else:
-            estimated_leaps_decay_pct = 0
-        
-        # Determine health status
-        if income_to_cost_ratio >= estimated_leaps_decay_pct * 1.2:
+            
+            # Determine health status
+            current_delta = trade.get("current_delta", 0.3)
+            dte_remaining = trade.get("dte_remaining", 30)
+            
             health = "good"
-        elif income_to_cost_ratio >= estimated_leaps_decay_pct * 0.5:
-            health = "warning"
-        else:
-            health = "critical"
-        
-        total_realized_pnl = trade.get("realized_pnl", 0) or 0
-        
-        position_summaries.append({
-            "original_trade_id": trade.get("id"),
-            "symbol": trade.get("symbol"),
-            "status": trade.get("status"),
-            "leaps_strike": trade.get("leaps_strike") or 0,
-            "leaps_expiry": trade.get("leaps_expiry"),
-            "days_to_leaps_expiry": max(0, days_to_leaps_expiry),
-            "short_call_strike": trade.get("short_call_strike"),
-            "short_call_expiry": trade.get("short_call_expiry"),
-            "contracts": trade.get("contracts", 1),
-            "leaps_cost": round(leaps_cost, 2),
-            "total_premium_received": round(total_premium_received, 2),
-            "income_to_cost_ratio": round(income_to_cost_ratio, 1),
-            "estimated_leaps_decay_pct": round(estimated_leaps_decay_pct, 1),
-            "total_realized_pnl": round(total_realized_pnl, 2),
-            "roll_count": len([log for log in trade.get("action_log", []) if log.get("action") == "rolled"]),
-            "unrealized_pnl": round(trade.get("unrealized_pnl", 0), 2),
-            "current_underlying_price": trade.get("current_underlying_price"),
-            "entry_date": trade.get("entry_date"),
-            "days_held": days_held,
-            "health": health
-        })
+            if trade.get("status") == "assigned":
+                health = "critical"
+            elif current_delta >= 0.70 or dte_remaining <= 3:
+                health = "critical"
+            elif current_delta >= 0.50 or dte_remaining <= 7:
+                health = "warning"
+            
+            # Estimate LEAPS decay - rough approximation based on time decay
+            # Typically options lose ~1/3 of their time value in the last 30 days
+            if days_to_leaps_expiry > 0:
+                days_elapsed = (now - datetime.strptime(trade.get("entry_date", now.strftime("%Y-%m-%d")), "%Y-%m-%d")).days
+                total_days = days_elapsed + days_to_leaps_expiry
+                # Rough estimate: decay accelerates toward expiry
+                decay_factor = days_elapsed / total_days if total_days > 0 else 0
+                estimated_leaps_decay_pct = decay_factor * 100 * 0.5  # Assume 50% max time decay over life
+            else:
+                estimated_leaps_decay_pct = 50  # Expired
+            
+            summary.append({
+                "original_trade_id": trade.get("id"),
+                "symbol": trade.get("symbol"),
+                "status": trade.get("status"),
+                "leaps_strike": trade.get("leaps_strike", 0),
+                "leaps_expiry": trade.get("leaps_expiry", ""),
+                "leaps_cost": round(leaps_cost, 2),
+                "leaps_current_value": trade.get("current_leaps_value", leaps_cost),
+                "short_call_strike": trade.get("short_call_strike", 0),
+                "short_call_expiry": trade.get("short_call_expiry", ""),
+                "contracts": trade.get("contracts", 1),
+                "total_premium_received": round(premium_collected, 2),
+                "income_ratio": round(income_ratio, 1),
+                "income_to_cost_ratio": round(income_ratio, 1),  # Alias for frontend
+                "estimated_leaps_decay_pct": round(estimated_leaps_decay_pct, 1),
+                "roll_count": trade.get("roll_count", 0),
+                "total_realized_pnl": round(trade.get("realized_pnl") or trade.get("final_pnl") or 0, 2),
+                "unrealized_pnl": round(trade.get("unrealized_pnl") or 0, 2),
+                "dte_remaining": dte_remaining,
+                "days_to_leaps_expiry": days_to_leaps_expiry,
+                "entry_date": trade.get("entry_date", ""),
+                "health": health,
+                # Assignment warning per spec
+                "assignment_risk": "HIGH" if trade.get("status") == "assigned" or current_delta >= 0.70 else "NORMAL"
+            })
     
     return {
-        "summary": position_summaries,
         "overall": {
-            "total_pmcc_positions": len(pmcc_trades),
-            "active_positions": len(active),
             "total_leaps_investment": round(total_leaps_cost, 2),
             "total_premium_income": round(total_premium, 2),
             "overall_income_ratio": round(premium_ratio, 1),
-            "realized_pnl": round(realized_pnl, 2),
-            "unrealized_pnl": round(unrealized_pnl, 2)
-        }
+            "total_unrealized_pnl": round(unrealized_pnl, 2),
+            "total_realized_pnl": round(realized_pnl, 2),
+            "total_pmcc_positions": len(pmcc_trades),
+            "active_positions": len(active),
+            "completed_positions": len(completed)
+        },
+        "summary": summary
     }
 
 
@@ -2198,54 +1766,111 @@ async def get_pmcc_summary(user: dict = Depends(get_current_user)):
 async def get_performance_analytics(
     time_period: str = Query("all", description="all, 30d, 90d, 1y"),
     strategy_type: Optional[str] = Query(None),
+    include_open: bool = Query(True, description="Include open trades in metrics"),
     user: dict = Depends(get_current_user)
 ):
-    """Get detailed performance analytics for closed trades"""
+    """
+    Get comprehensive performance analytics.
     
-    query = {"user_id": user["id"], "status": {"$in": ["closed", "expired", "assigned"]}}
+    CRITICAL: Analytics must NOT depend only on CLOSED trades.
+    It must include: OPEN, EXPIRED, ASSIGNED trades.
+    
+    Win Definition:
+    - Assignment = WIN (for CC)
+    - Worthless expiry = WIN
+    - Profitable close = WIN
+    
+    ASSIGNED = CLOSED for analytics purposes.
+    """
+    
+    # Get ALL trades - not just closed ones (per specification)
+    base_query = {"user_id": user["id"]}
     
     if strategy_type:
-        query["strategy_type"] = strategy_type
+        base_query["strategy_type"] = strategy_type
     
-    # Time filter
-    if time_period != "all":
-        days_map = {"30d": 30, "90d": 90, "1y": 365}
-        days = days_map.get(time_period, 365)
-        cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
-        query["close_date"] = {"$gte": cutoff[:10]}
+    all_trades = await db.simulator_trades.find(base_query, {"_id": 0}).to_list(10000)
     
-    trades = await db.simulator_trades.find(query, {"_id": 0}).to_list(10000)
-    
-    if not trades:
+    if not all_trades:
         return {
             "total_trades": 0,
+            "open_trades": 0,
+            "completed_trades": 0,
             "win_rate": 0,
+            "assignment_rate": 0,
             "avg_roi": 0,
             "total_pnl": 0,
             "avg_pnl": 0,
             "max_win": 0,
             "max_loss": 0,
             "avg_holding_days": 0,
+            "capital_efficiency": 0,
             "by_close_reason": {},
             "by_symbol": {},
+            "by_strategy": {},
             "monthly_breakdown": [],
             "scan_parameter_analysis": []
         }
     
-    # Basic stats
-    pnls = [t.get("realized_pnl", 0) or t.get("final_pnl", 0) for t in trades]
-    rois = [t.get("roi_percent", 0) for t in trades if t.get("roi_percent") is not None]
-    winners = [p for p in pnls if p > 0]
-    losers = [p for p in pnls if p < 0]
+    # Separate open vs completed trades
+    # Include "active" for backward compatibility with existing data
+    open_trades = [t for t in all_trades if t.get("status") in ["open", "rolled", "active"]]
+    # CRITICAL: "assigned" counts as CLOSED for analytics (per spec)
+    completed_trades = [t for t in all_trades if t.get("status") in ["closed", "expired", "assigned"]]
     
-    total_pnl = sum(pnls)
-    avg_pnl = total_pnl / len(trades) if trades else 0
-    win_rate = (len(winners) / len(trades) * 100) if trades else 0
+    # Apply time filter only to completed trades
+    if time_period != "all":
+        days_map = {"30d": 30, "90d": 90, "1y": 365}
+        days = days_map.get(time_period, 365)
+        cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).strftime("%Y-%m-%d")
+        completed_trades = [t for t in completed_trades if t.get("close_date", "") >= cutoff]
+    
+    # Calculate P&L for completed trades
+    completed_pnls = [(t.get("realized_pnl") or t.get("final_pnl") or 0) for t in completed_trades]
+    # Calculate unrealized P&L for open trades
+    open_pnls = [(t.get("unrealized_pnl") or 0) for t in open_trades]
+    
+    # WIN RATE CALCULATION (per spec):
+    # - Assignment = WIN (shares called away at strike = profit)
+    # - Worthless expiry = WIN (kept full premium)
+    # - Profitable close = WIN
+    winners = []
+    losers = []
+    
+    for t in completed_trades:
+        pnl = (t.get("realized_pnl") or t.get("final_pnl") or 0)
+        status = t.get("status", "")
+        close_reason = t.get("close_reason", "")
+        
+        # Assignment is a WIN for covered calls (you got paid strike price)
+        # Expired OTM is a WIN (kept premium)
+        if status == "assigned" and t.get("strategy_type") == "covered_call":
+            winners.append(pnl)
+        elif status == "expired":
+            winners.append(pnl)
+        elif pnl > 0:
+            winners.append(pnl)
+        else:
+            losers.append(pnl)
+    
+    # Calculate assignment rate
+    assigned_trades = [t for t in completed_trades if t.get("status") == "assigned"]
+    assignment_rate = (len(assigned_trades) / len(completed_trades) * 100) if completed_trades else 0
+    
+    # ROI calculation
+    rois = [t.get("roi_percent", 0) for t in completed_trades if t.get("roi_percent") is not None]
+    
+    total_realized_pnl = sum(completed_pnls)
+    total_unrealized_pnl = sum(open_pnls)
+    total_pnl = total_realized_pnl + total_unrealized_pnl if include_open else total_realized_pnl
+    
+    avg_pnl = total_realized_pnl / len(completed_trades) if completed_trades else 0
+    win_rate = (len(winners) / len(completed_trades) * 100) if completed_trades else 0
     avg_roi = sum(rois) / len(rois) if rois else 0
     
-    # Holding period
+    # Holding period for completed trades
     holding_days = []
-    for t in trades:
+    for t in completed_trades:
         if t.get("entry_date") and t.get("close_date"):
             try:
                 entry = datetime.strptime(t["entry_date"], "%Y-%m-%d")
@@ -2255,47 +1880,78 @@ async def get_performance_analytics(
                 pass
     avg_holding = sum(holding_days) / len(holding_days) if holding_days else 0
     
+    # Capital efficiency (realized P&L / capital deployed)
+    total_capital = sum(t.get("capital_deployed", 0) for t in completed_trades)
+    capital_efficiency = (total_realized_pnl / total_capital * 100) if total_capital > 0 else 0
+    
     # By close reason
     by_reason = {}
-    for t in trades:
+    for t in completed_trades:
         reason = t.get("close_reason", "unknown")
         if reason not in by_reason:
             by_reason[reason] = {"count": 0, "total_pnl": 0, "avg_pnl": 0}
         by_reason[reason]["count"] += 1
-        by_reason[reason]["total_pnl"] += t.get("realized_pnl", 0) or t.get("final_pnl", 0)
+        by_reason[reason]["total_pnl"] += (t.get("realized_pnl") or t.get("final_pnl") or 0)
     
     for reason in by_reason:
         if by_reason[reason]["count"] > 0:
             by_reason[reason]["avg_pnl"] = round(by_reason[reason]["total_pnl"] / by_reason[reason]["count"], 2)
         by_reason[reason]["total_pnl"] = round(by_reason[reason]["total_pnl"], 2)
     
-    # By symbol
+    # By symbol (include both open and completed)
     by_symbol = {}
-    for t in trades:
+    for t in all_trades:
         symbol = t.get("symbol", "UNKNOWN")
         if symbol not in by_symbol:
-            by_symbol[symbol] = {"trades": 0, "wins": 0, "total_pnl": 0}
+            by_symbol[symbol] = {"trades": 0, "wins": 0, "total_pnl": 0, "open": 0}
         by_symbol[symbol]["trades"] += 1
-        pnl = t.get("realized_pnl", 0) or t.get("final_pnl", 0)
-        by_symbol[symbol]["total_pnl"] += pnl
-        if pnl > 0:
-            by_symbol[symbol]["wins"] += 1
+        
+        if t.get("status") in ["open", "rolled", "active"]:
+            by_symbol[symbol]["open"] += 1
+            by_symbol[symbol]["total_pnl"] += (t.get("unrealized_pnl") or 0)
+        else:
+            pnl = (t.get("realized_pnl") or t.get("final_pnl") or 0)
+            by_symbol[symbol]["total_pnl"] += pnl
+            if pnl > 0 or t.get("status") in ["assigned", "expired"]:
+                by_symbol[symbol]["wins"] += 1
     
     for symbol in by_symbol:
-        by_symbol[symbol]["win_rate"] = round(by_symbol[symbol]["wins"] / by_symbol[symbol]["trades"] * 100, 1)
+        completed_for_symbol = by_symbol[symbol]["trades"] - by_symbol[symbol]["open"]
+        by_symbol[symbol]["win_rate"] = round(by_symbol[symbol]["wins"] / completed_for_symbol * 100, 1) if completed_for_symbol > 0 else 0
         by_symbol[symbol]["total_pnl"] = round(by_symbol[symbol]["total_pnl"], 2)
     
-    # Monthly breakdown
+    # By strategy (CC vs PMCC)
+    by_strategy = {}
+    for strategy in ["covered_call", "pmcc"]:
+        strategy_trades = [t for t in all_trades if t.get("strategy_type") == strategy]
+        strategy_completed = [t for t in strategy_trades if t.get("status") in ["closed", "expired", "assigned"]]
+        strategy_open = [t for t in strategy_trades if t.get("status") in ["open", "rolled", "active"]]
+        
+        if strategy_trades:
+            strategy_pnl = sum((t.get("realized_pnl") or t.get("final_pnl") or 0) for t in strategy_completed)
+            strategy_unrealized = sum((t.get("unrealized_pnl") or 0) for t in strategy_open)
+            strategy_wins = len([t for t in strategy_completed if (t.get("realized_pnl") or t.get("final_pnl") or 0) > 0 or t.get("status") in ["assigned", "expired"]])
+            
+            by_strategy[strategy] = {
+                "total": len(strategy_trades),
+                "open": len(strategy_open),
+                "completed": len(strategy_completed),
+                "realized_pnl": round(strategy_pnl, 2),
+                "unrealized_pnl": round(strategy_unrealized, 2),
+                "win_rate": round(strategy_wins / len(strategy_completed) * 100, 1) if strategy_completed else 0
+            }
+    
+    # Monthly breakdown (completed trades only)
     monthly = {}
-    for t in trades:
+    for t in completed_trades:
         if t.get("close_date"):
             month = t["close_date"][:7]  # YYYY-MM
             if month not in monthly:
                 monthly[month] = {"trades": 0, "pnl": 0, "wins": 0}
             monthly[month]["trades"] += 1
-            pnl = t.get("realized_pnl", 0) or t.get("final_pnl", 0)
+            pnl = (t.get("realized_pnl") or t.get("final_pnl") or 0)
             monthly[month]["pnl"] += pnl
-            if pnl > 0:
+            if pnl > 0 or t.get("status") in ["assigned", "expired"]:
                 monthly[month]["wins"] += 1
     
     monthly_list = [
@@ -2310,12 +1966,11 @@ async def get_performance_analytics(
     
     # Scan parameter analysis
     param_stats = {}
-    for t in trades:
+    for t in completed_trades:
         params = t.get("scan_parameters", {})
         if not params:
             continue
         
-        # Group by key parameters
         dte_bucket = f"DTE_{(params.get('max_dte', 45) // 15) * 15}"
         delta_bucket = f"Delta_{int(params.get('max_delta', 0.45) * 100)}"
         roi_bucket = f"ROI_{int(params.get('min_roi', 0.5))}"
@@ -2325,14 +1980,14 @@ async def get_performance_analytics(
             if key not in param_stats:
                 param_stats[key] = {"param": bucket, "type": bucket_type, "trades": 0, "total_pnl": 0, "wins": 0}
             param_stats[key]["trades"] += 1
-            pnl = t.get("realized_pnl", 0) or t.get("final_pnl", 0)
+            pnl = (t.get("realized_pnl") or t.get("final_pnl") or 0)
             param_stats[key]["total_pnl"] += pnl
-            if pnl > 0:
+            if pnl > 0 or t.get("status") in ["assigned", "expired"]:
                 param_stats[key]["wins"] += 1
     
     param_analysis = []
     for key, stats in param_stats.items():
-        if stats["trades"] >= 3:  # Minimum sample size
+        if stats["trades"] >= 3:
             param_analysis.append({
                 "parameter": stats["param"],
                 "type": stats["type"],
@@ -2341,20 +1996,363 @@ async def get_performance_analytics(
                 "win_rate": round(stats["wins"] / stats["trades"] * 100, 1)
             })
     
+    # Convert by_symbol dict to list format for frontend charts
+    by_symbol_list = []
+    for symbol, data in sorted(by_symbol.items(), key=lambda x: x[1]["total_pnl"], reverse=True)[:10]:
+        completed_count = data["trades"] - data["open"]
+        avg_pnl = data["total_pnl"] / completed_count if completed_count > 0 else 0
+        by_symbol_list.append({
+            "symbol": symbol,
+            "trade_count": data["trades"],
+            "trades": data["trades"],
+            "wins": data["wins"],
+            "total_pnl": round(data["total_pnl"], 2),
+            "avg_pnl": round(avg_pnl, 2),
+            "open": data["open"],
+            "win_rate": data["win_rate"],
+            "roi": data["win_rate"]  # Using win_rate as proxy for ROI display
+        })
+    
+    # Return in format expected by frontend
     return {
-        "total_trades": len(trades),
-        "win_rate": round(win_rate, 1),
-        "avg_roi": round(avg_roi, 2),
+        "analytics": {
+            "overall": {
+                "total_trades": len(all_trades),
+                "open_trades": len(open_trades),
+                "completed_trades": len(completed_trades),
+                "win_rate": round(win_rate, 1),
+                "assignment_rate": round(assignment_rate, 1),
+                "roi": round(avg_roi, 2),
+                "total_pnl": round(total_pnl, 2),
+                "realized_pnl": round(total_realized_pnl, 2),
+                "unrealized_pnl": round(total_unrealized_pnl, 2),
+                "avg_pnl": round(avg_pnl, 2),
+                "avg_win": round(max(completed_pnls), 2) if completed_pnls else 0,
+                "avg_loss": round(min(completed_pnls), 2) if completed_pnls else 0,
+                "avg_holding_days": round(avg_holding, 1),
+                "capital_efficiency": round(capital_efficiency, 2),
+                "profit_factor": round(abs(sum(winners)) / abs(sum(losers)), 2) if losers and sum(losers) != 0 else 0,
+            },
+            "by_close_reason": by_reason,
+            "by_symbol": by_symbol_list,
+            "by_strategy": by_strategy,
+            "by_delta": [],  # Placeholder for future delta bucketing
+            "by_dte": [],    # Placeholder for future DTE bucketing  
+            "by_outcome": [
+                {"outcome": "expired", "count": len([t for t in completed_trades if t.get("status") == "expired"]), "total_pnl": sum((t.get("realized_pnl") or t.get("final_pnl") or 0) for t in completed_trades if t.get("status") == "expired")},
+                {"outcome": "assigned", "count": len([t for t in completed_trades if t.get("status") == "assigned"]), "total_pnl": sum((t.get("realized_pnl") or t.get("final_pnl") or 0) for t in completed_trades if t.get("status") == "assigned")},
+                {"outcome": "early_close", "count": len([t for t in completed_trades if t.get("status") == "closed"]), "total_pnl": sum((t.get("realized_pnl") or t.get("final_pnl") or 0) for t in completed_trades if t.get("status") == "closed")},
+            ],
+            "monthly_breakdown": monthly_list,
+            "scan_parameter_analysis": sorted(param_analysis, key=lambda x: x["avg_pnl"], reverse=True)
+        },
+        "recommendations": []  # Placeholder for AI recommendations
+    }
+
+
+# ==================== ANALYZER ENDPOINT (3-Row Structure) ====================
+
+@simulator_router.get("/analyzer")
+async def get_analyzer_metrics(
+    strategy: Optional[str] = Query(None, description="Filter by strategy: covered_call, pmcc"),
+    symbol: Optional[str] = Query(None, description="Filter by symbol"),
+    time_period: str = Query("all", description="all, 30d, 90d, 1y"),
+    user: dict = Depends(get_current_user)
+):
+    """
+    Analyzer Page - Fixed 3-Row Structure with Scope-Aware Metrics
+    
+    CORE DESIGN PRINCIPLE:
+    The Analyzer always renders three rows in the same order:
+    - Row 1: Outcome (What did I make?)
+    - Row 2: Risk & Capital (How much pain did I take?)
+    - Row 3: Strategy Health (Is the logic working?)
+    
+    SCOPE MODEL:
+    - Portfolio Scope: All symbols + all strategies (default)
+    - Strategy Scope: All symbols + single strategy (CC or PMCC)
+    - Symbol Scope: Single symbol + single strategy
+    """
+    
+    # Build query based on scope
+    query = {"user_id": user["id"]}
+    
+    if strategy:
+        query["strategy_type"] = strategy
+    if symbol:
+        query["symbol"] = symbol.upper()
+    
+    all_trades = await db.simulator_trades.find(query, {"_id": 0}).to_list(10000)
+    
+    if not all_trades:
+        return {
+            "scope": {
+                "type": "portfolio" if not strategy and not symbol else "strategy" if not symbol else "symbol",
+                "strategy": strategy,
+                "symbol": symbol
+            },
+            "row1_outcome": {
+                "total_pnl": 0,
+                "win_rate": 0,
+                "roi": 0,
+                "avg_win": 0,
+                "avg_loss": 0,
+                "expectancy": 0,
+                "max_drawdown": 0,
+                "time_weighted_return": 0
+            },
+            "row2_risk_capital": {
+                "peak_capital_at_risk": 0,
+                "avg_capital_per_trade": 0,
+                "worst_case_loss": 0,
+                "assignment_exposure_cc": 0,
+                "assignment_exposure_pmcc": 0
+            },
+            "row3_strategy_health": {
+                "strategies": [],
+                "strategy_distribution": [],
+                "pnl_by_strategy": []
+            }
+        }
+    
+    # Apply time filter
+    if time_period != "all":
+        days_map = {"30d": 30, "90d": 90, "1y": 365}
+        days = days_map.get(time_period, 365)
+        cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).strftime("%Y-%m-%d")
+        all_trades = [t for t in all_trades if t.get("entry_date", "") >= cutoff]
+    
+    if not all_trades:
+        return {"scope": {"type": "portfolio"}, "row1_outcome": {}, "row2_risk_capital": {}, "row3_strategy_health": {}}
+    
+    # Separate open vs completed trades
+    open_trades = [t for t in all_trades if t.get("status") in ["open", "rolled", "active"]]
+    completed_trades = [t for t in all_trades if t.get("status") in ["closed", "expired", "assigned"]]
+    
+    # ==================== ROW 1: OUTCOME ====================
+    # Question: What did I make?
+    
+    completed_pnls = [(t.get("realized_pnl") or t.get("final_pnl") or 0) for t in completed_trades]
+    total_pnl = sum(completed_pnls)
+    
+    # Win rate calculation
+    winners = []
+    losers = []
+    for t in completed_trades:
+        pnl = (t.get("realized_pnl") or t.get("final_pnl") or 0)
+        if pnl > 0 or t.get("status") in ["assigned", "expired"]:
+            winners.append(pnl)
+        elif pnl < 0:
+            losers.append(pnl)
+    
+    win_rate = (len(winners) / len(completed_trades) * 100) if completed_trades else 0
+    avg_win = (sum(w for w in winners if w > 0) / len([w for w in winners if w > 0])) if [w for w in winners if w > 0] else 0
+    avg_loss = (sum(losers) / len(losers)) if losers else 0
+    
+    # ROI calculation
+    total_capital = sum(t.get("capital_deployed", 0) for t in completed_trades)
+    roi = (total_pnl / total_capital * 100) if total_capital > 0 else 0
+    
+    # NEW: Expectancy = (Win% × Avg Win) – (Loss% × Avg Loss)
+    win_pct = len(winners) / len(completed_trades) if completed_trades else 0
+    loss_pct = len(losers) / len(completed_trades) if completed_trades else 0
+    expectancy = (win_pct * abs(avg_win)) - (loss_pct * abs(avg_loss)) if completed_trades else 0
+    
+    # NEW: Maximum Drawdown (peak-to-trough)
+    cumulative_pnl = []
+    running_total = 0
+    for t in sorted(completed_trades, key=lambda x: x.get("close_date", "")):
+        running_total += (t.get("realized_pnl") or t.get("final_pnl") or 0)
+        cumulative_pnl.append(running_total)
+    
+    max_drawdown = 0
+    peak = 0
+    for pnl in cumulative_pnl:
+        if pnl > peak:
+            peak = pnl
+        drawdown = peak - pnl
+        if drawdown > max_drawdown:
+            max_drawdown = drawdown
+    
+    # NEW: Time-Weighted Return (simple approximation)
+    total_holding_days = 0
+    weighted_returns = 0
+    for t in completed_trades:
+        if t.get("entry_date") and t.get("close_date"):
+            try:
+                entry = datetime.strptime(t["entry_date"], "%Y-%m-%d")
+                close = datetime.strptime(t["close_date"], "%Y-%m-%d")
+                days = max((close - entry).days, 1)
+                pnl = (t.get("realized_pnl") or t.get("final_pnl") or 0)
+                capital = t.get("capital_deployed", 1)
+                if capital > 0:
+                    weighted_returns += (pnl / capital) * days
+                    total_holding_days += days
+            except:
+                pass
+    
+    twr = (weighted_returns / total_holding_days * 365 * 100) if total_holding_days > 0 else 0  # Annualized
+    
+    row1_outcome = {
         "total_pnl": round(total_pnl, 2),
-        "avg_pnl": round(avg_pnl, 2),
-        "max_win": round(max(pnls), 2) if pnls else 0,
-        "max_loss": round(min(pnls), 2) if pnls else 0,
-        "avg_holding_days": round(avg_holding, 1),
-        "profit_factor": round(abs(sum(winners)) / abs(sum(losers)), 2) if losers and sum(losers) != 0 else 0,
-        "by_close_reason": by_reason,
-        "by_symbol": dict(sorted(by_symbol.items(), key=lambda x: x[1]["total_pnl"], reverse=True)[:10]),
-        "monthly_breakdown": monthly_list,
-        "scan_parameter_analysis": sorted(param_analysis, key=lambda x: x["avg_pnl"], reverse=True)
+        "win_rate": round(win_rate, 1),
+        "roi": round(roi, 2),
+        "avg_win": round(avg_win, 2),
+        "avg_loss": round(avg_loss, 2),
+        "expectancy": round(expectancy, 2),
+        "expectancy_tooltip": "Expected profit per trade if conditions repeat",
+        "max_drawdown": round(max_drawdown, 2),
+        "time_weighted_return": round(twr, 2),
+        "twr_tooltip": "Annualized return adjusted for time in market",
+        "total_trades": len(all_trades),
+        "open_trades": len(open_trades),
+        "completed_trades": len(completed_trades)
+    }
+    
+    # ==================== ROW 2: RISK & CAPITAL ====================
+    # Question: How much pain did I take to earn it?
+    
+    # Peak Capital at Risk (maximum simultaneous capital deployed)
+    # For simplicity, we'll use max capital from any single trade or sum of open positions
+    max_single_capital = max((t.get("capital_deployed", 0) for t in all_trades), default=0)
+    total_open_capital = sum(t.get("capital_deployed", 0) for t in open_trades)
+    peak_capital = max(max_single_capital, total_open_capital)
+    
+    # Average Capital per Trade
+    avg_capital = sum(t.get("capital_deployed", 0) for t in all_trades) / len(all_trades) if all_trades else 0
+    
+    # Worst-Case Loss (Theoretical) - Strategy specific
+    worst_case_cc = 0
+    worst_case_pmcc = 0
+    
+    for t in open_trades:
+        if t.get("strategy_type") == "covered_call":
+            # CC worst case: Stock to zero minus premium received
+            stock_value = t.get("entry_underlying_price", 0) * t.get("shares", 100)
+            premium = t.get("premium_received", 0)
+            worst_case_cc += stock_value - premium
+        elif t.get("strategy_type") == "pmcc":
+            # PMCC worst case: Long LEAPS premium minus short call premium
+            leaps_cost = t.get("leaps_premium", 0) * 100 * t.get("contracts", 1)
+            short_premium = t.get("premium_received", 0)
+            worst_case_pmcc += leaps_cost - short_premium
+    
+    # Use the appropriate worst case based on scope
+    if strategy == "covered_call":
+        worst_case_loss = worst_case_cc
+    elif strategy == "pmcc":
+        worst_case_loss = worst_case_pmcc
+    else:
+        worst_case_loss = worst_case_cc + worst_case_pmcc
+    
+    # Assignment Exposure % (separate for CC and PMCC)
+    cc_trades = [t for t in open_trades if t.get("strategy_type") == "covered_call"]
+    pmcc_trades = [t for t in open_trades if t.get("strategy_type") == "pmcc"]
+    
+    # Calculate assignment risk based on delta
+    cc_at_risk = len([t for t in cc_trades if t.get("current_delta", 0) >= 0.50])
+    pmcc_at_risk = len([t for t in pmcc_trades if t.get("current_delta", 0) >= 0.50])
+    
+    assignment_exposure_cc = (cc_at_risk / len(cc_trades) * 100) if cc_trades else 0
+    assignment_exposure_pmcc = (pmcc_at_risk / len(pmcc_trades) * 100) if pmcc_trades else 0
+    
+    row2_risk_capital = {
+        "peak_capital_at_risk": round(peak_capital, 2),
+        "avg_capital_per_trade": round(avg_capital, 2),
+        "worst_case_loss": round(worst_case_loss, 2),
+        "worst_case_loss_tooltip": "Theoretical max loss if stock goes to zero (CC) or LEAPS expires worthless (PMCC)",
+        "assignment_exposure_cc": round(assignment_exposure_cc, 1),
+        "assignment_exposure_pmcc": round(assignment_exposure_pmcc, 1),
+        "cc_positions_at_risk": cc_at_risk,
+        "pmcc_positions_at_risk": pmcc_at_risk,
+        "total_open_positions": len(open_trades)
+    }
+    
+    # ==================== ROW 3: STRATEGY HEALTH ====================
+    # Question: Is the logic actually working?
+    
+    strategies_health = []
+    for strat in ["covered_call", "pmcc"]:
+        strat_trades = [t for t in all_trades if t.get("strategy_type") == strat]
+        strat_completed = [t for t in strat_trades if t.get("status") in ["closed", "expired", "assigned"]]
+        strat_open = [t for t in strat_trades if t.get("status") in ["open", "rolled", "active"]]
+        
+        if not strat_trades:
+            continue
+        
+        # Win Rate by Strategy
+        strat_winners = [t for t in strat_completed if (t.get("realized_pnl") or t.get("final_pnl") or 0) > 0 or t.get("status") in ["assigned", "expired"]]
+        strat_win_rate = (len(strat_winners) / len(strat_completed) * 100) if strat_completed else 0
+        
+        # Average Hold Time
+        hold_times = []
+        for t in strat_completed:
+            if t.get("entry_date") and t.get("close_date"):
+                try:
+                    entry = datetime.strptime(t["entry_date"], "%Y-%m-%d")
+                    close = datetime.strptime(t["close_date"], "%Y-%m-%d")
+                    hold_times.append((close - entry).days)
+                except:
+                    pass
+        avg_hold = sum(hold_times) / len(hold_times) if hold_times else 0
+        
+        # Profit Factor = Gross Winning P/L / Gross Losing P/L
+        gross_wins = sum((t.get("realized_pnl") or t.get("final_pnl") or 0) for t in strat_completed if (t.get("realized_pnl") or t.get("final_pnl") or 0) > 0)
+        gross_losses = abs(sum((t.get("realized_pnl") or t.get("final_pnl") or 0) for t in strat_completed if (t.get("realized_pnl") or t.get("final_pnl") or 0) < 0))
+        profit_factor = (gross_wins / gross_losses) if gross_losses > 0 else (99.99 if gross_wins > 0 else 0)
+        
+        # Total P/L for strategy
+        strat_pnl = sum((t.get("realized_pnl") or t.get("final_pnl") or 0) for t in strat_completed)
+        strat_unrealized = sum((t.get("unrealized_pnl") or 0) for t in strat_open)
+        
+        strategies_health.append({
+            "strategy": strat,
+            "strategy_label": "Covered Call" if strat == "covered_call" else "PMCC",
+            "total_trades": len(strat_trades),
+            "open_trades": len(strat_open),
+            "completed_trades": len(strat_completed),
+            "win_rate": round(strat_win_rate, 1),
+            "avg_hold_days": round(avg_hold, 1),
+            "profit_factor": round(profit_factor, 2),
+            "profit_factor_status": "good" if profit_factor >= 1.5 else "neutral" if profit_factor >= 1 else "caution",
+            "realized_pnl": round(strat_pnl, 2),
+            "unrealized_pnl": round(strat_unrealized, 2)
+        })
+    
+    # Strategy Distribution for charts
+    strategy_distribution = [
+        {"name": s["strategy_label"], "value": s["total_trades"]}
+        for s in strategies_health
+    ]
+    
+    pnl_by_strategy = [
+        {"name": s["strategy_label"], "realized": s["realized_pnl"], "unrealized": s["unrealized_pnl"]}
+        for s in strategies_health
+    ]
+    
+    row3_strategy_health = {
+        "strategies": strategies_health,
+        "strategy_distribution": strategy_distribution,
+        "pnl_by_strategy": pnl_by_strategy
+    }
+    
+    # Determine scope type
+    scope_type = "portfolio"
+    if symbol:
+        scope_type = "symbol"
+    elif strategy:
+        scope_type = "strategy"
+    
+    return {
+        "scope": {
+            "type": scope_type,
+            "strategy": strategy,
+            "symbol": symbol,
+            "time_period": time_period
+        },
+        "row1_outcome": row1_outcome,
+        "row2_risk_capital": row2_risk_capital,
+        "row3_strategy_health": row3_strategy_health
     }
 
 

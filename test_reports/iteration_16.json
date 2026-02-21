@@ -1,136 +1,97 @@
 {
-  "summary": "Data Consistency Bugs - ALL ISSUES VERIFIED FIXED. Dashboard shows 5 weekly + 5 monthly mix. CC Screener with bypass_cache returns 20 weekly + 20 monthly. PMCC shows valid Friday expirations only (no Saturdays). Watchlist shows IV, IV Rank, OI, Delta for all opportunities.",
+  "summary": "Stock Price (Last Market Close) and Quote Cache Service verification completed. All 12 backend tests passed. The two fixes are working correctly: 1) fetch_stock_quote() now uses history() to get actual last market close (OXY returns $44.83 on 2026-01-28), 2) Options quotes include quote_info object with quote_source (LIVE/LAST_MARKET_SESSION), quote_timestamp, and quote_age_hours.",
   "backend_issues": {
     "critical": [],
     "minor": [
       {
-        "endpoint": "/api/screener/covered-calls (cached)",
-        "issue": "When using precomputed scans, weekly_count and monthly_count may be null. Use bypass_cache=true for accurate counts.",
-        "priority": "LOW"
+        "endpoint": "/api/screener/covered-calls",
+        "issue": "When use_eod_contract=true (default), stock prices come from EOD contract database which may have stale data. When use_eod_contract=false, Yahoo fetch_stock_quote correctly returns last market close.",
+        "priority": "LOW",
+        "note": "This is expected behavior - EOD contract uses pre-ingested data. The fix ensures Yahoo fallback returns correct prices."
       }
     ]
   },
   "frontend_issues": {
     "ui_bugs": [],
     "integration_issues": [],
-    "design_issues": [
-      {
-        "screen": "Dashboard/Simulator charts",
-        "issues": ["Console warnings about chart dimensions (-1 width/height) - cosmetic issue, charts still render correctly"]
-      }
-    ]
+    "design_issues": []
   },
   "test_report_links": [
-    "/app/tests/test_data_consistency_bugs.py",
-    "/app/test_reports/pytest/pytest_data_consistency.xml"
+    "/app/backend/tests/test_stock_price_and_quote_cache.py",
+    "/app/test_reports/pytest/pytest_stock_price_quote_cache.xml"
   ],
   "action_items": [],
-  "critical_code_review_comments": [],
+  "critical_code_review_comments": [
+    "✓ Fix 1: _fetch_stock_quote_yahoo_sync() uses history() to get last market close (line 218-229 in data_provider.py)",
+    "✓ Fix 1: Returns close_date field showing when price was captured",
+    "✓ Fix 2: fetch_options_with_cache() adds quote_info to all options (line 410-500 in data_provider.py)",
+    "✓ Fix 2: quote_source is 'LIVE' during market hours, 'LAST_MARKET_SESSION' after hours",
+    "✓ Fix 2: quote_timestamp shows when quote was captured",
+    "✓ Fix 2: quote_age_hours shows hours since market close (after hours only)",
+    "✓ Pricing Rules: SELL legs use BID only (short_call.premium = short_call.bid)",
+    "✓ Pricing Rules: BUY legs use ASK only (long_call.premium = long_call.ask)",
+    "✓ Screener response includes quote_info object in each result"
+  ],
   "updated_files": [
-    "/app/tests/test_data_consistency_bugs.py"
+    "/app/backend/tests/test_stock_price_and_quote_cache.py"
   ],
   "success_rate": {
-    "backend": "100% - All 4 reported issues verified fixed",
-    "frontend": "100% - All pages show correct data with T-1 banners"
+    "backend": "100% (12/12 tests passed)"
   },
   "test_credentials": {
     "email": "admin@premiumhunter.com",
     "password": "admin123"
   },
-  "seed_data_creation": "None - used existing data",
+  "seed_data_creation": "None - used live API data",
   "retest_needed": false,
   "should_main_agent_self_test": false,
-  "context_for_next_testing_agent": "All 4 data consistency bugs are now fixed. Dashboard shows 5 weekly + 5 monthly opportunities. CC Screener with bypass_cache=true returns proper weekly/monthly mix. PMCC shows only valid Friday expirations. Watchlist shows IV, IV Rank, OI, Delta for all opportunities.",
-  "data_consistency_verification": {
-    "issue_1_dashboard_weekly_monthly_mix": {
-      "status": "FIXED",
-      "expected": "5 weekly + 5 monthly opportunities",
-      "actual": "weekly_count: 5, monthly_count: 5",
-      "verification": "API returns correct mix, UI shows Weekly/Monthly badges"
+  "context_for_next_testing_agent": "Stock price and quote cache fixes verified. Key findings: 1) fetch_stock_quote() correctly uses history() to get last market close (OXY=$44.83 on 2026-01-28), 2) Options quotes include quote_info with quote_source, quote_timestamp, quote_age_hours, 3) Market is closed so quote_source='LAST_MARKET_SESSION' with ~8 hours age, 4) Pricing rules enforced: SELL=BID, BUY=ASK.",
+  "fix_verification": {
+    "fix_1_stock_price_last_close": {
+      "status": "VERIFIED",
+      "method": "fetch_stock_quote() uses ticker.history(period='5d') to get most recent close",
+      "example": "OXY returns $44.83 (2026-01-28 close) instead of $44.55 (previousClose)",
+      "code_location": "/app/backend/services/data_provider.py lines 218-229"
     },
-    "issue_2_cc_screener_weekly_monthly_mix": {
-      "status": "FIXED",
-      "expected": "Mix of weekly AND monthly options",
-      "actual": "weekly_count: 20, monthly_count: 20 (with bypass_cache=true)",
-      "verification": "API returns 50/50 mix when using bypass_cache=true"
-    },
-    "issue_3_pmcc_saturday_expirations": {
-      "status": "FIXED",
-      "expected": "Valid Friday expirations only (no Saturdays)",
-      "actual": "100% of short_expiry and leaps_expiry are Fridays",
-      "verification": "Tested all 100 PMCC opportunities - all expirations are valid Fridays"
-    },
-    "issue_4_watchlist_greek_data": {
-      "status": "FIXED",
-      "expected": "IV, OI, Delta in opportunity data",
-      "actual": "All 13 watchlist items have IV, IV Rank, OI, Delta populated",
-      "verification": "API returns complete Greek data, UI shows all columns"
+    "fix_2_quote_cache_service": {
+      "status": "VERIFIED",
+      "features": {
+        "quote_source": "LIVE or LAST_MARKET_SESSION",
+        "quote_timestamp": "ISO timestamp when quote was captured",
+        "quote_age_hours": "Hours since market close (after hours only)"
+      },
+      "code_location": "/app/backend/services/quote_cache_service.py"
     }
   },
   "api_verification": {
-    "/api/screener/dashboard-opportunities": {
-      "status": "PASS",
-      "total": 10,
-      "weekly_count": 5,
-      "monthly_count": 5,
-      "all_fridays": true,
-      "metadata_present": true
+    "covered_calls_endpoint": {
+      "stock_price_source": "previous_close",
+      "options_chain_source": "yahoo_live",
+      "architecture": "LIVE_OPTIONS_PREVIOUS_CLOSE_STOCK",
+      "live_data_used": true,
+      "quote_info_present": true,
+      "sample_quote_info": {
+        "quote_source": "LAST_MARKET_SESSION",
+        "quote_age_hours": 8.19
+      }
     },
-    "/api/screener/covered-calls?bypass_cache=true": {
-      "status": "PASS",
-      "total": 40,
-      "weekly_count": 20,
-      "monthly_count": 20,
-      "all_fridays": true,
-      "iv_data_present": true,
-      "oi_data_present": true,
-      "metadata_present": true
-    },
-    "/api/screener/pmcc?bypass_cache=true": {
-      "status": "PASS",
-      "total": 100,
-      "all_short_expiry_fridays": true,
-      "all_leaps_expiry_fridays": true,
-      "leaps_iv_present": true,
-      "leaps_oi_present": true,
-      "short_iv_present": true,
-      "short_oi_present": true,
-      "metadata_present": true
-    },
-    "/api/watchlist/": {
-      "status": "PASS",
-      "total_items": 13,
-      "items_with_opportunities": 13,
-      "iv_present": true,
-      "iv_rank_present": true,
-      "oi_present": true,
-      "delta_present": true
+    "pmcc_endpoint": {
+      "stock_price_source": "previous_close",
+      "options_chain_source": "yahoo_live",
+      "architecture": "LIVE_OPTIONS_PREVIOUS_CLOSE_STOCK",
+      "live_data_used": true,
+      "long_call_uses_ask": true,
+      "short_call_uses_bid": true
     }
   },
-  "frontend_verification": {
-    "dashboard": {
-      "t1_banner": "PASS - Shows 'T-1 Market Data - Data from: 2026-01-16 (Market Close)'",
-      "top_cc_table": "PASS - Shows 'Top 5 Weekly + Top 5 Monthly' subtitle",
-      "weekly_badge": "PASS - Weekly badges visible",
-      "monthly_badge": "PASS - Monthly badges visible",
-      "all_columns": "PASS - Symbol, Price, Strike, Type, DTE, Premium, ROI, Delta, IV, IV Rank, OI, AI Score, Analyst, Earnings, Action"
-    },
-    "screener": {
-      "t1_banner": "PASS - Shows T-1 Market Data banner",
-      "weekly_monthly_badges": "PASS - Both Weekly and Monthly badges visible",
-      "iv_oi_columns": "PASS - IV, IV Rank, OI columns present with data"
-    },
-    "pmcc": {
-      "t1_banner": "PASS - Shows 'T-1 Market Data - Using previous trading day close data'",
-      "leaps_expirations": "PASS - Valid dates shown (16JAN27, 18DEC27)",
-      "short_expirations": "PASS - Valid dates shown (21FEB26, 14FEB26)"
-    },
-    "watchlist": {
-      "t1_banner": "PASS - Shows 'T-1 Market Data - Using previous trading day close data'",
-      "iv_column": "PASS - IV data populated for all items",
-      "iv_rank_column": "PASS - IV Rank data populated",
-      "oi_column": "PASS - OI data populated",
-      "delta_column": "PASS - Delta data populated"
-    }
+  "pricing_rules_verification": {
+    "sell_leg_bid_only": "VERIFIED - short_call.premium equals short_call.bid",
+    "buy_leg_ask_only": "VERIFIED - long_call.premium equals long_call.ask",
+    "reject_zero_bid": "VERIFIED - contracts with BID=0 are rejected",
+    "reject_zero_ask": "VERIFIED - contracts with ASK=0 are rejected"
+  },
+  "mocked_apis": {
+    "has_mocked_apis": false,
+    "note": "All data from real Yahoo Finance API"
   }
 }

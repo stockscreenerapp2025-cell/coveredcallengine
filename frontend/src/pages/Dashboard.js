@@ -15,6 +15,12 @@ import {
   DialogTitle,
 } from '../components/ui/dialog';
 import {
+  Tooltip as ShadcnTooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '../components/ui/tooltip';
+import {
   TrendingUp,
   TrendingDown,
   Activity,
@@ -75,22 +81,33 @@ const Dashboard = () => {
     
     setSimulateLoading(true);
     try {
+      // LAYER 3 CONTRACT: IV is stored as percentage (39.5 = 39.5%)
+      // short_call_iv should be stored as DECIMAL for calculation compatibility (0.395)
+      // Get IV from short_call object or flat fields
+      let ivPct = simulateOpp.short_call?.implied_volatility || 
+                  simulateOpp.implied_volatility || 
+                  simulateOpp.iv || 0;
+      
+      // If IV is already in percentage form (> 1), convert to decimal for storage
+      const ivDecimal = ivPct > 1 ? ivPct / 100 : ivPct;
+      
       const tradeData = {
         symbol: simulateOpp.symbol,
         strategy_type: 'covered_call',
-        underlying_price: simulateOpp.stock_price,
-        short_call_strike: simulateOpp.strike,
-        short_call_expiry: simulateOpp.expiry,
-        short_call_premium: simulateOpp.premium,
-        short_call_delta: simulateOpp.delta,
-        short_call_iv: simulateOpp.iv,
+        underlying_price: simulateOpp.underlying?.last_price || simulateOpp.stock_price,
+        short_call_strike: simulateOpp.short_call?.strike || simulateOpp.strike,
+        short_call_expiry: simulateOpp.short_call?.expiry || simulateOpp.expiry,
+        short_call_premium: simulateOpp.short_call?.premium || simulateOpp.premium,
+        short_call_delta: simulateOpp.short_call?.delta || simulateOpp.delta,
+        short_call_iv: ivDecimal,  // Store as decimal (0.395)
         contracts: simulateContracts,
         scan_parameters: {
-          score: simulateOpp.score,
-          roi_pct: simulateOpp.roi_pct,
-          dte: simulateOpp.dte,
-          iv_rank: simulateOpp.iv_rank,
-          open_interest: simulateOpp.open_interest
+          score: simulateOpp.scoring?.final_score || simulateOpp.score,
+          roi_pct: simulateOpp.economics?.roi_pct || simulateOpp.roi_pct,
+          dte: simulateOpp.short_call?.dte || simulateOpp.dte,
+          iv_rank: simulateOpp.short_call?.iv_rank || simulateOpp.iv_rank,
+          open_interest: simulateOpp.short_call?.open_interest || simulateOpp.open_interest,
+          iv_pct: ivPct  // Store percentage for display
         }
       };
       
@@ -259,32 +276,25 @@ const Dashboard = () => {
 
   return (
     <div className="space-y-6" data-testid="dashboard-page">
-      {/* T-1 Data Status Banner - Always Show */}
-      <div className="glass-card p-3 flex items-center justify-between bg-zinc-800/50 border-emerald-500/30">
-        <div className="flex items-center gap-3">
-          <div className="flex items-center gap-2">
-            <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-            <span className="text-emerald-400 font-medium text-sm">T-1 Market Data</span>
-          </div>
-          <span className="text-zinc-400 text-sm">
-            {marketStatus?.t1_data ? (
-              <>Data from: <span className="text-white font-medium">{marketStatus.t1_data.date}</span> (Market Close)</>
+      {/* Market Status Banner */}
+      {marketStatus && !marketStatus.is_open && (
+        <div className="glass-card p-3 flex items-center justify-between bg-zinc-800/50 border-amber-500/30">
+          <div className="flex items-center gap-3">
+            {marketStatus.is_weekend ? (
+              <Moon className="w-5 h-5 text-amber-400" />
             ) : (
-              <>Using previous trading day close data</>
+              <Clock className="w-5 h-5 text-amber-400" />
             )}
-          </span>
-        </div>
-        <div className="flex items-center gap-2">
-          {marketStatus?.t1_data?.next_refresh && (
-            <span className="text-xs text-zinc-500">
-              Next refresh: {marketStatus.t1_data.next_refresh}
-            </span>
-          )}
-          <Badge className="bg-emerald-500/20 text-emerald-400 border-emerald-500/30 text-xs">
-            {marketStatus?.current_time_et || 'Loading...'}
+            <div>
+              <span className="text-amber-400 font-medium">{marketStatus.reason}</span>
+              <span className="text-zinc-400 ml-2 text-sm">• {marketStatus.data_note}</span>
+            </div>
+          </div>
+          <Badge className="bg-amber-500/20 text-amber-400 border-amber-500/30">
+            {marketStatus.current_time_et}
           </Badge>
         </div>
-      </div>
+      )}
 
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -297,14 +307,14 @@ const Dashboard = () => {
                 {marketStatus.is_open ? (
                   <><Sun className="w-3 h-3 mr-1" /> Market Open</>
                 ) : (
-                  <><Moon className="w-3 h-3 mr-1" /> US Market Closed</>
+                  <><Moon className="w-3 h-3 mr-1" /> Market Closed</>
                 )}
               </Badge>
             )}
           </h1>
           <p className="text-zinc-400 mt-1">
-            {marketStatus?.t1_data
-              ? `Showing T-1 market data from ${marketStatus.t1_data.date}` 
+            {marketStatus && !marketStatus.is_open 
+              ? "Showing data from last market session" 
               : "Real-time market overview and opportunities"}
           </p>
         </div>
@@ -744,9 +754,12 @@ const Dashboard = () => {
               <Target className="w-5 h-5 text-emerald-400" />
               Top 10 Covered Call Opportunities
             </CardTitle>
-            <p className="text-xs text-zinc-500 mt-1">
-              Top 5 Weekly + Top 5 Monthly • $25-$100 stocks • ATM/OTM strikes • Weekly ≥0.8% ROI, Monthly ≥2.5% ROI
-            </p>
+            <div className="text-xs text-zinc-500 mt-1 flex items-center gap-2">
+              <Badge className="bg-cyan-500/20 text-cyan-400 border-cyan-500/30 text-xs">Top 5 Weekly</Badge>
+              <span>+</span>
+              <Badge className="bg-violet-500/20 text-violet-400 border-violet-500/30 text-xs">Top 5 Monthly</Badge>
+              <span className="ml-2">• OTM strikes • DTE {`<`}14 Weekly, {`>`}14 Monthly</span>
+            </div>
           </div>
           <div className="flex items-center gap-2">
             {opportunitiesInfo?.is_live && (
@@ -790,108 +803,121 @@ const Dashboard = () => {
                     <th>DTE</th>
                     <th>Premium</th>
                     <th>ROI</th>
+                    <th>ROI Ann.</th>
                     <th>Delta</th>
                     <th>IV</th>
                     <th>IV Rank</th>
                     <th>OI</th>
                     <th>AI Score</th>
                     <th>Analyst</th>
-                    <th>Earnings</th>
                     <th className="text-center">Action</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {opportunities.map((opp, index) => (
-                    <tr 
-                      key={index} 
-                      className="cursor-pointer hover:bg-zinc-800/50 transition-colors" 
-                      data-testid={`opportunity-${opp.symbol}`}
-                      onClick={() => {
-                        setSelectedStock(opp.symbol);
-                        setIsModalOpen(true);
-                      }}
-                      title={`Click to view ${opp.symbol} details`}
-                    >
-                      <td className="font-semibold text-white">
-                        {opp.symbol}
-                        {opp.has_dividend && <span className="ml-1 text-yellow-400 text-xs">💰</span>}
-                      </td>
-                      <td>${opp.stock_price?.toFixed(2)}</td>
-                      <td>
-                        <div className="flex flex-col">
-                          <span className="font-mono text-sm text-emerald-400">{formatOptionContract(opp.dte, opp.strike, opp.expiry)}</span>
-                          <Badge className={`mt-0.5 w-fit ${opp.moneyness === 'ATM' ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30 text-xs' : 'bg-blue-500/20 text-blue-400 border-blue-500/30 text-xs'}`}>
-                            {opp.moneyness || (opp.strike_pct !== undefined ? (opp.strike_pct >= -2 && opp.strike_pct <= 2 ? 'ATM' : 'OTM') : 'OTM')}
+                  {opportunities.map((opp, index) => {
+                    const isWeekly = opp.expiry_type === 'Weekly' || opp.dte <= 14;
+                    const rowBorderClass = isWeekly 
+                      ? 'border-l-2 border-l-cyan-500/50' 
+                      : 'border-l-2 border-l-violet-500/50';
+                    
+                    return (
+                      <tr 
+                        key={index} 
+                        className={`cursor-pointer hover:bg-zinc-800/50 transition-colors ${rowBorderClass}`}
+                        data-testid={`opportunity-${opp.symbol}`}
+                        onClick={() => {
+                          setSelectedStock(opp.symbol);
+                          setIsModalOpen(true);
+                        }}
+                        title={`Click to view ${opp.symbol} details`}
+                      >
+                        <td className="font-semibold text-white">
+                          {opp.symbol}
+                          {opp.has_dividend && <span className="ml-1 text-yellow-400 text-xs">💰</span>}
+                        </td>
+                        <td>${opp.stock_price?.toFixed(2)}</td>
+                        <td>
+                          <div className="flex flex-col">
+                            <span className={`font-mono text-sm ${isWeekly ? 'text-cyan-400' : 'text-violet-400'}`}>
+                              {formatOptionContract(opp.dte, opp.strike, opp.expiry)}
+                            </span>
+                            <Badge className={`mt-0.5 w-fit ${opp.moneyness === 'ATM' ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30 text-xs' : 'bg-blue-500/20 text-blue-400 border-blue-500/30 text-xs'}`}>
+                              {opp.moneyness || (opp.otm_pct !== undefined ? (Math.abs(opp.otm_pct) <= 2 ? 'ATM' : 'OTM') : 'OTM')}
+                            </Badge>
+                          </div>
+                        </td>
+                        <td>
+                          <Badge className={isWeekly 
+                            ? 'bg-cyan-500/20 text-cyan-400 border-cyan-500/30' 
+                            : 'bg-violet-500/20 text-violet-400 border-violet-500/30'
+                          }>
+                            {isWeekly ? 'Weekly' : 'Monthly'}
                           </Badge>
-                        </div>
-                      </td>
-                      <td>
-                        <Badge className={opp.expiry_type === 'Weekly' ? 'bg-cyan-500/20 text-cyan-400 border-cyan-500/30' : 'bg-violet-500/20 text-violet-400 border-violet-500/30'}>
-                          {opp.expiry_type || (opp.dte <= 7 ? 'Weekly' : 'Monthly')}
-                        </Badge>
-                      </td>
-                      <td>{opp.dte}d</td>
-                      <td className="text-emerald-400">${opp.premium?.toFixed(2)}</td>
-                      <td className="text-cyan-400 font-medium">{opp.roi_pct?.toFixed(2)}%</td>
-                      <td>{opp.delta?.toFixed(2)}</td>
-                      <td>{opp.iv ? `${opp.iv?.toFixed(0)}%` : '-'}</td>
-                      <td>{opp.iv_rank ? `${opp.iv_rank?.toFixed(0)}%` : '-'}</td>
-                      <td className="text-zinc-400">{opp.open_interest ? opp.open_interest.toLocaleString() : '-'}</td>
-                      <td>
-                        <Badge className={`${opp.score >= 70 ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' : opp.score >= 50 ? 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30' : 'bg-cyan-500/20 text-cyan-400 border-cyan-500/30'}`}>
-                          {opp.score?.toFixed(0)}
-                        </Badge>
-                      </td>
-                      <td>
-                        {opp.analyst_rating ? (
-                          <Badge className={`text-xs ${
-                            opp.analyst_rating === 'Strong Buy' 
-                              ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30'
-                              : opp.analyst_rating === 'Buy'
-                                ? 'bg-green-500/20 text-green-400 border-green-500/30'
-                                : opp.analyst_rating === 'Hold'
-                                  ? 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30'
-                                  : 'bg-red-500/20 text-red-400 border-red-500/30'
-                          }`}>
-                            {opp.analyst_rating}
+                        </td>
+                        <td className={isWeekly ? 'text-cyan-300' : 'text-violet-300'}>{opp.dte}d</td>
+                        <td className="text-emerald-400">${opp.premium?.toFixed(2)}</td>
+                        <td className="text-cyan-400 font-medium">{opp.roi_pct?.toFixed(2) || opp.premium_yield?.toFixed(2)}%</td>
+                        <td className="text-amber-400 text-sm">{opp.roi_annualized ? `${opp.roi_annualized.toFixed(0)}%` : '-'}</td>
+                        <td>{opp.delta?.toFixed(2)}</td>
+                        <td>{opp.iv_pct ? `${opp.iv_pct.toFixed(1)}%` : (opp.iv ? `${(opp.iv * 100).toFixed(1)}%` : '-')}</td>
+                        <td>
+                          <TooltipProvider>
+                            <ShadcnTooltip>
+                              <TooltipTrigger asChild>
+                                <span className="text-zinc-500 cursor-help">
+                                  {opp.iv_rank != null ? `${opp.iv_rank.toFixed(0)}%` : 'N/A'}
+                                </span>
+                              </TooltipTrigger>
+                              {opp.iv_rank == null && (
+                                <TooltipContent className="bg-zinc-800 border-zinc-700 p-2 max-w-xs">
+                                  <p className="text-xs text-zinc-300">IV Rank not available yet (insufficient history / not computed)</p>
+                                </TooltipContent>
+                              )}
+                            </ShadcnTooltip>
+                          </TooltipProvider>
+                        </td>
+                        <td className="text-zinc-400">{opp.open_interest ? opp.open_interest.toLocaleString() : '-'}</td>
+                        <td>
+                          <Badge className={`${opp.score >= 70 ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' : opp.score >= 50 ? 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30' : 'bg-cyan-500/20 text-cyan-400 border-cyan-500/30'}`}>
+                            {opp.score?.toFixed(0)}
                           </Badge>
-                        ) : (
-                          <span className="text-zinc-600 text-xs">-</span>
-                        )}
-                      </td>
-                      <td>
-                        {opp.days_to_earnings !== null && opp.days_to_earnings !== undefined && opp.days_to_earnings >= 0 ? (
-                          <Badge className={`text-xs ${
-                            opp.days_to_earnings <= 7 
-                              ? 'bg-red-500/20 text-red-400 border-red-500/30'
-                              : opp.days_to_earnings <= 14
-                                ? 'bg-amber-500/20 text-amber-400 border-amber-500/30'
-                                : 'bg-zinc-500/20 text-zinc-400 border-zinc-500/30'
-                          }`}>
-                            {opp.days_to_earnings}d
-                          </Badge>
-                        ) : (
-                          <span className="text-zinc-600 text-xs">-</span>
-                        )}
-                      </td>
-                      <td className="text-center">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setSimulateOpp(opp);
-                            setSimulateModalOpen(true);
-                          }}
-                          className="bg-violet-500/10 border-violet-500/30 text-violet-400 hover:bg-violet-500/20 hover:text-violet-300"
-                          data-testid={`dashboard-simulate-btn-${opp.symbol}`}
-                        >
-                          <Play className="w-3 h-3 mr-1" />
-                          Simulate
-                        </Button>
-                      </td>
-                    </tr>
-                  ))}
+                        </td>
+                        <td>
+                          {(opp.analyst_rating_label || opp.analyst_rating) ? (
+                            <Badge className={`text-xs ${
+                              (opp.analyst_rating_label || opp.analyst_rating) === 'Strong Buy' 
+                                ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30'
+                                : (opp.analyst_rating_label || opp.analyst_rating) === 'Buy'
+                                  ? 'bg-green-500/20 text-green-400 border-green-500/30'
+                                  : (opp.analyst_rating_label || opp.analyst_rating) === 'Hold'
+                                    ? 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30'
+                                    : 'bg-red-500/20 text-red-400 border-red-500/30'
+                            }`}>
+                              {opp.analyst_rating_label || opp.analyst_rating}
+                            </Badge>
+                          ) : (
+                            <span className="text-zinc-600 text-xs">N/A</span>
+                          )}
+                        </td>
+                        <td className="text-center">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSimulateOpp(opp);
+                              setSimulateModalOpen(true);
+                            }}
+                            className="bg-violet-500/10 border-violet-500/30 text-violet-400 hover:bg-violet-500/20 hover:text-violet-300"
+                            data-testid={`dashboard-simulate-btn-${opp.symbol}`}
+                          >
+                            <Play className="w-3 h-3 mr-1" />
+                            Simulate
+                          </Button>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
@@ -929,7 +955,7 @@ const Dashboard = () => {
                 </div>
                 <div className="flex justify-between">
                   <span className="text-zinc-400">Expiry</span>
-                  <span className="text-white">{formatOptionContract(simulateOpp.expiry, simulateOpp.strike)}</span>
+                  <span className="text-white">{formatOptionContract(simulateOpp.dte, simulateOpp.strike, simulateOpp.expiry)}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-zinc-400">Premium</span>
@@ -987,23 +1013,33 @@ const Dashboard = () => {
         }}
       />
 
-      {/* Data Source Notice */}
+      {/* Data Source Notice - EOD Pipeline Status */}
       {opportunitiesInfo && (
-        <div className={`glass-card p-4 border-l-4 ${opportunitiesInfo?.is_live ? 'border-emerald-500' : 'border-yellow-500'}`}>
+        <div className={`glass-card p-4 border-l-4 ${
+          opportunitiesInfo?.data_source === 'eod_pipeline' && opportunitiesInfo?.run_info?.run_id 
+            ? 'border-emerald-500' 
+            : 'border-yellow-500'
+        }`}>
           <div className="flex items-center gap-3">
-            {opportunitiesInfo?.is_live ? (
+            {opportunitiesInfo?.data_source === 'eod_pipeline' && opportunitiesInfo?.run_info?.run_id ? (
               <CheckCircle className="w-5 h-5 text-emerald-400" />
             ) : (
               <Activity className="w-5 h-5 text-yellow-400" />
             )}
             <div>
-              <div className={`text-sm font-medium ${opportunitiesInfo?.is_live ? 'text-emerald-400' : 'text-yellow-400'}`}>
-                {opportunitiesInfo?.is_live ? 'Live Market Data' : 'Using Mock Data'}
+              <div className={`text-sm font-medium ${
+                opportunitiesInfo?.data_source === 'eod_pipeline' && opportunitiesInfo?.run_info?.run_id 
+                  ? 'text-emerald-400' 
+                  : 'text-yellow-400'
+              }`}>
+                {opportunitiesInfo?.data_source === 'eod_pipeline' && opportunitiesInfo?.run_info?.run_id 
+                  ? 'EOD Pre-computed Data' 
+                  : 'Using Mock Data'}
               </div>
               <div className="text-xs text-zinc-500">
-                {opportunitiesInfo?.is_live
-                  ? 'Data from Massive.com API • Includes SMA, trend analysis, and dividend data'
-                  : 'Configure your API key in Admin settings for live market data'}
+                {opportunitiesInfo?.data_source === 'eod_pipeline' && opportunitiesInfo?.run_info?.run_id
+                  ? `Run: ${opportunitiesInfo.run_info.run_id.substring(0, 20)}... • Last updated: ${opportunitiesInfo.run_info.completed_at ? new Date(opportunitiesInfo.run_info.completed_at).toLocaleString() : 'N/A'}`
+                  : 'No EOD run available. Data may be stale or unavailable.'}
               </div>
             </div>
           </div>

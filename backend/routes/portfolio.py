@@ -1,6 +1,10 @@
 """
 Portfolio Routes - Portfolio management, IBKR integration, and manual trade entry
 Designed for scalability with proper async patterns and efficient queries
+
+PHASE 1 REFACTOR (December 2025):
+- fetch_stock_quote now imports from data_provider.py instead of server.py
+- This ensures portfolio uses the same data source as other pages
 """
 from fastapi import APIRouter, Depends, Query, HTTPException, File, UploadFile
 from pydantic import BaseModel, Field
@@ -18,6 +22,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from database import db
 from utils.auth import get_current_user
+from services.data_provider import fetch_stock_quote
 
 portfolio_router = APIRouter(tags=["Portfolio"])
 
@@ -73,9 +78,14 @@ class ManualTradeEntry(BaseModel):
 
 
 def _get_server_data():
-    """Lazy import to avoid circular dependencies"""
-    from server import MOCK_STOCKS, fetch_stock_quote
-    return MOCK_STOCKS, fetch_stock_quote
+    """
+    Lazy import to avoid circular dependencies.
+    
+    PHASE 1 REFACTOR: fetch_stock_quote now comes from data_provider.py
+    MOCK_STOCKS still comes from server.py for fallback
+    """
+    from server import MOCK_STOCKS, get_massive_api_key
+    return MOCK_STOCKS, get_massive_api_key
 
 
 # ==================== BASIC PORTFOLIO CRUD ====================
@@ -274,7 +284,7 @@ async def get_ibkr_trades(
     limit: int = Query(50, ge=1, le=100)
 ):
     """Get parsed IBKR trades with filters and pagination"""
-    _, fetch_stock_quote = _get_server_data()
+    # PHASE 1: fetch_stock_quote now imported from data_provider.py at module level
     
     query = {"user_id": user["id"]}
     
@@ -324,7 +334,7 @@ async def get_ibkr_trades(
 @portfolio_router.get("/ibkr/trades/{trade_id}")
 async def get_ibkr_trade_detail(trade_id: str, user: dict = Depends(get_current_user)):
     """Get detailed trade information including transaction history"""
-    _, fetch_stock_quote = _get_server_data()
+    # PHASE 1: fetch_stock_quote now imported from data_provider.py at module level
     
     trade = await db.ibkr_trades.find_one({"user_id": user["id"], "id": trade_id}, {"_id": 0})
     if not trade:
@@ -417,28 +427,108 @@ async def clear_ibkr_data(user: dict = Depends(get_current_user)):
 # ==================== AI SUGGESTIONS ====================
 @portfolio_router.post("/ibkr/trades/{trade_id}/ai-suggestion")
 async def get_trade_ai_suggestion(trade_id: str, user: dict = Depends(get_current_user)):
-    """Get AI-powered suggestion for a trade"""
+    """Get AI-powered suggestion for a trade (uses AI tokens)"""
+    from ai_wallet.ai_service import AIExecutionService
+    
     trade = await db.ibkr_trades.find_one({"user_id": user["id"], "id": trade_id}, {"_id": 0})
     if not trade:
         raise HTTPException(status_code=404, detail="Trade not found")
     
-    suggestion = await _generate_ai_suggestion_for_trade(trade)
+    # Build trade context
+    trade_context = _build_trade_context(trade)
     
+    # Execute through AI service with token guard
+    ai_service = AIExecutionService(db)
+    result = await ai_service.execute_trade_suggestion(
+        user_id=user["id"],
+        trade_context=trade_context
+    )
+    
+    if not result["success"]:
+        # Return error with token info
+        raise HTTPException(
+            status_code=402 if result.get("error_code") == "INSUFFICIENT_TOKENS" else 500,
+            detail={
+                "error": result["error"],
+                "error_code": result.get("error_code"),
+                "remaining_balance": result.get("remaining_balance")
+            }
+        )
+    
+    # Parse action from response
+    full_suggestion = result["response"]
+    action = "HOLD"
+    first_line = full_suggestion.strip().split('\n')[0].strip().upper()
+    for possible_action in ["LET_EXPIRE", "HOLD", "CLOSE", "ROLL_UP", "ROLL_DOWN", "ROLL_OUT"]:
+        if possible_action in first_line:
+            action = possible_action
+            break
+    
+    # Update trade with suggestion
     await db.ibkr_trades.update_one(
         {"user_id": user["id"], "id": trade_id},
         {"$set": {
-            "ai_suggestion": suggestion.get("full_suggestion"),
-            "ai_action": suggestion.get("action"),
+            "ai_suggestion": full_suggestion,
+            "ai_action": action,
             "suggestion_updated": datetime.now(timezone.utc).isoformat()
         }}
     )
     
-    return {"suggestion": suggestion.get("full_suggestion"), "action": suggestion.get("action"), "trade_id": trade_id}
+    return {
+        "suggestion": full_suggestion, 
+        "action": action, 
+        "trade_id": trade_id,
+        "tokens_used": result.get("tokens_used", 0),
+        "remaining_balance": result.get("remaining_balance", 0)
+    }
+
+
+def _build_trade_context(trade: dict) -> str:
+    """Build context string for AI trade analysis."""
+    MOCK_STOCKS, _ = _get_server_data()
+    
+    symbol = trade.get('symbol', '')
+    entry_price = trade.get('underlying_price', 0) or trade.get('entry_price', 0)
+    stock_data = MOCK_STOCKS.get(symbol, {})
+    current_price = stock_data.get('price', entry_price)
+    option_strike = trade.get('short_call_strike') or trade.get('strike_price') or trade.get('option_strike')
+    premium = trade.get('total_premium', 0) or trade.get('short_call_premium', 0) or 0
+    dte = trade.get('dte', 0)
+    break_even = trade.get('break_even')
+    strategy = trade.get('strategy_type', '')
+    
+    profit_status = "N/A"
+    if current_price and entry_price:
+        profit_status = "Profitable" if current_price > (break_even or entry_price) else "At Loss"
+    
+    itm_status = "N/A"
+    if option_strike and current_price:
+        if 'CALL' in strategy.upper() or strategy in ['COVERED_CALL', 'PMCC']:
+            itm_status = "ITM" if current_price > option_strike else "OTM"
+        elif 'PUT' in strategy.upper() or strategy == 'NAKED_PUT':
+            itm_status = "ITM" if current_price < option_strike else "OTM"
+    
+    current_price_str = f"${current_price:.2f}" if current_price else "N/A"
+    strike_str = f"${option_strike:.2f}" if option_strike else "N/A"
+    
+    return f"""
+    Analyze this options trade:
+    Symbol: {symbol}, Strategy: {trade.get('strategy_label', strategy)}
+    Entry: ${entry_price:.2f}, Current: {current_price_str}
+    Strike: {strike_str}, DTE: {dte}, Status: {itm_status}
+    Premium: ${premium:.2f}, Profit: {profit_status}
+    
+    Recommend: HOLD, LET_EXPIRE, ROLL_UP, ROLL_DOWN, ROLL_OUT, or CLOSE
+    """
 
 
 @portfolio_router.post("/ibkr/generate-suggestions")
 async def generate_all_suggestions(user: dict = Depends(get_current_user)):
-    """Generate AI suggestions for all open trades"""
+    """Generate AI suggestions for all open trades (uses AI tokens - one per trade)"""
+    from ai_wallet.ai_service import AIExecutionService
+    from ai_wallet.wallet_service import WalletService
+    from ai_wallet.config import AI_ACTION_COSTS
+    
     logging.info(f"Generating suggestions for user {user['id']}")
     
     open_trades = await db.ibkr_trades.find(
@@ -449,27 +539,77 @@ async def generate_all_suggestions(user: dict = Depends(get_current_user)):
     logging.info(f"Found {len(open_trades)} open trades")
     
     if not open_trades:
-        return {"message": "No open trades found", "updated": 0}
+        return {"message": "No open trades found", "updated": 0, "tokens_used": 0}
     
+    # Check if user has enough tokens for all trades
+    wallet_service = WalletService(db)
+    wallet = await wallet_service.get_or_create_wallet(user["id"])
+    total_tokens_needed = len(open_trades) * AI_ACTION_COSTS["trade_suggestion"]
+    available_tokens = wallet.get("free_tokens_remaining", 0) + wallet.get("paid_tokens_remaining", 0)
+    
+    if available_tokens < AI_ACTION_COSTS["trade_suggestion"]:
+        raise HTTPException(
+            status_code=402,
+            detail={
+                "error": "Insufficient tokens for portfolio scan",
+                "error_code": "INSUFFICIENT_TOKENS",
+                "tokens_needed": total_tokens_needed,
+                "available": available_tokens
+            }
+        )
+    
+    ai_service = AIExecutionService(db)
     updated = 0
+    total_tokens_used = 0
+    errors = []
+    
     for trade in open_trades:
         try:
-            suggestion = await _generate_ai_suggestion_for_trade(trade)
+            trade_context = _build_trade_context(trade)
+            result = await ai_service.execute_trade_suggestion(
+                user_id=user["id"],
+                trade_context=trade_context
+            )
+            
+            if not result["success"]:
+                if result.get("error_code") == "INSUFFICIENT_TOKENS":
+                    # Stop processing - no more tokens
+                    errors.append(f"Insufficient tokens after {updated} trades")
+                    break
+                errors.append(f"{trade.get('symbol')}: {result.get('error', 'Unknown error')}")
+                continue
+            
+            # Parse action from response
+            full_suggestion = result["response"]
+            action = "HOLD"
+            first_line = full_suggestion.strip().split('\n')[0].strip().upper()
+            for possible_action in ["LET_EXPIRE", "HOLD", "CLOSE", "ROLL_UP", "ROLL_DOWN", "ROLL_OUT"]:
+                if possible_action in first_line:
+                    action = possible_action
+                    break
             
             await db.ibkr_trades.update_one(
                 {"user_id": user["id"], "id": trade["id"]},
                 {"$set": {
-                    "ai_suggestion": suggestion.get("full_suggestion"),
-                    "ai_action": suggestion.get("action"),
+                    "ai_suggestion": full_suggestion,
+                    "ai_action": action,
                     "suggestion_updated": datetime.now(timezone.utc).isoformat()
                 }}
             )
             updated += 1
+            total_tokens_used += result.get("tokens_used", 0)
+            
         except Exception as e:
             logging.error(f"Error generating suggestion for {trade.get('symbol')}: {e}")
+            errors.append(f"{trade.get('symbol')}: {str(e)}")
             continue
     
-    return {"message": f"Generated suggestions for {updated} open trades", "updated": updated}
+    return {
+        "message": f"Generated suggestions for {updated} of {len(open_trades)} trades", 
+        "updated": updated,
+        "tokens_used": total_tokens_used,
+        "errors": errors if errors else None
+    }
 
 
 # ==================== MANUAL TRADE ENTRY ====================
@@ -822,7 +962,7 @@ def _get_strategy_labels(trade: ManualTradeEntry) -> tuple:
 
 async def _generate_ai_suggestion_for_trade(trade: dict) -> dict:
     """Generate AI suggestion for a single trade"""
-    _, fetch_stock_quote = _get_server_data()
+    # PHASE 1: fetch_stock_quote now imported from data_provider.py at module level
     
     symbol = trade.get('symbol', '')
     current_price = None

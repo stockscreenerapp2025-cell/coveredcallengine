@@ -1,5 +1,11 @@
 """
 Stocks Routes - Stock data and quote endpoints
+
+PHASE 1 REFACTOR (December 2025):
+- All stock quotes now route through services/data_provider.py
+- Yahoo Finance is primary source, Polygon is backup (via data_provider)
+- MOCK_STOCKS retained for fallback but flagged
+- Mock fallback blocked in production (ENVIRONMENT check)
 """
 from fastapi import APIRouter, Depends, Query, HTTPException
 from datetime import datetime, timedelta
@@ -14,8 +20,10 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from utils.auth import get_current_user
+from utils.environment import allow_mock_data, check_mock_fallback, DataUnavailableError
+from services.data_provider import fetch_stock_quote, fetch_live_stock_quote
 
-# Lazy import yfinance to avoid startup slowdown
+# Lazy import yfinance to avoid startup slowdown (retained for analyst ratings)
 _yf = None
 def get_yfinance():
     global _yf
@@ -24,7 +32,7 @@ def get_yfinance():
         _yf = yf
     return _yf
 
-# Thread pool for yfinance (which is blocking)
+# Thread pool for yfinance (which is blocking) - retained for analyst ratings
 _executor = ThreadPoolExecutor(max_workers=5)
 
 stocks_router = APIRouter(tags=["Stocks"])
@@ -39,70 +47,65 @@ def _get_server_data():
 
 @stocks_router.get("/quote/{symbol}")
 async def get_stock_quote(symbol: str, user: dict = Depends(get_current_user)):
-    """Get stock quote for a symbol"""
+    """
+    Get stock quote for a symbol.
+    
+    PHASE 1 REFACTOR: Now routes through data_provider.py
+    - Primary: Yahoo Finance (via data_provider.fetch_stock_quote)
+    - Backup: Polygon (via data_provider fallback)
+    - Last Resort: MOCK_STOCKS (only in dev/test, blocked in production)
+    """
     MOCK_STOCKS, _, get_massive_api_key, _ = _get_server_data()
     
     symbol = symbol.upper()
     
-    # Try Massive.com API first
+    # Get API key for potential Polygon fallback
     api_key = await get_massive_api_key()
-    if api_key:
-        try:
-            async with httpx.AsyncClient(timeout=30.0) as client:
-                # Massive.com uses apiKey as query parameter (similar to Polygon)
-                # Get previous day aggregates for price data
-                response = await client.get(
-                    f"https://api.polygon.io/v2/aggs/ticker/{symbol}/prev",
-                    params={"apiKey": api_key}
-                )
-                logging.info(f"Stock quote API response for {symbol}: status={response.status_code}")
-                if response.status_code == 200:
-                    data = response.json()
-                    if data.get("results") and len(data["results"]) > 0:
-                        result = data["results"][0]
-                        return {
-                            "symbol": symbol,
-                            "price": result.get("c"),  # close price
-                            "open": result.get("o"),
-                            "high": result.get("h"),
-                            "low": result.get("l"),
-                            "volume": result.get("v"),
-                            "change": round(result.get("c", 0) - result.get("o", 0), 2),
-                            "change_pct": round((result.get("c", 0) - result.get("o", 0)) / result.get("o", 1) * 100, 2) if result.get("o") else 0,
-                            "is_live": True
-                        }
-                
-                # Fallback: try last trade endpoint
-                response = await client.get(
-                    f"https://api.polygon.io/v2/last/trade/{symbol}",
-                    params={"apiKey": api_key}
-                )
-                if response.status_code == 200:
-                    data = response.json()
-                    if data.get("results"):
-                        result = data["results"]
-                        return {
-                            "symbol": symbol,
-                            "price": result.get("p"),  # price
-                            "volume": result.get("s"),  # size
-                            "is_live": True
-                        }
-        except Exception as e:
-            logging.error(f"Massive.com API error: {e}")
     
-    # Fallback to mock data
-    if symbol in MOCK_STOCKS:
-        data = MOCK_STOCKS[symbol]
-        return {
-            "symbol": symbol,
-            "price": data["price"],
-            "change": data["change"],
-            "change_pct": data["change_pct"],
-            "volume": data["volume"],
-            "pe": data["pe"],
-            "roe": data["roe"],
-            "is_mock": True
-        }
+    # Route through centralized data_provider (Yahoo primary, Polygon backup)
+    try:
+        result = await fetch_stock_quote(symbol, api_key)
+        
+        if result and result.get("price", 0) > 0:
+            return {
+                "symbol": symbol,
+                "price": result.get("price"),
+                "previous_close": result.get("previous_close"),
+                "change": result.get("change", 0),
+                "change_pct": result.get("change_pct", 0),
+                "close_date": result.get("close_date"),
+                "source": result.get("source", "yahoo"),
+                "is_live": True
+            }
+    except Exception as e:
+        logging.error(f"data_provider fetch_stock_quote error for {symbol}: {e}")
+    
+    # Check if mock fallback is allowed (raises in production)
+    try:
+        if symbol in MOCK_STOCKS and allow_mock_data():
+            check_mock_fallback(
+                symbol=symbol,
+                reason="YAHOO_AND_POLYGON_UNAVAILABLE",
+                details="Primary and backup data providers failed"
+            )
+            data = MOCK_STOCKS[symbol]
+            logging.warning(f"Using MOCK_STOCKS fallback for {symbol}")
+            return {
+                "symbol": symbol,
+                "price": data["price"],
+                "change": data["change"],
+                "change_pct": data["change_pct"],
+                "volume": data["volume"],
+                "pe": data["pe"],
+                "roe": data["roe"],
+                "is_mock": True  # FLAG: Mock data in use
+            }
+    except DataUnavailableError as e:
+        # Production: return structured unavailability response
+        raise HTTPException(
+            status_code=503,
+            detail=e.to_dict()
+        )
     
     raise HTTPException(status_code=404, detail=f"Stock {symbol} not found")
 
@@ -153,14 +156,77 @@ def _fetch_analyst_ratings(symbol: str) -> dict:
 
 @stocks_router.get("/indices")
 async def get_market_indices(user: dict = Depends(get_current_user)):
-    """Get market indices data"""
-    _, MOCK_INDICES, _, _ = _get_server_data()
-    return MOCK_INDICES
+    """
+    Get LIVE market indices data from Yahoo Finance.
+    
+    Returns latest available data, even after hours or on weekends.
+    Uses Yahoo Finance history() to get the most recent close prices.
+    """
+    yf = get_yfinance()
+    
+    # Index ETFs to track (these trade and have historical data)
+    index_symbols = {
+        "^GSPC": {"name": "S&P 500", "etf": "SPY"},
+        "^IXIC": {"name": "NASDAQ Composite", "etf": "QQQ"},
+        "^DJI": {"name": "Dow Jones", "etf": "DIA"},
+        "^RUT": {"name": "Russell 2000", "etf": "IWM"},
+        "^VIX": {"name": "Volatility Index", "etf": None}
+    }
+    
+    results = {}
+    
+    for symbol, info in index_symbols.items():
+        try:
+            # Use ETF if available (more reliable data), otherwise use index directly
+            ticker_symbol = info.get("etf") or symbol
+            ticker = yf.Ticker(ticker_symbol)
+            
+            # Get last 5 days of history
+            hist = ticker.history(period='5d')
+            
+            if hist.empty:
+                continue
+            
+            # Get latest close and previous close
+            latest_close = hist['Close'].iloc[-1]
+            previous_close = hist['Close'].iloc[-2] if len(hist) > 1 else latest_close
+            close_date = hist.index[-1].strftime('%Y-%m-%d')
+            
+            change = latest_close - previous_close
+            change_pct = (change / previous_close * 100) if previous_close else 0
+            
+            display_symbol = info.get("etf") or symbol.replace("^", "")
+            
+            results[display_symbol] = {
+                "name": info["name"],
+                "symbol": display_symbol,
+                "price": round(float(latest_close), 2),
+                "change": round(float(change), 2),
+                "change_pct": round(float(change_pct), 2),
+                "close_date": close_date,
+                "source": "yahoo_finance"
+            }
+        except Exception as e:
+            logging.warning(f"Could not fetch index data for {symbol}: {e}")
+    
+    # Fallback to mock data if no live data available
+    if not results:
+        _, MOCK_INDICES, _, _ = _get_server_data()
+        return MOCK_INDICES
+    
+    return results
 
 
 @stocks_router.get("/details/{symbol}")
 async def get_stock_details(symbol: str, user: dict = Depends(get_current_user)):
-    """Get comprehensive stock details including news, fundamentals, and ratings"""
+    """
+    Get comprehensive stock details including news, fundamentals, and ratings.
+    
+    PHASE 1 REFACTOR: Stock price now routes through data_provider.py
+    - Primary: Yahoo Finance (via data_provider.fetch_stock_quote)
+    - News/Fundamentals: Still uses Polygon (supplementary data, not core price)
+    - Analyst ratings: Yahoo Finance direct (already was)
+    """
     _, _, get_massive_api_key, get_admin_settings = _get_server_data()
     
     symbol = symbol.upper()
@@ -182,28 +248,30 @@ async def get_stock_details(symbol: str, user: dict = Depends(get_current_user))
     loop = asyncio.get_event_loop()
     analyst_task = loop.run_in_executor(_executor, _fetch_analyst_ratings, symbol)
     
+    # PHASE 1: Get stock price from data_provider (Yahoo primary)
+    try:
+        stock_data = await fetch_stock_quote(symbol, api_key)
+        if stock_data and stock_data.get("price", 0) > 0:
+            result["price"] = stock_data.get("price", 0)
+            result["previous_close"] = stock_data.get("previous_close", 0)
+            result["close_date"] = stock_data.get("close_date")
+            result["is_live"] = True
+            result["price_source"] = stock_data.get("source", "yahoo")
+            
+            # Calculate change from previous close if available
+            prev = stock_data.get("previous_close", 0)
+            if prev and prev > 0:
+                result["change"] = round(stock_data.get("price", 0) - prev, 2)
+                result["change_pct"] = round((result["change"] / prev) * 100, 2)
+    except Exception as e:
+        logging.error(f"data_provider stock quote error for {symbol}: {e}")
+    
+    # Supplementary data from Polygon (news, fundamentals, technicals)
+    # NOTE: This is NOT core price data - kept as supplementary enrichment
     if api_key:
         try:
             async with httpx.AsyncClient(timeout=30.0) as client:
-                # Get current price
-                price_response = await client.get(
-                    f"https://api.polygon.io/v2/aggs/ticker/{symbol}/prev",
-                    params={"apiKey": api_key}
-                )
-                if price_response.status_code == 200:
-                    price_data = price_response.json()
-                    if price_data.get("results"):
-                        r = price_data["results"][0]
-                        result["price"] = r.get("c", 0)
-                        result["open"] = r.get("o", 0)
-                        result["high"] = r.get("h", 0)
-                        result["low"] = r.get("l", 0)
-                        result["volume"] = r.get("v", 0)
-                        result["change"] = round(r.get("c", 0) - r.get("o", 0), 2)
-                        result["change_pct"] = round((r.get("c", 0) - r.get("o", 0)) / r.get("o", 1) * 100, 2) if r.get("o") else 0
-                        result["is_live"] = True
-                
-                # Get ticker details/fundamentals
+                # Get ticker details/fundamentals from Polygon
                 ticker_response = await client.get(
                     f"https://api.polygon.io/v3/reference/tickers/{symbol}",
                     params={"apiKey": api_key}
@@ -223,7 +291,7 @@ async def get_stock_details(symbol: str, user: dict = Depends(get_current_user))
                         "primary_exchange": details.get("primary_exchange", "")
                     }
                 
-                # Get news from Massive.com
+                # Get news from Polygon
                 news_response = await client.get(
                     "https://api.polygon.io/v2/reference/news",
                     params={"apiKey": api_key, "ticker": symbol, "limit": 5}
@@ -293,7 +361,7 @@ async def get_stock_details(symbol: str, user: dict = Depends(get_current_user))
                         }
                 
         except Exception as e:
-            logging.error(f"Stock details error for {symbol}: {e}")
+            logging.error(f"Stock details supplementary data error for {symbol}: {e}")
     
     # Get MarketAux news as supplement
     settings = await get_admin_settings()

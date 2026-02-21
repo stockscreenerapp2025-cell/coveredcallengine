@@ -18,12 +18,21 @@ ARCHITECTURE:
 - Nightly job runs at 4:45 PM ET (after market close)
 - Results stored in MongoDB `precomputed_scans` collection
 - User clicks → instant fetch from DB
+
+SCAN TIMEOUT FIX (December 2025):
+- Bounded concurrency via semaphore (YAHOO_SCAN_MAX_CONCURRENCY)
+- Timeout handling per symbol (YAHOO_TIMEOUT_SECONDS)
+- Retry logic with exponential backoff (YAHOO_MAX_RETRIES)
+- Partial success: failed symbols are logged, scan continues
+- Aggregated stats logging per scan run
 """
 
 import asyncio
 import logging
 import aiohttp
 import httpx
+import pytz
+import uuid
 from datetime import datetime, timezone, timedelta
 from typing import Dict, List, Any, Optional, Tuple
 import yfinance as yf
@@ -31,8 +40,84 @@ import pandas as pd
 import numpy as np
 from concurrent.futures import ThreadPoolExecutor
 
+# Import centralized market status helper
+from .data_provider import is_market_closed
+
+# Import resilient fetch service for scan timeout handling
+from .resilient_fetch import (
+    ResilientYahooFetcher,
+    fetch_with_resilience,
+    get_scan_semaphore,
+    ScanStats,
+    get_resilience_config,
+    YAHOO_SCAN_MAX_CONCURRENCY,
+    YAHOO_TIMEOUT_SECONDS,
+    YAHOO_MAX_RETRIES
+)
+
+# Import universe builder for ETF detection
+from utils.universe import is_etf, get_scan_universe, get_tier_counts
+
+# Import shared pricing rules for global consistency
+from .pricing_rules import (
+    get_sell_price,
+    get_buy_price,
+    validate_pmcc_structure_rules,
+    compute_pmcc_economics
+)
+
+# Import shared yfinance helpers for global consistency
+# ALL underlying price and option chain fetches MUST use these helpers
+from .yf_pricing import (
+    get_underlying_price_yf,
+    get_option_chain_yf,
+    get_all_expirations_yf
+)
+
 # Configure logging
 logger = logging.getLogger(__name__)
+
+# ==================== PMCC DEBUG INSTRUMENTATION ====================
+# Lightweight rejection counters to diagnose "0 results" scenarios.
+# Enables quick visibility into which rule is eliminating candidates.
+from collections import defaultdict
+import json
+
+class RejectStats:
+    def __init__(self, sample_limit: int = 10):
+        self.total = 0
+        self.kept = 0
+        self.reasons = defaultdict(int)
+        self.samples = defaultdict(list)
+        self.sample_limit = sample_limit
+
+    def reject(self, reason: str, sample: Optional[Dict[str, Any]] = None):
+        self.reasons[reason] += 1
+        if sample is not None and len(self.samples[reason]) < self.sample_limit:
+            self.samples[reason].append(sample)
+
+    def keep(self):
+        self.kept += 1
+
+    def summary(self) -> Dict[str, Any]:
+        sorted_reasons = sorted(self.reasons.items(), key=lambda x: x[1], reverse=True)
+        return {
+            "total_candidates": self.total,
+            "kept": self.kept,
+            "rejections_total": max(0, self.total - self.kept),
+            "rejection_reasons": [{"reason": r, "count": c} for r, c in sorted_reasons],
+            "samples": {k: v for k, v in self.samples.items()},
+        }
+
+    def log(self, logger_obj=None, prefix: str = "PMCC_DEBUG"):
+        payload = self.summary()
+        txt = json.dumps(payload, default=str, indent=2)
+        if logger_obj:
+            logger_obj.info(f"{prefix} summary:\n{txt}")
+        else:
+            print(f"{prefix} summary:\n{txt}")
+
+
 
 # Constants
 POLYGON_BASE_URL = "https://api.polygon.io"
@@ -139,7 +224,7 @@ PMCC_PROFILES = {
         "long_dte_max": 730,
         "long_delta_min": 0.70,
         "long_delta_max": 0.80,
-        "long_itm_pct": 0.10,  # ITM >= 10%
+        "long_itm_pct": 0.05,  # ITM >= 10%
         "short_delta_min": 0.20,
         "short_delta_max": 0.30,
         "short_dte_min": 25,
@@ -152,6 +237,7 @@ PMCC_PROFILES = {
         "long_dte_max": 730,
         "long_delta_min": 0.65,
         "long_delta_max": 0.75,
+        "long_itm_pct": 0.05,
         "short_delta_min": 0.30,
         "short_delta_max": 0.40,
         "short_dte_min": 20,
@@ -257,9 +343,15 @@ class PrecomputedScanService:
         """
         Fetch technical indicators for a symbol using Yahoo Finance.
         Returns SMA50, SMA200, RSI14, ATR14, volume data.
+        
+        GLOBAL CONSISTENCY: Uses get_underlying_price_yf() for close price.
         """
         try:
             def _fetch_yahoo():
+                # Import shared helper inside thread to avoid circular imports
+                from .yf_pricing import get_underlying_price_yf
+                from .data_provider import get_market_state
+                
                 ticker = yf.Ticker(symbol)
                 # Get 200 days of history for SMA200
                 hist = ticker.history(period="1y")
@@ -288,9 +380,25 @@ class PrecomputedScanService:
                 # Calculate daily change % for gap detection
                 hist['daily_change_pct'] = hist['Close'].pct_change().abs()
                 
-                # Get latest values
+                # ============================================================
+                # GLOBAL CONSISTENCY: Use shared yf_pricing helper for close
+                # This ensures precomputed uses IDENTICAL price as Dashboard
+                # ============================================================
+                market_state = get_market_state()
+                close, field_used, price_time = get_underlying_price_yf(symbol, market_state)
+                
+                if close is None or close <= 0:
+                    # Fallback to history if helper fails
+                    close = float(hist['Close'].iloc[-1])
+                    field_used = "history_fallback"
+                
+                # Log for verification (NVDA only for debugging)
+                if symbol == "NVDA":
+                    logger.info(f"[PRECOMPUTED_PRICE_CHECK] symbol={symbol} market_state={market_state} "
+                               f"helper_price={close} field_used={field_used} price_time={price_time}")
+                
+                # Get technical indicators from last row (for SMA/RSI/ATR)
                 latest = hist.iloc[-1]
-                close = latest['Close']
                 
                 # Calculate 20-day average volume
                 avg_volume_20d = hist['Volume'].tail(20).mean()
@@ -298,9 +406,11 @@ class PrecomputedScanService:
                 # Check for gaps in last 10 days
                 max_gap_10d = hist['daily_change_pct'].tail(10).max()
                 
+                # NOTE: 'close' comes from shared helper, NOT reassigned here
                 return {
                     "symbol": symbol,
-                    "close": float(close),
+                    "close": float(close),  # From get_underlying_price_yf()
+                    "close_field_used": field_used,  # Track which field was used
                     "sma20": float(latest['SMA20']) if pd.notna(latest['SMA20']) else None,
                     "sma50": float(latest['SMA50']) if pd.notna(latest['SMA50']) else None,
                     "sma200": float(latest['SMA200']) if pd.notna(latest['SMA200']) else None,
@@ -492,28 +602,46 @@ class PrecomputedScanService:
                             if not strike:
                                 continue
                             
-                            # Filter strikes based on moneyness for delta range
-                            moneyness = (strike - current_price) / current_price
+                            # Get IV for Black-Scholes delta calculation
+                            iv_raw = row.get('impliedVolatility', 0)
                             
-                            # Estimate delta based on moneyness
-                            if moneyness <= 0:  # ITM
-                                est_delta = 0.55 + abs(moneyness) * 0.5
-                            else:  # OTM
-                                est_delta = 0.50 - moneyness * 3
-                            est_delta = max(0.10, min(0.90, est_delta))
+                            # Skip if IV is unrealistic
+                            if iv_raw and (iv_raw < 0.01 or iv_raw > 5.0):
+                                iv_raw = 0
+                            
+                            # Calculate delta using Black-Scholes
+                            # (Removed moneyness-based delta fallback for accuracy)
+                            from .greeks_service import calculate_greeks, normalize_iv_fields
+                            
+                            iv_data = normalize_iv_fields(iv_raw)
+                            T = max(dte, 1) / 365.0
+                            
+                            greeks_result = calculate_greeks(
+                                S=current_price,
+                                K=float(strike),
+                                T=T,
+                                sigma=iv_data["iv"] if iv_data["iv"] > 0 else None,
+                                option_type="call"
+                            )
+                            
+                            est_delta = greeks_result.delta
+                            delta_source = greeks_result.delta_source
                             
                             # Filter by delta
                             if est_delta < delta_min or est_delta > delta_max:
                                 continue
                             
-                            # Get premium
-                            last_price = row.get('lastPrice', 0)
+                            # PRICING RULES - SELL leg (covered call):
+                            # - Use BID only
+                            # - If BID is None, 0, or missing → reject the contract
+                            # - Never use: lastPrice, mid, ASK, theoretical price
                             bid = row.get('bid', 0)
                             ask = row.get('ask', 0)
-                            premium = last_price if last_price > 0 else ((bid + ask) / 2 if bid > 0 and ask > 0 else 0)
                             
-                            if premium <= 0:
-                                continue
+                            if not bid or bid <= 0:
+                                continue  # Reject - no valid BID for SELL leg
+                            
+                            premium = bid  # BID only for SELL leg
                             
                             # DATA QUALITY FILTER: Premium sanity check
                             max_reasonable_premium = current_price * 0.20
@@ -526,14 +654,9 @@ class PrecomputedScanService:
                             if premium_yield > 0.50:
                                 continue
                             
-                            # Get IV and OI from Yahoo
-                            iv = row.get('impliedVolatility', 0)
+                            # Get OI and volume from Yahoo
                             oi = row.get('openInterest', 0)
                             volume = row.get('volume', 0)
-                            
-                            # Skip if IV is unrealistic
-                            if iv and (iv < 0.01 or iv > 5.0):
-                                iv = 0
                             
                             # Filter low liquidity options
                             if oi and oi > 0 and oi < 10:
@@ -547,10 +670,18 @@ class PrecomputedScanService:
                                 "dte": dte,
                                 "premium": round(float(premium), 2),
                                 "premium_yield": round(premium_yield, 4),
-                                "delta": round(est_delta, 3),
+                                # Greeks (Black-Scholes)
+                                "delta": round(est_delta, 4),
+                                "delta_source": delta_source,
+                                "gamma": greeks_result.gamma,
+                                "theta": greeks_result.theta,
+                                "vega": greeks_result.vega,
+                                # IV fields (standardized)
+                                "iv": iv_data["iv"],
+                                "iv_pct": iv_data["iv_pct"],
+                                # Liquidity
                                 "volume": int(volume) if volume else 0,
                                 "open_interest": int(oi) if oi else 0,
-                                "iv": float(iv) if iv else 0,
                                 "bid": float(bid) if bid else 0,
                                 "ask": float(ask) if ask else 0
                             })
@@ -652,12 +783,21 @@ class PrecomputedScanService:
                                         except Exception:
                                             pass
                                     
-                                    moneyness = (strike - current_price) / current_price
-                                    if moneyness <= 0:
-                                        est_delta = 0.55 + abs(moneyness) * 0.5
-                                    else:
-                                        est_delta = 0.50 - moneyness * 3
-                                    est_delta = max(0.10, min(0.90, est_delta))
+                                    # Calculate delta using Black-Scholes
+                                    # Note: Polygon doesn't provide IV, so we use proxy sigma
+                                    from .greeks_service import calculate_greeks
+                                    
+                                    T = max(dte, 1) / 365.0
+                                    greeks_result = calculate_greeks(
+                                        S=current_price,
+                                        K=strike,
+                                        T=T,
+                                        sigma=None,  # Will use proxy sigma
+                                        option_type="call"
+                                    )
+                                    
+                                    est_delta = greeks_result.delta
+                                    delta_source = greeks_result.delta_source
                                     
                                     if est_delta < delta_min or est_delta > delta_max:
                                         return None
@@ -665,6 +805,10 @@ class PrecomputedScanService:
                                     close_price = r.get("c", 0)
                                     if close_price <= 0:
                                         return None
+                                    
+                                    # WARNING: Polygon aggregates API returns OHLCV close price, not BID/ASK
+                                    # This is a BACKUP ONLY - Yahoo with BID/ASK is preferred
+                                    # Mark as low confidence since we can't verify BID/ASK
                                     
                                     max_reasonable_premium = current_price * 0.20
                                     if close_price > max_reasonable_premium:
@@ -683,10 +827,18 @@ class PrecomputedScanService:
                                         "dte": dte,
                                         "premium": close_price,
                                         "premium_yield": premium_yield,
-                                        "delta": round(est_delta, 3),
+                                        # Greeks (Black-Scholes with proxy sigma)
+                                        "delta": round(est_delta, 4),
+                                        "delta_source": delta_source,
+                                        "gamma": greeks_result.gamma,
+                                        "theta": greeks_result.theta,
+                                        "vega": greeks_result.vega,
+                                        # IV (not available from Polygon basic)
+                                        "iv": 0.0,
+                                        "iv_pct": 0.0,
+                                        # Liquidity
                                         "volume": r.get("v", 0),
                                         "open_interest": 0,
-                                        "iv": 0.30,
                                         "vwap": r.get("vw", 0)
                                     }
                         except Exception as e:
@@ -810,13 +962,26 @@ class PrecomputedScanService:
         """
         Run a covered call scan for the given risk profile.
         Returns ranked list of opportunities.
+        
+        SCAN TIMEOUT FIX (December 2025):
+        - Uses bounded concurrency via semaphore
+        - Applies timeout/retry to each symbol fetch
+        - Continues on partial failure (logs failed symbols)
+        - Aggregates success/timeout/error counts
         """
         profile = RISK_PROFILES.get(risk_profile, RISK_PROFILES["conservative"])
-        logger.info(f"Starting {risk_profile} covered call scan...")
+        run_id = f"cc_{risk_profile}_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:8]}"
+        
+        logger.info(f"Starting {risk_profile} covered call scan (run_id={run_id})...")
+        logger.info(f"Resilience config: concurrency={YAHOO_SCAN_MAX_CONCURRENCY}, timeout={YAHOO_TIMEOUT_SECONDS}s, retries={YAHOO_MAX_RETRIES}")
         
         # Get symbol universe
         symbols = await self.get_liquid_symbols()
         logger.info(f"Scanning {len(symbols)} symbols for {risk_profile} profile")
+        
+        # Initialize resilient fetcher for this scan
+        fetcher = ResilientYahooFetcher(scan_type=f"covered_call_{risk_profile}", run_id=run_id)
+        fetcher.set_total_symbols(len(symbols))
         
         opportunities = []
         stats = {
@@ -829,21 +994,53 @@ class PrecomputedScanService:
             "failed_options": []
         }
         
-        # Process symbols in batches to manage memory
-        batch_size = 20
+        # Process symbols in batches with bounded concurrency
+        # The semaphore in resilient_fetch limits concurrent Yahoo calls
+        batch_size = 10
         for i in range(0, len(symbols), batch_size):
             batch = symbols[i:i + batch_size]
             
-            # Fetch technical and fundamental data in parallel
-            tech_tasks = [self.fetch_technical_data(s) for s in batch]
-            fund_tasks = [self.fetch_fundamental_data(s) for s in batch]
+            # Fetch technical and fundamental data with resilience
+            # Each call goes through the semaphore and has timeout/retry
+            tech_results = []
+            fund_results = []
             
-            tech_results = await asyncio.gather(*tech_tasks, return_exceptions=True)
-            fund_results = await asyncio.gather(*fund_tasks, return_exceptions=True)
+            for symbol in batch:
+                # Technical data fetch with resilience
+                tech_data = await fetcher.fetch(
+                    symbol,  # For logging
+                    self.fetch_technical_data,
+                    symbol  # Pass symbol as argument to fetch_technical_data
+                )
+                tech_results.append(tech_data)
+                
+                # ================================================================
+                # ETF HANDLING: Skip fundamental fetch for ETFs
+                # ETFs don't have traditional fundamentals (market cap, P/E, EPS)
+                # Fetching would result in 404s or empty data
+                # ================================================================
+                if is_etf(symbol):
+                    # ETF: Use placeholder data, skip fundamental fetch
+                    fund_results.append({"symbol": symbol, "is_etf": True, "fundamentals_skipped": True})
+                    logger.debug(f"ETF_FUNDAMENTALS_SKIPPED | symbol={symbol}")
+                else:
+                    # Stock: Fetch fundamental data with resilience
+                    fund_data = await fetcher.fetch(
+                        symbol,  # For logging
+                        self.fetch_fundamental_data,
+                        symbol  # Pass symbol as argument to fetch_fundamental_data
+                    )
+                    fund_results.append(fund_data)
             
             for j, symbol in enumerate(batch):
-                tech_data = tech_results[j] if not isinstance(tech_results[j], Exception) else None
-                fund_data = fund_results[j] if not isinstance(fund_results[j], Exception) else None
+                tech_data = tech_results[j]
+                fund_data = fund_results[j]
+                symbol_is_etf = is_etf(symbol)
+                
+                # Handle fetch failures gracefully (partial success)
+                if tech_data is None:
+                    stats["failed_technical"].append((symbol, "Fetch failed/timeout"))
+                    continue
                 
                 # Apply technical filters
                 tech_pass, tech_reason = self.passes_technical_filters(tech_data, profile)
@@ -852,16 +1049,33 @@ class PrecomputedScanService:
                     continue
                 stats["passed_technical"] += 1
                 
-                # Apply fundamental filters
-                fund_pass, fund_reason = self.passes_fundamental_filters(fund_data, profile)
-                if not fund_pass:
-                    stats["failed_fundamental"].append((symbol, fund_reason))
-                    continue
-                stats["passed_fundamental"] += 1
+                # ================================================================
+                # ETF HANDLING: Skip fundamental filters for ETFs
+                # ETFs pass fundamental stage automatically
+                # ================================================================
+                if symbol_is_etf:
+                    # ETF: Auto-pass fundamentals
+                    stats["passed_fundamental"] += 1
+                    logger.debug(f"ETF_FUNDAMENTALS_BYPASSED | symbol={symbol}")
+                else:
+                    # Stock: Apply fundamental filters
+                    # Handle fundamental fetch failure
+                    if fund_data is None:
+                        stats["failed_fundamental"].append((symbol, "Fetch failed/timeout"))
+                        continue
+                    
+                    # Apply fundamental filters
+                    fund_pass, fund_reason = self.passes_fundamental_filters(fund_data, profile)
+                    if not fund_pass:
+                        stats["failed_fundamental"].append((symbol, fund_reason))
+                        continue
+                    stats["passed_fundamental"] += 1
                 
-                # Fetch options for survivors only
+                # Fetch options for survivors only (with resilience)
                 current_price = tech_data.get("close", 0)
-                options = await self.fetch_options_for_scan(
+                options = await fetcher.fetch(
+                    symbol,  # For logging
+                    self.fetch_options_for_scan,
                     symbol,
                     current_price,
                     profile["dte_min"],
@@ -871,7 +1085,7 @@ class PrecomputedScanService:
                 )
                 
                 if not options:
-                    stats["failed_options"].append((symbol, "No matching options"))
+                    stats["failed_options"].append((symbol, "No matching options or fetch failed"))
                     continue
                 
                 stats["passed_options"] += 1
@@ -890,12 +1104,13 @@ class PrecomputedScanService:
                     delta_score = 20 - abs(opt["delta"] - 0.30) * 50
                     dte_score = 10 - abs(opt["dte"] - 30) * 0.3
                     
-                    # Fundamental bonus
+                    # Fundamental bonus (ETFs get neutral score since fundamentals skipped)
                     fund_score = 0
-                    if fund_data.get("roe", 0) > 0.15:
-                        fund_score += 5
-                    if fund_data.get("revenue_growth", 0) > 0.10:
-                        fund_score += 5
+                    if not symbol_is_etf:
+                        if fund_data.get("roe", 0) > 0.15:
+                            fund_score += 5
+                        if fund_data.get("revenue_growth", 0) > 0.10:
+                            fund_score += 5
                     
                     total_score = max(0, roi_score + delta_score + dte_score + fund_score)
                     
@@ -915,23 +1130,24 @@ class PrecomputedScanService:
                         "strategy": "covered_call",
                         # Timeframe classification
                         "timeframe": "weekly" if opt["dte"] <= 14 else "monthly",
+                        # ETF flag
+                        "is_etf": symbol_is_etf,
                         # Include technical indicators
                         "sma50": tech_data.get("sma50"),
                         "sma200": tech_data.get("sma200"),
                         "rsi14": tech_data.get("rsi14"),
                         "atr_pct": round(tech_data.get("atr_pct", 0) * 100, 2) if tech_data.get("atr_pct") else None,
-                        # Include fundamental data
-                        "market_cap": fund_data.get("market_cap", 0),
-                        "eps_ttm": fund_data.get("eps_ttm", 0),
-                        "roe": round(fund_data.get("roe", 0) * 100, 1) if fund_data.get("roe") else None,
-                        "debt_to_equity": fund_data.get("debt_to_equity"),
-                        "days_to_earnings": fund_data.get("days_to_earnings"),
-                        "earnings_date": fund_data.get("earnings_date"),
-                        "sector": fund_data.get("sector", ""),
-                        # Include analyst rating
-                        "analyst_rating": fund_data.get("analyst_rating"),
-                        "num_analysts": fund_data.get("num_analysts", 0),
-                        "target_price": fund_data.get("target_price"),
+                        # Include fundamental data (None for ETFs)
+                        "market_cap": fund_data.get("market_cap", 0) if not symbol_is_etf else None,
+                        "eps_ttm": fund_data.get("eps_ttm", 0) if not symbol_is_etf else None,
+                        "roe": round(fund_data.get("roe", 0) * 100, 1) if fund_data.get("roe") and not symbol_is_etf else None,
+                        "debt_to_equity": fund_data.get("debt_to_equity") if not symbol_is_etf else None,
+                        "days_to_earnings": fund_data.get("days_to_earnings") if not symbol_is_etf else None,
+                        "sector": fund_data.get("sector", "") if not symbol_is_etf else "ETF",
+                        # Include analyst rating (None for ETFs)
+                        "analyst_rating": fund_data.get("analyst_rating") if not symbol_is_etf else None,
+                        "num_analysts": fund_data.get("num_analysts", 0) if not symbol_is_etf else None,
+                        "target_price": fund_data.get("target_price") if not symbol_is_etf else None,
                         # Include IV data
                         "iv": opt.get("iv"),
                         "iv_pct": round(opt.get("iv", 0) * 100, 1) if opt.get("iv") else None,
@@ -940,8 +1156,13 @@ class PrecomputedScanService:
                         "iv_rank": round(min(100, opt.get("iv", 0) * 100 * 1.5), 0) if opt.get("iv") else None,
                     })
             
-            # Small delay between batches
-            await asyncio.sleep(0.5)
+            # Inter-batch delay to avoid rate limiting
+            # Reduced since semaphore now controls concurrency
+            await asyncio.sleep(1.0)
+        
+        # Log resilient fetch stats
+        scan_stats = fetcher.get_stats()
+        scan_stats.log_summary()
         
         # Deduplicate: Keep best Weekly + Monthly per symbol
         opportunities = self._dedupe_by_symbol_timeframe(opportunities)
@@ -959,23 +1180,50 @@ class PrecomputedScanService:
     
     def _dedupe_by_symbol_timeframe(self, opportunities: List[Dict]) -> List[Dict]:
         """
-        Deduplicate opportunities: Keep only the best (highest score) 
-        Weekly and Monthly option per symbol.
+        PHASE 3: AI-Based Best Option Selection per Symbol
+        
+        ============================================================
+        IMPORTANT:
+        Scan candidates may include multiple options per symbol.
+        Final output must return ONE best option per symbol,
+        selected by highest AI score.
+        ============================================================
+        
+        Selection Criteria (in order of priority):
+        1. Highest AI score (score field) - Primary
+        2. Highest quality score (quality_score field) - Tie-breaker
+        3. Highest ROI (roi_pct field) - Secondary tie-breaker
         """
-        # Group by symbol and timeframe
-        symbol_timeframe_best = {}
+        if not opportunities:
+            return []
+        
+        # Group by symbol only (not by timeframe)
+        symbol_best = {}
         
         for opp in opportunities:
             symbol = opp["symbol"]
-            timeframe = opp.get("timeframe", "monthly")
-            key = f"{symbol}_{timeframe}"
             
-            if key not in symbol_timeframe_best:
-                symbol_timeframe_best[key] = opp
-            elif opp["score"] > symbol_timeframe_best[key]["score"]:
-                symbol_timeframe_best[key] = opp
+            if symbol not in symbol_best:
+                symbol_best[symbol] = opp
+            else:
+                # Compare: score → quality_score → roi_pct
+                current_best = symbol_best[symbol]
+                
+                # Primary: AI score
+                if opp.get("score", 0) > current_best.get("score", 0):
+                    symbol_best[symbol] = opp
+                elif opp.get("score", 0) == current_best.get("score", 0):
+                    # Tie-breaker 1: quality_score
+                    if opp.get("quality_score", 0) > current_best.get("quality_score", 0):
+                        symbol_best[symbol] = opp
+                    elif opp.get("quality_score", 0) == current_best.get("quality_score", 0):
+                        # Tie-breaker 2: roi_pct
+                        if opp.get("roi_pct", 0) > current_best.get("roi_pct", 0):
+                            symbol_best[symbol] = opp
         
-        return list(symbol_timeframe_best.values())
+        result = list(symbol_best.values())
+        logger.debug(f"PHASE 3: Deduplicated {len(opportunities)} candidates to {len(result)} unique symbols")
+        return result
     
     # ==================== STORAGE ====================
     
@@ -1332,29 +1580,47 @@ class PrecomputedScanService:
                             if strike < current_price * 0.5:
                                 continue  # Too deep ITM
                             
-                            # Estimate delta for ITM calls
-                            moneyness = (current_price - strike) / current_price
-                            est_delta = 0.50 + moneyness * 2
-                            est_delta = max(0.50, min(0.95, est_delta))
+                            # Calculate delta using Black-Scholes
+                            from .greeks_service import calculate_greeks, normalize_iv_fields
+                            
+                            iv_raw = row.get('impliedVolatility', 0)
+                            iv_data = normalize_iv_fields(iv_raw)
+                            T = max(dte, 1) / 365.0
+                            
+                            greeks_result = calculate_greeks(
+                                S=current_price,
+                                K=float(strike),
+                                T=T,
+                                sigma=iv_data["iv"] if iv_data["iv"] > 0 else None,
+                                option_type="call"
+                            )
+                            
+                            est_delta = greeks_result.delta
+                            delta_source = greeks_result.delta_source
                             
                             if est_delta < delta_min or est_delta > delta_max:
                                 continue
                             
-                            # Get premium
-                            last_price = row.get('lastPrice', 0)
+                            # PRICING RULES - BUY leg (PMCC LEAP):
+                            # - Use ASK only
+                            # - If ASK is None, 0, or missing → reject the contract
+                            # - Never use: BID, lastPrice, mid
                             bid = row.get('bid', 0)
                             ask = row.get('ask', 0)
-                            premium = last_price if last_price > 0 else ((bid + ask) / 2 if bid > 0 and ask > 0 else 0)
                             
-                            if premium <= 0:
-                                continue
+                            if not ask or ask <= 0:
+                                continue  # Reject - no valid ASK for BUY leg
+                            
+                            premium = ask  # ASK only for BUY leg
                             
                             # Calculate intrinsic and extrinsic value
                             intrinsic = max(0, current_price - strike)
                             extrinsic = premium - intrinsic
                             
-                            iv = row.get('impliedVolatility', 0)
                             oi = row.get('openInterest', 0)
+                            
+                            # Calculate ITM percentage for display
+                            itm_moneyness = (current_price - float(strike)) / current_price
                             
                             leaps.append({
                                 "contract_ticker": row.get('contractSymbol', ''),
@@ -1363,13 +1629,21 @@ class PrecomputedScanService:
                                 "expiry": exp_str,
                                 "dte": dte,
                                 "premium": round(float(premium), 2),
-                                "delta": round(est_delta, 3),
+                                # Greeks (Black-Scholes)
+                                "delta": round(est_delta, 4),
+                                "delta_source": delta_source,
+                                "gamma": greeks_result.gamma,
+                                "theta": greeks_result.theta,
+                                "vega": greeks_result.vega,
+                                # IV fields (standardized)
+                                "iv": iv_data["iv"],
+                                "iv_pct": iv_data["iv_pct"],
+                                # Other metrics
                                 "intrinsic": round(intrinsic, 2),
                                 "extrinsic": round(extrinsic, 2),
-                                "itm_pct": round(moneyness * 100, 1),
+                                "itm_pct": round(itm_moneyness * 100, 1),
                                 "volume": int(row.get('volume', 0) or 0),
-                                "open_interest": int(oi) if oi else 0,
-                                "iv": float(iv) if iv else 0
+                                "open_interest": int(oi) if oi else 0
                             })
                             
                     except Exception as e:
@@ -1466,10 +1740,20 @@ class PrecomputedScanService:
                                         except Exception:
                                             pass
                                     
-                                    # Estimate delta for ITM calls (higher for deeper ITM)
-                                    moneyness = (current_price - strike) / current_price
-                                    est_delta = 0.50 + moneyness * 2  # Rough estimate
-                                    est_delta = max(0.50, min(0.95, est_delta))
+                                    # Calculate delta using Black-Scholes
+                                    from .greeks_service import calculate_greeks
+                                    
+                                    T = max(dte, 1) / 365.0
+                                    greeks_result = calculate_greeks(
+                                        S=current_price,
+                                        K=float(strike),
+                                        T=T,
+                                        sigma=None,  # Polygon doesn't provide IV
+                                        option_type="call"
+                                    )
+                                    
+                                    est_delta = greeks_result.delta
+                                    delta_source = greeks_result.delta_source
                                     
                                     # Filter by delta
                                     if est_delta < delta_min or est_delta > delta_max:
@@ -1482,19 +1766,30 @@ class PrecomputedScanService:
                                     # Calculate intrinsic and extrinsic value
                                     intrinsic = max(0, current_price - strike)
                                     extrinsic = close_price - intrinsic
+                                    itm_moneyness = (current_price - float(strike)) / current_price
                                     
                                     return {
                                         "contract_ticker": ticker,
                                         "symbol": symbol,
-                                        "strike": strike,
+                                        "strike": float(strike),
                                         "expiry": expiry,
                                         "dte": dte,
-                                        "premium": close_price,
-                                        "delta": round(est_delta, 3),
+                                        "premium": round(close_price, 2),
+                                        # Greeks (Black-Scholes with proxy sigma)
+                                        "delta": round(est_delta, 4),
+                                        "delta_source": delta_source,
+                                        "gamma": greeks_result.gamma,
+                                        "theta": greeks_result.theta,
+                                        "vega": greeks_result.vega,
+                                        # IV (not available from Polygon basic)
+                                        "iv": 0.0,
+                                        "iv_pct": 0.0,
+                                        # Other metrics
                                         "intrinsic": round(intrinsic, 2),
                                         "extrinsic": round(extrinsic, 2),
-                                        "itm_pct": round(moneyness * 100, 1),
+                                        "itm_pct": round(itm_moneyness * 100, 1),
                                         "volume": r.get("v", 0),
+                                        "open_interest": 0
                                     }
                         except Exception as e:
                             logger.debug(f"Error fetching LEAP price for {ticker}: {e}")
@@ -1522,18 +1817,31 @@ class PrecomputedScanService:
         - Long Call (LEAPS): Deep ITM, high delta, long DTE
         - Short Call: OTM, lower delta, shorter DTE
         
+        SCAN TIMEOUT FIX (December 2025):
+        - Uses bounded concurrency via semaphore
+        - Applies timeout/retry to each symbol fetch
+        - Continues on partial failure (logs failed symbols)
+        - Aggregates success/timeout/error counts
+        
         Returns ranked list of PMCC opportunities.
         """
         cc_profile = RISK_PROFILES.get(risk_profile, RISK_PROFILES["conservative"])
         pmcc_profile = PMCC_PROFILES.get(risk_profile, PMCC_PROFILES["conservative"])
+        run_id = f"pmcc_{risk_profile}_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:8]}"
         
-        logger.info(f"Starting {risk_profile} PMCC scan...")
+        logger.info(f"Starting {risk_profile} PMCC scan (run_id={run_id})...")
+        logger.info(f"Resilience config: concurrency={YAHOO_SCAN_MAX_CONCURRENCY}, timeout={YAHOO_TIMEOUT_SECONDS}s, retries={YAHOO_MAX_RETRIES}")
         
         # Get symbol universe
         symbols = await self.get_liquid_symbols()
         logger.info(f"Scanning {len(symbols)} symbols for {risk_profile} PMCC")
         
+        # Initialize resilient fetcher for this scan
+        fetcher = ResilientYahooFetcher(scan_type=f"pmcc_{risk_profile}", run_id=run_id)
+        fetcher.set_total_symbols(len(symbols))
+        
         opportunities = []
+        pmcc_debug = RejectStats(sample_limit=5)
         stats = {
             "total_symbols": len(symbols),
             "passed_technical": 0,
@@ -1542,64 +1850,115 @@ class PrecomputedScanService:
             "has_short_call": 0,
         }
         
-        # Process symbols in batches
-        batch_size = 15
+        # Process symbols in batches with bounded concurrency
+        batch_size = 10
         for i in range(0, len(symbols), batch_size):
             batch = symbols[i:i + batch_size]
             
-            # Fetch technical and fundamental data in parallel
-            tech_tasks = [self.fetch_technical_data(s) for s in batch]
-            fund_tasks = [self.fetch_fundamental_data(s) for s in batch]
+            # Fetch technical and fundamental data with resilience
+            tech_results = []
+            fund_results = []
             
-            tech_results = await asyncio.gather(*tech_tasks, return_exceptions=True)
-            fund_results = await asyncio.gather(*fund_tasks, return_exceptions=True)
+            for symbol in batch:
+                # Technical data fetch with resilience
+                tech_data = await fetcher.fetch(
+                    symbol,  # For logging
+                    self.fetch_technical_data,
+                    symbol
+                )
+                tech_results.append(tech_data)
+                
+                # ================================================================
+                # ETF HANDLING: Skip fundamental fetch for ETFs (same as CC scan)
+                # ================================================================
+                if is_etf(symbol):
+                    fund_results.append({"symbol": symbol, "is_etf": True, "fundamentals_skipped": True})
+                    logger.debug(f"PMCC_ETF_FUNDAMENTALS_SKIPPED | symbol={symbol}")
+                else:
+                    # Fundamental data fetch with resilience
+                    fund_data = await fetcher.fetch(
+                        symbol,  # For logging
+                        self.fetch_fundamental_data,
+                        symbol
+                    )
+                    fund_results.append(fund_data)
             
             for j, symbol in enumerate(batch):
-                tech_data = tech_results[j] if not isinstance(tech_results[j], Exception) else None
-                fund_data = fund_results[j] if not isinstance(fund_results[j], Exception) else None
+                pmcc_debug.total += 1
+                tech_data = tech_results[j]
+                fund_data = fund_results[j]
+                symbol_is_etf = is_etf(symbol)
+                
+                # Handle fetch failures gracefully
+                if tech_data is None:
+                    pmcc_debug.reject("fetch_failed_technical", {"symbol": symbol})
+                    continue
                 
                 # Apply technical filters (same as covered call)
                 tech_pass, _ = self.passes_technical_filters(tech_data, cc_profile)
                 if not tech_pass:
+                    pmcc_debug.reject("fails_technical_filters", {"symbol": symbol, "close": tech_data.get("close")})
                     continue
                 stats["passed_technical"] += 1
                 
-                # Apply fundamental filters
-                fund_pass, _ = self.passes_fundamental_filters(fund_data, cc_profile)
-                if not fund_pass:
-                    continue
-                stats["passed_fundamental"] += 1
+                # ================================================================
+                # ETF HANDLING: Skip fundamental filters for ETFs
+                # ================================================================
+                if symbol_is_etf:
+                    # ETF: Auto-pass fundamentals
+                    stats["passed_fundamental"] += 1
+                    logger.debug(f"PMCC_ETF_FUNDAMENTALS_BYPASSED | symbol={symbol}")
+                else:
+                    # Stock: Apply fundamental filters
+                    # Handle fundamental fetch failure
+                    if fund_data is None:
+                        pmcc_debug.reject("fetch_failed_fundamental", {"symbol": symbol})
+                        continue
+                    
+                    # Apply fundamental filters
+                    fund_pass, _ = self.passes_fundamental_filters(fund_data, cc_profile)
+                    if not fund_pass:
+                        pmcc_debug.reject("fails_fundamental_filters", {"symbol": symbol})
+                        continue
+                    stats["passed_fundamental"] += 1
                 
                 current_price = tech_data.get("close", 0)
                 if current_price <= 0:
+                    pmcc_debug.reject("missing_underlying_price", {"symbol": symbol, "close": current_price})
                     continue
                 
-                # Fetch LEAPS (long leg)
-                leaps = await self.fetch_leaps_options(
+                # Fetch LEAPS (long leg) with resilience
+                leaps = await fetcher.fetch(
+                    symbol,  # For logging
+                    self.fetch_leaps_options,
                     symbol,
                     current_price,
-                    dte_min=pmcc_profile.get("long_dte_min", 180),
-                    dte_max=pmcc_profile.get("long_dte_max", 730),
-                    delta_min=pmcc_profile.get("long_delta_min", 0.65),
-                    delta_max=pmcc_profile.get("long_delta_max", 0.80),
-                    itm_pct=pmcc_profile.get("long_itm_pct", 0.10)
+                    pmcc_profile.get("long_dte_min", 180),
+                    pmcc_profile.get("long_dte_max", 730),
+                    pmcc_profile.get("long_delta_min", 0.65),
+                    pmcc_profile.get("long_delta_max", 0.80),
+                    pmcc_profile.get("long_itm_pct", 0.10)
                 )
                 
                 if not leaps:
+                    pmcc_debug.reject("no_leaps", {"symbol": symbol, "price": current_price})
                     continue
                 stats["has_leaps"] += 1
                 
-                # Fetch short calls
-                short_calls = await self.fetch_options_for_scan(
+                # Fetch short calls with resilience
+                short_calls = await fetcher.fetch(
+                    symbol,  # For logging
+                    self.fetch_options_for_scan,
                     symbol,
                     current_price,
-                    dte_min=pmcc_profile.get("short_dte_min", 20),
-                    dte_max=pmcc_profile.get("short_dte_max", 45),
-                    delta_min=pmcc_profile.get("short_delta_min", 0.20),
-                    delta_max=pmcc_profile.get("short_delta_max", 0.40)
+                    pmcc_profile.get("short_dte_min", 20),
+                    pmcc_profile.get("short_dte_max", 45),
+                    pmcc_profile.get("short_delta_min", 0.20),
+                    pmcc_profile.get("short_delta_max", 0.40)
                 )
                 
                 if not short_calls:
+                    pmcc_debug.reject("no_short_calls", {"symbol": symbol, "price": current_price})
                     continue
                 stats["has_short_call"] += 1
                 
@@ -1607,20 +1966,62 @@ class PrecomputedScanService:
                 best_leap = leaps[0]  # Already sorted by quality
                 best_short = max(short_calls, key=lambda x: x.get("premium_yield", 0))
                 
-                # Calculate PMCC metrics
-                leap_cost = best_leap["premium"] * 100  # Cost to buy LEAP
-                short_premium = best_short["premium"] * 100  # Premium received
-                net_debit = leap_cost - short_premium
+                # ============================================================
+                # GLOBAL CONSISTENCY: Use shared pricing rules
+                # BUY LEAP at ASK, SELL short at BID
+                # ============================================================
+                leap_ask = best_leap["premium"]  # LEAPS use ASK for BUY
+                short_bid = best_short["premium"]  # Short calls use BID for SELL
+                
+                # ============================================================
+                # MANDATORY SAFETY RULES: Solvency + Break-even
+                # These are enforced in precomputed PMCC to match custom PMCC
+                # ============================================================
+                is_valid, structure_flags = validate_pmcc_structure_rules(
+                    long_strike=best_leap["strike"],
+                    short_strike=best_short["strike"],
+                    leap_ask=leap_ask,
+                    short_bid=short_bid
+                )
+                
+                if not is_valid:
+                    # Skip this combination - fails solvency or break-even
+                    # Record which rule(s) rejected so "0 results" can be diagnosed quickly.
+                    pmcc_debug.reject("pmcc_structure_rejected", {"symbol": symbol, "flags": structure_flags})
+                    try:
+                        if isinstance(structure_flags, dict):
+                            for k, v in structure_flags.items():
+                                if v:
+                                    pmcc_debug.reject(f"pmcc_rule_{k}", {"symbol": symbol})
+                        elif isinstance(structure_flags, (list, tuple, set)):
+                            for k in structure_flags:
+                                pmcc_debug.reject(f"pmcc_rule_{k}", {"symbol": symbol})
+                        elif isinstance(structure_flags, str) and structure_flags:
+                            pmcc_debug.reject(f"pmcc_rule_{structure_flags}", {"symbol": symbol})
+                    except Exception:
+                        pass
+                    logger.debug(f"PMCC_STRUCTURE_REJECTED | symbol={symbol} | flags={structure_flags}")
+                    continue
+                
+                # Use shared economics computation for consistency
+                economics = compute_pmcc_economics(
+                    long_strike=best_leap["strike"],
+                    short_strike=best_short["strike"],
+                    leap_ask=leap_ask,
+                    short_bid=short_bid,
+                    current_price=current_price
+                )
+                
+                # Extract computed values
+                net_debit = economics["net_debit"]
+                net_debit_total = economics["net_debit_total"]
+                max_profit = economics["max_profit"]
+                max_profit_total = economics["max_profit_total"]
+                breakeven = economics["breakeven"]
+                capital_efficiency = economics["capital_efficiency"] or 0
                 
                 # ROI on capital deployed (LEAP cost)
-                roi_pct = (short_premium / leap_cost) * 100 if leap_cost > 0 else 0
-                
-                # Max profit = short strike - leap strike + net credit (if any)
-                max_profit_per_share = best_short["strike"] - best_leap["strike"]
-                max_profit = max_profit_per_share * 100
-                
-                # Capital efficiency vs buying stock
-                capital_efficiency = (current_price * 100) / net_debit if net_debit > 0 else 0
+                roi_pct = economics["roi_per_cycle"]
                 
                 # Calculate score
                 score = 0
@@ -1640,24 +2041,29 @@ class PrecomputedScanService:
                     "stock_price": round(current_price, 2),
                     "risk_profile": risk_profile,
                     "strategy": "pmcc",
-                    # Long leg (LEAP)
+                    # Long leg (LEAP) - BUY at ASK
                     "long_strike": best_leap["strike"],
                     "long_expiry": best_leap["expiry"],
                     "long_dte": best_leap["dte"],
-                    "long_premium": round(best_leap["premium"], 2),
+                    "long_premium": round(leap_ask, 2),  # ASK price used for BUY
                     "long_delta": best_leap["delta"],
                     "long_itm_pct": best_leap.get("itm_pct", 0),
-                    # Short leg
+                    # Short leg - SELL at BID
                     "short_strike": best_short["strike"],
                     "short_expiry": best_short["expiry"],
                     "short_dte": best_short["dte"],
-                    "short_premium": round(best_short["premium"], 2),
+                    "short_premium": round(short_bid, 2),  # BID price used for SELL
                     "short_delta": best_short["delta"],
-                    # Combined metrics
+                    # Combined metrics (from shared computation)
                     "net_debit": round(net_debit, 2),
-                    "roi_pct": round(roi_pct, 2),
+                    "net_debit_total": round(net_debit_total, 2),
+                    "width": economics["width"],
                     "max_profit": round(max_profit, 2),
+                    "max_profit_total": round(max_profit_total, 2),
+                    "breakeven": breakeven,
+                    "roi_pct": round(roi_pct, 2),
                     "capital_efficiency": round(capital_efficiency, 1),
+                    "pricing_rule": economics["pricing_rule"],
                     "score": round(score, 1),
                     # Technical indicators
                     "sma50": tech_data.get("sma50"),
@@ -1670,17 +2076,24 @@ class PrecomputedScanService:
                     "roe": round(fund_data.get("roe", 0) * 100, 1) if fund_data.get("roe") else None,
                     "debt_to_equity": fund_data.get("debt_to_equity"),
                     "days_to_earnings": fund_data.get("days_to_earnings"),
-                    "earnings_date": fund_data.get("earnings_date"),
                     "sector": fund_data.get("sector", ""),
                     # Include analyst rating
                     "analyst_rating": fund_data.get("analyst_rating"),
                     "num_analysts": fund_data.get("num_analysts", 0),
                     "target_price": fund_data.get("target_price"),
                 })
+                pmcc_debug.keep()
             
-            await asyncio.sleep(0.5)
+            # Inter-batch delay
+            await asyncio.sleep(1.0)
         
-        # Deduplicate by symbol (keep best)
+        # Log resilient fetch stats
+        scan_stats = fetcher.get_stats()
+        scan_stats.log_summary()
+        
+        # ============================================================
+        # PHASE 3: AI-BASED BEST OPTION SELECTION PER SYMBOL (PMCC)
+        # ============================================================
         symbol_best = {}
         for opp in opportunities:
             symbol = opp["symbol"]
@@ -1696,5 +2109,7 @@ class PrecomputedScanService:
                    f"{stats['passed_fundamental']} passed fund, "
                    f"{stats['has_leaps']} had LEAPS, "
                    f"{stats['has_short_call']} had short calls")
+        pmcc_debug.log(logger_obj=logger, prefix=f"PMCC_DEBUG_{risk_profile}")
+
         
         return opportunities

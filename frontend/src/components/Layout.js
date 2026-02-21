@@ -15,7 +15,8 @@ import {
   X,
   ChevronDown,
   Play,
-  Headphones
+  Headphones,
+  Coins
 } from 'lucide-react';
 import {
   DropdownMenu,
@@ -47,6 +48,7 @@ const Layout = ({ children }) => {
       { path: '/portfolio', icon: <Wallet className="w-5 h-5" />, label: 'Portfolio' },
       { path: '/simulator', icon: <Play className="w-5 h-5" />, label: 'Simulator' },
       { path: '/watchlist', icon: <BookmarkPlus className="w-5 h-5" />, label: 'Watchlist' },
+      { path: '/ai-wallet', icon: <Coins className="w-5 h-5" />, label: 'AI Wallet' },
     );
     
     // Only full admins see the Admin panel

@@ -46,6 +46,7 @@ import {
   PlayCircle,
   History,
   ShieldCheck,
+  ShieldAlert,
   AlertTriangle,
   CheckCircle2,
   LineChart,
@@ -59,7 +60,9 @@ import { toast } from 'sonner';
 import { PieChart, Pie, Cell, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, Legend, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar } from 'recharts';
 
 const STATUS_COLORS = {
-  'active': 'bg-blue-500/20 text-blue-400 border-blue-500/30',
+  'open': 'bg-blue-500/20 text-blue-400 border-blue-500/30',
+  'active': 'bg-blue-500/20 text-blue-400 border-blue-500/30',  // Legacy support
+  'rolled': 'bg-cyan-500/20 text-cyan-400 border-cyan-500/30',
   'closed': 'bg-zinc-500/20 text-zinc-400 border-zinc-500/30',
   'expired': 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30',
   'assigned': 'bg-amber-500/20 text-amber-400 border-amber-500/30'
@@ -145,16 +148,10 @@ const Simulator = () => {
   const [newProfileName, setNewProfileName] = useState('');
   const [savingProfile, setSavingProfile] = useState(false);
   
-  // Income-Optimised Decision Engine State (NEW)
-  const [decisions, setDecisions] = useState([]);
-  const [decisionSummary, setDecisionSummary] = useState(null);
-  const [decisionsLoading, setDecisionsLoading] = useState(false);
-  const [settings, setSettings] = useState(null);
-  const [settingsLoading, setSettingsLoading] = useState(false);
-  const [settingsOpen, setSettingsOpen] = useState(false);
-  const [selectedDecision, setSelectedDecision] = useState(null);
-  const [decisionDetailOpen, setDecisionDetailOpen] = useState(false);
-  const [redeploymentROI, setRedeploymentROI] = useState(null);
+  // Analyzer state (3-Row Structure)
+  const [analyzerData, setAnalyzerData] = useState(null);
+  const [analyzerLoading, setAnalyzerLoading] = useState(false);
+  const [analyzerSymbol, setAnalyzerSymbol] = useState('');
   
   // Filters
   const [statusFilter, setStatusFilter] = useState('');
@@ -189,15 +186,16 @@ const Simulator = () => {
   }, [trades, loading, initialUpdateDone]);
 
   useEffect(() => {
-    if (activeTab === 'decisions') {
-      fetchDecisions();
-      fetchSettings();
+    if (activeTab === 'rules') {
+      fetchRules();
+      fetchTemplates();
     } else if (activeTab === 'logs') {
       fetchActionLogs();
     } else if (activeTab === 'pmcc') {
       fetchPMCCSummary();
     } else if (activeTab === 'analytics') {
       fetchAnalytics();
+      fetchAnalyzerData();
       fetchOptimalSettings();
       fetchProfiles();
     }
@@ -232,53 +230,6 @@ const Simulator = () => {
       setSummary(res.data);
     } catch (error) {
       console.error('Error fetching summary:', error);
-    }
-  };
-
-  // Income-Optimised Decision Functions (NEW)
-  const fetchDecisions = async () => {
-    setDecisionsLoading(true);
-    try {
-      const res = await simulatorApi.getAllDecisions();
-      setDecisions(res.data.decisions || []);
-      setDecisionSummary(res.data.summary || null);
-    } catch (error) {
-      console.error('Error fetching decisions:', error);
-      toast.error('Failed to load decision analysis');
-    } finally {
-      setDecisionsLoading(false);
-    }
-  };
-
-  const fetchSettings = async () => {
-    setSettingsLoading(true);
-    try {
-      const res = await simulatorApi.getSettings();
-      setSettings(res.data);
-    } catch (error) {
-      console.error('Error fetching settings:', error);
-    } finally {
-      setSettingsLoading(false);
-    }
-  };
-
-  const handleUpdateIncomeSettings = async (newSettings) => {
-    try {
-      await simulatorApi.updateIncomeSettings(newSettings);
-      toast.success('Income settings updated');
-      fetchSettings();
-    } catch (error) {
-      toast.error('Failed to update settings');
-    }
-  };
-
-  const handleUpdateFeeSettings = async (newSettings) => {
-    try {
-      await simulatorApi.updateFeeSettings(newSettings);
-      toast.success('Fee settings updated');
-      fetchSettings();
-    } catch (error) {
-      toast.error('Failed to update settings');
     }
   };
 
@@ -349,6 +300,23 @@ const Simulator = () => {
       console.error('Error fetching analytics:', error);
     } finally {
       setAnalyticsLoading(false);
+    }
+  };
+  
+  // Fetch Analyzer data (3-Row Structure)
+  const fetchAnalyzerData = async () => {
+    setAnalyzerLoading(true);
+    try {
+      const res = await simulatorApi.getAnalyzerMetrics({
+        strategy: analyticsStrategy || undefined,
+        symbol: analyzerSymbol || undefined,
+        time_period: analyticsTimeframe
+      });
+      setAnalyzerData(res.data);
+    } catch (err) {
+      console.error('Failed to fetch analyzer data:', err);
+    } finally {
+      setAnalyzerLoading(false);
     }
   };
 
@@ -735,7 +703,8 @@ const Simulator = () => {
               </SelectTrigger>
               <SelectContent className="bg-zinc-900 border-zinc-700">
                 <SelectItem value="all">All Status</SelectItem>
-                <SelectItem value="active">Active</SelectItem>
+                <SelectItem value="open">Open</SelectItem>
+                <SelectItem value="rolled">Rolled</SelectItem>
                 <SelectItem value="closed">Closed</SelectItem>
                 <SelectItem value="expired">Expired</SelectItem>
                 <SelectItem value="assigned">Assigned</SelectItem>
@@ -835,7 +804,14 @@ const Simulator = () => {
                           {trade.current_delta?.toFixed(2) || trade.short_call_delta?.toFixed(2) || '-'}
                         </td>
                         <td className="text-violet-400 font-mono">
-                          {trade.iv ? `${(trade.iv * 100).toFixed(1)}%` : (trade.short_call_iv ? `${(trade.short_call_iv * 100).toFixed(1)}%` : '-')}
+                          {/* IV display: short_call_iv stored as decimal, scan_parameters.iv_pct as percentage */}
+                          {trade.scan_parameters?.iv_pct 
+                            ? `${trade.scan_parameters.iv_pct.toFixed(1)}%`
+                            : trade.short_call_iv 
+                              ? `${(trade.short_call_iv * 100).toFixed(1)}%`
+                              : trade.implied_volatility
+                                ? `${trade.implied_volatility.toFixed(1)}%`
+                                : '-'}
                         </td>
                         <td className="text-amber-400 font-mono">
                           {trade.iv_rank ? `${trade.iv_rank.toFixed(0)}%` : (trade.scan_parameters?.iv_rank ? `${trade.scan_parameters.iv_rank.toFixed(0)}%` : '-')}
@@ -920,648 +896,63 @@ const Simulator = () => {
     </>
   );
 
-  // ==================== INCOME-OPTIMISED DECISIONS TAB (NEW) ====================
-  const renderDecisionsTab = () => (
+  const renderRulesTab = () => {
+    // Group templates by category
+    const categoryOrder = [
+      'premium_harvesting',
+      'expiry_management', 
+      'assignment_awareness',
+      'rolling',
+      'pmcc_specific',
+      'brokerage_aware',
+      'informational',
+      'optional_advanced'
+    ];
+    
+    const categoryLabels = {
+      'premium_harvesting': { label: 'Premium Harvesting', icon: '💰', description: 'No Early Close', color: 'emerald' },
+      'expiry_management': { label: 'Expiry Decisions', icon: '📅', description: 'Primary Controls', color: 'blue' },
+      'assignment_awareness': { label: 'Assignment Awareness', icon: '⚠️', description: 'Alerts Only', color: 'amber' },
+      'rolling': { label: 'Rolling Rules', icon: '🔄', description: 'Core Income Logic', color: 'violet' },
+      'pmcc_specific': { label: 'PMCC-Specific', icon: '📊', description: 'Short Leg Focused', color: 'cyan' },
+      'brokerage_aware': { label: 'Brokerage-Aware', icon: '💸', description: 'Cost Controls', color: 'zinc' },
+      'informational': { label: 'Informational', icon: 'ℹ️', description: 'Non-Action', color: 'zinc' },
+      'optional_advanced': { label: 'Optional/Advanced', icon: '⚙️', description: 'Not Recommended', color: 'red' }
+    };
+    
+    const groupedTemplates = {};
+    templates.forEach(t => {
+      const cat = t.category || 'other';
+      if (!groupedTemplates[cat]) groupedTemplates[cat] = [];
+      groupedTemplates[cat].push(t);
+    });
+    
+    const getActionColor = (action) => {
+      const actionType = action?.action_type || action;
+      switch(actionType) {
+        case 'roll': return 'bg-violet-500/20 text-violet-400 border-violet-500/30';
+        case 'alert': return 'bg-amber-500/20 text-amber-400 border-amber-500/30';
+        case 'hold': return 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30';
+        case 'expire': return 'bg-blue-500/20 text-blue-400 border-blue-500/30';
+        case 'assignment': return 'bg-cyan-500/20 text-cyan-400 border-cyan-500/30';
+        case 'close': return 'bg-red-500/20 text-red-400 border-red-500/30';
+        case 'suggest': return 'bg-indigo-500/20 text-indigo-400 border-indigo-500/30';
+        case 'prompt': return 'bg-pink-500/20 text-pink-400 border-pink-500/30';
+        default: return 'bg-zinc-500/20 text-zinc-400 border-zinc-500/30';
+      }
+    };
+
+    return (
     <div className="space-y-6">
-      {/* Decisions Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <h2 className="text-xl font-semibold text-white flex items-center gap-2">
-            <Target className="w-5 h-5 text-emerald-400" />
-            Income-Optimised Decision Analysis
-          </h2>
-          <p className="text-zinc-400 text-sm mt-1">
-            Evaluate whether to hold, roll, close, or redeploy capital based on ROI efficiency
-          </p>
-        </div>
-        <div className="flex gap-2">
-          <Button
-            variant="outline"
-            onClick={fetchDecisions}
-            disabled={decisionsLoading}
-            className="btn-outline"
-            data-testid="refresh-decisions-btn"
-          >
-            <RefreshCw className={`w-4 h-4 mr-2 ${decisionsLoading ? 'animate-spin' : ''}`} />
-            Refresh
-          </Button>
-          <Button
-            variant="outline"
-            onClick={() => setSettingsOpen(true)}
-            className="btn-outline"
-            data-testid="settings-btn"
-          >
-            <Settings className="w-4 h-4 mr-2" />
-            Settings
-          </Button>
-        </div>
-      </div>
-
-      {/* Decision Summary Cards */}
-      {decisionSummary && (
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-          <Card className="glass-card p-4">
-            <div className="flex items-center gap-2 text-zinc-400 text-xs mb-1">
-              <Activity className="w-3 h-3" />
-              Active Trades
-            </div>
-            <div className="text-2xl font-bold text-white">{decisionSummary.total}</div>
-          </Card>
-          <Card className="glass-card p-4">
-            <div className="flex items-center gap-2 text-emerald-400 text-xs mb-1">
-              <CheckCircle2 className="w-3 h-3" />
-              Hold
-            </div>
-            <div className="text-2xl font-bold text-emerald-400">{decisionSummary.hold}</div>
-          </Card>
-          <Card className="glass-card p-4">
-            <div className="flex items-center gap-2 text-amber-400 text-xs mb-1">
-              <AlertTriangle className="w-3 h-3" />
-              Action Required
-            </div>
-            <div className="text-2xl font-bold text-amber-400">{decisionSummary.action_required}</div>
-          </Card>
-          <Card className="glass-card p-4">
-            <div className="flex items-center gap-2 text-cyan-400 text-xs mb-1">
-              <TrendingUp className="w-3 h-3" />
-              Close Recommended
-            </div>
-            <div className="text-2xl font-bold text-cyan-400">{decisionSummary.close_recommended}</div>
-          </Card>
-          <Card className="glass-card p-4">
-            <div className="flex items-center gap-2 text-violet-400 text-xs mb-1">
-              <RefreshCw className="w-3 h-3" />
-              Roll Recommended
-            </div>
-            <div className="text-2xl font-bold text-violet-400">{decisionSummary.roll_recommended}</div>
-          </Card>
-        </div>
-      )}
-
-      {/* Decisions List */}
-      <Card className="glass-card" data-testid="decisions-list-card">
-        <CardHeader className="pb-2">
-          <CardTitle className="flex items-center gap-2">
-            <Lightbulb className="w-5 h-5 text-amber-400" />
-            Trade Decisions
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          {decisionsLoading ? (
-            <div className="space-y-3">
-              {[1,2,3].map(i => <Skeleton key={i} className="h-24 bg-zinc-800" />)}
-            </div>
-          ) : decisions.length === 0 ? (
-            <div className="text-center py-8">
-              <AlertCircle className="w-12 h-12 text-zinc-600 mx-auto mb-3" />
-              <p className="text-zinc-400 text-sm">No active trades to analyze</p>
-              <p className="text-zinc-500 text-xs mt-1">Add trades from the Screener to see decision analysis</p>
-            </div>
-          ) : (
-            <div className="space-y-3">
-              {decisions.map((decision, idx) => (
-                <div 
-                  key={idx}
-                  className="p-4 bg-zinc-800/50 rounded-lg border border-zinc-700/50 hover:border-violet-500/30 transition-colors cursor-pointer"
-                  onClick={() => {
-                    setSelectedDecision(decision);
-                    setDecisionDetailOpen(true);
-                  }}
-                  data-testid={`decision-row-${decision.symbol}`}
-                >
-                  <div className="flex items-start justify-between">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-3 mb-2">
-                        <span className="font-bold text-white text-lg">{decision.symbol}</span>
-                        <Badge className={STRATEGY_COLORS[decision.strategy_type]}>
-                          {decision.strategy_type === 'covered_call' ? 'CC' : 'PMCC'}
-                        </Badge>
-                        <Badge className={
-                          decision.recommendation === 'hold' 
-                            ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30'
-                            : decision.recommendation === 'expire_worthless'
-                              ? 'bg-green-500/20 text-green-400 border-green-500/30'
-                              : decision.recommendation === 'accept_assignment'
-                                ? 'bg-blue-500/20 text-blue-400 border-blue-500/30'
-                                : decision.recommendation.includes('close') 
-                                  ? 'bg-cyan-500/20 text-cyan-400 border-cyan-500/30'
-                                  : decision.recommendation.includes('roll')
-                                    ? 'bg-violet-500/20 text-violet-400 border-violet-500/30'
-                                    : 'bg-amber-500/20 text-amber-400 border-amber-500/30'
-                        }>
-                          {decision.recommendation.replace(/_/g, ' ').toUpperCase()}
-                        </Badge>
-                      </div>
-                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-                        <div>
-                          <span className="text-zinc-500">Premium Captured</span>
-                          <p className={`font-medium ${decision.current_metrics?.premium_captured_pct >= 80 ? 'text-emerald-400' : 'text-white'}`}>
-                            {decision.current_metrics?.premium_captured_pct?.toFixed(1)}%
-                          </p>
-                        </div>
-                        <div>
-                          <span className="text-zinc-500">DTE Remaining</span>
-                          <p className={`font-medium ${decision.current_metrics?.dte_remaining <= 7 ? 'text-red-400' : decision.current_metrics?.dte_remaining <= 14 ? 'text-amber-400' : 'text-white'}`}>
-                            {decision.current_metrics?.dte_remaining} days
-                          </p>
-                        </div>
-                        <div>
-                          <span className="text-zinc-500">ROI/Day (Current)</span>
-                          <p className="font-medium text-cyan-400">
-                            {decision.current_metrics?.current_roi_per_day?.toFixed(3)}%
-                          </p>
-                        </div>
-                        <div>
-                          <span className="text-zinc-500">ROI/Day (Redeploy)</span>
-                          <p className="font-medium text-violet-400">
-                            {decision.redeployment?.expected_roi_per_day?.toFixed(3)}%
-                          </p>
-                        </div>
-                      </div>
-                      {decision.rules_triggered?.length > 0 && (
-                        <div className="mt-3 flex flex-wrap gap-2">
-                          {decision.rules_triggered.slice(0, 3).map((rule, ridx) => (
-                            <Badge 
-                              key={ridx}
-                              variant="outline"
-                              className={
-                                rule.severity === 'high' 
-                                  ? 'text-red-400 border-red-500/30'
-                                  : rule.severity === 'medium'
-                                    ? 'text-amber-400 border-amber-500/30'
-                                    : 'text-zinc-400 border-zinc-500/30'
-                              }
-                            >
-                              {rule.rule.replace('_', ' ')}
-                            </Badge>
-                          ))}
-                          {decision.rules_triggered.length > 3 && (
-                            <Badge variant="outline" className="text-zinc-500">
-                              +{decision.rules_triggered.length - 3} more
-                            </Badge>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                    <ChevronRight className="w-5 h-5 text-zinc-500" />
-                  </div>
-                  <p className="text-xs text-zinc-500 mt-2 italic">
-                    {decision.recommendation_reason}
-                  </p>
-                </div>
-              ))}
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Decision Detail Modal */}
-      <Dialog open={decisionDetailOpen} onOpenChange={setDecisionDetailOpen}>
-        <DialogContent className="bg-zinc-900 border-zinc-800 max-w-2xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Target className="w-5 h-5 text-emerald-400" />
-              Decision Analysis: {selectedDecision?.symbol}
-            </DialogTitle>
-          </DialogHeader>
-          
-          {selectedDecision && (
-            <div className="space-y-6">
-              {/* Recommendation */}
-              <div className="p-4 rounded-lg bg-zinc-800/50 border border-zinc-700">
-                <h4 className="font-medium text-white mb-2">Recommendation</h4>
-                <Badge className={`text-lg px-3 py-1 ${
-                  selectedDecision.recommendation === 'hold' 
-                    ? 'bg-emerald-500/20 text-emerald-400'
-                    : selectedDecision.recommendation.includes('close') 
-                      ? 'bg-cyan-500/20 text-cyan-400'
-                      : 'bg-amber-500/20 text-amber-400'
-                }`}>
-                  {selectedDecision.recommendation.replace('_', ' ').toUpperCase()}
-                </Badge>
-                <p className="text-zinc-400 text-sm mt-2">{selectedDecision.recommendation_reason}</p>
-              </div>
-
-              {/* Current Metrics */}
-              <div>
-                <h4 className="font-medium text-white mb-3">Current Trade Metrics</h4>
-                <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                  <div className="p-3 bg-zinc-800/50 rounded-lg">
-                    <span className="text-xs text-zinc-500">Premium Captured</span>
-                    <p className="text-lg font-bold text-emerald-400">
-                      {selectedDecision.current_metrics?.premium_captured_pct?.toFixed(1)}%
-                    </p>
-                  </div>
-                  <div className="p-3 bg-zinc-800/50 rounded-lg">
-                    <span className="text-xs text-zinc-500">DTE Remaining</span>
-                    <p className="text-lg font-bold text-white">
-                      {selectedDecision.current_metrics?.dte_remaining}d
-                    </p>
-                  </div>
-                  <div className="p-3 bg-zinc-800/50 rounded-lg">
-                    <span className="text-xs text-zinc-500">Days Held</span>
-                    <p className="text-lg font-bold text-white">
-                      {selectedDecision.current_metrics?.days_held}d
-                    </p>
-                  </div>
-                  <div className="p-3 bg-zinc-800/50 rounded-lg">
-                    <span className="text-xs text-zinc-500">Current Delta</span>
-                    <p className="text-lg font-bold text-white">
-                      {selectedDecision.current_metrics?.current_delta?.toFixed(3)}
-                    </p>
-                  </div>
-                  <div className="p-3 bg-zinc-800/50 rounded-lg">
-                    <span className="text-xs text-zinc-500">Unrealized P&L</span>
-                    <p className={`text-lg font-bold ${selectedDecision.current_metrics?.unrealized_pnl >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                      ${selectedDecision.current_metrics?.unrealized_pnl?.toFixed(2)}
-                    </p>
-                  </div>
-                  <div className="p-3 bg-zinc-800/50 rounded-lg">
-                    <span className="text-xs text-zinc-500">Total ROI</span>
-                    <p className="text-lg font-bold text-cyan-400">
-                      {selectedDecision.current_metrics?.current_roi_total_pct?.toFixed(2)}%
-                    </p>
-                  </div>
-                </div>
-              </div>
-
-              {/* ROI Comparison */}
-              <div>
-                <h4 className="font-medium text-white mb-3">ROI Efficiency Comparison</h4>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="p-4 bg-cyan-500/10 border border-cyan-500/30 rounded-lg">
-                    <span className="text-xs text-cyan-400">Current ROI/Day</span>
-                    <p className="text-2xl font-bold text-cyan-400">
-                      {selectedDecision.current_metrics?.current_roi_per_day?.toFixed(4)}%
-                    </p>
-                  </div>
-                  <div className="p-4 bg-violet-500/10 border border-violet-500/30 rounded-lg">
-                    <span className="text-xs text-violet-400">Redeployment ROI/Day</span>
-                    <p className="text-2xl font-bold text-violet-400">
-                      {selectedDecision.redeployment?.expected_roi_per_day?.toFixed(4)}%
-                    </p>
-                    <span className="text-xs text-zinc-500">
-                      Source: {selectedDecision.redeployment?.source} ({selectedDecision.redeployment?.confidence} confidence)
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Roll Economics (NEW) */}
-              {selectedDecision.roll_economics && (
-                <div>
-                  <h4 className="font-medium text-white mb-3">Roll Economics Analysis</h4>
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                    <div className="p-3 bg-zinc-800/50 rounded-lg">
-                      <span className="text-xs text-zinc-500">Cost to Close</span>
-                      <p className="text-lg font-bold text-red-400">
-                        -${selectedDecision.roll_economics.cost_to_close?.toFixed(2)}
-                      </p>
-                    </div>
-                    <div className="p-3 bg-zinc-800/50 rounded-lg">
-                      <span className="text-xs text-zinc-500">New Premium</span>
-                      <p className="text-lg font-bold text-emerald-400">
-                        +${selectedDecision.roll_economics.new_premium_value?.toFixed(2)}
-                      </p>
-                    </div>
-                    <div className="p-3 bg-zinc-800/50 rounded-lg">
-                      <span className="text-xs text-zinc-500">Roll Fees</span>
-                      <p className="text-lg font-bold text-amber-400">
-                        -${selectedDecision.roll_economics.roll_fees?.toFixed(2)}
-                      </p>
-                    </div>
-                    <div className="p-3 bg-zinc-800/50 rounded-lg">
-                      <span className="text-xs text-zinc-500">Net Roll Value</span>
-                      <p className={`text-lg font-bold ${selectedDecision.roll_economics.net_roll_value >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                        ${selectedDecision.roll_economics.net_roll_value?.toFixed(2)}
-                      </p>
-                    </div>
-                  </div>
-                  <div className="mt-3 p-3 bg-zinc-800/50 rounded-lg flex justify-between items-center">
-                    <div>
-                      <span className="text-zinc-400">Roll vs Expire Comparison</span>
-                      <p className="text-xs text-zinc-500">
-                        Expire value: ${selectedDecision.roll_economics.expire_value?.toFixed(2)} | 
-                        Roll net: ${selectedDecision.roll_economics.net_roll_value?.toFixed(2)}
-                      </p>
-                    </div>
-                    <Badge className={selectedDecision.roll_economics.roll_justified 
-                      ? 'bg-emerald-500/20 text-emerald-400' 
-                      : 'bg-zinc-500/20 text-zinc-400'
-                    }>
-                      {selectedDecision.roll_economics.roll_justified ? 'Roll Justified' : 'Roll Not Justified'}
-                    </Badge>
-                  </div>
-                </div>
-              )}
-
-              {/* Assignment Analysis (NEW) */}
-              {selectedDecision.assignment_analysis && (
-                <div>
-                  <h4 className="font-medium text-white mb-3">Assignment Analysis</h4>
-                  <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                    <div className="p-3 bg-blue-500/10 border border-blue-500/30 rounded-lg">
-                      <span className="text-xs text-blue-400">Assignment Profit</span>
-                      <p className="text-lg font-bold text-blue-400">
-                        ${selectedDecision.assignment_analysis.assignment_profit?.toFixed(2)}
-                      </p>
-                    </div>
-                    <div className="p-3 bg-blue-500/10 border border-blue-500/30 rounded-lg">
-                      <span className="text-xs text-blue-400">Assignment ROI</span>
-                      <p className="text-lg font-bold text-blue-400">
-                        {selectedDecision.assignment_analysis.assignment_roi_pct?.toFixed(2)}%
-                      </p>
-                    </div>
-                    <div className="p-3 bg-violet-500/10 border border-violet-500/30 rounded-lg">
-                      <span className="text-xs text-violet-400">CSP ROI/Week Est.</span>
-                      <p className="text-lg font-bold text-violet-400">
-                        {selectedDecision.assignment_analysis.csp_roi_per_week_estimate?.toFixed(3)}%
-                      </p>
-                    </div>
-                  </div>
-                  <p className="text-xs text-zinc-500 mt-2">
-                    After assignment, continue income cycle by selling Cash-Secured Put (CSP) at same strike.
-                  </p>
-                </div>
-              )}
-
-              {/* Scenario Comparison */}
-              <div>
-                <h4 className="font-medium text-white mb-3">Scenario Comparison</h4>
-                <div className="space-y-2">
-                  {selectedDecision.comparison && Object.entries(selectedDecision.comparison).map(([key, scenario]) => (
-                    <div key={key} className={`p-3 rounded-lg flex justify-between items-center ${
-                      scenario.recommended ? 'bg-emerald-500/10 border border-emerald-500/30' : 'bg-zinc-800/50'
-                    }`}>
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <span className="font-medium text-white">
-                            {key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
-                          </span>
-                          {scenario.recommended && (
-                            <Badge className="bg-emerald-500/20 text-emerald-400 text-xs">Recommended</Badge>
-                          )}
-                        </div>
-                        <p className="text-xs text-zinc-500">{scenario.description}</p>
-                      </div>
-                      <span className={`text-lg font-bold ${scenario.value >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                        ${scenario.value?.toFixed(2)}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* Rules Triggered */}
-              {selectedDecision.rules_triggered?.length > 0 && (
-                <div>
-                  <h4 className="font-medium text-white mb-3">Rules Triggered</h4>
-                  <div className="space-y-2">
-                    {selectedDecision.rules_triggered.map((rule, idx) => (
-                      <div 
-                        key={idx}
-                        className={`p-3 rounded-lg border ${
-                          rule.severity === 'high' 
-                            ? 'bg-red-500/10 border-red-500/30'
-                            : rule.severity === 'medium'
-                              ? 'bg-amber-500/10 border-amber-500/30'
-                              : rule.severity === 'info'
-                                ? 'bg-blue-500/10 border-blue-500/30'
-                                : 'bg-zinc-800/50 border-zinc-700/50'
-                        }`}
-                      >
-                        <div className="flex items-center justify-between">
-                          <span className="font-medium text-white">
-                            {rule.rule.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
-                          </span>
-                          <Badge className={
-                            rule.severity === 'high' ? 'bg-red-500/20 text-red-400' :
-                            rule.severity === 'medium' ? 'bg-amber-500/20 text-amber-400' :
-                            rule.severity === 'info' ? 'bg-blue-500/20 text-blue-400' :
-                            'bg-zinc-500/20 text-zinc-400'
-                          }>
-                            {rule.severity}
-                          </Badge>
-                        </div>
-                        <p className="text-sm text-zinc-400 mt-1">{rule.message}</p>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Fees */}
-              <div className="p-3 bg-zinc-800/50 rounded-lg">
-                <div className="flex items-center justify-between">
-                  <span className="text-zinc-400">Transaction Fees (Round-trip)</span>
-                  <span className="text-white font-medium">${selectedDecision.fees?.round_trip?.toFixed(2)}</span>
-                </div>
-              </div>
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
-
-      {/* Settings Modal */}
-      <Dialog open={settingsOpen} onOpenChange={setSettingsOpen}>
-        <DialogContent className="bg-zinc-900 border-zinc-800 max-w-lg">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Settings className="w-5 h-5 text-violet-400" />
-              Income Optimization Settings
-            </DialogTitle>
-          </DialogHeader>
-          
-          {settings && (
-            <div className="space-y-6">
-              {/* Fee Settings */}
-              <div>
-                <h4 className="font-medium text-white mb-3">Transaction Fees</h4>
-                <div className="space-y-3">
-                  <div>
-                    <Label className="text-zinc-400 text-sm">Per Contract Fee ($)</Label>
-                    <Input
-                      type="number"
-                      step="0.01"
-                      value={settings.fee_settings?.per_contract_fee || 0.65}
-                      onChange={(e) => setSettings(prev => ({
-                        ...prev,
-                        fee_settings: { ...prev.fee_settings, per_contract_fee: parseFloat(e.target.value) }
-                      }))}
-                      className="bg-zinc-800 border-zinc-700 text-white mt-1"
-                    />
-                  </div>
-                  <div>
-                    <Label className="text-zinc-400 text-sm">Base Commission ($)</Label>
-                    <Input
-                      type="number"
-                      step="0.01"
-                      value={settings.fee_settings?.base_commission || 0}
-                      onChange={(e) => setSettings(prev => ({
-                        ...prev,
-                        fee_settings: { ...prev.fee_settings, base_commission: parseFloat(e.target.value) }
-                      }))}
-                      className="bg-zinc-800 border-zinc-700 text-white mt-1"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {/* Income Settings */}
-              <div>
-                <h4 className="font-medium text-white mb-3">Income Optimization</h4>
-                <div className="space-y-3">
-                  <div>
-                    <Label className="text-zinc-400 text-sm">Target ROI per Week (%)</Label>
-                    <Input
-                      type="number"
-                      step="0.1"
-                      value={settings.income_settings?.target_roi_per_week || 1.5}
-                      onChange={(e) => setSettings(prev => ({
-                        ...prev,
-                        income_settings: { ...prev.income_settings, target_roi_per_week: parseFloat(e.target.value) }
-                      }))}
-                      className="bg-zinc-800 border-zinc-700 text-white mt-1"
-                    />
-                    <p className="text-xs text-zinc-500 mt-1">Fallback ROI target when scan/history unavailable</p>
-                  </div>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <Label className="text-zinc-400 text-sm">Premium Exit Threshold (%)</Label>
-                      <Input
-                        type="number"
-                        value={settings.income_settings?.premium_exit_threshold || 80}
-                        onChange={(e) => setSettings(prev => ({
-                          ...prev,
-                          income_settings: { ...prev.income_settings, premium_exit_threshold: parseFloat(e.target.value) }
-                        }))}
-                        className="bg-zinc-800 border-zinc-700 text-white mt-1"
-                      />
-                    </div>
-                    <div>
-                      <Label className="text-zinc-400 text-sm">Auto-Exit Threshold (%)</Label>
-                      <Input
-                        type="number"
-                        value={settings.income_settings?.premium_auto_exit || 90}
-                        onChange={(e) => setSettings(prev => ({
-                          ...prev,
-                          income_settings: { ...prev.income_settings, premium_auto_exit: parseFloat(e.target.value) }
-                        }))}
-                        className="bg-zinc-800 border-zinc-700 text-white mt-1"
-                      />
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <Label className="text-zinc-400 text-sm">DTE Warning</Label>
-                      <Input
-                        type="number"
-                        value={settings.income_settings?.dte_warning_threshold || 14}
-                        onChange={(e) => setSettings(prev => ({
-                          ...prev,
-                          income_settings: { ...prev.income_settings, dte_warning_threshold: parseInt(e.target.value) }
-                        }))}
-                        className="bg-zinc-800 border-zinc-700 text-white mt-1"
-                      />
-                    </div>
-                    <div>
-                      <Label className="text-zinc-400 text-sm">DTE Force Decision</Label>
-                      <Input
-                        type="number"
-                        value={settings.income_settings?.dte_force_decision || 7}
-                        onChange={(e) => setSettings(prev => ({
-                          ...prev,
-                          income_settings: { ...prev.income_settings, dte_force_decision: parseInt(e.target.value) }
-                        }))}
-                        className="bg-zinc-800 border-zinc-700 text-white mt-1"
-                      />
-                    </div>
-                  </div>
-                  <div>
-                    <Label className="text-zinc-400 text-sm">Min Improvement Multiplier (× fees)</Label>
-                    <Input
-                      type="number"
-                      step="0.1"
-                      value={settings.income_settings?.min_improvement_multiplier || 2}
-                      onChange={(e) => setSettings(prev => ({
-                        ...prev,
-                        income_settings: { ...prev.income_settings, min_improvement_multiplier: parseFloat(e.target.value) }
-                      }))}
-                      className="bg-zinc-800 border-zinc-700 text-white mt-1"
-                    />
-                    <p className="text-xs text-zinc-500 mt-1">Only recommend action if improvement ≥ this × fees</p>
-                  </div>
-                </div>
-              </div>
-
-              {/* PMCC Settings */}
-              <div>
-                <h4 className="font-medium text-white mb-3">PMCC Safety Rules</h4>
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <Label className="text-zinc-400 text-sm">Width Protection (%)</Label>
-                    <Input
-                      type="number"
-                      value={settings.income_settings?.pmcc_width_protection_pct || 25}
-                      onChange={(e) => setSettings(prev => ({
-                        ...prev,
-                        income_settings: { ...prev.income_settings, pmcc_width_protection_pct: parseFloat(e.target.value) }
-                      }))}
-                      className="bg-zinc-800 border-zinc-700 text-white mt-1"
-                    />
-                  </div>
-                  <div>
-                    <Label className="text-zinc-400 text-sm">LEAPS Min DTE</Label>
-                    <Input
-                      type="number"
-                      value={settings.income_settings?.pmcc_leaps_min_dte || 180}
-                      onChange={(e) => setSettings(prev => ({
-                        ...prev,
-                        income_settings: { ...prev.income_settings, pmcc_leaps_min_dte: parseInt(e.target.value) }
-                      }))}
-                      className="bg-zinc-800 border-zinc-700 text-white mt-1"
-                    />
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-          
-          <DialogFooter className="mt-6">
-            <Button variant="outline" onClick={() => setSettingsOpen(false)} className="btn-outline">
-              Cancel
-            </Button>
-            <Button 
-              onClick={async () => {
-                if (settings) {
-                  await handleUpdateFeeSettings(settings.fee_settings);
-                  await handleUpdateIncomeSettings(settings.income_settings);
-                  setSettingsOpen(false);
-                }
-              }}
-              className="bg-violet-600 hover:bg-violet-700 text-white"
-            >
-              <Save className="w-4 h-4 mr-2" />
-              Save Settings
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    </div>
-  );
-
-  // Legacy Rules Tab (hidden from UI, preserved for future use)
-  const renderRulesTab = () => (
-    <div className="space-y-6">
-      {/* Rules Header */}
+      {/* Rules Header - Updated Philosophy */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h2 className="text-xl font-semibold text-white flex items-center gap-2">
             <Settings className="w-5 h-5 text-violet-400" />
-            Trade Management Rules
+            Income Strategy Trade Management
           </h2>
           <p className="text-zinc-400 text-sm mt-1">
-            Automate trade decisions based on conditions like premium capture, delta, or loss thresholds
+            Trades are managed, not closed. Rolling and assignment logic drive decisions—not stop-losses.
           </p>
         </div>
         <div className="flex gap-2">
@@ -1587,57 +978,109 @@ const Simulator = () => {
         </div>
       </div>
 
-      {/* Templates Section */}
-      <Card className="glass-card">
-        <CardHeader className="pb-2">
-          <CardTitle className="text-sm flex items-center gap-2">
-            <Copy className="w-4 h-4 text-cyan-400" />
-            Quick Start Templates
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-3">
-            {templates.map(template => (
-              <div 
-                key={template.id}
-                className="p-3 bg-zinc-800/50 rounded-lg border border-zinc-700/50 hover:border-violet-500/50 transition-colors"
-              >
-                <div className="flex items-start justify-between">
-                  <div>
-                    <h4 className="font-medium text-white text-sm">{template.name}</h4>
-                    <p className="text-xs text-zinc-400 mt-1">{template.description}</p>
-                    <div className="flex items-center gap-2 mt-2">
-                      <Badge className={template.action.action_type === 'roll' ? 'bg-violet-500/20 text-violet-400' : template.action.action_type === 'close' ? 'bg-amber-500/20 text-amber-400' : 'bg-blue-500/20 text-blue-400'}>
-                        {template.action.action_type}
-                      </Badge>
-                      {template.strategy_type && (
-                        <Badge className={STRATEGY_COLORS[template.strategy_type]}>
-                          {template.strategy_type === 'covered_call' ? 'CC' : 'PMCC'}
-                        </Badge>
-                      )}
-                    </div>
-                  </div>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => handleCreateFromTemplate(template.id)}
-                    className="text-cyan-400 hover:text-cyan-300"
-                  >
-                    <Plus className="w-4 h-4" />
-                  </Button>
-                </div>
-              </div>
-            ))}
+      {/* Income Strategy Philosophy Banner */}
+      <Card className="glass-card border-violet-500/30 bg-violet-950/20">
+        <CardContent className="py-4">
+          <div className="flex items-start gap-3">
+            <div className="p-2 bg-violet-500/20 rounded-lg">
+              <TrendingUp className="w-5 h-5 text-violet-400" />
+            </div>
+            <div>
+              <h3 className="font-medium text-violet-300 mb-1">Income Strategy Philosophy</h3>
+              <p className="text-sm text-zinc-400">
+                For CC and PMCC, loss is managed via <span className="text-emerald-400">time</span>, <span className="text-blue-400">premium decay</span>, <span className="text-violet-400">rolling</span>, and <span className="text-cyan-400">assignment logic</span>—not stop-losses. 
+                Unrealised losses do not imply trade failure.
+              </p>
+            </div>
           </div>
         </CardContent>
       </Card>
+
+      {/* Templates by Category */}
+      <div className="space-y-4">
+        {categoryOrder.map(category => {
+          const categoryTemplates = groupedTemplates[category] || [];
+          if (categoryTemplates.length === 0) return null;
+          
+          const catInfo = categoryLabels[category] || { label: category, icon: '📋', description: '', color: 'zinc' };
+          const isAdvanced = category === 'optional_advanced';
+          
+          return (
+            <Card key={category} className={`glass-card ${isAdvanced ? 'opacity-60 border-red-500/20' : ''}`}>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="text-lg">{catInfo.icon}</span>
+                    <span className="text-white">{catInfo.label}</span>
+                    <span className="text-xs text-zinc-500">({catInfo.description})</span>
+                  </div>
+                  {isAdvanced && (
+                    <Badge className="bg-red-500/20 text-red-400 text-xs">
+                      Not Recommended for Income Strategy
+                    </Badge>
+                  )}
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-3">
+                  {categoryTemplates.map(template => (
+                    <div 
+                      key={template.id}
+                      className={`p-3 bg-zinc-800/50 rounded-lg border transition-colors ${
+                        template.is_default 
+                          ? 'border-emerald-500/30 hover:border-emerald-500/50' 
+                          : template.is_advanced 
+                          ? 'border-red-500/20 hover:border-red-500/40'
+                          : 'border-zinc-700/50 hover:border-violet-500/50'
+                      }`}
+                    >
+                      <div className="flex items-start justify-between">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <h4 className="font-medium text-white text-sm">{template.name}</h4>
+                            {template.is_default && (
+                              <Badge className="bg-emerald-500/20 text-emerald-400 text-xs">Default</Badge>
+                            )}
+                          </div>
+                          <p className="text-xs text-zinc-400 mt-1 line-clamp-2">{template.description}</p>
+                          <div className="flex items-center gap-2 mt-2 flex-wrap">
+                            <Badge className={getActionColor(template.action)}>
+                              {template.action?.action_type || template.action || 'rule'}
+                            </Badge>
+                            {template.strategy_type && (
+                              <Badge className={STRATEGY_COLORS[template.strategy_type]}>
+                                {template.strategy_type === 'covered_call' ? 'CC' : 'PMCC'}
+                              </Badge>
+                            )}
+                            {template.ui_hint && (
+                              <span className="text-xs text-zinc-500">{template.ui_hint}</span>
+                            )}
+                          </div>
+                        </div>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleCreateFromTemplate(template.id)}
+                          className="text-cyan-400 hover:text-cyan-300 ml-2"
+                        >
+                          <Plus className="w-4 h-4" />
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          );
+        })}
+      </div>
 
       {/* Active Rules */}
       <Card className="glass-card" data-testid="rules-list-card">
         <CardHeader className="pb-2">
           <CardTitle className="text-sm flex items-center gap-2">
             <ShieldCheck className="w-4 h-4 text-emerald-400" />
-            Your Rules ({rules.length})
+            Your Active Rules ({rules.length})
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -1651,7 +1094,7 @@ const Simulator = () => {
             <div className="text-center py-8">
               <Settings className="w-10 h-10 text-zinc-600 mx-auto mb-3" />
               <p className="text-zinc-400 text-sm">No rules configured yet</p>
-              <p className="text-zinc-500 text-xs mt-1">Use templates above to get started</p>
+              <p className="text-zinc-500 text-xs mt-1">Add income strategy rules above to automate trade management</p>
             </div>
           ) : (
             <div className="space-y-3">
@@ -1717,6 +1160,7 @@ const Simulator = () => {
       </Card>
     </div>
   );
+  };
 
   const renderLogsTab = () => (
     <div className="space-y-6">
@@ -1982,34 +1426,45 @@ const Simulator = () => {
     </div>
   );
 
-  const renderAnalyticsTab = () => (
-    <div className="space-y-6">
-      {/* Header with filters */}
+  const renderAnalyticsTab = () => {
+    // This is now the ANALYZER page with fixed 3-row structure
+    // State is managed at component level
+    
+    // Available symbols from trades
+    const availableSymbols = [...new Set(trades.map(t => t.symbol))].sort();
+    
+    // Format helpers
+    const getProfitFactorColor = (pf) => {
+      if (pf >= 1.5) return 'text-emerald-400';
+      if (pf >= 1) return 'text-amber-400';
+      return 'text-red-400';
+    };
+    
+    const getScopeLabel = () => {
+      if (analyzerSymbol) return `Symbol: ${analyzerSymbol}`;
+      if (analyticsStrategy === 'covered_call') return 'Strategy: Covered Call';
+      if (analyticsStrategy === 'pmcc') return 'Strategy: PMCC';
+      return 'Portfolio (All)';
+    };
+    
+    return (
+    <div className="space-y-6" data-testid="analyzer-page">
+      {/* Analyzer Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h2 className="text-xl font-semibold text-white flex items-center gap-2">
-            <LineChart className="w-5 h-5 text-cyan-400" />
-            Performance Analytics
+            <BarChart3 className="w-5 h-5 text-cyan-400" />
+            Analyzer
           </h2>
           <p className="text-zinc-400 text-sm mt-1">
-            Analyze your trading patterns to optimize scanner parameters
+            Performance, Risk & Strategy Health
           </p>
         </div>
-        <div className="flex gap-2">
-          <Select value={analyticsTimeframe} onValueChange={(v) => { setAnalyticsTimeframe(v); }}>
-            <SelectTrigger className="w-28 h-8 bg-zinc-800/50 border-zinc-700">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent className="bg-zinc-900 border-zinc-700">
-              <SelectItem value="all">All Time</SelectItem>
-              <SelectItem value="7d">7 Days</SelectItem>
-              <SelectItem value="30d">30 Days</SelectItem>
-              <SelectItem value="90d">90 Days</SelectItem>
-              <SelectItem value="ytd">YTD</SelectItem>
-            </SelectContent>
-          </Select>
-          <Select value={analyticsStrategy || "all"} onValueChange={(v) => { setAnalyticsStrategy(v === "all" ? "" : v); }}>
-            <SelectTrigger className="w-36 h-8 bg-zinc-800/50 border-zinc-700">
+        
+        {/* Scope Filters */}
+        <div className="flex flex-wrap gap-2">
+          <Select value={analyticsStrategy || "all"} onValueChange={(v) => setAnalyticsStrategy(v === "all" ? "" : v)}>
+            <SelectTrigger className="w-36 h-8 bg-zinc-800/50 border-zinc-700" data-testid="strategy-filter">
               <SelectValue placeholder="All Strategies" />
             </SelectTrigger>
             <SelectContent className="bg-zinc-900 border-zinc-700">
@@ -2018,443 +1473,322 @@ const Simulator = () => {
               <SelectItem value="pmcc">PMCC</SelectItem>
             </SelectContent>
           </Select>
-          <Button
-            variant="outline"
-            onClick={fetchAnalytics}
-            className="btn-outline"
-          >
-            <RefreshCw className="w-4 h-4 mr-2" />
-            Refresh
+          
+          <Select value={analyzerSymbol || "all"} onValueChange={(v) => setAnalyzerSymbol(v === "all" ? "" : v)}>
+            <SelectTrigger className="w-32 h-8 bg-zinc-800/50 border-zinc-700" data-testid="symbol-filter">
+              <SelectValue placeholder="All Symbols" />
+            </SelectTrigger>
+            <SelectContent className="bg-zinc-900 border-zinc-700">
+              <SelectItem value="all">All Symbols</SelectItem>
+              {availableSymbols.map(sym => (
+                <SelectItem key={sym} value={sym}>{sym}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          
+          <Select value={analyticsTimeframe} onValueChange={setAnalyticsTimeframe}>
+            <SelectTrigger className="w-28 h-8 bg-zinc-800/50 border-zinc-700" data-testid="timeframe-filter">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent className="bg-zinc-900 border-zinc-700">
+              <SelectItem value="all">All Time</SelectItem>
+              <SelectItem value="30d">30 Days</SelectItem>
+              <SelectItem value="90d">90 Days</SelectItem>
+              <SelectItem value="1y">1 Year</SelectItem>
+            </SelectContent>
+          </Select>
+          
+          <Button variant="outline" onClick={fetchAnalyzerData} className="btn-outline h-8">
+            <RefreshCw className={`w-4 h-4 ${analyzerLoading ? 'animate-spin' : ''}`} />
           </Button>
         </div>
       </div>
+      
+      {/* Scope Indicator */}
+      <div className="flex items-center gap-2 text-sm">
+        <Badge className="bg-cyan-500/20 text-cyan-400">{getScopeLabel()}</Badge>
+        {analyzerData?.scope?.type && (
+          <span className="text-zinc-500">
+            Scope: {analyzerData.scope.type.charAt(0).toUpperCase() + analyzerData.scope.type.slice(1)}
+          </span>
+        )}
+      </div>
 
-      {analyticsLoading ? (
+      {analyzerLoading ? (
         <div className="space-y-4">
-          {Array(4).fill(0).map((_, i) => (
+          {Array(3).fill(0).map((_, i) => (
             <Skeleton key={i} className="h-32 w-full" />
           ))}
         </div>
-      ) : !analytics?.analytics ? (
+      ) : !analyzerData?.row1_outcome ? (
         <Card className="glass-card">
           <CardContent className="py-12 text-center">
             <BarChart3 className="w-12 h-12 text-zinc-600 mx-auto mb-4" />
-            <h3 className="text-lg font-medium text-white mb-2">Not Enough Data</h3>
+            <h3 className="text-lg font-medium text-white mb-2">No Data Available</h3>
             <p className="text-zinc-400 text-sm">
-              {analytics?.message || "Close some simulated trades to see performance analytics"}
+              Add trades to the simulator to see analyzer metrics
             </p>
           </CardContent>
         </Card>
       ) : (
         <>
-          {/* Overall Stats */}
-          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
-            <Card className="glass-card">
-              <CardContent className="p-4">
-                <div className="text-xs text-zinc-500 mb-1">Total Trades</div>
-                <div className="text-xl font-bold text-white">{analytics.analytics.overall.total_trades}</div>
-              </CardContent>
-            </Card>
-            <Card className="glass-card">
-              <CardContent className="p-4">
-                <div className="text-xs text-zinc-500 mb-1">Win Rate</div>
-                <div className={`text-xl font-bold ${analytics.analytics.overall.win_rate >= 50 ? 'text-emerald-400' : 'text-amber-400'}`}>
-                  {analytics.analytics.overall.win_rate}%
+          {/* ==================== ROW 1: OUTCOME ==================== */}
+          <Card className="glass-card border-blue-500/20" data-testid="row1-outcome">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm flex items-center gap-2">
+                <DollarSign className="w-4 h-4 text-blue-400" />
+                <span className="text-blue-400">Row 1: Outcome</span>
+                <span className="text-zinc-500 font-normal">— What did I make?</span>
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
+                {/* Existing Metrics */}
+                <div className="p-3 bg-zinc-800/50 rounded-lg">
+                  <div className="text-xs text-zinc-500 mb-1">Total P/L</div>
+                  <div className={`text-xl font-bold ${analyzerData.row1_outcome.total_pnl >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                    {formatCurrency(analyzerData.row1_outcome.total_pnl)}
+                  </div>
                 </div>
-              </CardContent>
-            </Card>
-            <Card className="glass-card">
-              <CardContent className="p-4">
-                <div className="text-xs text-zinc-500 mb-1">Total P/L</div>
-                <div className={`text-xl font-bold ${analytics.analytics.overall.total_pnl >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                  {formatCurrency(analytics.analytics.overall.total_pnl)}
+                <div className="p-3 bg-zinc-800/50 rounded-lg">
+                  <div className="text-xs text-zinc-500 mb-1">Win Rate</div>
+                  <div className={`text-xl font-bold ${analyzerData.row1_outcome.win_rate >= 50 ? 'text-emerald-400' : 'text-amber-400'}`}>
+                    {analyzerData.row1_outcome.win_rate}%
+                  </div>
                 </div>
-              </CardContent>
-            </Card>
-            <Card className="glass-card">
-              <CardContent className="p-4">
-                <div className="text-xs text-zinc-500 mb-1">ROI</div>
-                <div className={`text-xl font-bold ${analytics.analytics.overall.roi >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                  {analytics.analytics.overall.roi}%
+                <div className="p-3 bg-zinc-800/50 rounded-lg">
+                  <div className="text-xs text-zinc-500 mb-1">ROI</div>
+                  <div className={`text-xl font-bold ${analyzerData.row1_outcome.roi >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                    {analyzerData.row1_outcome.roi}%
+                  </div>
                 </div>
-              </CardContent>
-            </Card>
-            <Card className="glass-card">
-              <CardContent className="p-4">
-                <div className="text-xs text-zinc-500 mb-1">Avg Win</div>
-                <div className="text-xl font-bold text-emerald-400">
-                  {formatCurrency(analytics.analytics.overall.avg_win)}
+                <div className="p-3 bg-zinc-800/50 rounded-lg">
+                  <div className="text-xs text-zinc-500 mb-1">Avg Win</div>
+                  <div className="text-xl font-bold text-emerald-400">
+                    {formatCurrency(analyzerData.row1_outcome.avg_win)}
+                  </div>
                 </div>
-              </CardContent>
-            </Card>
-            <Card className="glass-card">
-              <CardContent className="p-4">
-                <div className="text-xs text-zinc-500 mb-1">Avg Loss</div>
-                <div className="text-xl font-bold text-red-400">
-                  {formatCurrency(analytics.analytics.overall.avg_loss)}
+                <div className="p-3 bg-zinc-800/50 rounded-lg">
+                  <div className="text-xs text-zinc-500 mb-1">Avg Loss</div>
+                  <div className="text-xl font-bold text-red-400">
+                    {formatCurrency(analyzerData.row1_outcome.avg_loss)}
+                  </div>
                 </div>
-              </CardContent>
-            </Card>
-          </div>
+                
+                {/* New Derived Metrics */}
+                <div className="p-3 bg-zinc-800/50 rounded-lg border border-blue-500/20">
+                  <div className="text-xs text-zinc-500 mb-1 flex items-center gap-1">
+                    Expectancy
+                    <span className="text-zinc-600 cursor-help" title={analyzerData.row1_outcome.expectancy_tooltip}>ⓘ</span>
+                  </div>
+                  <div className={`text-xl font-bold ${analyzerData.row1_outcome.expectancy >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                    {formatCurrency(analyzerData.row1_outcome.expectancy)}
+                  </div>
+                  <div className="text-xs text-zinc-600">per trade</div>
+                </div>
+                <div className="p-3 bg-zinc-800/50 rounded-lg border border-blue-500/20">
+                  <div className="text-xs text-zinc-500 mb-1">Max Drawdown</div>
+                  <div className="text-xl font-bold text-amber-400">
+                    {formatCurrency(analyzerData.row1_outcome.max_drawdown)}
+                  </div>
+                </div>
+                <div className="p-3 bg-zinc-800/50 rounded-lg border border-blue-500/20">
+                  <div className="text-xs text-zinc-500 mb-1 flex items-center gap-1">
+                    Time-Weighted Return
+                    <span className="text-zinc-600 cursor-help" title={analyzerData.row1_outcome.twr_tooltip}>ⓘ</span>
+                  </div>
+                  <div className={`text-xl font-bold ${analyzerData.row1_outcome.time_weighted_return >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                    {analyzerData.row1_outcome.time_weighted_return}%
+                  </div>
+                  <div className="text-xs text-zinc-600">annualized</div>
+                </div>
+              </div>
+              
+              {/* Trade counts */}
+              <div className="flex gap-4 mt-3 text-xs text-zinc-500">
+                <span>Total: {analyzerData.row1_outcome.total_trades}</span>
+                <span>Open: {analyzerData.row1_outcome.open_trades}</span>
+                <span>Completed: {analyzerData.row1_outcome.completed_trades}</span>
+              </div>
+            </CardContent>
+          </Card>
 
-          {/* Recommendations */}
-          {analytics.recommendations?.length > 0 && (
-            <Card className="glass-card border-cyan-500/30">
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm flex items-center gap-2">
-                  <Lightbulb className="w-4 h-4 text-cyan-400" />
-                  AI Recommendations
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-3">
-                  {analytics.recommendations.map((rec, idx) => (
-                    <div key={idx} className={`p-3 rounded-lg border ${
-                      rec.priority === 'high' ? 'bg-amber-500/10 border-amber-500/30' :
-                      rec.priority === 'medium' ? 'bg-blue-500/10 border-blue-500/30' :
-                      'bg-zinc-800/50 border-zinc-700/50'
-                    }`}>
-                      <div className="flex items-start gap-2">
-                        <Badge className={
-                          rec.priority === 'high' ? 'bg-amber-500/20 text-amber-400' :
-                          rec.priority === 'medium' ? 'bg-blue-500/20 text-blue-400' :
-                          'bg-zinc-500/20 text-zinc-400'
-                        }>
-                          {rec.priority}
-                        </Badge>
-                        <div>
-                          <p className="text-white text-sm font-medium">{rec.message}</p>
-                          <p className="text-zinc-400 text-xs mt-1">{rec.suggestion}</p>
-                        </div>
+          {/* ==================== ROW 2: RISK & CAPITAL ==================== */}
+          <Card className="glass-card border-amber-500/20" data-testid="row2-risk-capital">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm flex items-center gap-2">
+                <ShieldAlert className="w-4 h-4 text-amber-400" />
+                <span className="text-amber-400">Row 2: Risk & Capital</span>
+                <span className="text-zinc-500 font-normal">— How much pain did I take?</span>
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-4 gap-3">
+                <div className="p-3 bg-zinc-800/50 rounded-lg">
+                  <div className="text-xs text-zinc-500 mb-1">Peak Capital at Risk</div>
+                  <div className="text-xl font-bold text-white">
+                    {formatCurrency(analyzerData.row2_risk_capital.peak_capital_at_risk)}
+                  </div>
+                </div>
+                <div className="p-3 bg-zinc-800/50 rounded-lg">
+                  <div className="text-xs text-zinc-500 mb-1">Avg Capital per Trade</div>
+                  <div className="text-xl font-bold text-white">
+                    {formatCurrency(analyzerData.row2_risk_capital.avg_capital_per_trade)}
+                  </div>
+                </div>
+                <div className="p-3 bg-zinc-800/50 rounded-lg">
+                  <div className="text-xs text-zinc-500 mb-1 flex items-center gap-1">
+                    Worst Case Loss
+                    <span className="text-zinc-600 cursor-help" title={analyzerData.row2_risk_capital.worst_case_loss_tooltip}>ⓘ</span>
+                  </div>
+                  <div className="text-xl font-bold text-red-400">
+                    {formatCurrency(analyzerData.row2_risk_capital.worst_case_loss)}
+                  </div>
+                  <div className="text-xs text-zinc-600">theoretical</div>
+                </div>
+                <div className="p-3 bg-zinc-800/50 rounded-lg">
+                  <div className="text-xs text-zinc-500 mb-2">Assignment Exposure</div>
+                  <div className="flex items-center gap-4">
+                    <div>
+                      <div className="text-xs text-zinc-600">CC</div>
+                      <div className={`text-lg font-bold ${analyzerData.row2_risk_capital.assignment_exposure_cc > 20 ? 'text-amber-400' : 'text-zinc-300'}`}>
+                        {analyzerData.row2_risk_capital.assignment_exposure_cc}%
                       </div>
                     </div>
-                  ))}
+                    <div className="h-8 w-px bg-zinc-700" />
+                    <div>
+                      <div className="text-xs text-zinc-600">PMCC</div>
+                      <div className={`text-lg font-bold ${analyzerData.row2_risk_capital.assignment_exposure_pmcc > 20 ? 'text-red-400' : 'text-zinc-300'}`}>
+                        {analyzerData.row2_risk_capital.assignment_exposure_pmcc}%
+                      </div>
+                    </div>
+                  </div>
                 </div>
-              </CardContent>
-            </Card>
-          )}
+              </div>
+              
+              {/* Risk context */}
+              <div className="flex gap-4 mt-3 text-xs text-zinc-500">
+                <span>Open Positions: {analyzerData.row2_risk_capital.total_open_positions}</span>
+                <span>CC at Risk: {analyzerData.row2_risk_capital.cc_positions_at_risk}</span>
+                <span>PMCC at Risk: {analyzerData.row2_risk_capital.pmcc_positions_at_risk}</span>
+              </div>
+            </CardContent>
+          </Card>
 
-          {/* Performance Charts */}
-          <div className="grid md:grid-cols-2 gap-6">
-            {/* By Delta */}
-            {analytics.analytics.by_delta?.length > 0 && (
-              <Card className="glass-card">
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-sm flex items-center gap-2">
-                    <Target className="w-4 h-4 text-violet-400" />
-                    Performance by Delta Range
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="h-48">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <BarChart data={analytics.analytics.by_delta}>
-                        <CartesianGrid strokeDasharray="3 3" stroke="#333" />
-                        <XAxis dataKey="range" stroke="#666" fontSize={10} />
-                        <YAxis stroke="#666" fontSize={10} />
-                        <Tooltip 
-                          contentStyle={{ background: '#18181b', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px' }}
-                          formatter={(value, name) => [name === 'win_rate' ? `${value}%` : formatCurrency(value), name === 'win_rate' ? 'Win Rate' : 'Avg P/L']}
-                        />
-                        <Bar dataKey="win_rate" name="Win Rate" fill="#8b5cf6" radius={[4, 4, 0, 0]} />
-                      </BarChart>
-                    </ResponsiveContainer>
-                  </div>
-                  <div className="mt-3 space-y-1">
-                    {analytics.analytics.by_delta.map((d, idx) => (
-                      <div key={idx} className="flex justify-between text-xs">
-                        <span className="text-zinc-400">Delta {d.range}</span>
-                        <span className={d.win_rate >= 50 ? 'text-emerald-400' : 'text-zinc-300'}>
-                          {d.trade_count} trades, {d.win_rate}% win, {formatCurrency(d.avg_pnl)} avg
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                </CardContent>
-              </Card>
-            )}
-
-            {/* By DTE */}
-            {analytics.analytics.by_dte?.length > 0 && (
-              <Card className="glass-card">
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-sm flex items-center gap-2">
-                    <Clock className="w-4 h-4 text-cyan-400" />
-                    Performance by DTE Range
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="h-48">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <BarChart data={analytics.analytics.by_dte}>
-                        <CartesianGrid strokeDasharray="3 3" stroke="#333" />
-                        <XAxis dataKey="range" stroke="#666" fontSize={10} />
-                        <YAxis stroke="#666" fontSize={10} />
-                        <Tooltip 
-                          contentStyle={{ background: '#18181b', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px' }}
-                          formatter={(value) => [`${value}%`, 'Win Rate']}
-                        />
-                        <Bar dataKey="win_rate" name="Win Rate" fill="#06b6d4" radius={[4, 4, 0, 0]} />
-                      </BarChart>
-                    </ResponsiveContainer>
-                  </div>
-                  <div className="mt-3 space-y-1">
-                    {analytics.analytics.by_dte.map((d, idx) => (
-                      <div key={idx} className="flex justify-between text-xs">
-                        <span className="text-zinc-400">{d.range}</span>
-                        <span className={d.win_rate >= 50 ? 'text-emerald-400' : 'text-zinc-300'}>
-                          {d.trade_count} trades, {d.win_rate}% win
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                </CardContent>
-              </Card>
-            )}
-          </div>
-
-          {/* Symbol Performance */}
-          {analytics.analytics.by_symbol?.length > 0 && (
-            <Card className="glass-card">
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm flex items-center gap-2">
-                  <Award className="w-4 h-4 text-amber-400" />
-                  Top Performing Symbols
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
+          {/* ==================== ROW 3: STRATEGY HEALTH ==================== */}
+          <Card className="glass-card border-emerald-500/20" data-testid="row3-strategy-health">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm flex items-center gap-2">
+                <Activity className="w-4 h-4 text-emerald-400" />
+                <span className="text-emerald-400">Row 3: Strategy Health</span>
+                <span className="text-zinc-500 font-normal">— Is the logic working?</span>
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {analyzerData.row3_strategy_health.strategies?.length > 0 ? (
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
                     <thead>
                       <tr className="text-left text-zinc-500 border-b border-zinc-800">
-                        <th className="pb-2 font-medium">Symbol</th>
-                        <th className="pb-2 font-medium">Trades</th>
+                        <th className="pb-2 font-medium">Strategy</th>
                         <th className="pb-2 font-medium">Win Rate</th>
-                        <th className="pb-2 font-medium">Total P/L</th>
-                        <th className="pb-2 font-medium">Avg P/L</th>
-                        <th className="pb-2 font-medium">ROI</th>
+                        <th className="pb-2 font-medium">Avg Hold (Days)</th>
+                        <th className="pb-2 font-medium">Profit Factor</th>
+                        <th className="pb-2 font-medium">Trades</th>
+                        <th className="pb-2 font-medium">Realized P/L</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {analytics.analytics.by_symbol.slice(0, 10).map((s, idx) => (
+                      {analyzerData.row3_strategy_health.strategies.map((s, idx) => (
                         <tr key={idx} className="border-b border-zinc-800/50">
-                          <td className="py-2 font-semibold text-white">{s.symbol}</td>
-                          <td className="py-2 text-zinc-300">{s.trade_count}</td>
-                          <td className={`py-2 ${s.win_rate >= 50 ? 'text-emerald-400' : 'text-amber-400'}`}>
+                          <td className="py-3 font-semibold text-white">{s.strategy_label}</td>
+                          <td className={`py-3 ${s.win_rate >= 50 ? 'text-emerald-400' : 'text-amber-400'}`}>
                             {s.win_rate}%
                           </td>
-                          <td className={`py-2 ${s.total_pnl >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                            {formatCurrency(s.total_pnl)}
+                          <td className="py-3 text-zinc-300">{s.avg_hold_days}</td>
+                          <td className={`py-3 font-mono ${getProfitFactorColor(s.profit_factor)}`}>
+                            {s.profit_factor}
+                            <span className="ml-1 text-xs">
+                              {s.profit_factor_status === 'good' ? '✓' : s.profit_factor_status === 'caution' ? '⚠' : ''}
+                            </span>
                           </td>
-                          <td className={`py-2 ${s.avg_pnl >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                            {formatCurrency(s.avg_pnl)}
+                          <td className="py-3 text-zinc-300">
+                            {s.completed_trades} / {s.total_trades}
+                            {s.open_trades > 0 && <span className="text-zinc-500 text-xs ml-1">({s.open_trades} open)</span>}
                           </td>
-                          <td className={`py-2 ${s.roi >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                            {s.roi}%
+                          <td className={`py-3 ${s.realized_pnl >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                            {formatCurrency(s.realized_pnl)}
                           </td>
                         </tr>
                       ))}
                     </tbody>
                   </table>
                 </div>
-              </CardContent>
-            </Card>
-          )}
-
-          {/* Optimal Settings */}
-          {optimalSettings?.optimal_settings && (
-            <Card className="glass-card border-emerald-500/30">
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm flex items-center gap-2">
-                  <Zap className="w-4 h-4 text-emerald-400" />
-                  Optimal Scanner Settings
-                  <Badge className={
-                    optimalSettings.confidence === 'high' ? 'bg-emerald-500/20 text-emerald-400' :
-                    optimalSettings.confidence === 'medium' ? 'bg-amber-500/20 text-amber-400' :
-                    'bg-zinc-500/20 text-zinc-400'
-                  }>
-                    {optimalSettings.confidence} confidence
-                  </Badge>
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="grid md:grid-cols-2 gap-6">
+              ) : (
+                <div className="text-center py-6 text-zinc-500">
+                  No strategy data available for current scope
+                </div>
+              )}
+              
+              {/* Strategy Distribution Charts */}
+              {analyzerData.row3_strategy_health.strategy_distribution?.length > 0 && (
+                <div className="grid md:grid-cols-2 gap-4 mt-4 pt-4 border-t border-zinc-800">
                   <div>
-                    <h4 className="text-sm font-medium text-zinc-400 mb-3">Recommended Parameters</h4>
-                    <div className="space-y-2">
-                      <div className="flex justify-between p-2 bg-zinc-800/50 rounded">
-                        <span className="text-zinc-400">Min Delta</span>
-                        <span className="text-white font-mono">{optimalSettings.optimal_settings.min_delta}</span>
-                      </div>
-                      <div className="flex justify-between p-2 bg-zinc-800/50 rounded">
-                        <span className="text-zinc-400">Max Delta</span>
-                        <span className="text-white font-mono">{optimalSettings.optimal_settings.max_delta}</span>
-                      </div>
-                      <div className="flex justify-between p-2 bg-zinc-800/50 rounded">
-                        <span className="text-zinc-400">Max DTE</span>
-                        <span className="text-white font-mono">{optimalSettings.optimal_settings.max_dte} days</span>
-                      </div>
-                      <div className="flex justify-between p-2 bg-emerald-500/10 rounded border border-emerald-500/30">
-                        <span className="text-zinc-400">Expected Win Rate</span>
-                        <span className="text-emerald-400 font-mono">{optimalSettings.optimal_settings.expected_win_rate}%</span>
-                      </div>
+                    <div className="text-xs text-zinc-500 mb-2">Strategy Distribution</div>
+                    <div className="h-32">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <PieChart>
+                          <Pie
+                            data={analyzerData.row3_strategy_health.strategy_distribution}
+                            dataKey="value"
+                            nameKey="name"
+                            cx="50%"
+                            cy="50%"
+                            outerRadius={50}
+                            fill="#8b5cf6"
+                            label={({ name, value }) => `${name}: ${value}`}
+                          >
+                            {analyzerData.row3_strategy_health.strategy_distribution.map((entry, index) => (
+                              <Cell key={index} fill={index === 0 ? '#06b6d4' : '#8b5cf6'} />
+                            ))}
+                          </Pie>
+                          <Tooltip 
+                            contentStyle={{ background: '#18181b', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px' }}
+                          />
+                        </PieChart>
+                      </ResponsiveContainer>
                     </div>
-                    <Button
-                      className="w-full mt-4 bg-emerald-600 hover:bg-emerald-700 text-white"
-                      onClick={() => window.open(optimalSettings.apply_url, '_blank')}
-                    >
-                      <ExternalLink className="w-4 h-4 mr-2" />
-                      Apply to Screener
-                    </Button>
                   </div>
                   <div>
-                    <h4 className="text-sm font-medium text-zinc-400 mb-3">Symbol Recommendations</h4>
-                    {optimalSettings.symbol_recommendations?.top_performers?.length > 0 && (
-                      <div className="mb-3">
-                        <p className="text-xs text-zinc-500 mb-1">Top Performers</p>
-                        <div className="flex flex-wrap gap-1">
-                          {optimalSettings.symbol_recommendations.top_performers.map((s, idx) => (
-                            <Badge key={idx} className="bg-emerald-500/20 text-emerald-400">
-                              {s.symbol} ({s.win_rate}%)
-                            </Badge>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                    {optimalSettings.symbol_recommendations?.avoid?.length > 0 && (
-                      <div>
-                        <p className="text-xs text-zinc-500 mb-1">Consider Avoiding</p>
-                        <div className="flex flex-wrap gap-1">
-                          {optimalSettings.symbol_recommendations.avoid.map((sym, idx) => (
-                            <Badge key={idx} className="bg-red-500/20 text-red-400">
-                              {sym}
-                            </Badge>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                    
-                    {/* Save as Profile */}
-                    <div className="mt-4 p-3 bg-zinc-800/50 rounded-lg">
-                      <p className="text-xs text-zinc-500 mb-2">Save these settings as a profile</p>
-                      <div className="flex gap-2">
-                        <Input
-                          value={newProfileName}
-                          onChange={(e) => setNewProfileName(e.target.value)}
-                          placeholder="Profile name..."
-                          className="flex-1 h-8 bg-zinc-900 border-zinc-700"
-                        />
-                        <Button
-                          onClick={handleSaveProfile}
-                          disabled={savingProfile || !newProfileName.trim()}
-                          className="bg-violet-600 hover:bg-violet-700 text-white h-8"
-                        >
-                          <Save className="w-4 h-4" />
-                        </Button>
-                      </div>
+                    <div className="text-xs text-zinc-500 mb-2">P/L by Strategy</div>
+                    <div className="h-32">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <BarChart data={analyzerData.row3_strategy_health.pnl_by_strategy} layout="vertical">
+                          <CartesianGrid strokeDasharray="3 3" stroke="#333" />
+                          <XAxis type="number" stroke="#666" fontSize={10} tickFormatter={(v) => `$${(v/1000).toFixed(0)}k`} />
+                          <YAxis type="category" dataKey="name" stroke="#666" fontSize={10} width={80} />
+                          <Tooltip 
+                            contentStyle={{ background: '#18181b', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px' }}
+                            formatter={(value) => formatCurrency(value)}
+                          />
+                          <Bar dataKey="realized" name="Realized" fill="#10b981" radius={[0, 4, 4, 0]} />
+                          <Bar dataKey="unrealized" name="Unrealized" fill="#6366f1" radius={[0, 4, 4, 0]} />
+                        </BarChart>
+                      </ResponsiveContainer>
                     </div>
                   </div>
                 </div>
-              </CardContent>
-            </Card>
-          )}
-
-          {/* Saved Profiles */}
-          {profiles.length > 0 && (
-            <Card className="glass-card">
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm flex items-center gap-2">
-                  <FileText className="w-4 h-4 text-violet-400" />
-                  Saved Profiles ({profiles.length})
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-3">
-                  {profiles.map(profile => (
-                    <div key={profile.id} className="p-3 bg-zinc-800/50 rounded-lg border border-zinc-700/50">
-                      <div className="flex items-start justify-between">
-                        <div>
-                          <h4 className="font-medium text-white">{profile.name}</h4>
-                          <p className="text-xs text-zinc-500 mt-1">
-                            Created {formatDate(profile.created_at)}
-                          </p>
-                        </div>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleDeleteProfile(profile.id)}
-                          className="text-red-400 hover:text-red-300"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </Button>
-                      </div>
-                      <div className="mt-2 text-xs space-y-1">
-                        <div className="flex justify-between">
-                          <span className="text-zinc-500">Delta</span>
-                          <span className="text-zinc-300">{profile.settings.min_delta} - {profile.settings.max_delta}</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-zinc-500">Max DTE</span>
-                          <span className="text-zinc-300">{profile.settings.max_dte}d</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-zinc-500">Expected Win Rate</span>
-                          <span className="text-emerald-400">{profile.settings.expected_win_rate}%</span>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-          )}
-
-          {/* Outcome Analysis */}
-          {analytics.analytics.by_outcome?.length > 0 && (
-            <Card className="glass-card">
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm flex items-center gap-2">
-                  <Activity className="w-4 h-4 text-blue-400" />
-                  Performance by Outcome
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                  {analytics.analytics.by_outcome.map((outcome, idx) => (
-                    <div key={idx} className="p-3 bg-zinc-800/50 rounded-lg text-center">
-                      <div className="text-xs text-zinc-500 mb-1 capitalize">
-                        {outcome.outcome.replace(/_/g, ' ')}
-                      </div>
-                      <div className="text-lg font-bold text-white">{outcome.count}</div>
-                      <div className={`text-sm ${outcome.total_pnl >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                        {formatCurrency(outcome.total_pnl)}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-          )}
+              )}
+            </CardContent>
+          </Card>
         </>
       )}
     </div>
   );
+  };
 
   return (
     <div className="space-y-6" data-testid="simulator-page">
-      {/* T-1 Data Status Banner */}
-      <div className="glass-card p-3 flex items-center justify-between bg-zinc-800/50 border-emerald-500/30">
-        <div className="flex items-center gap-3">
-          <div className="flex items-center gap-2">
-            <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-            <span className="text-emerald-400 font-medium text-sm">T-1 Market Data</span>
-          </div>
-          <span className="text-zinc-400 text-sm">
-            Simulations use previous trading day close data
-          </span>
-        </div>
-      </div>
-
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
@@ -2496,9 +1830,9 @@ const Simulator = () => {
             <Activity className="w-4 h-4 mr-2" />
             Trades
           </TabsTrigger>
-          <TabsTrigger value="decisions" className="data-[state=active]:bg-emerald-600 data-[state=active]:text-white">
-            <Target className="w-4 h-4 mr-2" />
-            Decisions
+          <TabsTrigger value="rules" className="data-[state=active]:bg-violet-600 data-[state=active]:text-white">
+            <Settings className="w-4 h-4 mr-2" />
+            Rules
           </TabsTrigger>
           <TabsTrigger value="logs" className="data-[state=active]:bg-violet-600 data-[state=active]:text-white">
             <History className="w-4 h-4 mr-2" />
@@ -2509,8 +1843,8 @@ const Simulator = () => {
             PMCC Tracker
           </TabsTrigger>
           <TabsTrigger value="analytics" className="data-[state=active]:bg-violet-600 data-[state=active]:text-white">
-            <LineChart className="w-4 h-4 mr-2" />
-            Analytics
+            <BarChart3 className="w-4 h-4 mr-2" />
+            Analyzer
           </TabsTrigger>
         </TabsList>
 
@@ -2518,8 +1852,8 @@ const Simulator = () => {
           {renderTradesTab()}
         </TabsContent>
 
-        <TabsContent value="decisions" className="space-y-6">
-          {renderDecisionsTab()}
+        <TabsContent value="rules" className="space-y-6">
+          {renderRulesTab()}
         </TabsContent>
 
         <TabsContent value="logs" className="space-y-6">

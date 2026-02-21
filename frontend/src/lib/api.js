@@ -150,6 +150,11 @@ export const simulatorApi = {
   deleteTrade: (tradeId) => api.delete(`/simulator/trades/${tradeId}`),
   closeTrade: (tradeId, closePrice, closeReason = 'early_close') => 
     api.post(`/simulator/trades/${tradeId}/close?close_price=${closePrice}&close_reason=${closeReason}`),
+  
+  // PMCC Roll Management
+  rollPMCC: (tradeId, rollData) => api.post(`/simulator/trades/${tradeId}/roll`, rollData),
+  getRollSuggestions: (tradeId) => api.get(`/simulator/trades/${tradeId}/roll-suggestions`),
+  
   updatePrices: () => api.post('/simulator/update-prices'),
   getSummary: () => api.get('/simulator/summary'),
   clearAll: () => api.delete('/simulator/clear'),
@@ -198,6 +203,16 @@ export const simulatorApi = {
     if (params.timeframe) queryParams.append('timeframe', params.timeframe);
     return api.get(`/simulator/analytics/performance?${queryParams.toString()}`);
   },
+  
+  // Analyzer (3-Row Structure)
+  getAnalyzerMetrics: (params = {}) => {
+    const queryParams = new URLSearchParams();
+    if (params.strategy) queryParams.append('strategy', params.strategy);
+    if (params.symbol) queryParams.append('symbol', params.symbol);
+    if (params.time_period) queryParams.append('time_period', params.time_period);
+    return api.get(`/simulator/analyzer?${queryParams.toString()}`);
+  },
+  
   getScannerComparison: () => api.get('/simulator/analytics/scanner-comparison'),
   getOptimalSettings: (strategy = 'covered_call') => 
     api.get(`/simulator/analytics/optimal-settings?strategy=${strategy}`),

@@ -13,6 +13,12 @@ import {
   DialogTitle,
 } from '../components/ui/dialog';
 import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '../components/ui/tooltip';
+import {
   Accordion,
   AccordionContent,
   AccordionItem,
@@ -69,69 +75,127 @@ const PMCC = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [sortField, setSortField] = useState('score');
   const [sortDirection, setSortDirection] = useState('desc');
-  
+
   // Pre-computed scans state
   const [availableScans, setAvailableScans] = useState(null);
   const [activeScan, setActiveScan] = useState(null);
   const [scanLoading, setScanLoading] = useState(false);
-  
+
   // Simulator state
   const [simulateModalOpen, setSimulateModalOpen] = useState(false);
   const [simulateOpp, setSimulateOpp] = useState(null);
   const [simulateContracts, setSimulateContracts] = useState(1);
   const [simulateLoading, setSimulateLoading] = useState(false);
 
-  // Helper to normalize PMCC data from both custom API (leaps_*) and pre-computed API (long_*)
+  // Helper to normalize PMCC data from both custom API (leap_*) and pre-computed API (long_*)
+  // Note: Backend now uses nested objects (short_call, long_call) + legacy flat fields
   const normalizeOpp = (opp) => {
     if (!opp) return null;
-    const leapsDte = opp.leaps_dte || opp.long_dte;
-    const leapsStrike = opp.leaps_strike || opp.long_strike;
-    const leapsPremium = opp.leaps_premium || opp.long_premium;
-    const leapsCost = opp.leaps_cost || (leapsPremium ? leapsPremium * 100 : 0);
-    const leapsDelta = opp.leaps_delta || opp.long_delta;
-    const leapsExpiry = opp.leaps_expiry || opp.long_expiry;
-    const shortPremium = opp.short_premium || 0;
-    
-    // Determine if short_premium is per-share or per-contract
-    // If we have net_debit that's > 100, premiums are likely per-share
-    // If short_premium is less than stock_price * 0.5, it's likely per-share
-    const stockPrice = opp.stock_price || 0;
-    const isPerShare = stockPrice > 0 && shortPremium < stockPrice * 0.5;
-    const shortPremiumTotal = isPerShare ? shortPremium * 100 : shortPremium;
-    
-    const netDebit = opp.net_debit || (leapsCost - shortPremiumTotal);
-    const strikeWidth = opp.strike_width || (opp.short_strike && leapsStrike ? opp.short_strike - leapsStrike : 0);
-    const roiPerCycle = opp.roi_per_cycle || opp.roi_pct || (netDebit > 0 ? (shortPremiumTotal / netDebit) * 100 : 0);
-    const annualizedRoi = opp.annualized_roi || (opp.short_dte > 0 ? roiPerCycle * (365 / opp.short_dte) : 0);
-    
+
+    // Handle nested object structure (new) vs flat fields (legacy)
+    const shortCall = opp.short_call || {};
+    const longCall = opp.long_call || {};
+
+    // Handle both leap_ and leaps_ naming (backend uses singular)
+    const leapsDte = longCall.dte || opp.leap_dte || opp.leaps_dte || opp.long_dte;
+    const leapsStrike = longCall.strike || opp.leap_strike || opp.leaps_strike || opp.long_strike;
+    const leapsAsk = longCall.premium || longCall.ask || opp.leap_ask || opp.leaps_ask || opp.long_premium;
+    const leapsDelta = longCall.delta || opp.leap_delta || opp.leaps_delta || opp.long_delta;
+    const leapsExpiry = longCall.expiry || opp.leap_expiry || opp.leaps_expiry || opp.long_expiry;
+    const leapsOi = longCall.open_interest || opp.leap_open_interest || opp.leaps_open_interest || 0;
+    const leapsIv = longCall.implied_volatility || opp.leap_iv || opp.leaps_iv || 0;
+
+    // Premium normalization:
+    // Pre-computed scans store long_premium as PER-SHARE (e.g., $86)
+    // Live scans may store leap_cost as TOTAL (e.g., $8600)
+    // We need both: leaps_premium (per-share for display) and leaps_cost (total for calculations)
+    const rawLeapCost = opp.leap_cost || opp.leaps_cost;
+    let leapsCost, leapsPremium;
+
+    if (rawLeapCost && rawLeapCost >= 100) {
+      // If leap_cost exists and is >= 100, assume it's total cost
+      leapsCost = rawLeapCost;
+      leapsPremium = rawLeapCost / 100;
+    } else if (leapsAsk) {
+      // leapsAsk is always per-share from the backend
+      leapsPremium = leapsAsk;
+      leapsCost = leapsAsk * 100;
+    } else {
+      leapsPremium = 0;
+      leapsCost = 0;
+    }
+
+    // Short call data - use nested object first, then flat fields
+    const shortDelta = shortCall.delta || opp.short_delta || 0;
+    const shortDte = shortCall.dte || opp.short_dte;
+    const shortPremium = shortCall.premium || shortCall.bid || opp.short_premium || 0;
+    const shortPremiumTotal = shortPremium < 10 ? shortPremium * 100 : shortPremium; // Normalize to total
+    const shortIv = shortCall.implied_volatility || opp.short_iv || 0;
+    const shortStrike = shortCall.strike || opp.short_strike;
+    const shortExpiry = shortCall.expiry || opp.short_expiry;
+    const shortAsk = shortCall.ask || opp.short_ask;
+
+    // Use backend width if available, otherwise calculate
+    const economics = opp.economics || {};
+    const strikeWidth = economics.width || opp.width || opp.strike_width || (shortStrike && leapsStrike ? shortStrike - leapsStrike : 0);
+
+    // Net debit: backend sends per-share, normalize to total if small
+    const rawNetDebit = economics.net_debit || opp.net_debit || opp.net_debit_total || (leapsCost - shortPremiumTotal);
+    const netDebit = rawNetDebit < 50 ? rawNetDebit * 100 : rawNetDebit;
+
+    const roiPerCycle = economics.roi_pct || opp.roi_per_cycle || opp.roi_pct || (netDebit > 0 ? (shortPremiumTotal / netDebit) * 100 : 0);
+    const annualizedRoi = economics.annualized_roi_pct || opp.annualized_roi || (shortDte > 0 ? roiPerCycle * (365 / shortDte) : 0);
+    const breakeven = economics.breakeven || opp.breakeven || 0;
+    const maxProfit = economics.max_profit || opp.max_profit || 0;
+
     return {
       ...opp,
+      // Short call normalized fields
+      short_call: shortCall,  // Preserve nested object
+      short_delta: shortDelta,
+      short_dte: shortDte,
+      short_premium: shortPremium,
+      short_premium_total: shortPremiumTotal,
+      short_iv: shortIv,
+      short_strike: shortStrike,
+      short_expiry: shortExpiry,
+      short_ask: shortAsk,
+      // Long call (LEAPS) normalized fields
+      long_call: longCall,  // Preserve nested object
       leaps_dte: leapsDte,
       leaps_strike: leapsStrike,
-      leaps_premium: leapsPremium,
-      leaps_cost: leapsCost,
+      leaps_premium: leapsPremium,  // Per-share price for display
+      leaps_ask: leapsPremium,      // Same as leaps_premium (per-share)
+      leaps_cost: leapsCost,        // Total cost (per-share × 100)
       leaps_delta: leapsDelta,
       leaps_expiry: leapsExpiry,
-      short_premium_total: shortPremiumTotal,
+      leaps_oi: leapsOi,
+      leaps_iv: leapsIv,
+      // Economics normalized fields
       net_debit: netDebit,
       strike_width: strikeWidth,
       roi_per_cycle: roiPerCycle,
       annualized_roi: annualizedRoi,
+      breakeven: breakeven,
+      max_profit: maxProfit,
     };
   };
 
   // Handle adding to simulator
   const handleSimulate = async () => {
     if (!simulateOpp) return;
-    
+
     setSimulateLoading(true);
     try {
       // Normalize the data first
       const norm = normalizeOpp(simulateOpp);
-      
+
+      const shortIvPct = norm.short_iv || 0;
+      const shortIvDecimal = shortIvPct > 1 ? shortIvPct / 100 : shortIvPct;
+
       // PMCC data uses leaps_cost (total cost) - convert to per-share premium for backend
       const leapsPremiumPerShare = norm.leaps_cost ? norm.leaps_cost / 100 : norm.leaps_premium;
-      
+
       const tradeData = {
         symbol: norm.symbol,
         strategy_type: 'pmcc',
@@ -140,13 +204,14 @@ const PMCC = () => {
         short_call_expiry: norm.short_expiry || norm.leaps_expiry, // Fallback
         short_call_premium: norm.short_premium,
         short_call_delta: norm.short_delta,
-        short_call_iv: norm.short_iv,
+        short_call_iv: shortIvDecimal,
         leaps_strike: norm.leaps_strike,
         leaps_expiry: norm.leaps_expiry,
         leaps_premium: leapsPremiumPerShare,
         leaps_delta: norm.leaps_delta,
         contracts: simulateContracts,
         scan_parameters: {
+            short_iv_pct: shortIvPct,
           score: norm.score,
           net_debit: norm.net_debit,
           max_profit: norm.max_profit,
@@ -155,7 +220,7 @@ const PMCC = () => {
           leaps_cost: norm.leaps_cost
         }
       };
-      
+
       await simulatorApi.addTrade(tradeData);
       toast.success(`Added ${norm.symbol} PMCC to Simulator!`);
       setSimulateModalOpen(false);
@@ -169,11 +234,11 @@ const PMCC = () => {
     }
   };
 
-  // PMCC Filters - blank by default for best opportunities
+  // PMCC Filters - Phase 5 defaults: $30-$90 stock price (ETFs exempt)
   const [filters, setFilters] = useState({
-    // Stock filters
-    minPrice: '',
-    maxPrice: '',
+    // Stock filters - Phase 5 strict pricing
+    minPrice: 30,
+    maxPrice: 90,
     // LEAPS filters
     minLeapsDelta: '',
     maxLeapsDelta: '',
@@ -190,19 +255,21 @@ const PMCC = () => {
   });
 
   useEffect(() => {
-    // On initial load, fetch available scans and auto-run custom scan
+    // On initial load, load Custom Scan by default (user preference per Phase 5)
+    // Pre-computed scans available via Quick Scans buttons
     const initializeData = async () => {
       try {
         const res = await scansApi.getAvailable();
         setAvailableScans(res.data.scans);
+
+        // Default to Custom Scan - user can click Quick Scans for pre-computed
+        fetchOpportunities();
       } catch (error) {
-        console.log('Could not fetch available scans:', error);
+        console.log('Could not fetch available scans, loading custom scan:', error);
+        fetchOpportunities();
       }
-      
-      // Auto-run custom scan to show results immediately
-      fetchOpportunities();
     };
-    
+
     initializeData();
   }, []);
 
@@ -262,10 +329,10 @@ const PMCC = () => {
       if (filters.minRoiPerCycle) params.min_roi = filters.minRoiPerCycle;
       if (filters.minAnnualizedRoi) params.min_annualized_roi = filters.minAnnualizedRoi;
       if (bypassCache) params.bypass_cache = true;
-      
+
       const response = await screenerApi.getPMCC(params);
       let opportunities = response.data.opportunities || [];
-      
+
       // Deduplicate by symbol - keep only the entry with highest score
       const symbolMap = {};
       for (const opp of opportunities) {
@@ -275,7 +342,7 @@ const PMCC = () => {
         }
       }
       opportunities = Object.values(symbolMap);
-      
+
       setOpportunities(opportunities);
       setApiInfo(response.data);
     } catch (error) {
@@ -287,9 +354,10 @@ const PMCC = () => {
   };
 
   const resetFilters = () => {
+    // Reset to Phase 5 defaults: $30-$90 price range
     setFilters({
-      minPrice: '',
-      maxPrice: '',
+      minPrice: 30,
+      maxPrice: 90,
       minLeapsDelta: '',
       maxLeapsDelta: '',
       minLeapsDte: '',
@@ -362,35 +430,8 @@ const PMCC = () => {
     return sortDirection === 'asc' ? aVal - bVal : bVal - aVal;
   });
 
-  // Get T-1 data info from apiInfo
-  const t1Data = apiInfo?.t1_data;
-
   return (
     <div className="space-y-6" data-testid="pmcc-page">
-      {/* T-1 Data Status Banner */}
-      <div className="glass-card p-3 flex items-center justify-between bg-zinc-800/50 border-emerald-500/30">
-        <div className="flex items-center gap-3">
-          <div className="flex items-center gap-2">
-            <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-            <span className="text-emerald-400 font-medium text-sm">T-1 Market Data</span>
-          </div>
-          <span className="text-zinc-400 text-sm">
-            {t1Data ? (
-              <>Data from: <span className="text-white font-medium">{t1Data.data_date}</span> (Market Close)</>
-            ) : (
-              <>Using previous trading day close data</>
-            )}
-          </span>
-        </div>
-        <div className="flex items-center gap-2">
-          {t1Data?.next_refresh && (
-            <span className="text-xs text-zinc-500">
-              Next refresh: {t1Data.next_refresh}
-            </span>
-          )}
-        </div>
-      </div>
-
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
@@ -399,11 +440,9 @@ const PMCC = () => {
             Poor Man&apos;s Covered Call (PMCC)
           </h1>
           <p className="text-zinc-400 mt-1">
-            {apiInfo?.is_precomputed 
+            {apiInfo?.is_precomputed
               ? `Showing ${apiInfo.label} pre-computed PMCC results`
-              : apiInfo?.is_precomputed_fallback
-                ? `Showing ${apiInfo.precomputed_profile} pre-computed results`
-                : "LEAPS-based covered call strategy with lower capital requirement"}
+              : "LEAPS-based covered call strategy with lower capital requirement"}
           </p>
         </div>
         <div className="flex flex-wrap gap-3">
@@ -413,7 +452,7 @@ const PMCC = () => {
             disabled={refreshing || loading}
             className="btn-outline"
             data-testid="refresh-pmcc-btn"
-            title="Refresh data with latest T-1 close prices"
+            title="Fetch fresh data from market (bypasses cache)"
           >
             <RefreshCw className={`w-4 h-4 mr-2 ${refreshing ? 'animate-spin' : ''}`} />
             {refreshing ? 'Refreshing...' : 'Refresh Data'}
@@ -427,7 +466,7 @@ const PMCC = () => {
             {filtersOpen ? 'Hide' : 'Show'} Filters
           </Button>
           <Button
-            onClick={() => { setActiveScan(null); fetchOpportunities(false); }}
+            onClick={() => { setActiveScan(null); fetchOpportunities(true); }}
             className="bg-violet-600 hover:bg-violet-700 text-white"
             data-testid="custom-pmcc-scan-btn"
           >
@@ -436,36 +475,6 @@ const PMCC = () => {
           </Button>
         </div>
       </div>
-
-      {/* Strategy Explanation - Compact Version */}
-      <Card className="glass-card border-violet-500/30">
-        <CardContent className="py-4">
-          <div className="grid md:grid-cols-2 gap-4">
-            <div className="p-3 rounded-lg bg-emerald-500/5 border border-emerald-500/20">
-              <div className="flex items-center gap-2 mb-2">
-                <TrendingUp className="w-4 h-4 text-emerald-400" />
-                <span className="font-medium text-emerald-400 text-sm">Long Leg (LEAPS)</span>
-              </div>
-              <ul className="space-y-1 text-xs text-zinc-400">
-                <li>• <span className="text-white">12–24 months</span> expiration, deep ITM (δ0.80–0.90)</li>
-                <li>• Acts as stock substitute at lower cost</li>
-                <li>• <span className="text-emerald-400">Roll at 6 months remaining</span></li>
-              </ul>
-            </div>
-            <div className="p-3 rounded-lg bg-cyan-500/5 border border-cyan-500/20">
-              <div className="flex items-center gap-2 mb-2">
-                <TrendingDown className="w-4 h-4 text-cyan-400" />
-                <span className="font-medium text-cyan-400 text-sm">Short Leg (Sell Calls)</span>
-              </div>
-              <ul className="space-y-1 text-xs text-zinc-400">
-                <li>• <span className="text-white">7–45 days</span> expiration, OTM (δ0.15–0.40)</li>
-                <li>• Repeat to collect premium income</li>
-                <li>• <span className="text-cyan-400">Roll at 50% profit or 21 DTE</span></li>
-              </ul>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
 
       {/* Pre-Computed PMCC Scan Buttons */}
       <Card className="glass-card" data-testid="pmcc-precomputed-scans">
@@ -635,7 +644,7 @@ const PMCC = () => {
                   </Button>
                   <Button
                     size="sm"
-                    onClick={() => fetchOpportunities(false)}
+                    onClick={() => fetchOpportunities(true)}
                     className="bg-violet-600 hover:bg-violet-700 text-white h-8 px-3"
                     data-testid="scan-pmcc-btn"
                   >
@@ -647,7 +656,7 @@ const PMCC = () => {
             </CardHeader>
             <CardContent className="space-y-2">
               <Accordion type="multiple" defaultValue={["stock", "leaps", "short", "roi"]} className="w-full">
-                
+
                 {/* Stock Price Filter */}
                 <AccordionItem value="stock" className="border-zinc-800">
                   <AccordionTrigger className="text-sm font-medium hover:no-underline">
@@ -826,20 +835,6 @@ const PMCC = () => {
 
         {/* Results Section */}
         <div className={`space-y-4 ${filtersOpen ? 'lg:col-span-3' : 'lg:col-span-4'}`}>
-          {/* LEAPS Data Info */}
-          <div className="glass-card p-4 border-l-4 border-emerald-500">
-            <div className="flex items-start gap-3">
-              <CheckCircle className="w-5 h-5 text-emerald-400 flex-shrink-0 mt-0.5" />
-              <div>
-                <div className="text-sm font-medium text-emerald-400">True LEAPS Options Data</div>
-                <div className="text-xs text-zinc-400 mt-1">
-                  Fetching <strong className="text-white">real LEAPS options (12-24 months out)</strong> from the Massive.com API.
-                  Click any row to view chart and detailed analysis.
-                </div>
-              </div>
-            </div>
-          </div>
-
           {/* Live Data Badge */}
           {apiInfo?.is_live && (
             <div className="flex items-center gap-2">
@@ -893,9 +888,10 @@ const PMCC = () => {
                         <SortHeader field="symbol" label="Symbol" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
                         <SortHeader field="stock_price" label="Price" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
                         <th>LEAPS (Buy)</th>
+                        <th>Premium (Ask)</th>
                         <SortHeader field="leaps_cost" label="Cost" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
                         <th>Short (Sell)</th>
-                        <SortHeader field="short_premium" label="Premium" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
+                        <SortHeader field="short_premium" label="Premium (Bid)" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
                         <SortHeader field="net_debit" label="Net Debit" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
                         <th>Width</th>
                         <th>ROI/Cycle</th>
@@ -909,11 +905,11 @@ const PMCC = () => {
                       {sortedOpportunities.map((opp, index) => {
                         // Normalize data from both custom API and pre-computed API
                         const norm = normalizeOpp(opp);
-                        
+
                         return (
-                          <tr 
-                            key={index} 
-                            className="cursor-pointer hover:bg-zinc-800/50 transition-colors" 
+                          <tr
+                            key={index}
+                            className="cursor-pointer hover:bg-zinc-800/50 transition-colors"
                             data-testid={`pmcc-row-${opp.symbol}`}
                             onClick={() => {
                               setSelectedStock(opp.symbol);
@@ -926,15 +922,16 @@ const PMCC = () => {
                             <td className="font-mono">${opp.stock_price?.toFixed(2)}</td>
                             <td>
                               <div className="flex flex-col">
-                                <span className="text-emerald-400 font-mono text-sm">{formatOptionContract(norm.leaps_dte, norm.leaps_strike)}</span>
-                                <span className="text-xs text-zinc-500">δ{norm.leaps_delta?.toFixed(2)}</span>
+                                <span className="text-emerald-400 font-mono text-sm">{formatOptionContract(norm.leaps_expiry || norm.leaps_dte, norm.leaps_strike)}</span>
+                                <span className="text-sm text-zinc-300 font-medium">δ{norm.leaps_delta?.toFixed(2) || '-'} <span className="text-zinc-500">|</span> {norm.leaps_dte}d</span>
                               </div>
                             </td>
+                            <td className="text-cyan-400 font-mono">${norm.leaps_premium?.toFixed(2) || '-'}</td>
                             <td className="text-red-400 font-mono">${norm.leaps_cost?.toLocaleString()}</td>
                             <td>
                               <div className="flex flex-col">
-                                <span className="text-cyan-400 font-mono text-sm">{formatOptionContract(opp.short_dte, opp.short_strike)}</span>
-                                <span className="text-xs text-zinc-500">δ{opp.short_delta?.toFixed(2)}</span>
+                                <span className="text-cyan-400 font-mono text-sm">{formatOptionContract(opp.short_expiry || opp.short_dte, opp.short_strike)}</span>
+                                <span className="text-sm text-zinc-300 font-medium">δ{(opp.short_delta || norm.short_delta)?.toFixed(2) || '-'} <span className="text-zinc-500">|</span> {opp.short_dte}d</span>
                               </div>
                             </td>
                             <td className="text-emerald-400 font-mono">${norm.short_premium_total?.toFixed(0)}</td>
@@ -943,25 +940,54 @@ const PMCC = () => {
                             <td className="text-yellow-400 font-semibold">{norm.roi_per_cycle?.toFixed(1)}%</td>
                             <td className="text-emerald-400 font-semibold">{norm.annualized_roi?.toFixed(0)}%</td>
                             <td>
-                              <Badge className={`${opp.score >= 70 ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' : opp.score >= 50 ? 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30' : 'bg-violet-500/20 text-violet-400 border-violet-500/30'}`}>
-                                {opp.score?.toFixed(0)}
-                              </Badge>
+                              <TooltipProvider>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <Badge className={`cursor-pointer ${opp.score >= 70 ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' : opp.score >= 50 ? 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30' : 'bg-violet-500/20 text-violet-400 border-violet-500/30'}`}>
+                                      {opp.score?.toFixed(0)}
+                                    </Badge>
+                                  </TooltipTrigger>
+                                  <TooltipContent className="bg-zinc-800 border-zinc-700 p-3 max-w-xs">
+                                    {opp.score_breakdown?.pillars ? (
+                                      <div className="space-y-2">
+                                        <p className="font-semibold text-zinc-200 mb-2">PMCC Score Breakdown</p>
+                                        {Object.values(opp.score_breakdown.pillars).map((pillar, idx) => (
+                                          <div key={idx} className="text-xs">
+                                            <div className="flex justify-between text-zinc-300">
+                                              <span>{pillar.name}</span>
+                                              <span className="text-emerald-400">{pillar.actual_score}/{pillar.max_score}</span>
+                                            </div>
+                                            <div className="w-full bg-zinc-700 h-1 rounded-full mt-1">
+                                              <div
+                                                className="bg-emerald-500 h-1 rounded-full"
+                                                style={{width: `${pillar.percentage}%`}}
+                                              />
+                                            </div>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    ) : (
+                                      <p className="text-zinc-400 text-xs">Score: {opp.score?.toFixed(1)}</p>
+                                    )}
+                                  </TooltipContent>
+                                </Tooltip>
+                              </TooltipProvider>
                             </td>
                             <td>
-                              {opp.analyst_rating ? (
+                              {(opp.analyst_rating_label || opp.analyst_rating) ? (
                                 <Badge className={`text-xs ${
-                                  opp.analyst_rating === 'Strong Buy' 
+                                  (opp.analyst_rating_label || opp.analyst_rating) === 'Strong Buy'
                                     ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30'
-                                    : opp.analyst_rating === 'Buy'
+                                    : (opp.analyst_rating_label || opp.analyst_rating) === 'Buy'
                                       ? 'bg-green-500/20 text-green-400 border-green-500/30'
-                                      : opp.analyst_rating === 'Hold'
+                                      : (opp.analyst_rating_label || opp.analyst_rating) === 'Hold'
                                         ? 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30'
                                         : 'bg-red-500/20 text-red-400 border-red-500/30'
                                 }`}>
-                                  {opp.analyst_rating}
+                                  {opp.analyst_rating_label || opp.analyst_rating}
                                 </Badge>
                               ) : (
-                                <span className="text-zinc-600 text-xs">-</span>
+                                <span className="text-zinc-600 text-xs">N/A</span>
                               )}
                             </td>
                             <td className="text-center">
@@ -1047,7 +1073,7 @@ const PMCC = () => {
                   </div>
                 </div>
               </div>
-              
+
               <div>
                 <Label>Number of Contracts</Label>
                 <Input
@@ -1062,7 +1088,7 @@ const PMCC = () => {
                   Capital required: ${((norm.leaps_cost || 0) * simulateContracts).toLocaleString()}
                 </p>
               </div>
-              
+
               <div className="flex gap-2 pt-2">
                 <Button
                   variant="outline"
@@ -1085,7 +1111,7 @@ const PMCC = () => {
       </Dialog>
 
       {/* Stock Detail Modal */}
-      <StockDetailModal 
+      <StockDetailModal
         symbol={selectedStock}
         isOpen={isModalOpen}
         onClose={() => {

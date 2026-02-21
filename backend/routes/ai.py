@@ -1,7 +1,9 @@
 """
 AI Routes - AI-powered analysis endpoints
+
+Note: Mock fallback blocked in production (ENVIRONMENT check).
 """
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, HTTPException
 from typing import Optional
 import os
 import logging
@@ -14,6 +16,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from database import db
 from models.schemas import AIAnalysisRequest
 from utils.auth import get_current_user
+from utils.environment import allow_mock_data
 
 ai_router = APIRouter(tags=["AI Insights"])
 
@@ -34,78 +37,92 @@ async def get_admin_settings():
 
 
 def generate_mock_covered_call_opportunities():
-    """Generate mock covered call opportunities - imported from server for now"""
+    """
+    Generate mock covered call opportunities - imported from server.
+    
+    Returns empty list in production to prevent mock data leakage.
+    """
+    if not allow_mock_data():
+        logging.warning("MOCK_FALLBACK_BLOCKED_PRODUCTION | function=ai.generate_mock_covered_call_opportunities")
+        return []
+    
     from server import generate_mock_covered_call_opportunities as mock_fn
     return mock_fn()
 
 
 @ai_router.post("/analyze")
 async def ai_analysis(request: AIAnalysisRequest, user: dict = Depends(get_current_user)):
-    """AI-powered trade analysis using GPT-5.2"""
-    settings = await get_admin_settings()
+    """AI-powered trade analysis (uses AI tokens)"""
+    from ai_wallet.ai_service import AIExecutionService
     
-    # Use Emergent LLM key or admin-configured key
-    api_key = settings.openai_api_key or os.environ.get('EMERGENT_LLM_KEY')
+    ai_service = AIExecutionService(db)
     
-    if not api_key:
-        # Return mock analysis if no API key
-        return {
-            "analysis": f"AI analysis for {request.symbol or 'market'} ({request.analysis_type})",
-            "recommendations": [
-                "Consider selling weekly covered calls at 0.25-0.30 delta",
-                "Monitor IV rank for optimal entry points",
-                "Set alerts for earnings dates to avoid assignment risk"
-            ],
-            "confidence": 0.75,
-            "is_mock": True
-        }
+    # Build the prompt
+    user_prompt = f"""Analysis Type: {request.analysis_type}
+    Symbol: {request.symbol or 'General Market'}
+    Context: {request.context or 'Standard analysis requested'}
     
-    try:
-        client = OpenAI(api_key=api_key)
+    Please provide:
+    1. Current opportunity assessment
+    2. Specific strike/expiry recommendations
+    3. Risk factors and mitigation strategies
+    4. Confidence score and rationale"""
+    
+    # Execute with token guard
+    result = await ai_service.execute_general_analysis(
+        user_id=user["id"],
+        analysis_request=user_prompt
+    )
+    
+    if not result["success"]:
+        # Check if this is a token issue
+        if result.get("error_code") == "INSUFFICIENT_TOKENS":
+            from fastapi import HTTPException
+            raise HTTPException(
+                status_code=402,
+                detail={
+                    "error": result["error"],
+                    "error_code": "INSUFFICIENT_TOKENS",
+                    "remaining_balance": result.get("remaining_balance", 0)
+                }
+            )
         
-        # Build context-aware prompt
-        system_prompt = """You are an expert options trading analyst specializing in covered calls and Poor Man's Covered Calls (PMCC). 
-        Provide actionable, data-driven analysis with specific recommendations. 
-        Include composite scores (1-100), confidence levels, and clear rationale for all suggestions.
-        Format responses with clear sections: Summary, Key Metrics, Recommendations, Risk Assessment."""
-        
-        user_prompt = f"""Analysis Type: {request.analysis_type}
-        Symbol: {request.symbol or 'General Market'}
-        Context: {request.context or 'Standard analysis requested'}
-        
-        Please provide:
-        1. Current opportunity assessment
-        2. Specific strike/expiry recommendations
-        3. Risk factors and mitigation strategies
-        4. Confidence score and rationale"""
-        
-        response = client.chat.completions.create(
-            model="gpt-4o",  # Using gpt-4o as fallback
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt}
-            ],
-            max_tokens=1000,
-            temperature=0.7
-        )
-        
-        analysis_text = response.choices[0].message.content
-        
-        return {
-            "analysis": analysis_text,
-            "symbol": request.symbol,
-            "analysis_type": request.analysis_type,
-            "confidence": 0.85,
-            "is_mock": False
-        }
-        
-    except Exception as e:
-        logging.error(f"AI Analysis error: {e}")
-        return {
-            "analysis": f"Unable to generate AI analysis: {str(e)}",
-            "is_mock": True,
-            "error": True
-        }
+        # For other errors, check if mock fallback is allowed
+        if allow_mock_data():
+            logging.warning(f"MOCK_FALLBACK_USED | endpoint=ai_analysis | reason={result.get('error')}")
+            return {
+                "analysis": f"AI analysis for {request.symbol or 'market'} ({request.analysis_type})",
+                "recommendations": [
+                    "Consider selling weekly covered calls at 0.25-0.30 delta",
+                    "Monitor IV rank for optimal entry points",
+                    "Set alerts for earnings dates to avoid assignment risk"
+                ],
+                "confidence": 0.75,
+                "is_mock": True,
+                "error": result.get("error")
+            }
+        else:
+            # Production: fail explicitly
+            logging.warning(f"MOCK_FALLBACK_BLOCKED_PRODUCTION | endpoint=ai_analysis | reason={result.get('error')}")
+            raise HTTPException(
+                status_code=503,
+                detail={
+                    "data_status": "UNAVAILABLE",
+                    "reason": "AI_SERVICE_ERROR",
+                    "details": result.get("error"),
+                    "is_mock": False
+                }
+            )
+    
+    return {
+        "analysis": result["response"],
+        "symbol": request.symbol,
+        "analysis_type": request.analysis_type,
+        "confidence": 0.85,
+        "is_mock": False,
+        "tokens_used": result.get("tokens_used", 0),
+        "remaining_balance": result.get("remaining_balance", 0)
+    }
 
 
 @ai_router.get("/opportunities")
@@ -113,8 +130,17 @@ async def ai_opportunity_scan(
     min_score: float = Query(70, ge=0, le=100),
     user: dict = Depends(get_current_user)
 ):
-    """AI-scored trading opportunities"""
+    """
+    AI-scored trading opportunities.
+    
+    In production: Returns empty if no real opportunities available.
+    In dev/test: May use mock data as fallback.
+    """
     opportunities = generate_mock_covered_call_opportunities()
+    
+    # If no opportunities (production or no mock data), return empty
+    if not opportunities:
+        return {"opportunities": [], "total": 0, "data_status": "NO_DATA"}
     
     # Add AI scores
     for opp in opportunities:

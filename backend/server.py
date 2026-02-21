@@ -32,6 +32,9 @@ import asyncio
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
 
+# Environment configuration for mock data policy
+from utils.environment import allow_mock_data, check_mock_fallback, DataUnavailableError, ENVIRONMENT
+
 # MongoDB connection
 mongo_url = os.environ['MONGO_URL']
 client = AsyncIOMotorClient(mongo_url)
@@ -39,8 +42,8 @@ db = client[os.environ['DB_NAME']]
 
 # Cache configuration - default cache duration in seconds (5 minutes for real-time data)
 CACHE_DURATION_SECONDS = 300
-# Weekend cache duration - 72 hours (Friday close to Monday open)
-WEEKEND_CACHE_DURATION_SECONDS = 259200  # 72 hours
+# After-hours cache duration - 1 hour (was 72 hours, but stale data is bad UX)
+WEEKEND_CACHE_DURATION_SECONDS = 3600  # 1 hour - refresh more frequently for accurate prices
 
 # Security
 security = HTTPBearer()
@@ -50,26 +53,33 @@ JWT_ALGORITHM = "HS256"
 # Create the main app
 app = FastAPI(title="Covered Call Engine - Options Trading Platform")
 
-@app.get("/health")
-def health():
-    return {"status": "ok"}
-
-from backend.routes.auth import auth_router
-from backend.routes.watchlist import watchlist_router
-from backend.routes.news import news_router
-from backend.routes.chatbot import chatbot_router
-from backend.routes.ai import ai_router
-from backend.routes.subscription import subscription_router
-from backend.routes.stocks import stocks_router
-from backend.routes.options import options_router
-from backend.routes.admin import admin_router
-from backend.routes.portfolio import portfolio_router
-from backend.routes.screener import screener_router
-from backend.routes.simulator import simulator_router
-from backend.routes.support import support_router
-from backend.routes.invitations import invitation_router
-from backend.routes.precomputed_scans import scans_router
-
+# Import external routers (refactored)
+from routes.auth import auth_router
+from routes.watchlist import watchlist_router
+from routes.news import news_router
+from routes.chatbot import chatbot_router
+from routes.ai import ai_router
+from routes.subscription import subscription_router
+from routes.email_automation import email_automation_router
+from routes.stocks import stocks_router
+from routes.options import options_router
+from routes.admin import admin_router
+from routes.portfolio import portfolio_router
+# TWO-PHASE ARCHITECTURE: Use snapshot-based screener (NO live data)
+from routes.screener_snapshot import screener_router  # Phase 2: Snapshot-only scanning
+from routes.simulator import simulator_router
+from routes.support import support_router
+from routes.invitations import invitation_router
+from routes.precomputed_scans import scans_router
+from routes.snapshots import snapshot_router  # PHASE 1: Snapshot management (legacy)
+# ADR-001: EOD Market Close Price Contract
+from routes.eod import eod_router  # Canonical EOD data management
+# AI Wallet: Token-based access control for AI features
+from ai_wallet.routes import ai_wallet_router
+# PayPal Express Checkout + Recurring Profiles
+from routes.paypal import paypal_router
+# EOD Pipeline: Deterministic universe + pre-computed scans
+from routes.eod_pipeline import eod_pipeline_router
 
 # Create routers (still in server.py - to be refactored)
 api_router = APIRouter(prefix="/api")
@@ -362,7 +372,12 @@ async def get_massive_api_key():
     return None
 
 async def fetch_stock_quote(symbol: str, api_key: str = None) -> Optional[dict]:
-    """Fetch current stock quote - tries Yahoo Finance first for real-time prices, then Massive.com fallback"""
+    """
+    Fetch current stock quote - tries Yahoo Finance first for real-time prices, then Massive.com fallback.
+    
+    In production: Mock fallback is blocked - returns None if no real data available.
+    In dev/test: Mock data allowed as last resort (flagged with is_mock=True).
+    """
     # Normalize symbol for different APIs
     yahoo_symbol = symbol.replace(' ', '-').replace('.', '-')  # BRK B -> BRK-B
     
@@ -415,10 +430,17 @@ async def fetch_stock_quote(symbol: str, api_key: str = None) -> Optional[dict]:
         except Exception as e:
             logging.warning(f"Massive API error for {symbol}: {e}")
     
-    # Last resort: check mock data
-    mock = MOCK_STOCKS.get(symbol.upper())
-    if mock:
-        return {"symbol": symbol.upper(), "price": mock["price"]}
+    # Last resort: check mock data (only allowed in dev/test)
+    if allow_mock_data():
+        mock = MOCK_STOCKS.get(symbol.upper())
+        if mock:
+            logging.warning(f"MOCK_FALLBACK_USED | symbol={symbol} | reason=YAHOO_AND_POLYGON_UNAVAILABLE")
+            return {"symbol": symbol.upper(), "price": mock["price"], "is_mock": True}
+    else:
+        # Production: log that mock fallback was blocked
+        mock = MOCK_STOCKS.get(symbol.upper())
+        if mock:
+            logging.warning(f"MOCK_FALLBACK_BLOCKED_PRODUCTION | symbol={symbol} | reason=YAHOO_AND_POLYGON_UNAVAILABLE")
     
     return None
 
@@ -767,7 +789,16 @@ def generate_mock_options(symbol: str, stock_price: float):
     return options
 
 def generate_mock_covered_call_opportunities():
-    """Generate mock covered call screening results"""
+    """
+    Generate mock covered call screening results.
+    
+    WARNING: This function should only be called in dev/test environments.
+    In production, real data should be used from precomputed scans.
+    """
+    if not allow_mock_data():
+        logging.warning("MOCK_FALLBACK_BLOCKED_PRODUCTION | function=generate_mock_covered_call_opportunities")
+        return []
+    
     opportunities = []
     
     for symbol, data in MOCK_STOCKS.items():
@@ -801,7 +832,16 @@ def generate_mock_covered_call_opportunities():
     return opportunities[:50]
 
 def generate_mock_pmcc_opportunities():
-    """Generate mock PMCC opportunities"""
+    """
+    Generate mock PMCC opportunities.
+    
+    WARNING: This function should only be called in dev/test environments.
+    In production, real data should be used from precomputed scans.
+    """
+    if not allow_mock_data():
+        logging.warning("MOCK_FALLBACK_BLOCKED_PRODUCTION | function=generate_mock_pmcc_opportunities")
+        return []
+    
     opportunities = []
     
     for symbol, data in MOCK_STOCKS.items():
@@ -937,31 +977,35 @@ async def health():
 @api_router.get("/market-status")
 async def get_market_status():
     """
-    Get current market status and T-1 data information.
+    Get current market status (open/closed), system mode, and relevant times.
     
-    T-1 DATA PRINCIPLE:
-    CCE always uses T-1 (previous trading day) market close data.
-    This endpoint returns the current T-1 date and data status.
+    SYSTEM MODES:
+    - LIVE: During market hours (9:30 AM - 4:05 PM ET), use live data
+    - EOD_LOCKED: After 4:05 PM ET, serve ONLY from eod_market_snapshot
     """
     try:
-        from services.trading_calendar import get_t_minus_1, get_market_data_status
-        
-        # Get T-1 information
-        market_status = get_market_data_status()
-        t1_date, t1_datetime = get_t_minus_1()
+        from utils.market_state import get_system_mode, get_market_state_info
         
         eastern = pytz.timezone('US/Eastern')
         now_eastern = datetime.now(eastern)
         
         market_open_time = now_eastern.replace(hour=9, minute=30, second=0, microsecond=0)
         market_close_time = now_eastern.replace(hour=16, minute=0, second=0, microsecond=0)
+        eod_lock_time = now_eastern.replace(hour=16, minute=5, second=0, microsecond=0)
         
         is_weekend = now_eastern.weekday() >= 5
         is_before_open = now_eastern < market_open_time
         is_after_close = now_eastern > market_close_time
+        is_after_lock = now_eastern >= eod_lock_time
         
-        # Current market status
+        market_closed = is_weekend or is_before_open or is_after_close
+        
+        # Get system mode from market_state utility
+        system_mode = get_system_mode()
+        
         status = "closed"
+        reason = ""
+        
         if is_weekend:
             status = "closed"
             reason = "Weekend - Market is closed"
@@ -975,22 +1019,29 @@ async def get_market_status():
             status = "open"
             reason = "Market is open"
         
+        # Data note based on system mode
+        if system_mode == "EOD_LOCKED":
+            data_note = "Data served from 4:05 PM ET EOD snapshot (deterministic, frozen)"
+        elif is_weekend:
+            data_note = "Data shown is from Friday's market close"
+        elif market_closed:
+            data_note = "Data is cached from market hours"
+        else:
+            data_note = "Live market data"
+        
         return {
             "status": status,
-            "is_open": status == "open",
+            "is_open": not market_closed,
             "is_weekend": is_weekend,
             "reason": reason,
             "current_time_et": now_eastern.strftime("%Y-%m-%d %H:%M:%S ET"),
             "market_open": "9:30 AM ET",
             "market_close": "4:00 PM ET",
-            # T-1 Data Information
-            "t1_data": {
-                "date": t1_date,
-                "description": f"Market close data from {t1_date}",
-                "data_age_hours": market_status["data_age_hours"],
-                "next_refresh": market_status["next_data_refresh"]
-            },
-            "data_note": f"All scans use T-1 (previous trading day) close data from {t1_date}"
+            "eod_lock_time": "4:05 PM ET",
+            "system_mode": system_mode,
+            "is_eod_locked": system_mode == "EOD_LOCKED",
+            "is_after_lock": is_after_lock,
+            "data_note": data_note
         }
     except Exception as e:
         logging.error(f"Market status error: {e}")
@@ -1005,16 +1056,34 @@ from routes.simulator import calculate_greeks, evaluate_and_execute_rules
 # Scheduler for automated daily price updates
 scheduler = AsyncIOScheduler()
 
+
+async def scheduled_email_automation():
+    """Process due marketing/automation emails."""
+    try:
+        from services.email_automation import EmailAutomationService
+        service = EmailAutomationService(db)
+        await service.process_due_jobs(limit=100)
+    except Exception as e:
+        logging.error(f"scheduled_email_automation failed: {e}")
+
+
 async def scheduled_price_update():
     """
     Automated daily price update for all active simulator trades.
     Runs at market close (4:00 PM ET) on weekdays.
     """
+    # Check if market is open today (skip weekends and NYSE holidays)
+    from services.snapshot_service import SnapshotService
+    snapshot_service = SnapshotService(db)
+    if not snapshot_service.is_trading_day():
+        logging.info("Market closed today (holiday or weekend), skipping scheduled_price_update")
+        return
+    
     logging.info("Starting scheduled simulator price update...")
     
     try:
         # Get all active trades across all users
-        active_trades = await db.simulator_trades.find({"status": "active"}).to_list(10000)
+        active_trades = await db.simulator_trades.find({"status": {"$in": ["open", "rolled"]}}).to_list(10000)
         
         if not active_trades:
             logging.info("No active simulator trades to update")
@@ -1199,7 +1268,7 @@ async def scheduled_price_update():
                     continue
                 
                 user_active_trades = await db.simulator_trades.find(
-                    {"user_id": user_id, "status": "active"},
+                    {"user_id": user_id, "status": {"$in": ["open", "rolled"]}},
                     {"_id": 0}
                 ).to_list(1000)
                 
@@ -1230,6 +1299,7 @@ api_router.include_router(news_router, prefix="/news")
 api_router.include_router(chatbot_router, prefix="/chatbot")
 api_router.include_router(ai_router, prefix="/ai")
 api_router.include_router(subscription_router, prefix="/subscription")
+api_router.include_router(email_automation_router)
 api_router.include_router(stocks_router, prefix="/stocks")
 api_router.include_router(options_router, prefix="/options")
 api_router.include_router(admin_router, prefix="/admin")
@@ -1239,13 +1309,19 @@ api_router.include_router(simulator_router, prefix="/simulator")
 api_router.include_router(support_router)
 api_router.include_router(invitation_router)
 api_router.include_router(scans_router)  # Pre-computed scans
+api_router.include_router(ai_wallet_router)  # AI Wallet: Token purchases & balance
+api_router.include_router(paypal_router, prefix="/paypal")  # PayPal Express Checkout
+api_router.include_router(eod_pipeline_router)  # EOD Pipeline: Deterministic universe + scans
+app.include_router(snapshot_router)  # PHASE 1: Snapshot management (legacy - no prefix)
+# ADR-001: EOD Market Close Price Contract
+app.include_router(eod_router)  # Canonical EOD data (no prefix - already has /api/eod)
 
 app.include_router(api_router)
 
 app.add_middleware(
     CORSMiddleware,
     allow_credentials=True,
-    allow_origins=os.environ.get('CORS_ORIGINS', '*').split(','),
+    allow_origins=[origin.strip() for origin in os.environ.get('CORS_ORIGINS', 'http://localhost:3000').split(',')],
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -1259,6 +1335,13 @@ logger = logging.getLogger(__name__)
 
 @app.on_event("startup")
 async def startup():
+    # Check database connection first - fail fast if database is unavailable
+    from database import check_db_connection
+    db_ok, db_error = await check_db_connection()
+    if not db_ok:
+        logger.critical(f"Database connection failed on startup: {db_error}")
+        raise RuntimeError(f"Cannot start application - database connection failed: {db_error}")
+    
     # Create indexes
     await db.users.create_index("email", unique=True)
     await db.users.create_index("id", unique=True)
@@ -1291,46 +1374,71 @@ async def startup():
     await db.invitations.create_index("token", unique=True)
     await db.invitations.create_index([("email", 1), ("status", 1)])
     
+    # ADR-001: EOD Market Close Price Contract - Create indexes for canonical EOD collections
+    await db.eod_market_close.create_index([("symbol", 1), ("trade_date", 1)], unique=True)
+    await db.eod_market_close.create_index([("trade_date", 1), ("is_final", 1)])
+    await db.eod_market_close.create_index("ingestion_run_id")
+    await db.eod_options_chain.create_index([("symbol", 1), ("trade_date", 1)], unique=True)
+    await db.eod_options_chain.create_index([("trade_date", 1), ("is_final", 1)])
+    await db.eod_options_chain.create_index("ingestion_run_id")
+    
+    # EOD Market Snapshot: Deterministic 4:05 PM ET snapshot collection
+    await db.eod_market_snapshot.create_index([("symbol", 1), ("trade_date", 1)], unique=True)
+    await db.eod_market_snapshot.create_index([("run_id", 1)])
+    await db.eod_market_snapshot.create_index([("trade_date", 1), ("is_final", 1)])
+    await db.eod_market_snapshot.create_index("as_of")
+    await db.eod_snapshot_audit.create_index([("run_id", 1), ("symbol", 1)])
+    await db.eod_snapshot_audit.create_index("as_of")
+    
+    # CCE Volatility & Greeks Correctness - IV History indexes
+    from services.iv_rank_service import ensure_iv_history_indexes
+    await ensure_iv_history_indexes(db)
+    
     # Create default admin if not exists (production only - credentials should be changed immediately)
-        # Create default admin if not exists
     admin = await db.users.find_one({"is_admin": True})
-
     if not admin:
+        # Generate a secure random password for first-time setup
         import secrets
         temp_password = secrets.token_urlsafe(16)
-
         admin_doc = {
-            "_id": str(uuid.uuid4()),
+            "id": str(uuid.uuid4()),
             "email": "admin@coveredcallengine.com",
             "name": "Admin",
             "password": hash_password(temp_password),
             "is_admin": True,
             "created_at": datetime.now(timezone.utc).isoformat()
         }
-
-        result = await db.users.update_one(
-            {"email": "admin@coveredcallengine.com"},
-            {"$setOnInsert": admin_doc},
-            upsert=True
-        )
-
-        if result.upserted_id:
-           logger.warning(
-               f"FIRST RUN: Default admin created. "
-               f"Email: admin@coveredcallengine.com, "
-               f"Temp Password: {temp_password}"
-            )
-           logger.warning(
-               "SECURITY: Change the admin password immediately after first login!"
-            )
-
+        await db.users.insert_one(admin_doc)
+        # Log to server only - never expose in UI
+        logger.warning(f"FIRST RUN: Default admin created. Email: admin@coveredcallengine.com, Temp Password: {temp_password}")
+        logger.warning("SECURITY: Change the admin password immediately after first login!")
     
     # Start the scheduler for automated price updates
-    # Run at 4:30 PM ET (after market close) on weekdays
+    # Run at 4:05 PM ET (after market close) on weekdays - consistent with EOD and Pre-computed scans
     scheduler.add_job(
         scheduled_price_update,
-        CronTrigger(hour=16, minute=30, day_of_week='mon-fri', timezone='America/New_York'),
+        CronTrigger(hour=16, minute=5, day_of_week='mon-fri', timezone='America/New_York'),
         id='simulator_price_update',
+        replace_existing=True
+    )
+    
+    # EOD Pipeline Scheduler - runs at 4:10 PM ET (after market close)
+    # This builds the 1500-symbol universe and pre-computes all scan results
+    async def scheduled_eod_pipeline():
+        """Run the EOD pipeline to pre-compute CC/PMCC scan results."""
+        try:
+            from services.eod_pipeline import run_eod_pipeline
+            logger.info("Starting scheduled EOD pipeline...")
+            result = await run_eod_pipeline(db, force_build_universe=False)
+            logger.info(f"EOD Pipeline completed: {result.run_id}, "
+                       f"CC={len(result.cc_opportunities)}, PMCC={len(result.pmcc_opportunities)}")
+        except Exception as e:
+            logger.error(f"Scheduled EOD pipeline failed: {e}")
+    
+    scheduler.add_job(
+        scheduled_eod_pipeline,
+        CronTrigger(hour=16, minute=10, day_of_week='mon-fri', timezone='America/New_York'),
+        id='eod_pipeline_scan',
         replace_existing=True
     )
     
@@ -1379,10 +1487,37 @@ async def startup():
         replace_existing=True
     )
     
-    # Pre-computed scans - runs at 4:45 PM ET (after market close) on weekdays
+    # Symbol Enrichment - runs daily at 5:00 AM ET (before market open)
+    async def scheduled_symbol_enrichment():
+        """Run the symbol enrichment job to fetch analyst ratings."""
+        try:
+            from services.symbol_enrichment import run_enrichment_job
+            logger.info("Starting scheduled symbol enrichment job...")
+            result = await run_enrichment_job(db)
+            logger.info(f"Symbol enrichment completed: {result.get('enriched')} symbols enriched")
+        except Exception as e:
+            logger.error(f"Scheduled symbol enrichment failed: {e}")
+    
+    scheduler.add_job(
+        scheduled_symbol_enrichment,
+        CronTrigger(hour=5, minute=0, day_of_week='mon-fri', timezone='America/New_York'),
+        id='symbol_enrichment_job',
+        replace_existing=True
+    )
+    
+    # Pre-computed scans - runs at 4:05 PM ET (after market close) on weekdays
+    # UPDATED: Moved from 4:45 PM to 4:05 PM for price consistency across all pages
+    # Yahoo Finance provides market close data immediately after 4:00 PM
     async def run_precomputed_scans():
         """Run nightly pre-computed scans for covered calls and PMCC."""
         try:
+            # Check if market is open today (skip weekends and NYSE holidays)
+            from services.snapshot_service import SnapshotService
+            snapshot_service = SnapshotService(db)
+            if not snapshot_service.is_trading_day():
+                logger.info("Market closed today (holiday or weekend), skipping run_precomputed_scans")
+                return
+            
             from services.precomputed_scans import PrecomputedScanService
             
             # Get API key
@@ -1405,13 +1540,129 @@ async def startup():
     
     scheduler.add_job(
         run_precomputed_scans,
-        CronTrigger(hour=16, minute=45, day_of_week='mon-fri', timezone='America/New_York'),
+        CronTrigger(hour=16, minute=5, day_of_week='mon-fri', timezone='America/New_York'),
         id='precomputed_scans',
         replace_existing=True
     )
     
+    # ADR-001: EOD Market Close Price Contract - Scheduled Ingestion at 04:05 PM ET
+    async def run_eod_ingestion():
+        """
+        ADR-001 COMPLIANT: Scheduled EOD ingestion at 04:05 PM ET.
+        
+        Captures canonical market close prices for all symbols.
+        Must run after market close candle finalizes.
+        """
+        try:
+            # Check if market is open today (skip weekends and NYSE holidays)
+            from services.snapshot_service import SnapshotService
+            snapshot_service = SnapshotService(db)
+            if not snapshot_service.is_trading_day():
+                logger.info("[ADR-001] Market closed today (holiday or weekend), skipping run_eod_ingestion")
+                return
+            
+            from services.eod_ingestion_service import EODIngestionService
+            from routes.eod import EOD_SYMBOLS
+            
+            logger.info("[ADR-001] Starting scheduled EOD ingestion at 04:05 PM ET")
+            
+            eod_service = EODIngestionService(db)
+            results = await eod_service.ingest_all_eod(EOD_SYMBOLS)
+            
+            summary = results.get("summary", {})
+            logger.info(f"[ADR-001] EOD ingestion complete: "
+                       f"stocks={summary.get('stock_ingested', 0)}, "
+                       f"options={summary.get('options_ingested', 0)}, "
+                       f"skipped={summary.get('stock_skipped', 0)}")
+            
+        except Exception as e:
+            logger.error(f"[ADR-001] EOD ingestion error: {e}")
+    
+    scheduler.add_job(
+        run_eod_ingestion,
+        CronTrigger(hour=16, minute=5, day_of_week='mon-fri', timezone='America/New_York'),
+        id='eod_market_close_ingestion',
+        replace_existing=True
+    )
+    
+    # EOD MARKET SNAPSHOT: Deterministic 4:05 PM ET Snapshot Lock
+    # Creates synchronized underlying + option chain snapshots for all symbols
+    async def run_eod_market_snapshot():
+        """
+        DETERMINISTIC EOD SNAPSHOT at 4:05 PM ET.
+        
+        After this job completes:
+        - All data requests are served from eod_market_snapshot collection
+        - No live Yahoo calls permitted
+        - System enters EOD_LOCKED mode
+        
+        NON-NEGOTIABLES:
+        - No mock data fallback
+        - No live chain rebuilding
+        - Snapshot is sole source of truth until next market open
+        """
+        try:
+            from utils.market_state import is_trading_day, log_eod_event
+            from services.eod_snapshot_service import get_eod_snapshot_service
+            from routes.eod import EOD_SYMBOLS
+            
+            # Skip non-trading days
+            if not is_trading_day():
+                logger.info("[EOD-SNAPSHOT] Market closed today, skipping snapshot creation")
+                return
+            
+            logger.info("[EOD-SNAPSHOT] Starting deterministic 4:05 PM ET snapshot generation")
+            
+            eod_service = get_eod_snapshot_service(db)
+            await eod_service.ensure_indexes()
+            
+            # Get API key for data fetching
+            settings = await db.admin_settings.find_one(
+                {"massive_api_key": {"$exists": True}}, 
+                {"_id": 0}
+            )
+            api_key = settings.get("massive_api_key") if settings else None
+            
+            # Create snapshot for all symbols
+            results = await eod_service.create_eod_snapshot(
+                symbols=EOD_SYMBOLS,
+                api_key=api_key
+            )
+            
+            logger.info(f"[EOD-SNAPSHOT-CREATED] run_id={results['run_id']} "
+                       f"symbols={results['symbols_success']}/{results['symbols_requested']} "
+                       f"failed={results['symbols_failed']}")
+            
+            log_eod_event(
+                "SNAPSHOT_JOB_COMPLETE",
+                run_id=results['run_id'],
+                success=results['symbols_success'],
+                failed=results['symbols_failed']
+            )
+            
+        except Exception as e:
+            logger.error(f"[EOD-SNAPSHOT-ERROR] Snapshot generation failed: {e}")
+            from utils.market_state import log_eod_event
+            log_eod_event("SNAPSHOT_JOB_FAILED", error=str(e))
+    
+    scheduler.add_job(
+        run_eod_market_snapshot,
+        CronTrigger(hour=16, minute=5, day_of_week='mon-fri', timezone='America/New_York'),
+        id='eod_market_snapshot',
+        replace_existing=True
+    )
+
+    # Run email automation queue every 2 minutes
+    scheduler.add_job(
+        scheduled_email_automation,
+        "interval",
+        minutes=2,
+        id="email_automation_queue",
+        replace_existing=True
+    )
+
     scheduler.start()
-    logger.info("Schedulers started - Simulator: 4:30 PM ET, Pre-computed scans: 4:45 PM ET, Support: every 5 min, IMAP: every 6 hours")
+    logger.info("Schedulers started - EOD: 4:05 PM ET, Pre-computed scans: 4:05 PM ET, Simulator: 4:05 PM ET, Support: every 5 min, IMAP: every 6 hours")
 
 @app.on_event("shutdown")
 async def shutdown_db_client():
@@ -1419,4 +1670,10 @@ async def shutdown_db_client():
     if scheduler.running:
         scheduler.shutdown()
         logger.info("Simulator scheduler shut down")
+    
+    # Shutdown Yahoo Finance executor to prevent thread leaks
+    from services.data_provider import shutdown_executor
+    shutdown_executor()
+    
+    # Close MongoDB client
     client.close()

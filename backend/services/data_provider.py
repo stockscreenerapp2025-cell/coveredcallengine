@@ -1,508 +1,618 @@
 """
 Centralized Data Provider Service
-=================================
+================================
 PRIMARY DATA SOURCE: Yahoo Finance (yfinance)
 BACKUP DATA SOURCE: Polygon/Massive (free tier)
 
-TWO-SOURCE DATA MODEL (AUTHORITATIVE SPEC):
-1. EQUITY PRICE (Hard Rule):
-   - Always use T-1 market close
-   - Non-negotiable
+This module is the SINGLE SOURCE OF TRUTH for market-time and data sourcing logic.
 
-2. OPTIONS CHAIN DATA (Flexible but Controlled):
-   - Use latest fully available option chain snapshot
-   - Snapshot must be complete (no missing strikes for expiry)
-   - Snapshot must be consistent (IV + Greeks present)
-   - Snapshot timestamp must be ≤ T market open
-   - Never use partial intraday chains
+Key principles (Feb 2026 hardening):
+- Time logic is ALWAYS America/New_York (ET) aware (never server-local naive datetime.now()).
+- Market state is explicit: OPEN | EXTENDED | CLOSED.
+- SNAPSHOT (scan/screener) data must be regular-session synced (previous close while market is open).
+- LIVE (watchlist/simulator) can use intraday / extended-hours prices.
+- Display endpoints may show extended-hours price, but must ALSO provide the synced regular-session price
+  so options math can remain consistent after-hours.
 
-3. STALENESS RULES:
-   - 🟢 Fresh: snapshot ≤ 24h old
-   - 🟠 Stale: 24-48h old
-   - 🔴 Invalid: >48h old → exclude from scans
+PRICING RULES:
+- SELL legs: Use BID only, reject if BID is None/0/missing
+- BUY legs: Use ASK only, reject if ASK is None/0/missing
+- NEVER use: lastPrice, mid, theoretical price
 
-4. MANDATORY METADATA:
-   - Equity Price Date: e.g., "Jan 15, 2026 (T-1 close)"
-   - Options Chain Snapshot: e.g., "As of: Jan 14, 2026 22:10 ET"
-   - These may not always match, and that is acceptable
-
-5. ROI & GREEKS CALCULATION:
-   - Use equity price = T-1 close
-   - Use options premium = snapshot value
-   - Use Greeks = snapshot Greeks (vendor-supplied, point-in-time)
-   - Do NOT recompute Greeks using T-1 price
+USER PATH vs SCAN PATH (Feb 2026):
+- USER PATHS (Dashboard, Watchlist, Simulator, single-symbol): Use full executor capacity, NO scan semaphore
+- SCAN PATHS (Screener, PMCC scans): Use bounded concurrency via ResilientYahooFetcher
 """
 
-import os
+from __future__ import annotations
+
 import logging
-from datetime import datetime, timedelta
-from typing import Optional, List, Dict, Any, Tuple
-from concurrent.futures import ThreadPoolExecutor
 import asyncio
 import httpx
-import pytz
+import time
+import os
+from datetime import datetime, timedelta, timezone, date
+from typing import Optional, List, Dict, Any, Literal
+from concurrent.futures import ThreadPoolExecutor
+from zoneinfo import ZoneInfo
+import math
 
-# Import trading calendar for T-1 date management
-from services.trading_calendar import (
-    get_t_minus_1,
-    get_market_data_status,
-    is_valid_expiration_date,
-    filter_valid_expirations,
-    calculate_dte_from_t1,
-    get_data_freshness_status,
-    is_friday_expiration,
-    is_monthly_expiration,
-    categorize_expirations,
-    get_option_chain_staleness,
-    validate_option_chain_data,
-    get_data_metadata
-)
+import pytz  # retained for compatibility in other modules that still import pytz
 
-# =============================================================================
-# CONFIGURATION
-# =============================================================================
 HTTP_TIMEOUT = httpx.Timeout(30.0, connect=10.0)
 POLYGON_BASE_URL = "https://api.polygon.io"
-EASTERN_TZ = pytz.timezone('US/Eastern')
 
-# Thread pool for blocking yfinance calls
-_yahoo_executor = ThreadPoolExecutor(max_workers=8)
+# =============================================================================
+# YAHOO EXECUTOR CONFIGURATION (Feb 2026 - User Path Speed Fix)
+# =============================================================================
+# USER PATHS (Dashboard, Watchlist, Simulator) use this executor directly
+# SCAN PATHS use ResilientYahooFetcher with bounded concurrency
+# =============================================================================
+YAHOO_MAX_WORKERS = int(os.environ.get("YAHOO_MAX_WORKERS", "12"))
+
+_yahoo_executor = ThreadPoolExecutor(max_workers=YAHOO_MAX_WORKERS)
+# Legacy semaphore kept for backward compatibility but NOT used in user paths
+_yahoo_semaphore = asyncio.Semaphore(YAHOO_MAX_WORKERS)
 
 logger = logging.getLogger(__name__)
+logger.info(f"Yahoo executor initialized: YAHOO_MAX_WORKERS={YAHOO_MAX_WORKERS}")
 
+NY = ZoneInfo("America/New_York")
 
-# =============================================================================
-# T-1 DATA ACCESS (PRIMARY INTERFACE)
-# =============================================================================
+MarketState = Literal["OPEN", "EXTENDED", "CLOSED"]
 
-def get_data_date() -> str:
-    """
-    Get the date for which EQUITY data should be fetched (T-1).
-    This is the single source of truth for equity price date.
-    """
-    t1_date, _ = get_t_minus_1()
-    return t1_date
-
-
-def is_market_closed() -> bool:
-    """Always return True - we always use T-1 equity data."""
-    return True
-
-
-def get_last_trading_day() -> str:
-    """Alias for get_data_date() for backward compatibility."""
-    return get_data_date()
-
+# Cache metrics tracking (Phase 2)
+_cache_metrics = {
+    "hits": 0,
+    "misses": 0,
+    "yahoo_calls": 0,
+    "last_reset": datetime.now(timezone.utc),
+    "fetch_times_ms": []
+}
 
 # =============================================================================
-# AVAILABLE OPTIONS CHAIN EXPIRATIONS (CRITICAL)
+# USER PATH LATENCY METRICS (Feb 2026)
 # =============================================================================
+_user_path_metrics = {
+    "requests": 0,
+    "total_time_ms": 0.0,
+    "fetch_times_ms": [],  # Rolling window for p95 calculation
+    "last_reset": datetime.now(timezone.utc),
+}
 
-def _get_available_expirations_yahoo_sync(symbol: str) -> Tuple[List[str], datetime]:
-    """
-    Get ACTUAL available option expirations from Yahoo Finance.
+def record_user_path_latency(latency_ms: float, endpoint: str = "unknown"):
+    """Record latency for user path requests."""
+    global _user_path_metrics
+    _user_path_metrics["requests"] += 1
+    _user_path_metrics["total_time_ms"] += latency_ms
+    _user_path_metrics["fetch_times_ms"].append(latency_ms)
+    # Keep rolling window of last 200 requests for p95
+    if len(_user_path_metrics["fetch_times_ms"]) > 200:
+        _user_path_metrics["fetch_times_ms"] = _user_path_metrics["fetch_times_ms"][-200:]
     
-    This is CRITICAL - we can only use expirations that actually exist.
-    
-    Returns:
-        Tuple of (list of available expiration dates, snapshot timestamp)
-    """
-    try:
-        import yfinance as yf
-        ticker = yf.Ticker(symbol)
-        
-        # Get available expirations directly from Yahoo
-        expirations = ticker.options
-        
-        if not expirations:
-            logger.warning(f"No options available for {symbol}")
-            return [], datetime.now(EASTERN_TZ)
-        
-        # Filter to only Friday expirations and valid trading days
-        valid_expirations = filter_valid_expirations(list(expirations), friday_only=True)
-        
-        # Snapshot timestamp is now (when we fetched)
-        snapshot_time = datetime.now(EASTERN_TZ)
-        
-        logger.info(f"Available expirations for {symbol}: {len(valid_expirations)} (Friday-only)")
-        return valid_expirations, snapshot_time
-        
-    except Exception as e:
-        logger.error(f"Failed to get expirations for {symbol}: {e}")
-        return [], datetime.now(EASTERN_TZ)
+    # Log significant latencies
+    if latency_ms > 2000:
+        logger.warning(f"USER_PATH_SLOW | endpoint={endpoint} | latency_ms={latency_ms:.0f}")
+    else:
+        logger.debug(f"USER_PATH | endpoint={endpoint} | latency_ms={latency_ms:.0f}")
 
-
-async def get_available_expirations(symbol: str) -> Dict[str, Any]:
-    """
-    Get available option expirations with categorization.
+def get_user_path_metrics() -> Dict[str, Any]:
+    """Get user path latency metrics including p95."""
+    global _user_path_metrics
+    ft = _user_path_metrics["fetch_times_ms"]
     
-    Returns:
-        Dict with weekly, monthly expirations and metadata
-    """
-    loop = asyncio.get_event_loop()
-    expirations, snapshot_time = await loop.run_in_executor(
-        _yahoo_executor, _get_available_expirations_yahoo_sync, symbol
-    )
+    if not ft:
+        return {
+            "requests": 0,
+            "avg_latency_ms": 0,
+            "p95_latency_ms": 0,
+            "max_latency_ms": 0,
+            "min_latency_ms": 0,
+            "time_since_reset_hours": 0,
+        }
     
-    # Categorize into weekly vs monthly
-    categorized = categorize_expirations(expirations)
-    
-    # Calculate DTE for each
-    t1_date_str = get_data_date()
-    t1_date = datetime.strptime(t1_date_str, '%Y-%m-%d')
-    
-    weekly_with_dte = []
-    for exp in categorized["weekly"]:
-        exp_date = datetime.strptime(exp, '%Y-%m-%d')
-        dte = (exp_date - t1_date).days
-        weekly_with_dte.append({"expiry": exp, "dte": dte, "type": "weekly"})
-    
-    monthly_with_dte = []
-    for exp in categorized["monthly"]:
-        exp_date = datetime.strptime(exp, '%Y-%m-%d')
-        dte = (exp_date - t1_date).days
-        monthly_with_dte.append({"expiry": exp, "dte": dte, "type": "monthly"})
+    sorted_ft = sorted(ft)
+    p95_idx = int(len(sorted_ft) * 0.95)
+    elapsed = (datetime.now(timezone.utc) - _user_path_metrics["last_reset"]).total_seconds()
     
     return {
-        "symbol": symbol,
-        "weekly": weekly_with_dte,
-        "monthly": monthly_with_dte,
-        "all_expirations": expirations,
-        "snapshot_time": snapshot_time.strftime('%Y-%m-%d %H:%M:%S ET'),
-        "t1_date": t1_date_str
+        "requests": _user_path_metrics["requests"],
+        "avg_latency_ms": round(_user_path_metrics["total_time_ms"] / _user_path_metrics["requests"], 1),
+        "p95_latency_ms": round(sorted_ft[p95_idx] if p95_idx < len(sorted_ft) else sorted_ft[-1], 1),
+        "max_latency_ms": round(max(ft), 1),
+        "min_latency_ms": round(min(ft), 1),
+        "sample_size": len(ft),
+        "time_since_reset_hours": round(elapsed / 3600, 2),
+        "yahoo_max_workers": YAHOO_MAX_WORKERS,
     }
 
+def reset_user_path_metrics() -> Dict[str, Any]:
+    """Reset user path metrics and return previous values."""
+    global _user_path_metrics
+    old = get_user_path_metrics()
+    _user_path_metrics = {
+        "requests": 0,
+        "total_time_ms": 0.0,
+        "fetch_times_ms": [],
+        "last_reset": datetime.now(timezone.utc),
+    }
+    return {"message": "User path metrics reset", "previous_metrics": old}
 
-# =============================================================================
-# YAHOO FINANCE - PRIMARY DATA SOURCE
-# =============================================================================
+# -----------------------------------------------------------------------------
+# Time / Market State Helpers (ET)
+# -----------------------------------------------------------------------------
 
-def _fetch_stock_quote_yahoo_sync(symbol: str) -> Dict[str, Any]:
+def now_et() -> datetime:
+    return datetime.now(NY)
+
+def is_weekend_et(d: date) -> bool:
+    return d.weekday() >= 5  # Sat/Sun
+
+def get_market_state(now: Optional[datetime] = None) -> MarketState:
     """
-    Fetch T-1 stock quote from Yahoo Finance (blocking call).
-    Always returns previous trading day close data.
+    OPEN:     09:30–16:00 ET
+    EXTENDED: 16:00–20:00 ET
+    CLOSED:   otherwise + weekends
+
+    Note:
+    - This function does NOT model US market holidays.
+    - For the platform's stability goals, weekends are handled explicitly,
+      and holidays are treated like CLOSED at the UI level via "staleness" flags.
+    """
+    n = now or now_et()
+    if is_weekend_et(n.date()):
+        return "CLOSED"
+
+    minutes = n.hour * 60 + n.minute
+    open_m = 9 * 60 + 30
+    close_m = 16 * 60
+    ext_end_m = 20 * 60
+
+    if open_m <= minutes < close_m:
+        return "OPEN"
+    if close_m <= minutes < ext_end_m:
+        return "EXTENDED"
+    return "CLOSED"
+
+def is_market_closed() -> bool:
+    """Back-compat wrapper used by older modules."""
+    return get_market_state() != "OPEN"
+
+def get_last_trading_day_et(now: Optional[datetime] = None) -> str:
+    """
+    Returns YYYY-MM-DD for the last trading day (ET), based on weekend + pre-open logic.
+    Does not model holidays; holidays will look like "last weekday".
+    """
+    n = now or now_et()
+
+    # Weekend -> roll back to Friday
+    if n.weekday() == 5:  # Sat
+        n = n - timedelta(days=1)
+    elif n.weekday() == 6:  # Sun
+        n = n - timedelta(days=2)
+
+    # Before market open on a weekday -> use previous weekday
+    minutes = n.hour * 60 + n.minute
+    open_m = 9 * 60 + 30
+    if n.weekday() == 0 and minutes < open_m:
+        n = n - timedelta(days=3)
+    elif minutes < open_m:
+        n = n - timedelta(days=1)
+        # If we rolled into weekend, roll back to Friday
+        if n.weekday() == 6:
+            n = n - timedelta(days=2)
+        elif n.weekday() == 5:
+            n = n - timedelta(days=1)
+
+    return n.strftime("%Y-%m-%d")
+
+def calculate_dte(expiry_date: str) -> int:
+    """
+    Days-to-expiry computed on ET calendar days (date-to-date) to avoid drift.
     """
     try:
-        import yfinance as yf
-        ticker = yf.Ticker(symbol)
-        info = ticker.info
+        exp = datetime.strptime(expiry_date, "%Y-%m-%d").date()
+        today = now_et().date()
+        return max(0, (exp - today).days)
+    except Exception:
+        return 0
+
+def shutdown_executor():
+    global _yahoo_executor
+    if _yahoo_executor:
+        _yahoo_executor.shutdown(wait=True)
+        logging.info("Yahoo Finance thread pool executor shut down")
+
+# =============================================================================
+# RESILIENT YAHOO FETCHER (Feb 2026 - Scan Path Concurrency Control)
+# =============================================================================
+# Used ONLY by scan paths (screener, PMCC scans) to prevent overwhelming Yahoo
+# User paths bypass this and use _yahoo_executor directly for maximum speed
+# =============================================================================
+
+class ResilientYahooFetcher:
+    """
+    Bounded concurrency wrapper for Yahoo Finance calls in SCAN contexts.
+    
+    Features:
+    - Configurable max concurrent requests (default: 4)
+    - Exponential backoff on failures
+    - Request rate limiting
+    - Automatic retry with jitter
+    
+    Usage: SCAN PATHS ONLY - user paths should use _yahoo_executor directly
+    """
+    
+    def __init__(self, max_concurrent: int = 4, max_retries: int = 2):
+        self.semaphore = asyncio.Semaphore(max_concurrent)
+        self.max_retries = max_retries
+        self.last_request_time = 0
+        self.min_request_interval = 0.1  # 100ms between requests
         
-        # T-1 Data: Use previous close as the primary price
-        previous_close = info.get("previousClose", 0)
-        regular_price = info.get("regularMarketPrice") or info.get("currentPrice", 0)
+    async def fetch_with_backoff(self, fetch_func, *args, **kwargs):
+        """Execute fetch function with exponential backoff and rate limiting."""
+        async with self.semaphore:
+            # Rate limiting
+            now = time.time()
+            time_since_last = now - self.last_request_time
+            if time_since_last < self.min_request_interval:
+                await asyncio.sleep(self.min_request_interval - time_since_last)
+            
+            self.last_request_time = time.time()
+            
+            for attempt in range(self.max_retries + 1):
+                try:
+                    loop = asyncio.get_event_loop()
+                    result = await loop.run_in_executor(_yahoo_executor, fetch_func, *args, **kwargs)
+                    return result
+                except Exception as e:
+                    if attempt == self.max_retries:
+                        logger.warning(f"Yahoo fetch failed after {self.max_retries + 1} attempts: {e}")
+                        return None
+                    
+                    # Exponential backoff with jitter
+                    delay = (2 ** attempt) + (0.1 * attempt)  # 0.1, 2.1, 4.2 seconds
+                    jitter = delay * 0.1 * (0.5 - asyncio.get_event_loop().time() % 1)
+                    await asyncio.sleep(delay + jitter)
+                    
+            return None
+
+# Global instance for scan paths
+_resilient_fetcher = ResilientYahooFetcher(max_concurrent=4)
+
+# -----------------------------------------------------------------------------
+# Yahoo Finance - LIVE intraday prices (Watchlist & Simulator)
+# -----------------------------------------------------------------------------
+
+def _fetch_live_stock_quote_yahoo_sync(symbol: str) -> Optional[Dict[str, Any]]:
+    """
+    LIVE quote from Yahoo (blocking):
+    - Uses fast_info.last_price when market is OPEN (primary)
+    - Falls back to info.regularMarketPrice if fast_info unavailable
+    - Uses history.Close[-1] when market is CLOSED
+    
+    GLOBAL CONSISTENCY: Uses yf_pricing.get_underlying_price_yf() helper
+    """
+    try:
+        # Import here to avoid circular import at module load time
+        from services.yf_pricing import get_underlying_price_yf
         
-        # For T-1, we want the previous close
-        price = previous_close if previous_close > 0 else regular_price
+        n_et = now_et()
+        market_state = get_market_state(n_et)
         
-        if price == 0:
+        # Use shared yf_pricing helper for consistency
+        price, price_field_used, price_time = get_underlying_price_yf(symbol, market_state)
+        
+        if not price or price <= 0:
             return None
         
-        # Calculate change from day before T-1
-        open_price = info.get("open", price)
-        change = price - open_price if open_price else 0
-        change_pct = (change / open_price * 100) if open_price else 0
+        # Get additional info for change calculation
+        import yfinance as yf
+        ticker = yf.Ticker(symbol)
+        info = ticker.info or {}
         
-        # Get analyst rating
+        previous_close = info.get("previousClose") or info.get("regularMarketPreviousClose") or price
+        previous_close = _safe_float(previous_close, price)
+        
+        change = (price - previous_close) if previous_close else 0
+        change_pct = (change / previous_close * 100) if previous_close else 0
+
+        return {
+            "symbol": symbol.upper(),
+            "price": round(float(price), 2),
+            "previous_close": round(float(previous_close), 2),
+            "change": round(float(change), 2),
+            "change_pct": round(float(change_pct), 2),
+            "source": "yahoo_live",
+            "is_live": True,
+            "market_state": market_state,
+            "price_field_used": price_field_used,  # Added for consistency tracking
+            "timestamp_et": price_time or n_et.isoformat(),
+        }
+    except Exception as e:
+        logging.warning(f"Yahoo live stock quote failed for {symbol}: {e}")
+        return None
+
+async def fetch_live_stock_quote(symbol: str, api_key: str = None) -> Optional[Dict[str, Any]]:
+    loop = asyncio.get_event_loop()
+    result = await loop.run_in_executor(_yahoo_executor, _fetch_live_stock_quote_yahoo_sync, symbol)
+    if result and result.get("price", 0) > 0:
+        return result
+    return await fetch_stock_quote(symbol, api_key)
+
+async def fetch_live_stock_quotes_batch(symbols: List[str], api_key: str = None) -> Dict[str, Dict[str, Any]]:
+    if not symbols:
+        return {}
+    tasks = [fetch_live_stock_quote(sym, api_key) for sym in set(symbols)]
+    results = await asyncio.gather(*tasks, return_exceptions=True)
+    quotes: Dict[str, Dict[str, Any]] = {}
+    for r in results:
+        if isinstance(r, dict) and r.get("symbol"):
+            quotes[r["symbol"]] = r
+    return quotes
+
+# -----------------------------------------------------------------------------
+# Yahoo Finance - REGULAR SESSION synced quote (SNAPSHOT use)
+# -----------------------------------------------------------------------------
+
+def _safe_float(x, default=0.0) -> float:
+    try:
+        if x is None:
+            return default
+        if isinstance(x, float) and math.isnan(x):
+            return default
+        return float(x)
+    except Exception:
+        return default
+
+def _fetch_stock_quote_yahoo_sync(symbol: str) -> Optional[Dict[str, Any]]:
+    """
+    Regular-session synced quote (blocking).
+
+    GLOBAL CONSISTENCY: Uses yf_pricing.get_underlying_price_yf() helper
+    
+    PRICING RULES (Feb 2026):
+    - OPEN: fast_info.last_price (fallback: info.regularMarketPrice)
+    - CLOSED: history(period="5d")["Close"].iloc[-1]
+    
+    Also returns post-market fields (best-effort) so display layers can choose safely.
+    """
+    try:
+        # Import here to avoid circular import at module load time
+        from services.yf_pricing import get_underlying_price_yf
+        
+        import yfinance as yf
+        
+        n_et = now_et()
+        market_state = get_market_state(n_et)
+        
+        # Use shared yf_pricing helper for consistency
+        price, price_field_used, price_time = get_underlying_price_yf(symbol, market_state)
+        
+        if not price or price <= 0:
+            return None
+        
+        # Get additional info for metadata (NOT for pricing)
+        ticker = yf.Ticker(symbol)
+        info = ticker.info or {}
+
+        # Best-effort extended-hours fields (for display ONLY)
+        regular_price = _safe_float(info.get("regularMarketPrice") or info.get("currentPrice") or price, price)
+        post_price = info.get("postMarketPrice")
+        post_price = _safe_float(post_price, 0.0) if post_price is not None else None
+
+        # Timestamps (ET)
+        regular_time = info.get("regularMarketTime")
+        post_time = info.get("postMarketTime")
+        ts_regular_et = None
+        ts_post_et = None
+        try:
+            if regular_time:
+                ts_regular_et = datetime.fromtimestamp(regular_time, NY).isoformat()
+        except Exception:
+            ts_regular_et = None
+        try:
+            if post_time:
+                ts_post_et = datetime.fromtimestamp(post_time, NY).isoformat()
+        except Exception:
+            ts_post_et = None
+
+        # Metadata enrichment (kept compatible with previous implementation)
         recommendation = info.get("recommendationKey", "")
         rating_map = {
             "strong_buy": "Strong Buy",
             "buy": "Buy",
             "hold": "Hold",
             "underperform": "Sell",
-            "sell": "Sell"
+            "sell": "Sell",
         }
         analyst_rating = rating_map.get(recommendation, recommendation.replace("_", " ").title() if recommendation else None)
-        
-        # Get next earnings date
-        earnings_date = None
-        days_to_earnings = None
-        try:
-            calendar = ticker.calendar
-            if calendar is not None and 'Earnings Date' in calendar:
-                earnings_dates = calendar['Earnings Date']
-                if len(earnings_dates) > 0:
-                    next_earnings = earnings_dates[0]
-                    if hasattr(next_earnings, 'date'):
-                        earnings_date = next_earnings.date().isoformat()
-                    else:
-                        earnings_date = str(next_earnings)[:10]
-                    
-                    if earnings_date:
-                        t1_date_str = get_data_date()
-                        t1_date = datetime.strptime(t1_date_str, "%Y-%m-%d")
-                        earnings_dt = datetime.strptime(earnings_date, "%Y-%m-%d")
-                        days_to_earnings = (earnings_dt - t1_date).days
-        except Exception:
-            pass
-        
-        t1_date = get_data_date()
-        
+
         return {
-            "symbol": symbol,
+            "symbol": symbol.upper(),
+            # SNAPSHOT price: from shared yf_pricing helper
             "price": round(price, 2),
-            "previous_close": round(previous_close, 2) if previous_close else round(price, 2),
-            "change": round(change, 2),
-            "change_pct": round(change_pct, 2),
+            "previous_close": round(price, 2),  # For snapshot, previous_close = current close
+            "price_field_used": price_field_used,  # e.g., "history.Close[-1]"
+            "close_date": price_time[:10] if price_time and len(price_time) >= 10 else None,
+            # Provide regular/post fields for display layers (optional)
+            "regular_price": round(_safe_float(regular_price, price), 2),
+            "post_price": round(_safe_float(post_price, 0.0), 2) if post_price is not None else None,
+            "timestamp_regular_et": ts_regular_et,
+            "timestamp_post_et": ts_post_et,
+            "market_state": market_state,
+            "timestamp_et": (ts_post_et or ts_regular_et or n_et.isoformat()),
             "analyst_rating": analyst_rating,
-            "earnings_date": earnings_date,
-            "days_to_earnings": days_to_earnings,
+            "market_cap": info.get("marketCap", 0),
+            "avg_volume": info.get("averageVolume", 0) or info.get("averageDailyVolume10Day", 0),
+            "earnings_date": None,
             "source": "yahoo",
-            "equity_price_date": t1_date,
-            "data_type": "t_minus_1_close"
         }
     except Exception as e:
-        logger.warning(f"Yahoo stock quote failed for {symbol}: {e}")
+        logging.warning(f"Yahoo stock quote failed for {symbol}: {e}")
         return None
 
+async def fetch_stock_quote(symbol: str, api_key: str = None) -> Optional[Dict[str, Any]]:
+    """
+    SNAPSHOT quote (regular-session synced): Yahoo primary, Polygon backup.
+    """
+    loop = asyncio.get_event_loop()
+    result = await loop.run_in_executor(_yahoo_executor, _fetch_stock_quote_yahoo_sync, symbol)
+    if result and result.get("price", 0) > 0:
+        return result
+
+    # Polygon backup (previous close aggregate)
+    if api_key:
+        try:
+            async with httpx.AsyncClient(timeout=HTTP_TIMEOUT) as client:
+                r = await client.get(
+                    f"{POLYGON_BASE_URL}/v2/aggs/ticker/{symbol.upper()}/prev",
+                    params={"apiKey": api_key},
+                )
+                if r.status_code == 200:
+                    data = r.json()
+                    if data.get("results"):
+                        row = data["results"][0]
+                        c = _safe_float(row.get("c"), 0.0)
+                        if c > 0:
+                            return {
+                                "symbol": symbol.upper(),
+                                "price": c,
+                                "previous_close": c,
+                                "close_date": get_last_trading_day_et(),
+                                "market_state": get_market_state(),
+                                "timestamp_et": now_et().isoformat(),
+                                "source": "polygon",
+                            }
+        except Exception as e:
+            logging.debug(f"Polygon stock quote backup failed for {symbol}: {e}")
+
+    return None
+
+async def fetch_stock_quotes_batch(symbols: List[str], api_key: str = None) -> Dict[str, Dict[str, Any]]:
+    if not symbols:
+        return {}
+    tasks = [fetch_stock_quote(sym, api_key) for sym in set(symbols)]
+    results = await asyncio.gather(*tasks, return_exceptions=True)
+    out: Dict[str, Dict[str, Any]] = {}
+    for r in results:
+        if isinstance(r, dict) and r.get("symbol"):
+            out[r["symbol"]] = r
+    return out
+
+# -----------------------------------------------------------------------------
+# Yahoo Finance - Options Chain (primary)
+# -----------------------------------------------------------------------------
 
 def _fetch_options_chain_yahoo_sync(
-    symbol: str, 
-    max_dte: int = 45, 
+    symbol: str,
+    max_dte: int = 45,
     min_dte: int = 1,
     option_type: str = "call",
     current_price: float = None,
-    friday_only: bool = True,
-    require_complete_data: bool = True,
-    is_leaps: bool = False
-) -> Tuple[List[Dict], Dict[str, Any]]:
+) -> List[Dict[str, Any]]:
     """
-    Fetch options chain from Yahoo Finance with STRICT validation.
-    
-    CRITICAL RULES:
-    1. Only use expirations that ACTUALLY exist in Yahoo
-    2. Only include Friday expirations (standard weeklies)
-    3. Reject options with missing IV, OI, or premium
-    4. Track snapshot timestamp for metadata
-    
-    Args:
-        symbol: Stock symbol
-        max_dte: Maximum days to expiration
-        min_dte: Minimum days to expiration
-        option_type: "call" or "put"
-        current_price: Current stock price (T-1 close)
-        friday_only: Only include Friday expirations
-        require_complete_data: Reject options missing IV/OI
-        is_leaps: If True, use wider strike range for deep ITM LEAPS
-    
-    Returns:
-        Tuple of (list of options, metadata dict)
+    Fetch options chain from Yahoo Finance (blocking).
+    Returns: bid/ask/iv/oi/volume and quote metadata.
     """
-    snapshot_time = datetime.now(EASTERN_TZ)
-    metadata = {
-        "snapshot_time": snapshot_time.strftime('%Y-%m-%d %H:%M:%S ET'),
-        "source": "yahoo",
-        "options_fetched": 0,
-        "options_rejected": 0,
-        "rejection_reasons": {}
-    }
-    
     try:
         import yfinance as yf
         ticker = yf.Ticker(symbol)
-        
-        # Get current price if not provided (T-1 close)
-        if not current_price:
-            info = ticker.info
-            current_price = info.get("previousClose") or info.get("regularMarketPrice") or info.get("currentPrice", 0)
-        
-        if not current_price:
-            metadata["error"] = "No price data available"
-            return [], metadata
-        
-        # Get ACTUAL available expirations from Yahoo
+
+        # Determine current_price if not provided (use regular price, not after-hours)
+        if not current_price or current_price <= 0:
+            info = ticker.info or {}
+            current_price = _safe_float(info.get("regularMarketPrice") or info.get("currentPrice") or info.get("previousClose"), 0.0)
+
+        if not current_price or current_price <= 0:
+            return []
+
+        expirations = []
         try:
-            available_expirations = ticker.options
+            expirations = ticker.options or []
         except Exception:
-            metadata["error"] = "Failed to get expirations"
-            return [], metadata
-        
-        if not available_expirations:
-            metadata["error"] = "No options available"
-            return [], metadata
-        
-        # Filter to valid trading days and optionally Friday-only
-        valid_expirations = filter_valid_expirations(list(available_expirations), friday_only=friday_only)
-        
-        if not valid_expirations:
-            metadata["error"] = "No valid expirations after filtering"
-            return [], metadata
-        
-        # Get T-1 date for DTE calculation
-        t1_date_str = get_data_date()
-        t1_date = datetime.strptime(t1_date_str, '%Y-%m-%d')
-        
-        # Filter expirations within DTE range
-        valid_expiries = []
-        for exp_str in valid_expirations:
+            expirations = []
+
+        if not expirations:
+            return []
+
+        today_et = now_et().date()
+        valid_expiries: List[tuple[str,int]] = []
+        for exp_str in expirations:
             try:
-                exp_date = datetime.strptime(exp_str, "%Y-%m-%d")
-                dte = (exp_date - t1_date).days
+                exp_d = datetime.strptime(exp_str, "%Y-%m-%d").date()
+                dte = (exp_d - today_et).days
                 if min_dte <= dte <= max_dte:
-                    is_monthly = is_monthly_expiration(exp_str)
-                    valid_expiries.append({
-                        "expiry": exp_str,
-                        "dte": dte,
-                        "type": "monthly" if is_monthly else "weekly"
-                    })
+                    valid_expiries.append((exp_str, dte))
             except Exception:
                 continue
-        
+
         if not valid_expiries:
-            metadata["error"] = f"No expirations in DTE range {min_dte}-{max_dte}"
-            return [], metadata
-        
-        metadata["available_expirations"] = [e["expiry"] for e in valid_expiries]
-        
-        options = []
-        rejection_reasons = {"missing_iv": 0, "missing_oi": 0, "missing_premium": 0, "out_of_range": 0}
-        
-        # Fetch options for each valid expiry
-        for exp_info in valid_expiries:
-            expiry = exp_info["expiry"]
-            dte = exp_info["dte"]
-            exp_type = exp_info["type"]
-            
+            return []
+
+        options: List[Dict[str, Any]] = []
+        max_expiries = 5 if min_dte > 90 else 3
+
+        n_et = now_et()
+        m_state = get_market_state(n_et)
+        quote_timestamp = datetime.now(timezone.utc).isoformat()
+
+        for expiry, dte in valid_expiries[:max_expiries]:
             try:
-                opt_chain = ticker.option_chain(expiry)
-                chain_data = opt_chain.calls if option_type == "call" else opt_chain.puts
-                
-                for _, row in chain_data.iterrows():
-                    strike = row.get('strike', 0)
-                    if not strike:
+                chain = ticker.option_chain(expiry)
+                df = chain.calls if option_type == "call" else chain.puts
+                for _, row in df.iterrows():
+                    strike = _safe_float(row.get("strike"), 0.0)
+                    if strike <= 0:
                         continue
-                    
-                    # Filter strikes based on moneyness
-                    # For LEAPS, use much wider range to include deep ITM strikes
-                    if is_leaps:
-                        # LEAPS: allow strikes from 40% to 110% of current price
-                        if option_type == "call":
-                            if strike < current_price * 0.40 or strike > current_price * 1.10:
-                                rejection_reasons["out_of_range"] += 1
+
+                    # Strike filters (keep original intent)
+                    if option_type == "call":
+                        if min_dte > 90:
+                            if strike < current_price * 0.50 or strike > current_price * 1.15:
                                 continue
                         else:
-                            if strike > current_price * 1.60 or strike < current_price * 0.90:
-                                rejection_reasons["out_of_range"] += 1
+                            if strike < current_price * 0.95 or strike > current_price * 1.15:
                                 continue
                     else:
-                        # Regular options: tighter range around current price
-                        if option_type == "call":
-                            if strike < current_price * 0.95 or strike > current_price * 1.15:
-                                rejection_reasons["out_of_range"] += 1
-                                continue
-                        else:
-                            if strike > current_price * 1.05 or strike < current_price * 0.85:
-                                rejection_reasons["out_of_range"] += 1
-                                continue
-                    
-                    # Get premium - use last price or mid of bid/ask
-                    last_price = row.get('lastPrice', 0)
-                    bid = row.get('bid', 0)
-                    ask = row.get('ask', 0)
-                    premium = last_price if last_price > 0 else ((bid + ask) / 2 if bid > 0 and ask > 0 else 0)
-                    
-                    if premium <= 0:
-                        rejection_reasons["missing_premium"] += 1
-                        if require_complete_data:
+                        if strike > current_price * 1.05 or strike < current_price * 0.85:
                             continue
-                    
-                    # Get IV and OI - CRITICAL for data quality
-                    iv = row.get('impliedVolatility', 0)
-                    oi = row.get('openInterest', 0)
-                    volume = row.get('volume', 0)
-                    
-                    # Skip if IV is missing or unrealistic
-                    if require_complete_data:
-                        if not iv or iv <= 0:
-                            rejection_reasons["missing_iv"] += 1
-                            continue
-                        if iv < 0.01 or iv > 5.0:  # < 1% or > 500%
-                            rejection_reasons["missing_iv"] += 1
-                            continue
-                    
-                    # Skip if OI is 0 (no liquidity)
-                    if require_complete_data and (not oi or oi <= 0):
-                        rejection_reasons["missing_oi"] += 1
+
+                    bid = _safe_float(row.get("bid"), 0.0)
+                    ask = _safe_float(row.get("ask"), 0.0)
+
+                    if bid <= 0 and ask <= 0:
                         continue
-                    
+
+                    iv = _safe_float(row.get("impliedVolatility"), 0.0)
+                    if iv and (iv < 0.01 or iv > 5.0):
+                        iv = 0.0
+
                     options.append({
-                        "contract_ticker": row.get('contractSymbol', ''),
-                        "underlying": symbol,
-                        "strike": float(strike),
+                        "contract_ticker": row.get("contractSymbol", "") or "",
+                        "underlying": symbol.upper(),
+                        "strike": strike,
                         "expiry": expiry,
-                        "dte": dte,
-                        "expiry_type": exp_type,  # "weekly" or "monthly"
+                        "dte": int(dte),
                         "type": option_type,
-                        "close": round(float(premium), 2),
-                        "bid": float(bid) if bid else 0,
-                        "ask": float(ask) if ask else 0,
-                        "volume": int(volume) if volume else 0,
-                        "open_interest": int(oi) if oi else 0,
-                        "implied_volatility": round(float(iv), 4) if iv else 0,
-                        # Metadata
+                        "bid": bid,
+                        "ask": ask,
+                        "volume": int(row.get("volume") or 0),
+                        "open_interest": int(row.get("openInterest") or 0),
+                        "implied_volatility": iv,
+                        # Quote provenance
+                        "quote_source": "LIVE" if m_state == "OPEN" else "LAST_MARKET_SESSION",
+                        "quote_timestamp": quote_timestamp,
                         "source": "yahoo",
-                        "options_snapshot_time": metadata["snapshot_time"],
-                        "equity_price_date": t1_date_str
                     })
-                    
             except Exception as e:
-                logger.debug(f"Error fetching {symbol} options for {expiry}: {e}")
+                logging.debug(f"Error fetching {symbol} options for {expiry}: {e}")
                 continue
-        
-        metadata["options_fetched"] = len(options)
-        metadata["options_rejected"] = sum(rejection_reasons.values())
-        metadata["rejection_reasons"] = rejection_reasons
-        
-        logger.info(f"Yahoo: fetched {len(options)} valid {option_type} options for {symbol}")
-        return options, metadata
-        
+
+        return options
     except Exception as e:
-        logger.warning(f"Yahoo options chain failed for {symbol}: {e}")
-        metadata["error"] = str(e)
-        return [], metadata
-
-
-async def fetch_stock_quote(symbol: str, api_key: str = None) -> Dict[str, Any]:
-    """
-    Fetch T-1 stock quote - Yahoo primary, Polygon backup.
-    Always returns previous trading day close data.
-    """
-    loop = asyncio.get_event_loop()
-    
-    # Try Yahoo first
-    result = await loop.run_in_executor(_yahoo_executor, _fetch_stock_quote_yahoo_sync, symbol)
-    
-    if result and result.get("price", 0) > 0:
-        return result
-    
-    # Fallback to Polygon
-    if api_key:
-        try:
-            t1_date = get_data_date()
-            
-            async with httpx.AsyncClient(timeout=HTTP_TIMEOUT) as client:
-                response = await client.get(
-                    f"{POLYGON_BASE_URL}/v2/aggs/ticker/{symbol}/prev",
-                    params={"apiKey": api_key}
-                )
-                if response.status_code == 200:
-                    data = response.json()
-                    if data.get("results") and len(data["results"]) > 0:
-                        r = data["results"][0]
-                        return {
-                            "symbol": symbol,
-                            "price": r.get("c", 0),
-                            "previous_close": r.get("c", 0),
-                            "change": r.get("c", 0) - r.get("o", r.get("c", 0)),
-                            "change_pct": 0,
-                            "source": "polygon",
-                            "equity_price_date": t1_date,
-                            "data_type": "t_minus_1_close"
-                        }
-        except Exception as e:
-            logger.debug(f"Polygon stock quote backup failed for {symbol}: {e}")
-    
-    return None
-
+        logging.warning(f"Yahoo options chain failed for {symbol}: {e}")
+        return []
 
 async def fetch_options_chain(
     symbol: str,
@@ -511,46 +621,25 @@ async def fetch_options_chain(
     max_dte: int = 45,
     min_dte: int = 1,
     current_price: float = None,
-    friday_only: bool = True,
-    require_complete_data: bool = True,
-    is_leaps: bool = False
-) -> Tuple[List[Dict], Dict[str, Any]]:
+) -> List[Dict[str, Any]]:
     """
-    Fetch options chain with STRICT validation.
-    
-    Args:
-        is_leaps: If True, use wider strike range for deep ITM LEAPS (min_dte >= 180)
-    
-    Returns:
-        Tuple of (options list, metadata dict including snapshot time)
+    Options chain - Yahoo primary, Polygon backup.
     """
     loop = asyncio.get_event_loop()
-    
-    # Auto-detect LEAPS mode based on DTE
-    if min_dte >= 180:
-        is_leaps = True
-    
-    # Fetch from Yahoo with strict validation
-    options, metadata = await loop.run_in_executor(
+    opts = await loop.run_in_executor(
         _yahoo_executor,
-        lambda: _fetch_options_chain_yahoo_sync(
-            symbol, max_dte, min_dte, option_type, current_price, friday_only, require_complete_data, is_leaps
-        )
+        _fetch_options_chain_yahoo_sync,
+        symbol, max_dte, min_dte, option_type, current_price,
     )
-    
-    if options and len(options) > 0:
-        return options, metadata
-    
-    # Polygon fallback (limited - no IV/OI in basic plan)
-    if api_key and not require_complete_data:
-        polygon_options = await _fetch_options_chain_polygon(
-            symbol, api_key, option_type, max_dte, min_dte, current_price
-        )
-        if polygon_options:
-            return polygon_options, {"source": "polygon", "snapshot_time": datetime.now(EASTERN_TZ).strftime('%Y-%m-%d %H:%M:%S ET')}
-    
-    return [], metadata
+    if opts:
+        return opts
 
+    if api_key:
+        opts = await _fetch_options_chain_polygon(symbol, api_key, option_type, max_dte, min_dte, current_price)
+        if opts:
+            return opts
+
+    return []
 
 async def _fetch_options_chain_polygon(
     symbol: str,
@@ -559,17 +648,15 @@ async def _fetch_options_chain_polygon(
     max_dte: int = 45,
     min_dte: int = 1,
     current_price: float = None
-) -> List[Dict]:
-    """Polygon options chain backup (no IV/OI in basic plan)"""
+) -> List[Dict[str, Any]]:
+    """Polygon backup (basic plan - no IV/OI)."""
     try:
-        t1_date_str = get_data_date()
-        t1_date = datetime.strptime(t1_date_str, '%Y-%m-%d')
-        
         async with httpx.AsyncClient(timeout=HTTP_TIMEOUT) as client:
-            min_expiry = (t1_date + timedelta(days=min_dte)).strftime('%Y-%m-%d')
-            max_expiry = (t1_date + timedelta(days=max_dte)).strftime('%Y-%m-%d')
-            
-            response = await client.get(
+            today = now_et().date()
+            min_expiry = (today + timedelta(days=min_dte)).isoformat()
+            max_expiry = (today + timedelta(days=max_dte)).isoformat()
+
+            r = await client.get(
                 f"{POLYGON_BASE_URL}/v3/reference/options/contracts",
                 params={
                     "underlying_ticker": symbol.upper(),
@@ -577,155 +664,404 @@ async def _fetch_options_chain_polygon(
                     "expiration_date.gte": min_expiry,
                     "expiration_date.lte": max_expiry,
                     "limit": 50,
-                    "apiKey": api_key
-                }
+                    "apiKey": api_key,
+                },
             )
-            
-            if response.status_code != 200:
+            if r.status_code != 200:
                 return []
-            
-            data = response.json()
-            contracts = data.get("results", [])
-            
+            data = r.json()
+            contracts = data.get("results", []) or []
             if not contracts:
                 return []
-            
-            # Filter to Friday expirations only
-            valid_contracts = []
-            for contract in contracts:
-                expiry = contract.get("expiration_date", "")
-                if is_friday_expiration(expiry):
-                    is_valid, _ = is_valid_expiration_date(expiry)
-                    if is_valid:
-                        valid_contracts.append(contract)
-            
-            options = []
-            snapshot_time = datetime.now(EASTERN_TZ).strftime('%Y-%m-%d %H:%M:%S ET')
-            
-            for contract in valid_contracts[:30]:
-                ticker = contract.get("ticker", "")
-                strike = contract.get("strike_price", 0)
-                expiry = contract.get("expiration_date", "")
-                
+
+            out: List[Dict[str, Any]] = []
+            for c in contracts[:30]:
+                ticker = c.get("ticker", "")
+                strike = _safe_float(c.get("strike_price"), 0.0)
+                expiry = c.get("expiration_date", "")
+                if not ticker or strike <= 0 or not expiry:
+                    continue
+
                 try:
-                    price_response = await client.get(
+                    pr = await client.get(
                         f"{POLYGON_BASE_URL}/v2/aggs/ticker/{ticker}/prev",
-                        params={"apiKey": api_key}
+                        params={"apiKey": api_key},
                     )
-                    
-                    if price_response.status_code == 200:
-                        price_data = price_response.json()
-                        results = price_data.get("results", [])
-                        
-                        if results:
-                            r = results[0]
-                            dte = calculate_dte_from_t1(expiry)
-                            options.append({
-                                "contract_ticker": ticker,
-                                "underlying": symbol.upper(),
-                                "strike": strike,
-                                "expiry": expiry,
-                                "dte": dte,
-                                "expiry_type": "monthly" if is_monthly_expiration(expiry) else "weekly",
-                                "type": option_type,
-                                "close": r.get("c", 0),
-                                "volume": r.get("v", 0),
-                                "open_interest": 0,
-                                "implied_volatility": 0,
-                                "source": "polygon",
-                                "options_snapshot_time": snapshot_time,
-                                "equity_price_date": t1_date_str,
-                                "note": "Polygon basic plan - IV/OI not available"
-                            })
+                    if pr.status_code != 200:
+                        continue
+                    pdata = pr.json()
+                    results = pdata.get("results", []) or []
+                    if not results:
+                        continue
+                    row = results[0]
+                    out.append({
+                        "contract_ticker": ticker,
+                        "underlying": symbol.upper(),
+                        "strike": strike,
+                        "expiry": expiry,
+                        "dte": calculate_dte(expiry),
+                        "type": option_type,
+                        "close": _safe_float(row.get("c"), 0.0),
+                        "volume": int(row.get("v") or 0),
+                        "open_interest": 0,
+                        "implied_volatility": 0.0,
+                        "source": "polygon",
+                    })
                 except Exception:
                     continue
-            
-            return options
-            
+
+            return out
     except Exception as e:
-        logger.warning(f"Polygon options chain failed for {symbol}: {e}")
+        logging.warning(f"Polygon options chain failed for {symbol}: {e}")
         return []
 
+# -----------------------------------------------------------------------------
+# Quote caching wrapper (unchanged API, but uses ET market_state)
+# -----------------------------------------------------------------------------
 
-async def fetch_stock_quotes_batch(symbols: List[str], api_key: str = None) -> Dict[str, Dict]:
-    """Fetch T-1 stock quotes for multiple symbols in parallel."""
-    if not symbols:
-        return {}
-    
-    tasks = [fetch_stock_quote(symbol, api_key) for symbol in set(symbols)]
-    results = await asyncio.gather(*tasks, return_exceptions=True)
-    
-    quotes = {}
-    for result in results:
-        if isinstance(result, dict) and result.get("symbol"):
-            quotes[result["symbol"]] = result
-    
-    return quotes
+async def fetch_options_with_cache(
+    symbol: str,
+    db,
+    option_type: str = "call",
+    max_dte: int = 45,
+    min_dte: int = 1,
+    current_price: float = None
+) -> List[Dict[str, Any]]:
+    """
+    Fetch options chain with quote caching for after-hours support.
+    """
+    from services.quote_cache_service import get_quote_cache
+    quote_cache = get_quote_cache(db)
+    market_info = quote_cache.get_market_session_info()
+    is_open = market_info["is_open"]
 
+    live_options = await fetch_options_chain(
+        symbol=symbol,
+        api_key=None,
+        option_type=option_type,
+        max_dte=max_dte,
+        min_dte=min_dte,
+        current_price=current_price,
+    )
 
-# =============================================================================
-# DATA QUALITY FUNCTIONS
-# =============================================================================
+    enriched: List[Dict[str, Any]] = []
+    for opt in live_options:
+        contract = opt.get("contract_ticker", "")
+        bid = _safe_float(opt.get("bid"), 0.0)
+        ask = _safe_float(opt.get("ask"), 0.0)
+
+        if is_open and (bid > 0 or ask > 0):
+            await quote_cache.cache_valid_quote(
+                contract_symbol=contract,
+                symbol=symbol.upper(),
+                strike=_safe_float(opt.get("strike"), 0.0),
+                expiry=opt.get("expiry", ""),
+                bid=bid,
+                ask=ask,
+                dte=int(opt.get("dte") or 0),
+            )
+
+        if is_open:
+            opt["quote_source"] = "LIVE"
+            opt["quote_timestamp"] = datetime.now(timezone.utc).isoformat()
+        else:
+            opt["quote_source"] = "LAST_MARKET_SESSION"
+            opt["quote_age_hours"] = market_info.get("hours_since_close", 0)
+
+        enriched.append(opt)
+
+    if (not is_open) and (not enriched):
+        cached_quotes = await db.option_quote_cache.find(
+            {"symbol": symbol.upper(), "dte": {"$gte": min_dte, "$lte": max_dte}},
+            {"_id": 0},
+        ).to_list(200)
+
+        for cached in cached_quotes:
+            if cached.get("bid", 0) in (None, 0) and cached.get("ask", 0) in (None, 0):
+                continue
+            cached["quote_source"] = "LAST_MARKET_SESSION"
+            cached["quote_age_hours"] = market_info.get("hours_since_close", 0)
+            if isinstance(cached.get("quote_timestamp"), datetime):
+                cached["quote_timestamp"] = cached["quote_timestamp"].isoformat()
+            enriched.append(cached)
+
+    return enriched
+
+# -----------------------------------------------------------------------------
+# Status helpers
+# -----------------------------------------------------------------------------
 
 def get_data_source_status() -> Dict[str, Any]:
-    """Get current data source configuration and status."""
-    metadata = get_data_metadata()
-    
     return {
         "primary_source": "yahoo",
         "backup_source": "polygon",
-        "data_principle": "Two-Source Model (T-1 Equity + Latest Options Snapshot)",
-        "equity_price_date": metadata["equity_price_date"],
-        "equity_price_source": metadata["equity_price_source"],
-        "next_refresh": metadata["next_refresh"],
-        "current_time_et": metadata["current_time_et"],
-        "staleness_thresholds": metadata["staleness_thresholds"],
-        "validation_rules": {
-            "friday_only_expirations": True,
-            "require_iv": True,
-            "require_oi": True,
-            "reject_stale_data": True
-        }
+        "market_state": get_market_state(),
+        "market_closed": is_market_closed(),
+        "last_trading_day_et": get_last_trading_day_et(),
     }
 
+# -----------------------------------------------------------------------------
+# Historical data (unchanged)
+# -----------------------------------------------------------------------------
 
-def calculate_dte(expiry_date: str) -> int:
-    """Calculate days to expiration from T-1 date."""
-    return calculate_dte_from_t1(expiry_date)
-
-
-# =============================================================================
-# HISTORICAL DATA
-# =============================================================================
-
-async def fetch_historical_data(
-    symbol: str,
-    api_key: str = None,
-    days: int = 30
-) -> List[Dict]:
-    """Fetch historical OHLCV data - Yahoo primary."""
+async def fetch_historical_data(symbol: str, api_key: str = None, days: int = 30) -> List[Dict[str, Any]]:
     try:
         import yfinance as yf
-        
+
         def _fetch_history():
             ticker = yf.Ticker(symbol)
             hist = ticker.history(period=f"{days}d")
-            
             data = []
-            for date_idx, row in hist.iterrows():
+            for dt, row in hist.iterrows():
                 data.append({
-                    "date": date_idx.strftime('%Y-%m-%d'),
-                    "open": round(row['Open'], 2),
-                    "high": round(row['High'], 2),
-                    "low": round(row['Low'], 2),
-                    "close": round(row['Close'], 2),
-                    "volume": int(row['Volume'])
+                    "date": dt.strftime("%Y-%m-%d"),
+                    "open": round(float(row["Open"]), 2),
+                    "high": round(float(row["High"]), 2),
+                    "low": round(float(row["Low"]), 2),
+                    "close": round(float(row["Close"]), 2),
+                    "volume": int(row["Volume"]),
                 })
             return data
-        
+
         loop = asyncio.get_event_loop()
         return await loop.run_in_executor(_yahoo_executor, _fetch_history)
-        
     except Exception as e:
-        logger.warning(f"Historical data fetch failed for {symbol}: {e}")
+        logging.warning(f"Historical data fetch failed for {symbol}: {e}")
         return []
+
+# -----------------------------------------------------------------------------
+# Phase 2 snapshot cache (kept, but now uses ET helpers)
+# -----------------------------------------------------------------------------
+
+CACHE_TTL_MARKET_OPEN_MIN = 12
+CACHE_TTL_MARKET_CLOSED_HOURS = 3
+SNAPSHOT_CACHE_COLLECTION = "market_snapshot_cache"
+
+def _get_cache_ttl_seconds() -> int:
+    return CACHE_TTL_MARKET_CLOSED_HOURS * 3600 if is_market_closed() else CACHE_TTL_MARKET_OPEN_MIN * 60
+
+async def _get_cached_snapshot(db, symbol: str) -> Optional[Dict[str, Any]]:
+    try:
+        cached = await db[SNAPSHOT_CACHE_COLLECTION].find_one({"symbol": symbol.upper()}, {"_id": 0})
+        if not cached:
+            return None
+        cached_at = cached.get("cached_at")
+        if not cached_at:
+            return None
+        if isinstance(cached_at, str):
+            cached_at = datetime.fromisoformat(cached_at.replace("Z", "+00:00"))
+        if cached_at.tzinfo is None:
+            cached_at = cached_at.replace(tzinfo=timezone.utc)
+
+        ttl = _get_cache_ttl_seconds()
+        age = (datetime.now(timezone.utc) - cached_at).total_seconds()
+        if age > ttl:
+            return None
+        return cached
+    except Exception as e:
+        logging.warning(f"Error reading cache for {symbol}: {e}")
+        return None
+
+async def _store_snapshot_cache(db, symbol: str, stock_data: Dict[str, Any], options_metadata: Optional[Dict[str, Any]] = None) -> None:
+    try:
+        cache_doc = {
+            "symbol": symbol.upper(),
+            "cached_at": datetime.now(timezone.utc),
+            "ttl_seconds": _get_cache_ttl_seconds(),
+            "market_status": "closed" if is_market_closed() else "open",
+            "price": stock_data.get("price", 0),
+            "previous_close": stock_data.get("previous_close", 0),
+            "close_date": stock_data.get("close_date"),
+            "analyst_rating": stock_data.get("analyst_rating"),
+            "market_cap": stock_data.get("market_cap", 0),
+            "avg_volume": stock_data.get("avg_volume", 0),
+            "earnings_date": stock_data.get("earnings_date"),
+            "source": stock_data.get("source", "yahoo"),
+            "options_metadata": options_metadata,
+        }
+        await db[SNAPSHOT_CACHE_COLLECTION].update_one(
+            {"symbol": symbol.upper()},
+            {"$set": cache_doc},
+            upsert=True,
+        )
+    except Exception as e:
+        logging.warning(f"Error caching snapshot for {symbol}: {e}")
+
+async def get_symbol_snapshot(
+    db,
+    symbol: str,
+    api_key: str = None,
+    include_options: bool = False,
+    max_dte: int = 45,
+    min_dte: int = 1,
+    is_scan_path: bool = False,  # NEW: Flag to distinguish scan vs user paths
+) -> Dict[str, Any]:
+    """
+    Get symbol snapshot with path-aware concurrency control.
+    
+    Args:
+        is_scan_path: If True, uses ResilientYahooFetcher for bounded concurrency.
+                     If False (default), uses direct executor access for speed.
+    """
+    global _cache_metrics
+    symbol = symbol.upper()
+    result = {"symbol": symbol, "stock_data": None, "options_data": None, "from_cache": False, "fetch_time_ms": 0}
+    start = time.time()
+
+    cached = await _get_cached_snapshot(db, symbol)
+    if cached and cached.get("price", 0) > 0:
+        _cache_metrics["hits"] += 1
+        result["stock_data"] = {
+            "symbol": symbol,
+            "price": cached.get("price", 0),
+            "previous_close": cached.get("previous_close", 0),
+            "close_date": cached.get("close_date"),
+            "analyst_rating": cached.get("analyst_rating"),
+            "market_cap": cached.get("market_cap", 0),
+            "avg_volume": cached.get("avg_volume", 0),
+            "earnings_date": cached.get("earnings_date"),
+            "source": cached.get("source", "yahoo_cached"),
+        }
+        result["from_cache"] = True
+        if not include_options:
+            result["fetch_time_ms"] = (time.time() - start) * 1000
+            return result
+    else:
+        _cache_metrics["misses"] += 1
+
+    # PATH-AWARE EXECUTION (Feb 2026 User Path Speed Fix)
+    if is_scan_path:
+        # SCAN PATH: Use semaphore for bounded concurrency
+        async with _yahoo_semaphore:
+            _cache_metrics["yahoo_calls"] += 1
+            if not result["stock_data"]:
+                stock_data = await fetch_stock_quote(symbol, api_key)
+                if stock_data and stock_data.get("price", 0) > 0:
+                    result["stock_data"] = stock_data
+                    await _store_snapshot_cache(db, symbol, stock_data)
+                else:
+                    result["fetch_time_ms"] = (time.time() - start) * 1000
+                    return result
+
+            if include_options:
+                current_price = result["stock_data"].get("price", 0)
+                options_data = await fetch_options_chain(symbol, api_key, "call", max_dte, min_dte, current_price)
+                if options_data:
+                    result["options_data"] = options_data
+                    options_metadata = {
+                        "count": len(options_data),
+                        "expiries": list(set(o.get("expiry", "") for o in options_data)),
+                        "fetched_at": datetime.now(timezone.utc).isoformat(),
+                    }
+                    await _store_snapshot_cache(db, symbol, result["stock_data"], options_metadata)
+    else:
+        # USER PATH: Direct executor access for maximum speed (NO semaphore blocking)
+        _cache_metrics["yahoo_calls"] += 1
+        if not result["stock_data"]:
+            stock_data = await fetch_stock_quote(symbol, api_key)
+            if stock_data and stock_data.get("price", 0) > 0:
+                result["stock_data"] = stock_data
+                await _store_snapshot_cache(db, symbol, stock_data)
+            else:
+                result["fetch_time_ms"] = (time.time() - start) * 1000
+                # Record latency for user path (even failures)
+                record_user_path_latency(result["fetch_time_ms"], "get_symbol_snapshot")
+                return result
+
+        if include_options:
+            current_price = result["stock_data"].get("price", 0)
+            options_data = await fetch_options_chain(symbol, api_key, "call", max_dte, min_dte, current_price)
+            if options_data:
+                result["options_data"] = options_data
+                options_metadata = {
+                    "count": len(options_data),
+                    "expiries": list(set(o.get("expiry", "") for o in options_data)),
+                    "fetched_at": datetime.now(timezone.utc).isoformat(),
+                }
+                await _store_snapshot_cache(db, symbol, result["stock_data"], options_metadata)
+
+    ft = (time.time() - start) * 1000
+    result["fetch_time_ms"] = ft
+    _cache_metrics["fetch_times_ms"].append(ft)
+    if len(_cache_metrics["fetch_times_ms"]) > 100:
+        _cache_metrics["fetch_times_ms"] = _cache_metrics["fetch_times_ms"][-100:]
+    
+    # Record latency for user paths
+    if not is_scan_path:
+        record_user_path_latency(ft, "get_symbol_snapshot")
+    
+    return result
+
+async def get_symbol_snapshots_batch(
+    db,
+    symbols: List[str],
+    api_key: str = None,
+    include_options: bool = False,
+    max_dte: int = 45,
+    min_dte: int = 1,
+    batch_size: int = 10,
+    is_scan_path: bool = False,  # NEW: Path-aware parameter
+) -> Dict[str, Dict[str, Any]]:
+    """
+    Batch symbol snapshots with path-aware concurrency control.
+    
+    Args:
+        is_scan_path: If True, uses bounded concurrency for scan operations.
+                     If False (default), uses full executor capacity for user paths.
+    """
+    if not symbols:
+        return {}
+    results: Dict[str, Dict[str, Any]] = {}
+    unique = list(set(s.upper() for s in symbols))
+    
+    # Adjust batch size based on path type
+    effective_batch_size = min(batch_size, 4) if is_scan_path else batch_size
+    
+    for i in range(0, len(unique), effective_batch_size):
+        batch = unique[i:i+effective_batch_size]
+        tasks = [get_symbol_snapshot(db, s, api_key, include_options, max_dte, min_dte, is_scan_path) for s in batch]
+        batch_results = await asyncio.gather(*tasks, return_exceptions=True)
+        for j, r in enumerate(batch_results):
+            if isinstance(r, dict) and r.get("stock_data"):
+                results[batch[j]] = r
+            elif isinstance(r, Exception):
+                logging.warning(f"Error fetching snapshot for {batch[j]}: {r}")
+        
+        # Add delay between batches for scan paths only
+        if is_scan_path and i + effective_batch_size < len(unique):
+            await asyncio.sleep(0.5)
+    return results
+
+def get_cache_metrics() -> Dict[str, Any]:
+    global _cache_metrics
+    total = _cache_metrics["hits"] + _cache_metrics["misses"]
+    hit_rate = (_cache_metrics["hits"] / total * 100) if total else 0
+    elapsed = (datetime.now(timezone.utc) - _cache_metrics["last_reset"]).total_seconds()
+    hours = max(elapsed/3600, 0.01)
+    yahoo_calls_per_hour = _cache_metrics["yahoo_calls"]/hours
+    ft = _cache_metrics["fetch_times_ms"]
+    avg_ft = sum(ft)/len(ft) if ft else 0
+    return {
+        "cache_hits": _cache_metrics["hits"],
+        "cache_misses": _cache_metrics["misses"],
+        "total_requests": total,
+        "hit_rate_pct": round(hit_rate, 1),
+        "yahoo_calls": _cache_metrics["yahoo_calls"],
+        "yahoo_calls_per_hour": round(yahoo_calls_per_hour, 1),
+        "avg_fetch_time_ms": round(avg_ft, 1),
+        "market_status": "closed" if is_market_closed() else "open",
+        "cache_ttl_seconds": _get_cache_ttl_seconds(),
+        "time_since_reset_hours": round(hours, 2),
+    }
+
+def reset_cache_metrics() -> Dict[str, Any]:
+    global _cache_metrics
+    old = get_cache_metrics()
+    _cache_metrics = {
+        "hits": 0,
+        "misses": 0,
+        "yahoo_calls": 0,
+        "last_reset": datetime.now(timezone.utc),
+        "fetch_times_ms": [],
+    }
+    return {"message": "Cache metrics reset", "previous_metrics": old}

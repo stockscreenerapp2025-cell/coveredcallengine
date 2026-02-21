@@ -62,7 +62,9 @@ const Watchlist = () => {
     setLoading(true);
     try {
       const response = await watchlistApi.getAll();
-      setItems(response.data);
+      // API returns { items: [...], data_source, ... } - extract items array
+      const data = response.data;
+      setItems(Array.isArray(data) ? data : (data?.items || []));
     } catch (error) {
       console.error('Watchlist fetch error:', error);
       toast.error('Failed to load watchlist');

@@ -1,869 +1,933 @@
 # Covered Call Engine - Product Requirements Document
 
-## Original Problem Statement
-Build a web-based application named "Covered Call Engine" to identify, analyze, and manage Covered Call and Poor Man's Covered Call (PMCC) strategies.
-
-## Core Features
-
-### 1. Dashboard
-- Display new opportunities, market indices, stock data
-- Live news feed (MarketAux API with rate limiting)
-- Portfolio performance graph (mocked for new users, live for users with data)
-
-### 2. Covered Call Screener
-- Powerful screening engine with extensive filters
-- Supports stocks and ETFs
-- Uses Polygon.io for stock data, Yahoo Finance fallback for ETFs
-- **Pre-Computed Scans** (Updated - Jan 13, 2026)
-  - Income Guard (Conservative): Stable large-caps, SMA trending, high probability
-  - Steady Income (Balanced): Growth stocks, moderate IV, solid fundamentals
-  - Premium Hunter (Aggressive): High momentum, high IV, maximum premium yield
-  - Results pre-computed nightly at 4:45 PM ET after market close
-  - Instant loading from MongoDB (no API delay on click)
-  - **Deduplication Logic**:
-    - Each symbol appears in only ONE profile (most suitable based on characteristics)
-    - Best Weekly + Monthly option per symbol (no duplicate strikes)
-    - Profile fit scoring based on ATR%, market cap, EPS, delta, DTE
-  - Technical filters: SMA50/200 alignment, RSI, ATR%, price stability
-  - Fundamental filters: Market cap, EPS, ROE, D/E, revenue growth
-  - Options filters: Delta range, DTE range, premium yield minimum
-
-### 3. PMCC Screener
-- Dedicated page for Poor Man's Covered Call strategies
-- Identifies suitable LEAPS and short calls
-- Refresh Data button to bypass cache
-
-### 4. Stock Detail Modal
-- TradingView chart with SMA 50/200
-- News and fundamental data
-- Technical indicators
-
-### 5. Portfolio Tracker
-- IBKR CSV import functionality
-- **Manual Trade Entry** (Completed - Jan 11, 2026)
-  - Add Covered Calls, PMCC, Stock Only, Option Only, Collar trades
-  - Full data display: Symbol, Strategy, Status, DTE, Days in Trade, Shares, Contracts, Entry, Premium, B/E, Current Price, P/L, ROI
-  - Trade detail popup with all fields properly populated
-  - Delete individual trades
-  - Clear all imported data
-- AI-powered suggestions
-- Dashboard Integration: Strategy Distribution pie chart and P/L bar charts (open/closed positions)
-
-### 6. Authentication & Subscription
-- JWT-based authentication
-- Stripe integration for subscription management
-- 7-day free trial support
-
-### 7. Admin Panel
-- User management
-- API key configuration (Polygon.io, MarketAux, OpenAI)
-- Cache management
-- **Pre-Computed Scans Management** (NEW - Jan 13, 2026)
-  - Trigger manual scans for any risk profile
-  - View scan status and results count
-  - Automatic nightly scheduler at 4:45 PM ET
-
-### 8. Legal & Contact
-- Terms & Conditions page
-- Privacy Policy page
-- Contact Us form
-
----
-
-## Implementation Status
-
-### ✅ Completed
-- [x] Dashboard with opportunities display
-- [x] Covered Call Screener with filters
-- [x] PMCC Screener with LEAPS selection
-- [x] Stock Detail Modal with TradingView
-- [x] Portfolio Tracker - IBKR CSV Import
-- [x] Portfolio Tracker - Manual Trade Entry (Jan 2026)
-- [x] Authentication (JWT)
-- [x] Stripe Integration
-- [x] Admin Panel - Basic
-- [x] News API Integration with rate limiting
-- [x] ETF data via Yahoo Finance fallback
-- [x] AI Chatbot on homepage
-- [x] Trade Simulator Phase 1 - Core MVP (Jan 2026)
-- [x] Trade Simulator Phase 2 - Automation & Greeks (Jan 2026)
-- [x] Trade Simulator Phase 3 - Rule-based Trade Management (Jan 11, 2026)
-  - Rule engine with conditions (premium_capture_pct, delta, loss_pct, dte_remaining, etc.)
-  - 7 pre-built rule templates (Roll at 80% Premium, Delta Threshold, Stop Loss, etc.)
-  - Rule actions: roll (with new_dte/strike_adjustment), close, alert
-  - Action logs with timestamps for all rule-driven actions
-  - PMCC Income Tracker (cumulative income vs LEAPS decay)
-  - Automated rule evaluation in daily scheduler
-- [x] Trade Simulator Phase 4 - Analytics Feedback Loop (Jan 11, 2026)
-  - Performance analytics by delta range, DTE, symbol, and outcome type
-  - AI-powered recommendations for scanner parameter optimization
-  - Optimal settings calculator based on winning trade patterns
-  - Scanner profile save/load functionality
-  - Scanner comparison to identify best parameter combinations
-
-### 🔄 In Progress
-- None currently
-
-### ⚠️ Known Issues
-- Inbound email replies not reaching support dashboard (BLOCKED - requires IMAP debugging)
-
-### ✅ Completed (Jan 16, 2026) - Two-Source Data Model Implementation
-- [x] **Two-Source Data Model (Authoritative Spec)**
-  - **Equity Price (Hard Rule):** Always T-1 market close - non-negotiable
-  - **Options Chain (Flexible but Controlled):** Latest fully available snapshot
-    - Snapshot must be complete (no missing strikes)
-    - Snapshot must be consistent (IV + Greeks present)
-    - Only use expirations that ACTUALLY exist in Yahoo Finance
-    - Only Friday expirations (standard weeklies)
-  - **Never use partial intraday chains** - reject if missing IV or OI
-  
-- [x] **Option Chain Validation (Critical Fix)**
-  - Fixed PMCC showing non-existent expirations (19DEC27, 15FEB26)
-  - Now validates ALL expirations against actual Yahoo Finance data
-  - `is_friday_expiration()` and `is_monthly_expiration()` functions
-  - `filter_valid_expirations(friday_only=True)` for proper filtering
-  - LEAPS mode with wider strike range (40%-110% of price) for deep ITM
-  
-- [x] **50/50 Weekly/Monthly Mix for CC Screener**
-  - `_mix_weekly_monthly_opportunities()` function
-  - Returns balanced mix of best weekly and monthly options
-  - Fallback: whatever is available if one category is short
-  - W (blue) and M (purple) badges in UI
-  
-- [x] **Staleness Rules (Admin Data Quality)**
-  - 🟢 Fresh: snapshot ≤ 24h old
-  - 🟠 Stale: 24-48h old  
-  - 🔴 Invalid: >48h old → excluded from scans
-  - `OPTION_FRESHNESS_THRESHOLDS` config in trading_calendar.py
-  - `get_option_chain_staleness()` function
-  
-- [x] **Mandatory Metadata Display**
-  - API responses include: `equity_price_date`, `options_snapshot_time`
-  - Screener shows "Two-Source Data" banner with both dates
-  - Example: "Equity: 2026-01-16 (T-1 Close)" + "Options Snapshot: 2026-01-16 16:01:44 ET"
-  
-- [x] **IV and OI Data Fix**
-  - CC Screener now shows IV, IV Rank, OI in all results (was blank)
-  - PMCC Screener now includes `leaps_iv`, `leaps_oi`, `short_iv`, `short_oi`
-  - `validate_option_chain_data()` rejects options missing IV/OI
-  - `require_complete_data=True` parameter in fetch_options_chain()
-
-### ✅ Completed (Jan 16, 2026) - T-1 Market Data Standardization
-- [x] **T-1 Data Principle Implementation** - CCE now uses T-1 (previous trading day) market close data for ALL scans
-  - Core Principle: Income strategies don't require live data - T-1 close data is authoritative
-  - No intraday or partial data is ever used
-  - Automatic holiday & weekend handling - rolls back to most recent completed trading day
-  - **New Trading Calendar Service** (`/app/backend/services/trading_calendar.py`)
-    - Uses `pandas_market_calendars` for NYSE trading day validation
-    - Fallback hardcoded US holiday list (2024-2026)
-    - Functions: `get_t_minus_1()`, `is_trading_day()`, `is_valid_expiration_date()`, `filter_valid_expirations()`
-  - **Updated Data Provider** (`/app/backend/services/data_provider.py`)
-    - All data fetches now use T-1 date
-    - Stock quotes return previous_close as primary price
-    - Options chains filtered to exclude weekend/holiday expirations
-  - **Updated Screener Endpoints** - All return T-1 data info in response
-    - `t1_data` field with: `data_date`, `data_type`, `data_age_hours`, `next_refresh`
-    - Cache valid for entire T-1 day (24 hours)
-  - **Fixed Option Expiration Issue** - 14Feb26 Saturday issue fixed
-    - All expiration dates validated against trading calendar
-    - Only valid trading day expirations shown
-- [x] **T-1 Data Banner on All Pages**
-  - Dashboard: "T-1 Market Data - Data from: [date] (Market Close)"
-  - Screener: "T-1 Market Data - Data from: [date] (Market Close)" + next refresh time
-  - PMCC: "T-1 Market Data - Data from: [date] (Market Close)"
-  - Watchlist: "T-1 Market Data - Using previous trading day close data"
-  - Simulator: "T-1 Market Data - Simulations use previous trading day close data"
-- [x] **Admin Data Quality Dashboard** (New Component)
-  - New tab in Admin panel: "Data Quality"
-  - Shows T-1 data status with date, age, next refresh
-  - Scan status with traffic light indicators:
-    - 🟢 Green: Fresh (T-1 data available)
-    - 🟡 Amber: Slightly stale (1-2 days old)
-    - 🔴 Red: Stale (>2 days) or missing - needs refresh
-  - Individual scan cards showing: type, profile, count, computed date, age
-  - "Refresh All" button to trigger manual scan refresh
-  - Summary counts: green/amber/red totals
-- [x] **Updated Market Status Endpoint** (`/api/market-status`)
-  - Returns T-1 data information: date, description, age, next refresh
-  - Data note explains T-1 principle to users
-- [x] **New Endpoints:**
-  - `GET /api/screener/data-quality-dashboard` - Comprehensive scan status with indicators
-  - Updated `GET /api/screener/data-quality` - Simplified status check
-
-### ✅ Completed (Jan 16, 2026) - Data Quality System (Permanent Solution)
-- [x] **Data Quality Validation Service** - New `/app/backend/services/data_quality.py`
-  - Validates option expiry dates against current market chains
-  - Detects stale or invalid premium data
-  - Provides freshness scores for all data
-  - Tracks quality issues per opportunity
-- [x] **Live Data Priority** - Screeners now prioritize live data when market is open
-  - When market OPEN: Always fetch live data (5-min cache for rate limiting only)
-  - When market CLOSED: Use cached/precomputed data with clear indicators
-- [x] **Data Freshness Indicators** - Both Screener and PMCC pages now show:
-  - "● Live Data" (green) - Fresh market data
-  - "● Cached Data" (blue) - Recent cached data
-  - "● Pre-computed Data" (yellow) - From nightly scans with date
-  - Data note explaining source (e.g., "Pre-computed scan from 2026-01-16")
-- [x] **Premium Value Fix** - PMCC frontend normalization improved
-  - Fixed threshold logic for per-share to per-contract conversion
-  - Now correctly displays $1,040 instead of $10.40 for contracts
-- [x] **New Admin Endpoints:**
-  - `GET /api/screener/data-quality` - View data freshness status for all scans
-  - `POST /api/screener/refresh-precomputed` - Manually trigger scan refresh (admin only)
-- [x] **Precomputed Scan Refresh** - Successfully refreshed CC scans (6/18/18 opportunities)
-
-### ✅ Completed (Jan 16, 2026) - 4 Bug Fixes (Second Batch)
-- [x] **Issue 1: Screener Auto-Load** - Screener page now auto-loads custom scan results
-  - Re-added `fetchOpportunities()` call to useEffect (user preference reversed)
-  - Added `days_to_earnings` and `earnings_date` to screener response
-- [x] **Issue 2: PMCC Auto-Load** - PMCC page now auto-loads custom scan results
-  - Re-added `fetchOpportunities()` call to useEffect
-- [x] **Issue 3: Simulator PMCC Tracker Blank** - PMCC Tracker now shows position data
-  - Fixed backend `/api/simulator/pmcc-summary` to return `{summary: [...], overall: {...}}` structure
-  - Added position fields: `leaps_cost`, `total_premium_received`, `income_to_cost_ratio`, `estimated_leaps_decay_pct`, `health`
-- [x] **Issue 4: Watchlist Missing Data** - Enhanced data persistence for analyst/earnings
-  - Added secondary yfinance fallback in POST endpoint when initial fetch fails
-  - Added new `POST /api/watchlist/refresh-data` endpoint to update missing data
-  - Existing items automatically refreshed (10 items updated)
-
-### ✅ Completed (Jan 16, 2026) - 5 Bug Fixes (First Batch)
-- [x] **Issue 1: Simulator IV Fields** - IV, IV Rank, and Open Interest fields now saved when adding trades
-  - Backend model `SimulatorTradeEntry` accepts `short_call_iv_rank` and `short_call_open_interest`
-  - Fields stored in trade document for display in Simulator page
-- [x] **Issue 2: Dashboard Badge** - "Market Closed" badge now shows "US Market Closed"
-  - Updated text in Dashboard.js line 293
-- [x] **Issue 5: Watchlist Analyst Rating** - Analyst rating now saved when adding stocks
-  - Backend saves `analyst_rating_at_add` field when adding to watchlist
-  - GET endpoint uses stored rating as fallback if live fetch fails
-
-### ✅ Completed (Jan 15, 2026) - Income-Optimised Simulator Redesign
-- [x] **Income-Optimised Decision Engine (Major Feature)**
-  - Replaced traditional stop-loss/take-profit rules with income-focused trade management
-  - Core Design Principles:
-    - Covered calls and PMCCs are income strategies, not directional trades
-    - Decisions optimize ROI per unit time, not max profit
-    - Early exit is often optimal when remaining premium is inefficient
-    - All decisions are fee-aware
-  - **8 New Rule Categories Implemented:**
-    1. Premium Efficiency Exit Rule (80%/90% thresholds)
-    2. ROI per Day Rule (compare current vs redeployment)
-    3. Time-to-Expiry Efficiency Rule (21/14/7 DTE thresholds)
-    4. Roll-Up Rule (delta > 0.45, remaining premium < 30%)
-    5. Roll-Down Rule (call value < 20% original)
-    6. Assignment Acceptance Rule
-    7. PMCC Width Protection Rule (< 25% of original width)
-    8. PMCC LEAPS Time Rule (< 180 DTE warning)
-    9. Transaction Cost Gate (2× fees minimum)
-  - **Tiered Redeployment ROI Estimation:**
-    - Primary: Average ROI from pre-computed scans (same strategy/risk)
-    - Secondary: User's historical average ROI
-    - Fallback: Configurable target (default 1.5%/week)
-  - **New API Endpoints:**
-    - `GET /api/simulator/decision/{trade_id}` - Individual trade analysis
-    - `GET /api/simulator/decisions/all` - All active trades analysis
-    - `GET /api/simulator/settings` - User settings
-    - `POST /api/simulator/settings/income` - Update income settings
-    - `POST /api/simulator/settings/fees` - Update fee settings
-    - `GET /api/simulator/redeployment-roi` - Get ROI estimates
-  - **New Frontend "Decisions" Tab:**
-    - Summary cards showing: Active Trades, Hold, Action Required, Close/Roll Recommended
-    - Decision cards for each trade with recommendation badges
-    - Detailed modal showing metrics, ROI comparison, scenario analysis, rules triggered
-    - Settings modal for fee and income optimization configuration
-  - Legacy Rules UI hidden (backend preserved for future use)
-
-### ✅ Completed (Jan 15, 2026) - Earnings Column & Strike Column Fix
-- [x] **Earnings Column Added to All Pages**
-  - Dashboard Top 10 CC: Added "Earnings" column showing days to next earnings
-  - Screener: Added sortable "Earnings" column with days_to_earnings data
-  - PMCC: Added sortable "Earnings" column 
-  - Watchlist: Added "Earnings" column with color-coded badges
-  - Color coding: Red (≤7d), Amber (8-14d), Gray (>14d)
-- [x] **Strike Column Date Fix**
-  - Screener Strike column now shows full option contract format for all scans
-  - Format: "16JAN26 337.5 C" (date + strike + type)
-  - Works for both pre-computed and custom scans
-- [x] **Filter Panel Width Optimization**
-  - Narrowed filter panel in Screener (lg:col-span-1 with max-width)
-  - Results table now takes more horizontal space (lg:col-span-4)
-- [x] **PMCC Aggressive Scan Fix**
-  - Was showing 0 opportunities due to yfinance rate limiting
-  - Triggered manual scan - now has 15 opportunities
-- [x] **Backend Earnings Data**
-  - Updated `_fetch_stock_quote_yahoo_sync()` in data_provider.py to include earnings_date and days_to_earnings
-  - Updated precomputed_scans.py to include earnings_date in CC and PMCC opportunity objects
-  - Updated screener.py dashboard-opportunities endpoint with earnings data
-  - Updated watchlist.py to include earnings data
-- [x] **All Pre-Computed Scans Refreshed**
-  - CC Conservative: 4 opportunities
-  - CC Balanced: 17 opportunities
-  - CC Aggressive: 16 opportunities
-  - PMCC Conservative: 3 opportunities
-  - PMCC Balanced: 19 opportunities
-  - PMCC Aggressive: 15 opportunities
-
-### ✅ Completed (Jan 14, 2026) - Auto-Load Pre-Computed Scans & Data Preservation
-- [x] **PMCC Page Fix**
-  - Fixed: PMCC page now auto-loads "Leveraged Income" pre-computed scan on page load
-  - 19 PMCC opportunities displayed with full data
-  - Users never see blank screen - previous market close data always available
-- [x] **Screener Page Fix**  
-  - Fixed: Screener page now auto-loads "Premium Hunter" pre-computed scan on page load
-  - 32 CC opportunities displayed with real IV, IV Rank, OI data
-  - IV (57.9%, 63.8%, 44.0%), IV Rank (87%, 96%, 66%), OI (385, 424, 42)
-- [x] **Data Preservation Logic**
-  - Added safety check: scans returning 0 results now preserve previous data
-  - Prevents overwriting good data during rate limits or after-hours
-- [x] **Yahoo Finance for LEAPS**
-  - PMCC scan now uses Yahoo Finance (primary) for LEAPS options
-  - Fallback to Polygon if Yahoo fails
-  - Better data availability for PMCC opportunities
-- [x] **All Pre-Computed Scans Refreshed**
-  - CC Conservative: 8 opportunities
-  - CC Balanced: 27 opportunities  
-  - CC Aggressive: 32 opportunities
-  - PMCC Conservative: 7 opportunities
-  - PMCC Balanced: 19 opportunities
-
-### ✅ Completed (Jan 14, 2026) - IV, IV Rank, OI Data Consistency
-- [x] **Dashboard Top 10 Table**
-  - IV, IV Rank, and OI columns display correctly
-  - Real data from Yahoo Finance: IV (66%), IV Rank (98%), OI (14,432)
-  - Added open_interest to scan_parameters when adding trades to simulator
-- [x] **Screener Custom Scan**
-  - IV, IV Rank, OI columns display correctly with real data
-  - Sample data: IV (76.6%), IV Rank (77%), OI (1,417)
-  - Fixed bug: 'top_opps' undefined error in screener.py
-- [x] **Screener Pre-Computed Scans**
-  - IV column displays (30% default from older data)
-  - IV Rank and OI show '-' until scans are re-run with new code
-  - Updated precomputed_scans.py to use Yahoo Finance for IV/OI
-- [x] **Watchlist Page**
-  - All columns display correctly: IV, IV Rank, OI
-  - Real data from Yahoo Finance opportunity object
-- [x] **Simulator Page**
-  - Fixed: IV Rank now reads from trade.scan_parameters.iv_rank
-  - IV displays correctly, IV Rank now shows (46%, 51%, 45%)
-  - OI will display for new trades added after fix
-- [x] **PMCC Page**
-  - No IV/OI columns by design - focuses on LEAPS metrics
-  - All PMCC-specific columns display correctly
-- [x] **Files Updated**
-  - `/app/backend/services/precomputed_scans.py` - Yahoo primary for options, includes IV/OI
-  - `/app/backend/routes/screener.py` - Fixed 'top_opps' bug
-  - `/app/frontend/src/pages/Simulator.js` - Reads iv_rank from scan_parameters
-  - `/app/frontend/src/pages/Dashboard.js` - Passes open_interest to scan_parameters
-  - `/app/frontend/src/pages/Screener.js` - Passes open_interest to scan_parameters
-
-### ✅ Completed (Jan 14, 2026) - Unified Data Architecture (Yahoo Primary)
-- [x] **Data Provider Rewrite**
-  - Yahoo Finance is now PRIMARY source for stocks AND options
-  - Polygon is BACKUP only (for when Yahoo fails)
-  - Unified logic in `/app/backend/services/data_provider.py`
-- [x] **Consistency Across All Pages**
-  - Dashboard, Screener, PMCC, Watchlist now use same data source
-  - No more separate enrichment calls - Yahoo provides IV/OI built-in
-  - Analyst ratings fetched with stock quotes automatically
-- [x] **Data Always Available**
-  - Yahoo provides previous close data for weekends/holidays
-  - When market opens, real-time data available
-  - Graceful fallback to Polygon if Yahoo fails
-- [x] **Files Updated**
-  - `/app/backend/services/data_provider.py` - Complete rewrite with Yahoo primary
-  - `/app/backend/routes/screener.py` - Simplified to use unified provider
-  - `/app/backend/routes/watchlist.py` - Simplified to use unified provider
-- [x] **Benefits**
-  - Simpler codebase (no separate enrichment steps)
-  - Consistent data across all pages
-  - IV and OI available from Yahoo (during market hours)
-  - Analyst ratings included automatically
-
-### ✅ Completed (Jan 14, 2026) - Added OI Column to Dashboard & Screener
-- [x] **Dashboard Top 10 Table**
-  - Added OI (Open Interest) column between IV and AI Score
-  - Added Yahoo enrichment for IV and OI data
-  - Shows real values during market hours
-- [x] **Screener Table**
-  - Replaced IV Rank with OI column for better liquidity visibility
-  - Shows real OI values: 11,749 (XLE), 2,732 (XLK), 1,647 (AAL), etc.
-  - Shows real IV values: 84.6% (INTC), 58.2% (AAL), 50.7% (XLK), etc.
-- [x] **Files Updated**
-  - `/app/frontend/src/pages/Dashboard.js` - Added OI column to table header and rows
-  - `/app/frontend/src/pages/Screener.js` - Replaced IV Rank with OI column
-  - `/app/backend/routes/screener.py` - Added Yahoo enrichment to dashboard endpoint
-- [x] **Note**: Dashboard shows default IV (30%) and OI (-) when market is closed due to Yahoo Finance data limitations
-
-### ✅ Completed (Jan 14, 2026) - Yahoo Finance Data Enrichment
-- [x] **Yahoo Finance Integration for IV & OI**
-  - Created `fetch_options_iv_oi_from_yahoo()` in data_provider.py
-  - Created `enrich_options_with_yahoo_data()` helper function
-  - Fetches real Implied Volatility and Open Interest from Yahoo
-  - Used as enrichment layer on top of Polygon options data
-- [x] **Applied to All Screeners**
-  - Watchlist: Shows real IV (28%, 48%, 39%) and OI (6,770+)
-  - Screener: Shows real IV and OI from Yahoo
-  - Dashboard: Uses Yahoo enrichment
-  - PMCC: Uses Yahoo enrichment
-- [x] **Watchlist Fixes**
-  - Removed strict OI filter that blocked all results
-  - OI filter now only applies when Yahoo data is available
-  - All opportunity columns now populated with real data
-- [x] **Files Updated**
-  - `/app/backend/services/data_provider.py` - Added Yahoo options functions
-  - `/app/backend/routes/watchlist.py` - Uses Yahoo enrichment
-  - `/app/backend/routes/screener.py` - Uses Yahoo enrichment
-
-### ✅ Completed (Jan 14, 2026) - Data Quality Filters
-- [x] **Premium Sanity Check**
-  - Max OTM call premium: 10% of underlying price
-  - Filters out unrealistic premiums (e.g., $141 on $124 stock)
-  - Applied to: Screener, Dashboard, PMCC, Watchlist
-- [x] **ROI Sanity Check**
-  - Preliminary ROI check: 20% max for OTM calls
-  - Filters out bad data with abnormally high ROI
-- [x] **Liquidity Scoring**
-  - Bonus points for high open interest (when available)
-  - Higher OI = higher score ranking
-- [x] **Files Updated**
-  - `/app/backend/routes/screener.py` - Main screener and dashboard endpoints
-  - `/app/backend/routes/watchlist.py` - Watchlist opportunity finder
-  - `/app/backend/services/precomputed_scans.py` - Pre-computed scan service
-- [x] **Note**: Polygon basic plan doesn't return open interest, so filtering relies on premium sanity checks
-
-### ✅ Completed (Jan 13, 2026) - Enhanced Watchlist
-- [x] **Watchlist Table Redesign**
-  - Redesigned from card-based to table format matching screener style
-  - Columns: Symbol, Price, Strike, Type, DTE, Premium, ROI, Delta, IV, AI Score, Analyst, Action
-  - Notes and "Added" date displayed below symbol name
-- [x] **Price Tracking**
-  - Captures `price_when_added` from Polygon API when adding stocks
-  - Shows current price from live Polygon data
-  - Movement percentage calculation (current vs added price) with up/down arrows
-- [x] **Covered Call Opportunities**
-  - Best opportunity shown for each watchlist item
-  - Strike column: Shows expiry + strike + type (e.g., "16JAN26 $257.5C")
-  - Type column: Weekly (cyan badge) or Monthly (purple badge)
-  - Premium, ROI, Delta, IV columns with formatted data
-  - AI Score with color-coded badges (green for high scores)
-  - "No opportunities" message with icon for ETFs without suitable options
-- [x] **CRUD Operations**
-  - Add stock with symbol validation
-  - Delete individual items
-  - Clear All with confirmation dialog
-- [x] **Summary Stats**
-  - Total Symbols count
-  - With Opportunities count
-  - Gainers count (stocks up since added)
-  - Losers count (stocks down since added)
-- [x] **Analyst Ratings**
-  - Fetched from yfinance
-  - Color-coded badges (Strong Buy, Buy, Hold, Sell)
-  - Shows "-" for stocks without analyst coverage
-- [x] **Backend Enhancements**
-  - `/app/backend/routes/watchlist.py` - Complete rewrite with Polygon API integration
-  - `fetch_stock_prices_polygon()` - Batch price fetching with logging
-  - `fetch_analyst_ratings_batch()` - Parallel analyst rating fetches
-  - `_get_best_opportunity()` - Find best covered call with Type, AI Score, IV defaults
-
-### 🔴 Blocked
-- [ ] Stripe Webhook Configuration - Requires user action
-- [ ] Resend Domain Verification - Requires user action
-- [ ] IBKR CSV Parser Validation - Waiting for user's second account CSV
-
-### 📋 Backlog
-- [ ] Support System - AI Learning from admin edits (P1)
-- [ ] Refactor Admin.js (2000+ lines) into sub-components (P2)
-- [ ] Refactor Screener.js and PMCC.js into smaller components (P2)
-- [ ] Support Ticket System - Phase 3: Advanced AI Resolution (P2)
-- [ ] Admin Panel - Content Manager (P2)
-- [ ] Admin Panel - Roles & Permissions (P3)
-- [ ] Generic CSV Import with field mapping (P3)
-- [ ] Watchlist Price Alerts - notify when target price hit or high-ROI opportunity appears (P3)
-
-### ✅ Completed (Jan 13, 2026) - Analyst Rating Columns
-- [x] **Screener Page**
-  - Added Analyst column showing Strong Buy/Buy/Hold/Sell badges
-  - Fixed IV column to be visible for both pre-computed and custom scans
-  - IV data now shows properly (percentage format)
-- [x] **PMCC Page**
-  - Added Analyst column showing analyst ratings
-  - Pre-computed PMCC scans now include analyst_rating data
-- [x] **Dashboard Top 10 CC**
-  - Added Analyst column header (shows "-" for live data, ratings available in modal)
-  - Strike format updated to "16JAN26 $46 C"
-- [x] **Pre-Computed Scans Backend**
-  - Updated fetch_fundamental_data() to include analyst_rating, num_analysts, target_price
-  - Both CC and PMCC opportunities now include analyst data
-  - Data sourced from Yahoo Finance recommendationKey field
-
-### ✅ Completed (Jan 13, 2026) - New Features
-- [x] **PMCC LEAPS Minimum 12 Months DTE**
-  - Updated PMCC_PROFILES to require `long_dte_min: 365` for all risk profiles (conservative, balanced, aggressive)
-  - All pre-computed PMCC scans now only show LEAPS with 12+ months expiration
-  - True LEAPS options for better capital efficiency and leverage
-- [x] **Dashboard Top 10 CC Strike Format**
-  - Strike column now shows date + strike + type format: "16JAN26 $46 C"
-  - Added `formatOptionContract()` function to Dashboard.js
-  - Better visibility of contract details at a glance
-- [x] **Portfolio IBKR Button Cleanup**
-  - Removed "Opens in new window" helper text from IBKR account button
-  - Cleaner UI in the Portfolio page
-- [x] **AI Sentiment Analysis for News**
-  - Added "Analyze News" button in Stock Detail Modal News tab
-  - Uses GPT-5.2 via Emergent integrations for sentiment analysis
-  - Returns: Overall Sentiment (Bullish/Bearish/Neutral), Sentiment Score (0-100), Summary
-  - Per-article sentiment badges: Positive/Neutral/Negative with confidence levels
-  - New endpoint: `POST /api/news/analyze-sentiment`
-- [x] **Analyst Ratings in Fundamentals Tab**
-  - Added Analyst Ratings card in Stock Detail Modal Fundamentals tab
-  - Shows: Rating badge (Strong Buy/Buy/Hold/Sell), Analyst count, Target Price
-  - Price Range (low - high), Upside percentage calculation
-  - Data from Yahoo Finance via yfinance library
-  - Added `_fetch_analyst_ratings()` function in stocks.py
-  - Added "Analyst" column to Dashboard Top 10 CC table
-
-### ✅ Completed (Jan 13, 2026) - PMCC Bug Fixes
-- [x] **PMCC Pre-Computed Scans Data Mapping Fix**
-  - Added `normalizeOpp()` helper function to map backend `long_*` fields to frontend `leaps_*` fields
-  - Backend sends: long_dte, long_strike, long_premium, long_delta
-  - Frontend displays: LEAPS (Buy) column with formatted contract info
-  - Simulate modal now uses normalized data for both custom and pre-computed scans
-- [x] **PMCC Default Screener Deduplication**
-  - Added client-side deduplication in `fetchOpportunities()` function
-  - Keeps highest score per symbol, removes duplicates
-- [x] **PMCC Page Layout Reorganization**
-  - New order: Header → Compact Strategy Explanation → Quick Scans → Filters + Results
-  - Removed standalone Strategy Tips cards at bottom
-  - Integrated key strategy info into compact 2-column card at top
-- [x] **Code Quality Improvements**
-  - Moved `SortHeader` component outside main `PMCC` component (React lint fix)
-  - Updated all SortHeader usages to pass required props
-
-### ✅ Completed (Jan 13, 2026) - Pre-Computed Scans
-- [x] **Pre-Computed Scans for Covered Calls**
-  - Income Guard (Conservative): 32 opportunities
-  - Steady Income (Balanced): 50 opportunities
-  - Premium Hunter (Aggressive): 50 opportunities
-  - Backend service: `/app/backend/services/precomputed_scans.py`
-  - API routes: `/app/backend/routes/precomputed_scans.py`
-  - Nightly scheduler at 4:45 PM ET (weekdays)
-  - Technical filters: SMA alignment, RSI, ATR%, price stability
-  - Fundamental filters: Market cap, EPS, ROE, D/E, revenue growth
-  - Options filters: Delta range, DTE range, premium yield
-  - MongoDB collection: `precomputed_scans`
-  - Frontend: Quick Scans section with 3 scan buttons
-
-### ✅ Completed (Jan 12, 2026)
-- [x] **Full RBAC Implementation**
-  - Admin, Tester, Support Staff roles
-  - Role-based navigation and access control
-  - Invitation system fixed
-- [x] **IMAP Email Polling System**
-  - Automated email import from Hostinger mailbox
-  - AI auto-draft for customer replies
-- [x] **Support Ticket System - Phase 1: Human-in-the-Loop**
-  - Unified ticket intake via contact form (email ingestion planned for Phase 2)
-  - AI ticket classification using GPT-5.2 (category, sentiment, priority, confidence score)
-  - AI-generated draft responses with professional tone
-  - Admin dashboard in Admin Panel → Support tab
-  - Ticket management: view, filter, search, status updates
-  - Human-in-the-loop workflow: Admin reviews/edits AI draft before sending
-  - Auto-acknowledgment emails via Resend
-  - Knowledge Base management: Add/Edit/Delete FAQ articles for AI reference
-  - Sequential ticket numbering (CCE-0001, CCE-0002, etc.)
-  - Full audit logging for admin actions
-
-### ✅ Completed Refactoring (Jan 11, 2026)
-- [x] **server.py Refactoring - Phase 4 Complete**
-  - Extracted ALL 12 routers from monolithic server.py
-  - server.py reduced from 4504 lines to 1326 lines (71% reduction)
-  - Route modules total: 5294 lines across 12 well-organized files
-  - All endpoints verified working after extraction
-
----
-
-## Tech Stack
-- **Frontend:** React, Tailwind CSS, Shadcn/UI
-- **Backend:** FastAPI (Python)
-- **Database:** MongoDB
-- **APIs:** Polygon.io, Yahoo Finance (technical + fundamentals), MarketAux, Stripe, Resend
-- **Charting:** TradingView (iframe), Recharts
-- **Scheduler:** APScheduler (nightly pre-computed scans)
-
----
-
-## Key API Endpoints
-
-### Portfolio
-- `GET /api/portfolio/ibkr/trades` - Get all trades
-- `POST /api/portfolio/manual-trade` - Add manual trade
-- `DELETE /api/portfolio/manual-trade/{id}` - Delete manual trade
-- `DELETE /api/portfolio/ibkr/clear` - Clear all imported data
-
-### Screeners
-- `GET /api/screener/covered-calls` - Screener data
-- `GET /api/screener/pmcc` - PMCC data
-
-### Support (New - Jan 12, 2026)
-- `POST /api/support/tickets` - Create ticket from contact form (public)
-- `GET /api/support/admin/tickets` - Get tickets list with filters (admin)
-- `GET /api/support/admin/tickets/{id}` - Get ticket detail with AI draft (admin)
-- `PUT /api/support/admin/tickets/{id}` - Update ticket status/priority (admin)
-- `POST /api/support/admin/tickets/{id}/reply` - Send admin reply (admin)
-- `POST /api/support/admin/tickets/{id}/approve-draft` - Approve AI draft and send (admin)
-- `POST /api/support/admin/tickets/{id}/regenerate-draft` - Regenerate AI draft (admin)
-- `POST /api/support/admin/tickets/{id}/escalate` - Escalate ticket (admin)
-- `POST /api/support/admin/tickets/{id}/resolve` - Mark resolved (admin)
-- `GET /api/support/admin/stats` - Get support statistics (admin)
-- `GET /api/support/admin/kb` - Get knowledge base articles (admin)
-- `POST /api/support/admin/kb` - Create KB article (admin)
-- `PUT /api/support/admin/kb/{id}` - Update KB article (admin)
-- `DELETE /api/support/admin/kb/{id}` - Delete KB article (admin)
-
-### Admin
-- `POST /api/admin/clear-cache` - Clear server cache
-
----
-
-## File Structure
-```
-/app/
-├── backend/
-│   ├── server.py (main API - 1326 lines, scheduler + core infrastructure)
-│   ├── database.py (MongoDB connection with pooling)
-│   ├── requirements.txt
-│   ├── .env
-│   ├── routes/                    # Fully modular routes (6000+ lines total)
-│   │   ├── __init__.py
-│   │   ├── auth.py               (101 lines)
-│   │   ├── watchlist.py          (64 lines)
-│   │   ├── news.py               (221 lines)
-│   │   ├── chatbot.py            (64 lines)
-│   │   ├── ai.py                 (134 lines)
-│   │   ├── subscription.py       (144 lines)
-│   │   ├── stocks.py             (297 lines)
-│   │   ├── options.py            (171 lines)
-│   │   ├── admin.py              (874 lines)
-│   │   ├── portfolio.py          (887 lines)
-│   │   ├── screener.py           (705 lines)
-│   │   ├── simulator.py          (1629 lines)
-│   │   └── support.py            (616 lines) - NEW Jan 12, 2026
-│   ├── services/
-│   │   ├── cache.py
-│   │   ├── chatbot_service.py
-│   │   ├── data_provider.py      (centralized market data service)
-│   │   ├── email_service.py
-│   │   ├── email_automation.py
-│   │   ├── ibkr_parser.py
-│   │   ├── stripe_webhook.py
-│   │   └── support_service.py    (877 lines) - NEW Jan 12, 2026
-│   ├── models/
-│   │   ├── schemas.py (Pydantic models)
-│   │   └── support.py (237 lines) - NEW Jan 12, 2026
-│   └── utils/
-│       └── auth.py (JWT utilities)
-├── frontend/
-│   └── src/
-│       ├── pages/
-│       │   ├── Dashboard.js
-│       │   ├── Screener.js
-│       │   ├── PMCC.js
-│       │   ├── Portfolio.js
-│       │   ├── Simulator.js (5 tabs: Active, Closed, Rules, Logs, Analytics)
-│       │   └── Admin.js (7 tabs: Dashboard, Users, Support, Email, Billing, Integrations, API Keys)
-│       ├── components/
-│       │   ├── StockDetailModal.js
-│       │   └── AdminSupport.jsx (986 lines) - NEW Jan 12, 2026
-│       └── lib/
-│           └── api.js
-├── tests/
-│   └── test_refactored_routes.py
-└── memory/
-    └── PRD.md
-```
-
----
-
 ## Last Updated
-January 12, 2026 - Centralized Data Sourcing Implementation
+2025-12-XX - System Architecture Documentation COMPLETE
 
-## Recent Changes
+---
 
-### Centralized Data Sourcing Architecture (Jan 12, 2026) ✅
-**Implemented a clean, consistent data sourcing strategy:**
+## Forensic Invariant Audit - COMPLETED 2025-12
 
-**Data Sourcing Rules (PERMANENT - DO NOT CHANGE):**
-- **OPTIONS DATA**: Polygon/Massive ONLY (paid subscription)
-- **STOCK DATA**: Polygon/Massive primary, Yahoo fallback (until subscription upgrade)
-- **Future-proof**: Set `USE_POLYGON_FOR_STOCKS = True` in `data_provider.py` when upgrading
+### Status: ✅ COMPLETE
 
-**New File Created:**
-- `/app/backend/services/data_provider.py` - Centralized data sourcing service
-  - `fetch_options_chain()` - Polygon only for options
-  - `fetch_stock_quote()` - Polygon primary, Yahoo fallback
-  - `fetch_historical_prices()` - Polygon primary, Yahoo fallback
-  - `is_market_closed()` - Market hours detection
-  - `get_data_source_status()` - Admin diagnostic tool
+### Deliverable:
+Created forensic audit document at `/app/CCE_FORENSIC_INVARIANT_AUDIT.md`
 
-**Updated Screeners:**
-- `/app/backend/routes/screener.py` - All three screeners now use centralized data provider
-  - Covered Calls screener: Polygon for options, hybrid for stocks
-  - PMCC screener: Polygon for options, hybrid for stocks
-  - Dashboard opportunities: Polygon for options, hybrid for stocks
-  - All responses now include `data_source: "polygon"` field
+### Key Findings Summary:
+| Classification | Count | Examples |
+|----------------|-------|----------|
+| Policy Drift | 4 | Simulator uses LIVE prices while scans use EOD |
+| Bypassed Shared Util | 2 | Different transform functions for same data |
+| Silent Fallback | 6 | `or` clauses allowing generic `premium` instead of `bid` |
+| Timing Misalignment | 2 | Non-atomic quote/chain fetch (~6 min gap) |
+| Snapshot Misalignment | 1 | Single `as_of` for all symbols |
 
-**Result:** Consistent data sourcing across all screeners. Options always from Polygon, stock prices with graceful fallback.
+### Critical Deviations:
+- **B1**: CC premium may use non-BID value via `or` fallback
+- **C1**: PMCC economics may use wrong prices via `or` fallback
+- **H1**: Quote and chain fetched sequentially with 250ms delays (not atomic)
+- **F1**: Different transform functions produce slightly different outputs
 
-### Dashboard Top 10 Covered Calls Enhancement (Jan 12, 2026) ✅
-**Issues Fixed:**
-1. Strike column was showing full option contract format instead of just strike price
-2. IV, 6M, 12M columns were showing "%" with no values
-3. Only Monthly opportunities were displayed
+---
 
-**Changes Made:**
-- **Backend (`screener.py`):**
-  - Updated `/dashboard-opportunities` to return Top 5 Weekly + Top 5 Monthly (was only Monthly before)
-  - Added `min_dte=1` query for Weekly options (1-7 DTE) and `min_dte=8` for Monthly (8-45 DTE)
-  - Added proper IV data extraction from Yahoo Finance options data
-  - Added `expiry_type`, `moneyness`, `strike_pct` fields to response
-  - Changed cache key to `dashboard_opportunities_v3`
-  
-- **Frontend (`Dashboard.js`):**
-  - Updated subtitle to "Top 5 Weekly + Top 5 Monthly"
-  - Strike column now shows just "$XX" with ATM/OTM badge (not full option contract)
-  - Removed 6M/12M trend columns (requires separate historical data API)
-  - Fixed IV display to show actual percentage values
+## System Architecture Documentation - COMPLETED 2025-12
 
-**Result:** Dashboard now displays 5 Weekly + 5 Monthly opportunities with proper IV values (40-70%) and clean Strike prices.
+### Status: ✅ COMPLETE
 
-### PMCC Screener Enhancement (Jan 12, 2026) ✅
-**Issue 1:** PMCC screener was returning 0 results due to LEAPS detection bug.
-**Fix 1:** Changed LEAPS detection threshold from `min_dte >= 300` to `min_dte >= 150` in `server.py` line 633.
+### Deliverable:
+Created comprehensive system architecture reference document at `/app/CCE_SYSTEM_ARCHITECTURE_REFERENCE.md`
 
-**Issue 2:** After fix, PMCC screener only returned 3-4 results (one per symbol).
-**Root Cause:** The screener only generated 1 PMCC opportunity per symbol by selecting the single "best" LEAPS and "best" short call.
+### Contents:
+| Section | Description |
+|---------|-------------|
+| System Overview | Tech stack, business logic, data flow |
+| Architecture Layers | EOD Pipeline, Chain Validator, Screener Routes |
+| User-Facing Pages | Dashboard, Screener, PMCC, Simulator, Watchlist |
+| Admin Panel Deep Dive | All admin endpoints with data flows |
+| Core Modules | Payments, Scheduled Jobs, LLM/API Keys |
+| Function Impact Matrix | Critical functions with callers, dependencies, failure behaviors |
+| Silent Fallback Inventory | Complete list of silent vs explicit fallbacks |
+| Charts/Fundamentals/Technicals Sourcing Map | Data sources for all UI elements |
+| Database Schema Reference | Collection schemas with indexes |
+| Scheduled Jobs | Job registry and execution flows |
+| Third-Party Integrations | Yahoo Finance, PayPal, OpenAI, APScheduler |
+| Completeness Checklist | Verification of all mandatory sections |
 
-**Fix 2 (screener.py):**
-- Expanded symbol list from 22 to 47 stocks across Tech, Financials, Consumer, Healthcare, Energy, Fintech, Airlines, and High-Volatility sectors
-- Changed logic to generate **multiple combinations per symbol** (up to 3 LEAPS × 3 short calls = 9 combos per symbol)
-- Improved scoring algorithm to account for capital efficiency
-- Capped results at top 100 opportunities
+### Key Documentation Highlights:
+- **Pricing Rules**: BUY=ASK, SELL=BID (no exceptions)
+- **Market State Logic**: OPEN/EXTENDED/CLOSED with field priorities
+- **IV Rank Bootstrap**: 50 neutral default when < 5 samples
+- **AI Guard**: 5-step check (entitlement → rate limit → concurrency → balance → deduct)
+- **EOD Pipeline**: 16:10 ET Mon-Fri, ~1500 symbols
 
-**Result:** PMCC screener now returns **100 opportunities** with ROIs ranging from 7% to 14% per cycle and 100%+ annualized returns.
+### Files Referenced:
+- Backend routes: admin.py, screener_snapshot.py, simulator.py, watchlist.py, paypal.py
+- Services: eod_pipeline.py, data_provider.py, yf_pricing.py, pricing_rules.py
+- AI Wallet: guard.py, wallet_service.py, routes.py
+- Frontend: Dashboard.js, Screener.js, PMCC.js, Simulator.js
 
-### Server.py Refactoring - Phase 4 Complete (Jan 11, 2026) ✅
-**Goal:** Build scalable architecture for 1000+ concurrent users
+---
 
-**Results:**
-- **Line count reduced:** 7333 → 4504 lines (38.6% reduction, 2829 lines extracted)
-- **11 routers extracted to /app/backend/routes/:**
-  1. `auth.py` (101 lines) - Login, register, /me endpoints
-  2. `watchlist.py` (64 lines) - Watchlist CRUD operations
-  3. `news.py` (221 lines) - MarketAux news with rate limiting
-  4. `chatbot.py` (64 lines) - AI chatbot endpoints
-  5. `ai.py` (134 lines) - AI analysis and opportunities
-  6. `subscription.py` (144 lines) - Stripe subscription management
-  7. `stocks.py` (297 lines) - Stock quotes, indices, details, historical
-  8. `options.py` (171 lines) - Options chain, expirations
-  9. `admin.py` (874 lines) - Full admin panel with user management, email automation
-  10. `portfolio.py` (887 lines) - Portfolio management, IBKR import, manual trades
+## Previous Updates
 
-**Scalability Improvements:**
-- Proper async/await patterns throughout
-- Efficient database queries with projections (exclude _id, sensitive fields)
-- Pagination on all list endpoints (admin/users, audit-logs, trades, etc.)
-- Connection pooling for HTTP requests (httpx.Timeout config)
-- Lazy imports to avoid circular dependencies
-- Stateless API design
-- Normalized field handling for frontend compatibility
+### 2026-02-18 - Critical Scan & Watchlist Regression Fix COMPLETE
 
-**Remaining in server.py (Phase 4):**
-- `screener_router` (~1200 lines) - Complex business logic with caching
-- `simulator_router` (~1900 lines) - Rule engine, analytics, scheduler
-- Core infrastructure: Cache helpers, models, auth utilities
+---
 
-**Testing:** All 10 API groups verified working (Auth, Stocks, Options, Screener, Portfolio, Admin, Simulator, News, Watchlist, Subscription)
+## Critical Scan & Watchlist Regression Fix - COMPLETED 2026-02-18
 
-### Invitation System & Security Fixes (Jan 12, 2026) ✅
-**Three critical bugs fixed:**
+### Status: ✅ COMPLETE
 
-1. **Security Vulnerability - Demo Credentials Removed**
-   - Removed hardcoded demo credentials from Login.js that were visible on the production login page
-   - File: `/app/frontend/src/pages/Login.js` - Removed lines 127-132
+### Issues Fixed:
 
-2. **Invitation URL Environment Logic**
-   - Test environment invitations now correctly use: `https://covermax.preview.emergentagent.com`
-   - Production environment invitations use: `https://coveredcallengine.com`
-   - File: `/app/backend/routes/invitations.py` - Lines 36-39
+1. **Watchlist Runtime Error** (`TypeError: items.map is not a function`)
+   - **Root Cause:** Backend returned `{ items: [...] }` but frontend expected array directly
+   - **Fix:** Updated `Watchlist.js` to extract `items` from response object
 
-3. **AcceptInvitation Page Working**
-   - Page renders correctly with invitation details, role badge, and password form
-   - Complete account creation flow verified working
-   - File: `/app/frontend/src/pages/AcceptInvitation.js`
+2. **Dashboard-Opportunities Cloudflare 520 Error**
+   - **Root Cause:** `_transform_cc_result()` returns tuple `(result, error_info)` but was incorrectly used in list comprehension without unpacking
+   - **Fix:** Changed line 1762 in `screener_snapshot.py` to properly unpack the tuple
 
-### Role-Based Access Control (RBAC) Implementation (Jan 12, 2026) ✅
-**Complete role-based security system:**
+3. **Pre-computed Scan Count Mismatch** (28 shown on card, 2 returned)
+   - **Root Cause:** `/api/scans/available` read counts from legacy `precomputed_scans` collection while detail endpoints read from EOD `scan_results_cc` collection
+   - **Fix:** Rewrote `get_available_scans()` to compute counts from EOD collections using same filtering logic as detail endpoints
 
-**Backend Changes:**
-- Updated `/app/backend/models/schemas.py` - UserResponse now includes role, is_support_staff, is_tester, permissions
-- Updated `/app/backend/routes/auth.py` - Login and /me endpoints return full role information
-- JWT tokens now include role information for backend authorization
+### Files Modified:
 
-**Frontend Changes:**
-- Updated `/app/frontend/src/contexts/AuthContext.js` - Added role helpers: isAdmin, isSupportStaff, isTester, hasSupportAccess, hasPermission()
-- Updated `/app/frontend/src/App.js` - Added SupportRoute wrapper, imported SupportPanel
-- Updated `/app/frontend/src/components/Layout.js` - Dynamic navigation based on user role
-- Updated `/app/frontend/src/pages/Login.js` - Role-based redirect after login
-- Updated `/app/frontend/src/pages/Dashboard.js` - Redirect support-only staff to /support
-- Created `/app/frontend/src/pages/SupportPanel.js` - Dedicated support panel for support staff
+| File | Changes |
+|------|---------|
+| `/frontend/src/pages/Watchlist.js` | Line 65: Extract `items` array from response object |
+| `/backend/routes/screener_snapshot.py` | Lines 1761-1766: Fixed tuple unpacking in dashboard-opportunities |
+| `/backend/routes/precomputed_scans.py` | Lines 263-398: Rewrote `get_available_scans()` to use EOD collections |
 
-**Role Access Matrix:**
-| Role | Navigation | Access | Redirect |
-|------|-----------|--------|----------|
-| Admin | Full + Admin | Everything | /dashboard |
-| Tester | Full (no Admin) | App features | /dashboard |
-| Support Staff | Support only | Support Panel | /support |
+### Verification:
 
-### IMAP Email Sync Implementation (Jan 12, 2026) ✅
-**Automated email reply import from Hostinger mailbox:**
+| Endpoint | Response |
+|----------|----------|
+| Dashboard Top 10 | `total: 3, weekly: 2, monthly: 1` ✅ |
+| CC Aggressive Scan | `total: 2, opportunities: 2` ✅ |
+| PMCC Conservative | `total: 0, opportunities: 0` ✅ |
+| Watchlist | No runtime error, items displayed ✅ |
 
-**Features:**
-- Connects to Hostinger IMAP (`imap.hostinger.com:993`)
-- Scans for unread emails and matches to tickets by ticket number in subject (e.g., `[CCE-0014]`)
-- Automatically adds replies to existing tickets
-- Creates new tickets for emails without ticket references
-- Marks processed emails as read
-- Runs automatically every 6 hours (4 times daily)
-- Manual "Sync Now" button in Admin panel
+### Confirmations:
+- ✅ Filter → Sort → Limit order verified (limit applied after filtering)
+- ✅ Total count matches returned results count
+- ✅ Summary counts match detail results for pre-computed scans
+- ✅ Response schema consistent (`{ total, results/opportunities }`)
 
-**Files Created/Modified:**
-- `/app/backend/services/imap_service.py` - IMAP connection and email processing
-- `/app/backend/routes/admin.py` - Added IMAP settings endpoints
-- `/app/backend/server.py` - Added scheduler job for IMAP sync
-- `/app/frontend/src/pages/Admin.js` - Added "Email Sync" tab with settings, history, and sync controls
+---
 
-**Key Endpoints:**
-- `GET /api/admin/imap/settings` - Get IMAP settings (password masked)
-- `POST /api/admin/imap/settings` - Save IMAP settings
-- `POST /api/admin/imap/test-connection` - Test IMAP connection
-- `POST /api/admin/imap/sync-now` - Trigger manual sync
-- `GET /api/admin/imap/sync-history` - Get sync history
-- `GET /api/admin/imap/status` - Get IMAP status
+## NaN Conversion Crash Fix in EOD Pipeline - VERIFIED 2026-02-18
 
-### Invitation System Architecture (Jan 12, 2026) ✅
-**Key Files:**
-- `/app/backend/routes/invitations.py` - Invitation CRUD, email sending, token verification
-- `/app/frontend/src/pages/AcceptInvitation.js` - Public invitation acceptance page
-- `/app/frontend/src/pages/Admin.js` - Admin UI for invitations
+### Status: ✅ VERIFIED
 
-**Key Endpoints:**
-- `POST /api/invitations/send` - Send invitation (admin only)
-- `GET /api/invitations/list` - List all invitations (admin only)
-- `DELETE /api/invitations/{id}` - Delete/revoke invitation (admin only)
-- `POST /api/invitations/{id}/resend` - Resend invitation email (admin only)
-- `GET /api/invitations/verify/{token}` - Verify invitation token (public)
-- `POST /api/invitations/accept/{token}` - Accept invitation and create account (public)
+### Problem:
+The EOD pipeline was crashing with `ValueError: cannot convert float NaN to integer` when parsing the 'Volume' field from `yfinance`, which sometimes returns `NaN`. This caused 370 symbols to be incorrectly excluded with `MISSING_QUOTE` reason.
 
-**Roles Supported:**
-- `support_staff` - Access to Support Ticket System only
-- `tester` - Access to main application features (Beta Tester)
+### Solution:
+Added `safe_int()` and `safe_float()` helper functions in `/app/backend/services/eod_pipeline.py` that:
+1. Check for `NaN` values BEFORE attempting type casting
+2. Handle numpy scalars correctly
+3. Return safe defaults instead of crashing
+
+### Files Modified:
+
+| File | Changes |
+|------|---------|
+| `/backend/services/eod_pipeline.py` | Lines 91-132: Added `safe_int()` and `safe_float()` helpers |
+
+### Verification Results (EOD Run 2026-02-18):
+
+| Metric | Before Fix | After Fix |
+|--------|------------|-----------|
+| MISSING_QUOTE exclusions | 370 | 0 |
+| Total exclusions | 412 | 33 |
+| NaN-related errors | Multiple crashes | 0 |
+| Symbols included | ~200 | 589 |
+
+### Current Exclusion Breakdown:
+- `MISSING_QUOTE_FIELDS`: 30 (legitimate - both price fields were None)
+- `MISSING_CHAIN`: 3 (legitimate - no option expirations available)
+
+### API Verification:
+```
+GET /api/screener/covered-calls - Returns 3 results ✅
+GET /api/admin/eod-snapshot/status - Returns correct EOD status ✅
+```
+
+---
+
+## Freeze at Market Close Policy Fix - COMPLETED 2026-02-17
+
+### Status: ✅ COMPLETE
+
+### Problem:
+Price/state mismatches were causing mass rejections due to:
+1. Admin Data Quality reporting "DELAYED" price source during AFTERHOURS/PREMARKET
+2. EOD bulk quote selecting wrong price field during OPEN hours
+
+### Solution:
+
+**A) Admin Data Quality price_source mapping** (`/app/backend/routes/screener_snapshot.py`):
+- Changed: Outside market OPEN (CLOSED, AFTERHOURS, PREMARKET) now reports `price_source = "PREV_CLOSE"`
+- Previously: AFTERHOURS/PREMARKET incorrectly reported "DELAYED"
+
+**B) EOD bulk quote selected price** (`/app/backend/services/eod_pipeline.py`):
+- ALWAYS use `session_close_price` (frozen close from last trading session)
+- OPEN: session_close_price (yesterday's close)
+- CLOSED: session_close_price (today's close after EOD)
+- Both `session_close_price` and `prior_close_price` are still stored for debugging
+
+### Verification:
+```
+Market State: AFTERHOURS
+Price Source: PREV_CLOSE  (was "DELAYED" before fix)
+
+EOD Pipeline (AAPL):
+  price = session_close_price: True
+  stock_price_source: SESSION_CLOSE
+```
+
+---
+
+
+## PMCC 20% Solvency Tolerance Fix - COMPLETED 2026-02-17
+
+### Status: ✅ COMPLETE
+
+### Problem:
+Precomputed PMCC scans were returning **zero opportunities** because the strict solvency rule (`width > net_debit`) was mathematically impossible to satisfy with pure ASK/BID pricing. When buying LEAPs at ASK and selling short calls at BID, the net_debit almost always exceeds the width due to bid-ask spreads.
+
+### Solution:
+Relaxed the solvency rule to allow a **20% tolerance**: `net_debit <= width * 1.20`
+
+### Files Modified:
+
+| File | Changes |
+|------|---------|
+| `/backend/services/pricing_rules.py` | Line 78-108: `validate_pmcc_solvency()` now uses 20% tolerance |
+| `/backend/services/eod_pipeline.py` | Line 1286-1292: `validate_pmcc_structure()` updated to match |
+
+### Verification Results:
+
+| Profile | Before Fix | After Fix |
+|---------|------------|-----------|
+| Conservative | 0 | 8 opportunities |
+| Balanced | 0 | 1 opportunity |
+| Aggressive | 0 | 0 (stricter criteria) |
+
+### Sample PMCC Opportunities Now Passing:
+```
+PFE:  width=4.00, net_debit=4.52, threshold=4.80 ✓
+XOM:  width=30.00, net_debit=32.11, threshold=36.00 ✓
+TFC:  width=10.00, net_debit=11.85, threshold=12.00 ✓
+ABBV: width=55.00, net_debit=56.02, threshold=66.00 ✓
+SLB:  width=15.00, net_debit=15.36, threshold=18.00 ✓
+```
+
+### Test Coverage:
+- 23 unit tests created in `/app/backend/tests/test_pmcc_solvency_tolerance.py`
+- 100% pass rate
+
+---
+
+
+## IV Rank & Analyst Enrichment - COMPLETED 2026-02-17
+
+### Status: ✅ COMPLETE
+
+### Objective:
+Ensure ALL strategy rows returned by live endpoints include consistent, non-null (when available) values for:
+- `iv_rank` (0-100 or null)
+- `analyst_rating` (string or null)
+- `analyst_opinions` (int or null)
+- `target_price_mean/high/low` (numbers or null)
+
+### Implementation:
+
+| File | Purpose |
+|------|---------|
+| `/backend/services/enrichment_service.py` | **NEW** - Single enrichment function for IV Rank + Analyst data |
+| `/backend/routes/screener_snapshot.py` | Updated `_merge_analyst_enrichment()` to fall back to live Yahoo |
+| `/backend/routes/watchlist.py` | Added enrichment at response time |
+| `/backend/routes/simulator.py` | Added enrichment at response time |
+
+### Enrichment Function:
+```python
+enrich_row(symbol, row, *, stock_price, expiry, strike, iv, skip_analyst, skip_iv_rank)
+```
+
+### Analyst Enrichment:
+- Source: Yahoo Finance `ticker.info`
+- Fields: `analyst_rating`, `analyst_opinions`, `target_price_mean/high/low`
+- Rule: If missing → return nulls. Do not fake.
+
+### IV Rank Enrichment:
+- Method: Lightweight chain percentile
+- Uses option chain IVs within ±15% of spot
+- Requires ≥20 valid IV points
+- Rule: Never return 0 unless rank truly computes to 0
+
+### Debug Flag:
+`?debug_enrichment=1` adds to each row:
+- `enrichment_applied`: true/false
+- `enrichment_sources`: { analyst: "yahoo"|"db"|"none", iv_rank: "chain_percentile"|"none" }
+
+### Verified Endpoints:
+```
+CCL Results (debug_enrichment=1):
+  Dashboard Top 10: enrichment_applied=true, analyst="yahoo"
+  Custom CC Scan: enrichment_applied=true, analyst="yahoo"
+  Watchlist: enrichment_applied=true, analyst="yahoo"
+  Simulator: enrichment_applied=true, analyst="yahoo"
+```
+
+---
+
+## Global yfinance Pricing Consistency - COMPLETED 2026-02-17
+
+### Status: ✅ COMPLETE
+
+### Objective:
+Enforce identical yfinance pricing fields across ALL modules (Dashboard, CC, PMCC, Customised Scans, Precomputed Scans, Simulator, Watchlist).
+
+### Single Source of Truth Helpers:
+
+| Helper | File | Purpose |
+|--------|------|---------|
+| `get_underlying_price_yf()` | `/backend/services/yf_pricing.py` | Get stock price using correct field based on market state |
+| `get_option_chain_yf()` | `/backend/services/yf_pricing.py` | Get option chain with consistent column names |
+
+### Pricing Rules (Enforced Globally):
+
+| Market State | Field Used | Forbidden Fields |
+|--------------|------------|------------------|
+| **OPEN** | `fast_info.last_price` (primary), `info.regularMarketPrice` (fallback) | postMarketPrice, preMarketPrice, currentPrice |
+| **CLOSED** | `history(period="5d")["Close"].iloc[-1]` | regularMarketPrice, regularMarketPreviousClose |
+
+### Option Chain Columns (Consistent Everywhere):
+- `bid` (used for SELL)
+- `ask` (used for BUY)
+- `openInterest`
+- `volume`
+- `impliedVolatility`
+- `strike`
+- `lastTradeDate`
+
+### Files Modified:
+
+| File | Changes |
+|------|---------|
+| `/backend/services/yf_pricing.py` | **NEW** - Shared yfinance helpers for price and chain |
+| `/backend/services/pricing_rules.py` | Added solvency/breakeven validation for precomputed PMCC |
+| `/backend/services/eod_pipeline.py` | Updated `fetch_quote_sync` to use `get_underlying_price_yf()` |
+| `/backend/services/data_provider.py` | Updated `_fetch_stock_quote_yahoo_sync` and `_fetch_live_stock_quote_yahoo_sync` to use shared helper |
+| `/backend/services/precomputed_scans.py` | Added imports for shared helpers |
+
+### Verification:
+```
+NVDA Price Consistency Test (Market CLOSED):
+  Dashboard: $182.81 (history.Close[-1])
+  Precomputed (EOD): $182.81 (history.Close[-1])
+  All prices identical: ✅ YES
+```
+
+---
+
+## Strict PMCC Institutional Rules - COMPLETED 2026-02-16
+
+### Status: ✅ COMPLETE
+
+### Objective:
+Implement institutional-grade filtering rules for PMCC (Poor Man's Covered Call) strategy to ensure only high-quality, executable trades are presented to users.
+
+### PMCC Strict Rules:
+| Category | Rule | Value | Purpose |
+|----------|------|-------|---------|
+| **LEAP (Long)** | DTE Range | 365-730 days | Adequate time for multiple short cycles |
+| | Delta Minimum | ≥ 0.80 | Deep ITM for stock-like behavior |
+| | Open Interest Min | ≥ 100 | Sufficient liquidity |
+| | Bid-Ask Spread Max | ≤ 5% | Reasonable execution costs |
+| | Strike Requirement | ITM (strike < stock) | Acts as stock substitute |
+| **Short** | DTE Range | 30-45 days | Optimal theta decay window |
+| | Delta Range | 0.20-0.30 | ~75% probability of profit |
+| | Open Interest Min | ≥ 100 | Sufficient liquidity |
+| | Bid-Ask Spread Max | ≤ 5% | Reasonable execution costs |
+| | Strike Requirement | OTM ≥2% above stock | Safe profit zone |
+| **Structure** | Solvency | net_debit ≤ width * 1.20 | 20% tolerance for ASK/BID spreads |
+| | Break-even | short_strike > BE (soft flag) | Warning only, not rejection |
+
+### Quality Flags:
+| Flag | Trigger | Impact |
+|------|---------|--------|
+| `FAIL_LONG_DTE_xxx` | leap_dte outside 365-730 | Rejected |
+| `FAIL_LONG_DELTA_x.xx` | leap_delta < 0.80 | Rejected |
+| `FAIL_LIQUIDITY_LEAP_OI_xxx` | leap_oi < 100 | Rejected |
+| `FAIL_LIQUIDITY_LEAP_SPREAD_x%` | leap_spread > 5% | Rejected |
+| `FAIL_SHORT_DTE_xxx` | short_dte outside 30-45 | Rejected |
+| `FAIL_SHORT_DELTA_x.xx` | short_delta outside 0.20-0.30 | Rejected |
+| `FAIL_SOLVENCY_xxx` | net_debit > width * 1.20 | Rejected (20% tolerance) |
+| `WARN_BREAK_EVEN_xxx` | short_strike ≤ breakeven | Warning (soft flag) |
+| `WIDE_SPREAD` | spread > 10% | Flagged (soft) |
+| `LOW_OI` | OI < 50 | Flagged (soft) |
+| `NO_LAST` | No last traded price | Flagged (soft) |
+
+### Files Modified:
+| File | Changes |
+|------|---------|
+| `/backend/services/eod_pipeline.py` | Updated PMCC constants (lines 692-716), Enhanced `validate_pmcc_structure` function |
+| `/backend/routes/screener_snapshot.py` | Updated API default parameters to match strict rules |
+
+### Test Results:
+- **35/35 tests passed (100%)**
+- Test file: `/app/backend/tests/test_pmcc_strict_rules.py`
+- Validated: DTE ranges, delta ranges, solvency, break-even, quality flags, pricing rules
+
+### Impact:
+- Fewer PMCC opportunities (1 vs 5 in previous run) - expected
+- All remaining opportunities meet institutional standards
+- Improved trade quality and user confidence
+
+---
+
+## Deterministic EOD Pipeline - COMPLETED 2026-02-16
+
+### Status: ✅ COMPLETE
+
+### Objective:
+Build a deterministic, scalable End-of-Day (EOD) pipeline that:
+1. Builds a versioned 1500-symbol universe from static data files
+2. Pre-computes all CC/PMCC scan results after market close
+3. Stores everything in MongoDB for read-only access
+4. Decouples frontend UI from live API calls
+
+### Architecture:
+```
+┌───────────────────────────────────────────────────────────────┐
+│                    EOD Pipeline Flow                           │
+├───────────────────────────────────────────────────────────────┤
+│  1. Universe Builder (Tier 1-4)                                │
+│     ├── Tier 1: S&P 500 symbols (~517)                        │
+│     ├── Tier 2: Nasdaq 100 net of S&P overlap (~16)           │
+│     ├── Tier 3: ETF Whitelist (~89)                           │
+│     └── Tier 4: Liquidity expansion (from us_symbol_master)   │
+│                                                                │
+│  2. EOD Pipeline (scheduled 4:10 PM ET weekdays)              │
+│     ├── Fetch quotes (price, volume, market cap)              │
+│     ├── Fetch option chains                                    │
+│     ├── Compute CC opportunities                               │
+│     ├── Compute PMCC opportunities                             │
+│     └── Persist to MongoDB collections                         │
+│                                                                │
+│  3. Read-Only API Endpoints                                    │
+│     ├── /api/eod-pipeline/covered-calls                       │
+│     └── /api/eod-pipeline/pmcc                                │
+└───────────────────────────────────────────────────────────────┘
+```
+
+### New Collections:
+| Collection | Purpose |
+|------------|---------|
+| `scan_universe_versions` | Versioned universe snapshots |
+| `symbol_snapshot` | Underlying prices + option chains per run |
+| `scan_results_cc` | Pre-computed Covered Call opportunities |
+| `scan_results_pmcc` | Pre-computed PMCC opportunities |
+| `scan_runs` | Log of completed EOD pipeline runs |
+| `scan_run_summary` | Pre-aggregated summary for fast dashboard |
+
+### New Files:
+| File | Purpose |
+|------|---------|
+| `/backend/data/sp500_symbols.py` | Static S&P 500 symbol list |
+| `/backend/data/nasdaq100_symbols.py` | Static Nasdaq 100 symbol list |
+| `/backend/data/etf_whitelist.py` | Static ETF whitelist |
+| `/backend/services/universe_builder.py` | Builds deterministic universe |
+| `/backend/services/eod_pipeline.py` | Main EOD processing logic |
+| `/backend/services/db_indexes.py` | MongoDB index creation |
+| `/backend/routes/eod_pipeline.py` | API endpoints for EOD pipeline |
+| `/backend/utils/symbol_normalization.py` | Ticker format normalization |
+
+### API Endpoints:
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/eod-pipeline/covered-calls` | GET | Pre-computed CC results (read-only) |
+| `/api/eod-pipeline/pmcc` | GET | Pre-computed PMCC results (read-only) |
+| `/api/eod-pipeline/latest-run` | GET | Latest pipeline run metadata |
+| `/api/eod-pipeline/run` | POST | Manual pipeline trigger (admin, dev only) |
+| `/api/eod-pipeline/create-indexes` | POST | Create MongoDB indexes (admin) |
+| `/api/eod-pipeline/runs` | GET | List pipeline runs (admin) |
+| `/api/eod-pipeline/universe` | GET | Current universe stats (admin) |
+
+### Scheduler:
+- **Job ID:** `eod_pipeline_scan`
+- **Schedule:** 4:10 PM ET, Mon-Fri
+- **Timezone:** America/New_York
+
+### Performance Results (First Run):
+- **Run Duration:** ~2.5 minutes for 622 symbols
+- **Symbols Processed:** 622 (Tier 1-3)
+- **Symbols Included:** 399 (successful quotes + chains)
+- **CC Opportunities:** 75
+- **PMCC Opportunities:** 0 (expected - requires LEAPS availability)
+
+### Benefits:
+1. ✅ **Fast UI** - Screener pages serve from pre-computed DB, no live calls
+2. ✅ **Scalable** - Can expand to 1500+ symbols without timeout issues
+3. ✅ **Deterministic** - Same run produces same results
+4. ✅ **Reliable** - No rate limiting or API failures during user sessions
+5. ✅ **Auditable** - Full run history with success/failure breakdowns
+
+---
+
+## Universe Expansion - COMPLETED 2026-02-14
+
+### Status: ✅ COMPLETE (Phase 1 & Phase 2)
+
+### Objective:
+Expand scan universe from fixed ~60 symbols to S&P500 + Nasdaq100 + ETF whitelist (~340+ symbols), with proper ETF handling that skips fundamental data fetch.
+
+### Phase 1: ETF Handling (Complete)
+**Goal:** Make ETFs first-class citizens in scans by skipping fundamentals cleanly
+
+**Implementation:**
+1. **`is_etf(symbol)` function** - Centralized ETF detection using whitelist
+   - Located in `/backend/utils/universe.py`
+   - Returns True for 37 whitelisted ETFs (SPY, QQQ, IWM, sector ETFs, etc.)
+   
+2. **Scan Pipeline Changes:**
+   - Covered Call scan (`precomputed_scans.py`): Skips `fetch_fundamental_data()` for ETFs
+   - PMCC scan (`precomputed_scans.py`): Skips `passes_fundamental_filters()` for ETFs
+   - No 404 errors logged for ETF fundamentals
+   - ETFs get neutral fundamental score (0 points, not penalized)
+
+3. **Audit Ledger:**
+   - ETF symbols show `fundamentals_skipped: true`
+   - ETFs auto-pass fundamental stage in stats
+
+### Phase 2: Universe Expansion v1 (Complete)
+**Goal:** Expand universe to S&P500 + Nasdaq100 + ETF whitelist
+
+**Implementation:**
+1. **Universe Builder** (`/backend/utils/universe.py`):
+   - `SP500_SYMBOLS`: ~263 liquid S&P 500 stocks
+   - `NASDAQ100_NET`: ~41 Nasdaq 100 symbols (net of S&P overlap)
+   - `ETF_WHITELIST`: 37 liquid options ETFs
+   - `build_scan_universe()`: Combines tiers, respects MAX_SCAN_UNIVERSE limit
+
+2. **Configuration:**
+   | Variable | Default | Description |
+   |----------|---------|-------------|
+   | MAX_SCAN_UNIVERSE | 700 | Maximum symbols in scan universe |
+   | UNIVERSE_INCLUDE_ETF | true | Include ETF whitelist |
+   | UNIVERSE_INCLUDE_NASDAQ | true | Include Nasdaq 100 net |
+
+3. **Admin Status Updates:**
+   - `GET /api/screener/admin-status` now returns `tier_counts`:
+     ```json
+     "tier_counts": {
+       "sp500": 263,
+       "nasdaq100_net": 41,
+       "etf_whitelist": 37,
+       "liquidity_expansion": 0,
+       "total": 341
+     }
+     ```
+   - Exclusion tracking works with expanded universe
+
+### New Files:
+- `/backend/utils/universe.py` - Universe builder and ETF detection
+
+### Modified Files:
+- `/backend/services/precomputed_scans.py` - ETF fundamental skip logic
+- `/backend/routes/screener_snapshot.py` - Uses universe builder, returns tier_counts
+- `/backend/routes/screener.py` - Uses centralized ETF detection
+- `/backend/.env` - Added MAX_SCAN_UNIVERSE, UNIVERSE_INCLUDE_* vars
+
+### API Changes:
+| Endpoint | Change |
+|----------|--------|
+| `/api/screener/admin-status` | Added `universe.tier_counts` field |
+
+### ETF Whitelist (37 symbols):
+- Major Index: SPY, QQQ, IWM, DIA
+- Sectors: XLF, XLE, XLK, XLV, XLI, XLB, XLU, XLP, XLY, XLRE, XLC
+- Commodities: GLD, SLV, USO
+- Bonds: TLT, HYG, LQD
+- International: EEM, EFA, FXI
+- Volatility: VXX, UVXY, SQQQ, TQQQ, SPXU, SPXL
+- Thematic: ARKK, ARKG, ARKW, ARKF
+- Small/Mid: IJR, IJH, MDY
+
+---
+
+## Scan Timeout Fix - COMPLETED 2026-02-14
+
+### Status: ✅ COMPLETE
+
+### Objective:
+Fix scan workflow timeouts by implementing bounded concurrency, timeout handling, and retry logic. This applies ONLY to scan paths (Screener, PMCC scans) without affecting single-symbol lookups.
+
+### Problem Statement:
+Scan workflows (Screener, PMCC, etc.) create bursty traffic to Yahoo Finance, causing timeouts. The fix must:
+1. Apply bounded concurrency ONLY to scan paths
+2. Implement timeout and retry policies
+3. Enable partial success (failed symbols don't fail entire scan)
+4. Log aggregated stats per scan run
+
+### Configuration (Environment Variables):
+| Variable | Default | Description |
+|----------|---------|-------------|
+| YAHOO_SCAN_MAX_CONCURRENCY | 5 | Max concurrent Yahoo calls during scans (semaphore limit) |
+| YAHOO_TIMEOUT_SECONDS | 30 | Timeout per symbol fetch in seconds |
+| YAHOO_MAX_RETRIES | 2 | Number of retry attempts before marking symbol as failed |
+
+### Key Features:
+1. **Bounded Concurrency** - `asyncio.Semaphore` limits concurrent Yahoo calls
+2. **Timeout Handling** - `asyncio.wait_for()` wraps each fetch
+3. **Retry Logic** - Exponential backoff (0.5s, 1s, 2s...) before retries
+4. **Partial Success** - Failed symbols logged, scan continues
+5. **Aggregated Stats** - Success rate, timeout count, error count per scan run
+
+### New Components:
+- `/backend/services/resilient_fetch.py` - Resilient fetch service
+  - `ResilientYahooFetcher` class for scan contexts
+  - `ScanStats` dataclass for aggregated metrics
+  - `get_scan_semaphore()` for lazy semaphore initialization
+
+### Modified Files:
+- `/backend/services/precomputed_scans.py` - Uses ResilientYahooFetcher
+- `/backend/routes/admin.py` - Added `/api/admin/scan/resilience-config` endpoint
+- `/backend/.env` - Added new environment variables
+
+### New API Endpoint:
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/admin/scan/resilience-config` | GET | Returns resilience configuration |
+
+### Logging:
+- `SCAN_START | run_id=... | type=... | symbols=... | batch_size=...`
+- `SCAN_TIMEOUT | symbol=... | attempts=... | timeout=...`
+- `SCAN_ERROR | symbol=... | error=...`
+- `SCAN_STATS | run_id=... | total=... | success=... | timeout=... | error=...`
+
+### Scope:
+- ✅ Applies to: `run_covered_call_scan()`, `run_pmcc_scan()` in precomputed_scans.py
+- ❌ Does NOT affect: Single-symbol lookups (Watchlist, Simulator, Options Chain)
+
+### Test Coverage:
+- 25 tests in `/backend/tests/test_scan_resilience.py`
+- All tests passing
+
+---
+
+## Deterministic EOD Snapshot Lock - COMPLETED 2026-02-14
+
+### Status: ✅ COMPLETE
+
+### Objective:
+Implement a strict EOD snapshot model guaranteeing synchronized underlying price and option chain data after market close. After 4:05 PM ET, all data comes from a stored deterministic snapshot with no live rebuilding.
+
+### System Modes:
+| Mode | Time Range | Behavior |
+|------|------------|----------|
+| LIVE | 9:30 AM - 4:05 PM ET | Live Yahoo Finance fetching |
+| EOD_LOCKED | After 4:05 PM ET | Serve ONLY from `eod_market_snapshot` |
+
+### Non-Negotiables Enforced:
+- ✅ No mock data in production
+- ✅ No dynamic option chain rebuilding after 4:05 PM ET
+- ✅ No mixing live underlying with cached options
+- ✅ Snapshot is sole source of truth after lock time
+- ✅ No scoring/pricing rule changes
+
+### Key Features:
+1. **Market State Enforcement** (`/backend/utils/market_state.py`)
+   - `get_system_mode()` returns LIVE or EOD_LOCKED
+   - Uses US/Eastern timezone explicitly
+   - Handles weekends and holidays via NYSE calendar
+
+2. **4:05 PM ET Snapshot Job** (Scheduler in `server.py`)
+   - Triggered at 4:05 PM ET on weekdays
+   - Fetches underlying prices
+   - Fetches option chains using BID_ONLY pricing rule
+   - Saves to `eod_market_snapshot` collection
+
+3. **After 4:05 PM ET Behavior**
+   - `/api/options/chain/{symbol}` serves from snapshot
+   - Returns `data_status: EOD_SNAPSHOT_NOT_AVAILABLE` if missing
+   - No live Yahoo calls permitted
+
+4. **Logging**
+   - `[EOD-SNAPSHOT-CREATED] run_id=... symbols=...` on success
+   - `[EOD-SNAPSHOT-FAILED] symbol=... reason=...` on failure
+   - Exclusions logged to `eod_snapshot_audit` collection
+
+### New Collection: `eod_market_snapshot`
+```json
+{
+  "run_id": "eod_snap_20260213_1605_abc12345",
+  "symbol": "AAPL",
+  "underlying_price": 255.78,
+  "option_chain": [...],
+  "pricing_rule_used": "BID_ONLY_SELL_LEG",
+  "as_of": "2026-02-13T16:05:00-05:00",
+  "trade_date": "2026-02-13",
+  "is_final": true,
+  "created_at": "2026-02-13T21:05:00.000Z"
+}
+```
+
+### New/Modified API Endpoints:
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/options/chain/{symbol}` | GET | Now serves from snapshot in EOD_LOCKED mode |
+| `/api/options/market-state` | GET | Returns system mode and lock info |
+| `/api/options/snapshot-status` | GET | Returns snapshot availability |
+| `/api/market-status` | GET | Enhanced with system_mode field |
+| `/api/admin/eod-snapshot/trigger` | POST | Manual snapshot creation |
+| `/api/admin/eod-snapshot/status` | GET | Detailed snapshot status |
+| `/api/admin/eod-snapshot/sample/{symbol}` | GET | View snapshot for symbol |
+
+### Files Created:
+- `/backend/utils/market_state.py` - System mode enforcement
+- `/backend/services/eod_snapshot_service.py` - Snapshot creation/retrieval
+
+### Files Modified:
+- `/backend/routes/options.py` - EOD lock enforcement on /chain
+- `/backend/routes/admin.py` - Admin snapshot endpoints
+- `/backend/server.py` - Scheduler job, indexes, market-status enhancement
+
+### Expected Behavior:
+| Time | System Mode | Data Source |
+|------|-------------|-------------|
+| 4:04 PM ET | LIVE | Yahoo Finance |
+| 4:05 PM ET | EOD_LOCKED | Snapshot created |
+| 4:06 PM ET | EOD_LOCKED | Snapshot only |
+| 9:00 PM ET | EOD_LOCKED | Snapshot only |
+| Next 9:30 AM ET | LIVE | Yahoo Finance |
+
+### Guarantees:
+- ✅ Underlying price = option chain reference (synchronized)
+- ✅ No after-hours drift
+- ✅ No stale mismatches
+- ✅ No fake quotes
+- ✅ No mock fallback
+- ✅ Deterministic behavior
+
+---
+
+## AI Wallet & Token System - COMPLETED & APPROVED 2026-02-10
+
+### Status: ✅ APPROVED - DEPLOYMENT ON HOLD (User Decision)
+
+### Objective:
+Token-based access control for AI features with PayPal integration for token purchases.
+
+### Pricing (Final Approved):
+| Plan | Monthly | Yearly | AI Tokens |
+|------|---------|--------|-----------|
+| Basic | $29 | $290 | 2,000/mo |
+| Standard | $59 | $590 | 6,000/mo |
+| Premium | $89 | $890 | 15,000/mo |
+
+### Token Packs:
+| Pack | Tokens | Price |
+|------|--------|-------|
+| Starter | 5,000 | $10 |
+| Power | 15,000 | $25 |
+| Pro | 50,000 | $75 |
+
+### Key Features Implemented:
+1. ✅ Token Wallet - Free + Paid tokens per user
+2. ✅ Monthly Reset - Free tokens aligned to billing cycle (expire on reset)
+3. ✅ Paid Tokens - Never expire, purchased via PayPal
+4. ✅ AI Guard - Atomic deduction with $gte predicates (negative balances impossible)
+5. ✅ Rate Limiting - Max 10 calls/minute, 2000 tokens/action
+6. ✅ Concurrency Control - One AI call at a time per user
+7. ✅ Ledger - Immutable transaction log with free/paid breakdown
+8. ✅ PayPal Integration - Webhook-only crediting with signature verification
+9. ✅ Retry Limit - Max 1 retry on race condition
+10. ✅ Production Safety - Webhook verification hard-fails if PAYPAL_WEBHOOK_ID missing in live mode
+
+### New Collections (Additive-Only):
+- `ai_wallet` - User token balances (unique user_id index)
+- `ai_token_ledger` - Immutable transaction log
+- `ai_purchases` - Token pack purchase records (unique purchase_id index)
+- `paypal_events` - Webhook idempotency (unique event_id + capture_id indexes)
+- `entitlements` - Feature flags
+
+### New API Endpoints:
+- `GET /api/ai-wallet` - Get wallet balance
+- `GET /api/ai-wallet/ledger` - Get transaction history
+- `GET /api/ai-wallet/packs` - Get token packs
+- `POST /api/ai-wallet/estimate` - Estimate token cost
+- `POST /api/ai-wallet/purchase/create` - Create PayPal purchase
+- `POST /api/ai-wallet/webhook` - PayPal webhook handler
+
+### Frontend Components:
+- `AIWallet.js` - Wallet balance page
+- `BuyTokensModal.js` - Token purchase modal
+- `AIUsageHistoryModal.js` - Transaction history modal
+- `AITokenUsageModal.js` - Pre-execution confirmation modal
+- Updated `Pricing.js` - $29/$59/$89 with AI tokens, Monthly/Yearly toggle
+- Updated `Landing.js` - Updated pricing display
+
+### Hard Constraints Met:
+- ✅ Scanner engine untouched
+- ✅ Yahoo Finance unchanged
+- ✅ No AI without prepaid tokens
+- ✅ No negative balances (atomic MongoDB $gte conditional updates)
+- ✅ No post-paid billing
+- ✅ USD only
+- ✅ Additive-only changes (new files + new collections)
+- ✅ Webhook signature verification required in production
+- ✅ Max 1 retry on deduction race condition
+
+### Deploy Commands (When Ready):
+```bash
+git pull origin main
+cd backend && pip install -r requirements.txt
+APP_ENV=production AI_WALLET_INIT_CONFIRM=YES python -m ai_wallet.db_init
+sudo supervisorctl restart backend
+```
+
+### Required Env Vars for Production:
+```
+PAYPAL_ENV=live
+PAYPAL_CLIENT_ID=<your_id>
+PAYPAL_SECRET=<your_secret>
+PAYPAL_WEBHOOK_ID=<your_webhook_id>
+PUBLIC_APP_URL=https://your-domain.com
+```
+
+---
+
+## Phase 3 - COMPLETED 2025-12
+
+### AI-Based Best Option Selection per Symbol
+- Implemented deduplication logic showing only the single best option per stock
+- Applied to all custom scans and precomputed scans
+- Selection based on AI score, quality score, and ROI
+
+---
+
+## Phase 2 - COMPLETED 2025-12
+
+### MongoDB Caching Layer
+- Implemented `market_snapshot_cache` collection
+- 10-15 minute TTL during market hours
+- ~40% performance improvement on custom scans
+- `/api/admin/cache/health` endpoint added
+
+---
+
+## Phase 1 - COMPLETED 2025-12
+
+### Data Provider Centralization
+- Eliminated Polygon API dependencies
+- Centralized data fetching through `data_provider.py`
+- Yahoo Finance as primary data source
+
+---
+
+## CCE Volatility & Greeks Correctness - COMPLETED 2026-02-11
+
+### Status: ✅ COMPLETE (with Bootstrap Fix 2026-02-11)
+
+### Objective:
+Standardize IV and Delta calculations across all endpoints using industry-standard formulas. Remove inaccurate moneyness-based delta fallbacks. Implement true IV Rank and IV Percentile using historical IV proxy data.
+
+### Key Changes:
+1. ✅ **Delta via Black-Scholes** - All delta calculations now use Black-Scholes formula
+   - Removed moneyness-based delta fallback (accuracy and consistency)
+   - Delta source field: `delta_source = "BS"` or `"BS_PROXY_SIGMA"`
+   - Delta bounds enforced: calls [0, 1], puts [-1, 0]
+   
+2. ✅ **IV Normalization** - Consistent across all endpoints
+   - `iv` = decimal form (e.g., 0.30)
+   - `iv_pct` = percentage form (e.g., 30.0)
+   - Invalid IV (< 0.01 or > 5.0) rejected
+
+3. ✅ **Industry-Standard IV Rank** - True historical calculation with bootstrap
+   - Formula: `iv_rank = 100 * (iv_current - iv_low) / (iv_high - iv_low)`
+   - **Bootstrap behavior to reduce 50/100 clustering:**
+     - < 5 samples: neutral 50, LOW confidence
+     - 5-19 samples: shrinkage toward 50 (`rank = 50 + w*(raw-50)` where w=samples/20), MEDIUM confidence
+     - >= 20 samples: true rank, MEDIUM/HIGH confidence
+   
+4. ✅ **IV Percentile** - Distribution-based metric with same bootstrap
+   - Formula: `iv_percentile = 100 * count(iv_hist < iv_current) / N`
+   
+5. ✅ **IV History Storage** - New collection with TTL
+   - Collection: `iv_history`
+   - Stores daily ATM proxy IV per symbol
+   - TTL: 450 days auto-expiry
+   - Indexes: unique (symbol, trading_date)
+
+6. ✅ **Computation Order Fix** - Prevent self-teaching
+   - Rank is computed BEFORE storing today's value
+   - Prevents artificial rank=100 when first encountering a symbol
+
+### API Response Fields (All endpoints):
+| Field | Type | Description |
+|-------|------|-------------|
+| delta | float | Black-Scholes delta |
+| delta_source | string | "BS", "BS_PROXY_SIGMA", "EXPIRY", "MISSING" |
+| gamma, theta, vega | float | Black-Scholes Greeks |
+| iv | float | IV decimal (0.30 = 30%) |
+| iv_pct | float | IV percentage (30.0) |
+| iv_rank | float | Industry-standard IV Rank (0-100) |
+| iv_percentile | float | IV Percentile (0-100) |
+| iv_rank_source | string | Source/quality indicator |
+| iv_rank_confidence | string | "LOW", "MEDIUM", "HIGH" |
+| iv_samples | int | Number of historical samples used |
+
+### Files Created:
+- `/backend/services/greeks_service.py` - Black-Scholes Greeks calculation
+- `/backend/services/iv_rank_service.py` - IV history and rank/percentile with bootstrap
+- `/backend/services/option_normalizer.py` - Shared field normalization helper
+- `/backend/tests/test_iv_rank_service.py` - 28 unit tests
+
+### Files Modified:
+- `/backend/routes/screener_snapshot.py` - Custom scan with IV metrics
+- `/backend/routes/options.py` - Options chain endpoint with normalized fields
+- `/backend/routes/watchlist.py` - Watchlist with IV metrics integration
+- `/backend/routes/simulator.py` - Delegated Greeks to shared service
+- `/backend/routes/admin.py` - IV metrics verification endpoints with bootstrap info
+- `/backend/services/precomputed_scans.py` - Black-Scholes delta
+- `/backend/services/snapshot_service.py` - Ingestion + retrieval with B-S Greeks
+- `/backend/server.py` - IV history index creation at startup
+
+### Endpoints Updated with New Fields:
+1. **GET /api/options/chain/{symbol}** - Options chain with per-option and symbol-level IV metrics
+2. **GET /api/screener/covered-calls** - Custom scan with Black-Scholes delta and IV rank
+3. **GET /api/screener/pmcc** - PMCC scan with Black-Scholes delta
+4. **GET /api/watchlist/** - Watchlist items with best_opportunity containing all fields
+5. **GET /api/simulator/trades** - Simulator trades using shared Greeks service
+6. **GET /api/snapshots/calls/{symbol}** - Dashboard snapshots with B-S Greeks (on-the-fly for legacy data)
+7. **GET /api/snapshots/leaps/{symbol}** - LEAPS snapshots with B-S Greeks
+
+### Admin Verification Endpoints:
+- `GET /api/admin/iv-metrics/check/{symbol}` - Full IV/Greeks sanity check with bootstrap info
+- `GET /api/admin/iv-metrics/stats` - IV history collection statistics
+- `GET /api/admin/iv-metrics/completeness-test` - Field completeness validation
+
+### ENV Configuration:
+- `RISK_FREE_RATE` - Optional, default 0.045 (4.5%), bounds [0.001, 0.20]
+
+---
+
+## Pending Issues (Pre-existing)
+
+| Issue | Priority | Status |
+|-------|----------|--------|
+| Inbound email replies not appearing in support dashboard | P3 | Recurring |
+| LLM rate limiting safeguards | P2 | Addressed by AI Wallet guard |
+
+---
+
+## Future/Backlog
+
+- (P3) Frontend refactor - break down `Simulator.js` (2,200+ lines)
+- (P4) Backend refactor - split `simulator.py` (2,800+ lines)
+- (P4) Consolidate `precomputed_scans.py` to fully use `data_provider.py`
+

@@ -45,6 +45,15 @@ def _mask_api_key(key: str) -> str:
     return key[:8] + "..." + key[-4:]
 
 
+def _mask_small(key: str) -> str:
+    """Mask string for UI display - show first 4 and last 2 chars."""
+    if not key:
+        return ""
+    if len(key) <= 6:
+        return "****"
+    return key[:4] + "..." + key[-2:]
+
+
 async def clear_cache(prefix: str = None) -> int:
     """Clear cache entries. If prefix provided, only clear matching entries."""
     try:
@@ -442,12 +451,24 @@ async def set_user_subscription(
 # ==================== INTEGRATION SETTINGS ====================
 @admin_router.get("/integration-settings")
 async def get_integration_settings(admin: dict = Depends(get_admin_user)):
-    """Get all integration settings (Stripe, Resend, etc.)"""
+    """Get all integration settings (Stripe, Resend, PayPal, etc.)"""
     stripe_settings = await db.admin_settings.find_one({"type": "stripe_settings"}, {"_id": 0})
     email_settings = await db.admin_settings.find_one({"type": "email_settings"}, {"_id": 0})
+    paypal_settings = await db.admin_settings.find_one({"type": "paypal_settings"}, {"_id": 0})
     
     env_resend_key = os.environ.get("RESEND_API_KEY")
     env_stripe_webhook = os.environ.get("STRIPE_WEBHOOK_SECRET")
+    
+    # PayPal status
+    paypal_enabled = bool(paypal_settings and paypal_settings.get("enabled"))
+    paypal_mode = (paypal_settings.get("mode") if paypal_settings else None) or "sandbox"
+    paypal_configured = bool(
+        paypal_settings
+        and paypal_settings.get("api_username")
+        and paypal_settings.get("api_password")
+        and paypal_settings.get("api_signature")
+        and paypal_enabled
+    )
     
     return {
         "stripe": {
@@ -457,6 +478,14 @@ async def get_integration_settings(admin: dict = Depends(get_admin_user)):
         "email": {
             "resend_api_key_configured": bool(email_settings and email_settings.get("resend_api_key")) or bool(env_resend_key),
             "sender_email": email_settings.get("sender_email", "") if email_settings else os.environ.get("SENDER_EMAIL", "")
+        },
+        "paypal": {
+            "configured": paypal_configured,
+            "enabled": paypal_enabled,
+            "mode": paypal_mode,
+            "api_username_masked": _mask_small(paypal_settings.get("api_username", "")) if paypal_settings else "",
+            "has_api_password": bool(paypal_settings and paypal_settings.get("api_password")),
+            "has_api_signature": bool(paypal_settings and paypal_settings.get("api_signature"))
         }
     }
 
@@ -467,6 +496,11 @@ async def update_integration_settings(
     stripe_secret_key: Optional[str] = Query(None),
     resend_api_key: Optional[str] = Query(None),
     sender_email: Optional[str] = Query(None),
+    paypal_enabled: Optional[bool] = Query(None),
+    paypal_mode: Optional[str] = Query(None, description="sandbox or live"),
+    paypal_api_username: Optional[str] = Query(None),
+    paypal_api_password: Optional[str] = Query(None),
+    paypal_api_signature: Optional[str] = Query(None),
     admin: dict = Depends(get_admin_user)
 ):
     """Update integration settings"""
@@ -498,13 +532,34 @@ async def update_integration_settings(
             upsert=True
         )
     
+    # PayPal settings
+    if paypal_enabled is not None or paypal_mode is not None or paypal_api_username is not None or paypal_api_password is not None or paypal_api_signature is not None:
+        paypal_update = {"type": "paypal_settings", "updated_at": now}
+        if paypal_enabled is not None:
+            paypal_update["enabled"] = paypal_enabled
+        if paypal_mode:
+            paypal_update["mode"] = paypal_mode
+        if paypal_api_username:
+            paypal_update["api_username"] = paypal_api_username
+        if paypal_api_password:
+            paypal_update["api_password"] = paypal_api_password
+        if paypal_api_signature:
+            paypal_update["api_signature"] = paypal_api_signature
+        
+        await db.admin_settings.update_one(
+            {"type": "paypal_settings"},
+            {"$set": paypal_update},
+            upsert=True
+        )
+    
     # Log action
     await db.audit_logs.insert_one({
         "action": "update_integration_settings",
         "admin_id": admin["id"],
         "details": {
             "stripe_updated": stripe_webhook_secret is not None or stripe_secret_key is not None,
-            "email_updated": resend_api_key is not None or sender_email is not None
+            "email_updated": resend_api_key is not None or sender_email is not None,
+            "paypal_updated": paypal_enabled is not None or paypal_mode is not None or paypal_api_username is not None
         },
         "timestamp": now
     })
@@ -1049,3 +1104,1061 @@ async def get_imap_status(admin: dict = Depends(get_admin_user)):
         "last_sync_error": settings.get("last_sync_error"),
         "last_sync_processed": settings.get("last_sync_processed", 0)
     }
+
+
+
+# ==================== PHASE 2: CACHE HEALTH ENDPOINTS ====================
+
+@admin_router.get("/cache/health")
+async def get_cache_health(admin: dict = Depends(get_admin_user)):
+    """
+    PHASE 2: Get cache health metrics for monitoring.
+    
+    Returns:
+    - Hit rate percentage
+    - Yahoo calls per hour
+    - Average fetch latency
+    - Cache collection statistics
+    """
+    from services.data_provider import get_cache_status
+    
+    return await get_cache_status(db)
+
+
+@admin_router.get("/user-path/metrics")
+async def get_user_path_latency_metrics(admin: dict = Depends(get_admin_user)):
+    """
+    Get user path latency metrics (Dashboard, Watchlist, Simulator).
+    
+    Returns avg, p95, max latency and Yahoo executor configuration.
+    """
+    from services.data_provider import get_user_path_metrics
+    
+    return get_user_path_metrics()
+
+
+@admin_router.post("/user-path/reset-metrics")
+async def reset_user_path_latency_metrics(admin: dict = Depends(get_admin_user)):
+    """
+    Reset user path latency metrics.
+    """
+    from services.data_provider import reset_user_path_metrics
+    
+    return reset_user_path_metrics()
+
+
+@admin_router.get("/cache/metrics")
+async def get_cache_metrics(admin: dict = Depends(get_admin_user)):
+    """
+    PHASE 2: Get in-memory cache metrics.
+    
+    These metrics track the current session's cache performance.
+    """
+    from services.data_provider import get_cache_metrics
+    
+    return get_cache_metrics()
+
+
+@admin_router.post("/cache/reset-metrics")
+async def reset_cache_metrics_endpoint(admin: dict = Depends(get_admin_user)):
+    """
+    PHASE 2: Reset cache metrics.
+    
+    Resets the in-memory counters for hit rate tracking.
+    Useful for starting fresh measurements.
+    """
+    from services.data_provider import reset_cache_metrics
+    
+    return reset_cache_metrics()
+
+
+@admin_router.post("/cache/clear")
+async def clear_snapshot_cache(
+    symbol: Optional[str] = Query(None, description="Symbol to clear, or all if not provided"),
+    admin: dict = Depends(get_admin_user)
+):
+    """
+    PHASE 2: Clear snapshot cache entries.
+    
+    Args:
+        symbol: Optional specific symbol to clear (clears all if not provided)
+    
+    Returns:
+        Number of entries deleted
+    """
+    from services.data_provider import clear_snapshot_cache as dp_clear_cache
+    
+    return await dp_clear_cache(db, symbol)
+
+
+@admin_router.get("/cache/entries")
+async def get_cache_entries(
+    limit: int = Query(50, ge=1, le=200),
+    admin: dict = Depends(get_admin_user)
+):
+    """
+    PHASE 2: Get recent cache entries for inspection.
+    
+    Returns the most recent cached symbols with their data.
+    """
+    from services.data_provider import SNAPSHOT_CACHE_COLLECTION
+    
+    try:
+        entries = await db[SNAPSHOT_CACHE_COLLECTION].find(
+            {},
+            {"_id": 0}
+        ).sort("cached_at", -1).limit(limit).to_list(limit)
+        
+        return {
+            "entries": entries,
+            "count": len(entries)
+        }
+    except Exception as e:
+        logging.error(f"Error fetching cache entries: {e}")
+        return {"error": str(e)}
+
+
+
+# ==================== EOD MARKET SNAPSHOT MANAGEMENT ====================
+
+@admin_router.post("/eod-snapshot/trigger")
+async def trigger_eod_snapshot(
+    trade_date: Optional[str] = Query(None, description="Trade date (YYYY-MM-DD), defaults to last trading day"),
+    admin: dict = Depends(get_admin_user)
+):
+    """
+    Manually trigger EOD market snapshot generation.
+    
+    Creates a synchronized snapshot of underlying prices and option chains
+    for all symbols in the universe.
+    
+    WARNING: This should normally only run at 4:05 PM ET via scheduler.
+    Manual triggering is for testing and recovery purposes only.
+    """
+    from services.eod_snapshot_service import get_eod_snapshot_service
+    from routes.eod import EOD_SYMBOLS
+    from utils.market_state import now_et, get_last_trading_day, log_eod_event
+    
+    # Use last trading day if not specified
+    if not trade_date:
+        trade_date = get_last_trading_day()
+    
+    logging.info(f"[EOD-SNAPSHOT] Manual trigger by admin: {admin.get('email')} for trade_date={trade_date}")
+    
+    # Get API key for data fetching
+    settings = await db.admin_settings.find_one(
+        {"massive_api_key": {"$exists": True}}, 
+        {"_id": 0}
+    )
+    api_key = settings.get("massive_api_key") if settings else None
+    
+    eod_service = get_eod_snapshot_service(db)
+    await eod_service.ensure_indexes()
+    
+    results = await eod_service.create_eod_snapshot(
+        symbols=EOD_SYMBOLS,
+        trade_date=trade_date,
+        api_key=api_key
+    )
+    
+    log_eod_event(
+        "MANUAL_SNAPSHOT_TRIGGERED",
+        triggered_by=admin.get("email"),
+        run_id=results["run_id"],
+        trade_date=trade_date
+    )
+    
+    return {
+        "status": "completed",
+        "triggered_by": admin.get("email"),
+        "triggered_at": now_et().isoformat(),
+        **results
+    }
+
+
+@admin_router.get("/eod-snapshot/status")
+async def get_eod_snapshot_admin_status(
+    trade_date: Optional[str] = Query(None, description="Trade date (YYYY-MM-DD)"),
+    admin: dict = Depends(get_admin_user)
+):
+    """
+    Get detailed status of EOD market snapshots.
+    
+    Returns snapshot availability, symbols covered, and audit information.
+    """
+    from services.eod_snapshot_service import get_eod_snapshot_service
+    from utils.market_state import get_system_mode, get_last_trading_day, now_et
+    
+    eod_service = get_eod_snapshot_service(db)
+    
+    if not trade_date:
+        trade_date = get_last_trading_day()
+    
+    # Get basic status
+    status = await eod_service.get_snapshot_status(trade_date)
+    
+    # Get list of available symbols
+    available_symbols = await eod_service.list_available_symbols(trade_date)
+    
+    # Get failures from audit collection
+    failures = await db.eod_snapshot_audit.find(
+        {"as_of": {"$gte": datetime.strptime(trade_date, '%Y-%m-%d').replace(tzinfo=timezone.utc)},
+         "included": False}
+    ).to_list(100)
+    
+    return {
+        **status,
+        "available_symbols": available_symbols,
+        "available_count": len(available_symbols),
+        "failures": [{"symbol": f.get("symbol"), "reason": f.get("exclude_reason"), "detail": f.get("exclude_detail")} for f in failures],
+        "current_time_et": now_et().isoformat()
+    }
+
+
+@admin_router.get("/eod-snapshot/sample/{symbol}")
+async def get_eod_snapshot_sample(
+    symbol: str,
+    trade_date: Optional[str] = Query(None, description="Trade date (YYYY-MM-DD)"),
+    admin: dict = Depends(get_admin_user)
+):
+    """
+    Get sample EOD snapshot for a specific symbol.
+    
+    Returns the full snapshot document including underlying price and option chain.
+    """
+    from services.eod_snapshot_service import get_eod_snapshot_service
+    from utils.market_state import get_last_trading_day
+    
+    eod_service = get_eod_snapshot_service(db)
+    
+    if not trade_date:
+        trade_date = get_last_trading_day()
+    
+    snapshot = await eod_service.get_snapshot(symbol.upper(), trade_date)
+    
+    if not snapshot:
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "data_status": "EOD_SNAPSHOT_NOT_FOUND",
+                "symbol": symbol.upper(),
+                "trade_date": trade_date
+            }
+        )
+    
+    # Limit option chain to first 5 contracts for sample view
+    if snapshot.get("option_chain"):
+        snapshot["option_chain_sample"] = snapshot["option_chain"][:5]
+        snapshot["option_chain_total"] = len(snapshot["option_chain"])
+        del snapshot["option_chain"]
+    
+    return snapshot
+
+
+
+# ==================== IV METRICS VERIFICATION (CCE Volatility & Greeks Correctness) ====================
+
+@admin_router.get("/iv-metrics/check/{symbol}")
+async def check_iv_metrics(
+    symbol: str,
+    admin: dict = Depends(get_admin_user)
+):
+    """
+    Admin endpoint to validate IV metrics and Greeks for a symbol.
+    
+    CCE VOLATILITY & GREEKS CORRECTNESS - VERIFICATION ENDPOINT
+    
+    Returns:
+    - Current proxy IV, IV Rank, IV Percentile, sample size
+    - Selected ATM contract metadata
+    - First 5 history values (for sanity)
+    - Greeks sanity checks (delta bounds, IV bounds, no NaN)
+    - Risk-free rate used (r_used)
+    
+    Use this endpoint to:
+    1. Verify IV Rank calculation is correct
+    2. Check delta is computed via Black-Scholes
+    3. Validate no missing/null fields
+    """
+    from services.data_provider import fetch_options_chain, fetch_stock_quote
+    from services.iv_rank_service import (
+        get_iv_metrics_for_symbol,
+        get_iv_history_debug,
+        get_iv_collection_stats
+    )
+    from services.greeks_service import (
+        calculate_greeks,
+        normalize_iv_fields,
+        sanity_check_delta,
+        sanity_check_iv,
+        get_risk_free_rate
+    )
+    
+    symbol = symbol.upper()
+    result = {
+        "symbol": symbol,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "status": "checking"
+    }
+    
+    try:
+        # Step 1: Get stock price
+        stock_data = await fetch_stock_quote(symbol)
+        if not stock_data or stock_data.get("price", 0) <= 0:
+            result["status"] = "error"
+            result["error"] = "Could not fetch stock price"
+            return result
+        
+        stock_price = stock_data["price"]
+        result["stock_price"] = stock_price
+        
+        # Step 2: Fetch options chain
+        options = await fetch_options_chain(
+            symbol=symbol,
+            api_key=None,
+            option_type="call",
+            min_dte=7,
+            max_dte=60,
+            current_price=stock_price
+        )
+        
+        if not options:
+            result["status"] = "error"
+            result["error"] = "No options chain available"
+            return result
+        
+        result["options_count"] = len(options)
+        
+        # Step 3: Compute IV metrics
+        iv_metrics = await get_iv_metrics_for_symbol(
+            db=db,
+            symbol=symbol,
+            options=options,
+            stock_price=stock_price,
+            store_history=True
+        )
+        
+        result["iv_metrics"] = {
+            "iv_proxy": iv_metrics.iv_proxy,
+            "iv_proxy_pct": iv_metrics.iv_proxy_pct,
+            "iv_rank": iv_metrics.iv_rank,
+            "iv_percentile": iv_metrics.iv_percentile,
+            "iv_low": iv_metrics.iv_low,
+            "iv_high": iv_metrics.iv_high,
+            "iv_samples": iv_metrics.iv_samples,
+            "iv_samples_used": iv_metrics.iv_samples_used,
+            "iv_rank_source": iv_metrics.iv_rank_source,
+            "iv_rank_confidence": iv_metrics.iv_rank_confidence,
+            "proxy_meta": iv_metrics.proxy_meta,
+            "bootstrap_info": {
+                "is_bootstrapping": iv_metrics.iv_samples < 20,
+                "shrinkage_applied": 5 <= iv_metrics.iv_samples < 20,
+                "weight_if_shrunk": round(iv_metrics.iv_samples / 20, 2) if 5 <= iv_metrics.iv_samples < 20 else None
+            }
+        }
+        
+        # Step 4: Get IV history (last 10 entries for better debugging)
+        history = await get_iv_history_debug(db, symbol, limit=10)
+        result["iv_history_sample"] = [
+            {"date": h.get("trading_date"), "iv": round(h.get("iv_atm_proxy", 0), 4)}
+            for h in history
+        ]
+        result["history_excluded_today"] = True  # Rank was computed BEFORE storing today
+        
+        # Step 5: Greeks sanity checks on sample contracts
+        r_used = get_risk_free_rate()
+        result["r_used"] = r_used
+        
+        greeks_checks = []
+        for opt in options[:5]:  # Check first 5 options
+            strike = opt.get("strike", 0)
+            dte = opt.get("dte", 30)
+            iv_raw = opt.get("implied_volatility", 0)
+            
+            iv_data = normalize_iv_fields(iv_raw)
+            T = max(dte, 1) / 365.0
+            
+            greeks = calculate_greeks(
+                S=stock_price,
+                K=strike,
+                T=T,
+                sigma=iv_data["iv"] if iv_data["iv"] > 0 else None,
+                option_type="call",
+                r=r_used
+            )
+            
+            delta_ok, delta_err = sanity_check_delta(greeks.delta, "call")
+            iv_ok, iv_err = sanity_check_iv(iv_data["iv"])
+            
+            greeks_checks.append({
+                "strike": strike,
+                "dte": dte,
+                "delta": greeks.delta,
+                "delta_source": greeks.delta_source,
+                "gamma": greeks.gamma,
+                "theta": greeks.theta,
+                "vega": greeks.vega,
+                "iv": iv_data["iv"],
+                "iv_pct": iv_data["iv_pct"],
+                "checks": {
+                    "delta_in_bounds": delta_ok,
+                    "delta_error": delta_err if not delta_ok else None,
+                    "iv_valid": iv_ok,
+                    "iv_error": iv_err if not iv_ok else None
+                }
+            })
+        
+        result["greeks_sanity_checks"] = greeks_checks
+        
+        # Step 6: Summary
+        all_delta_ok = all(c["checks"]["delta_in_bounds"] for c in greeks_checks)
+        all_iv_ok = all(c["checks"]["iv_valid"] for c in greeks_checks if c["iv"] > 0)
+        
+        result["summary"] = {
+            "all_deltas_valid": all_delta_ok,
+            "all_ivs_valid": all_iv_ok,
+            "iv_rank_computed": iv_metrics.iv_rank_source == "OBSERVED_ATM_PROXY",
+            "history_samples": iv_metrics.iv_samples,
+            "needs_more_history": iv_metrics.iv_samples < 20
+        }
+        
+        result["status"] = "success"
+        
+    except Exception as e:
+        logging.error(f"IV metrics check failed for {symbol}: {e}")
+        result["status"] = "error"
+        result["error"] = str(e)
+    
+    return result
+
+
+@admin_router.get("/iv-metrics/stats")
+async def get_iv_stats(admin: dict = Depends(get_admin_user)):
+    """
+    Get statistics about the IV history collection.
+    
+    Returns:
+    - Total entries
+    - Unique symbols
+    - Date range
+    - Minimum samples required for IV Rank
+    """
+    from services.iv_rank_service import get_iv_collection_stats
+    
+    return await get_iv_collection_stats(db)
+
+
+@admin_router.get("/iv-metrics/completeness-test")
+async def test_completeness(
+    admin: dict = Depends(get_admin_user)
+):
+    """
+    Test field completeness across endpoints.
+    
+    Calls dashboard snapshots, options chain, custom scan, and precomputed scan
+    and validates that all required fields are populated.
+    
+    Required fields for every option row:
+    - delta, delta_source
+    - iv, iv_pct
+    - iv_rank, iv_percentile, iv_rank_source, iv_samples
+    """
+    from services.option_normalizer import REQUIRED_FIELDS
+    
+    test_symbol = "AAPL"
+    results = {
+        "symbol": test_symbol,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "tests": []
+    }
+    
+    # Test 1: Options chain endpoint
+    try:
+        from services.data_provider import fetch_options_chain, fetch_stock_quote
+        from services.iv_rank_service import get_iv_metrics_for_symbol
+        from services.option_normalizer import enrich_option_with_normalized_fields
+        
+        stock_data = await fetch_stock_quote(test_symbol)
+        stock_price = stock_data.get("price", 0) if stock_data else 0
+        
+        options = await fetch_options_chain(
+            symbol=test_symbol,
+            api_key=None,
+            option_type="call",
+            min_dte=7,
+            max_dte=45,
+            current_price=stock_price
+        )
+        
+        if options:
+            iv_metrics = await get_iv_metrics_for_symbol(
+                db=db,
+                symbol=test_symbol,
+                options=options,
+                stock_price=stock_price
+            )
+            
+            # Check completeness
+            missing_count = 0
+            for opt in options[:10]:
+                enriched = enrich_option_with_normalized_fields(
+                    opt.copy(),
+                    stock_price,
+                    opt.get("dte", 30),
+                    iv_metrics
+                )
+                for field in REQUIRED_FIELDS:
+                    if field not in enriched or enriched[field] is None:
+                        missing_count += 1
+            
+            results["tests"].append({
+                "endpoint": "options_chain",
+                "status": "pass" if missing_count == 0 else "fail",
+                "options_checked": min(10, len(options)),
+                "missing_fields": missing_count
+            })
+        else:
+            results["tests"].append({
+                "endpoint": "options_chain",
+                "status": "skip",
+                "reason": "No options returned"
+            })
+            
+    except Exception as e:
+        results["tests"].append({
+            "endpoint": "options_chain",
+            "status": "error",
+            "error": str(e)
+        })
+    
+    # Summary
+    passed = sum(1 for t in results["tests"] if t["status"] == "pass")
+    failed = sum(1 for t in results["tests"] if t["status"] == "fail")
+    
+    results["summary"] = {
+        "passed": passed,
+        "failed": failed,
+        "total": len(results["tests"]),
+        "all_complete": failed == 0
+    }
+    
+    return results
+
+
+
+# ==================== UNIVERSE AUDIT DRILLDOWN ====================
+
+@admin_router.get("/universe/excluded")
+async def get_excluded_symbols(
+    run_id: Optional[str] = Query(None, description="Specific run ID to query. If omitted, uses latest run."),
+    reason: Optional[str] = Query(None, description="Filter by exclusion reason"),
+    stage: Optional[str] = Query(None, description="Filter by exclusion stage"),
+    limit: int = Query(100, ge=1, le=500),
+    offset: int = Query(0, ge=0),
+    admin: dict = Depends(get_admin_user)
+):
+    """
+    Get list of excluded symbols from a universe audit run.
+    
+    Exclusion Stages:
+    - QUOTE: Failed to fetch stock quote
+    - LIQUIDITY_FILTER: Failed liquidity/price band checks
+    - OPTIONS_CHAIN: Failed to fetch options chain
+    - CHAIN_QUALITY: Chain is empty or stale
+    - CONTRACT_QUALITY: Missing required contract fields
+    - OTHER: Forced test exclusion or unknown
+    
+    Exclusion Reasons:
+    - MISSING_QUOTE: No stock quote available
+    - LOW_LIQUIDITY_RANK: Dollar volume below threshold
+    - OUT_OF_PRICE_BAND: Price outside min/max range
+    - MISSING_CHAIN: No options chain available
+    - CHAIN_EMPTY: Options chain has no contracts
+    - BAD_CHAIN_DATA: Stale or invalid chain data
+    - MISSING_CONTRACT_FIELDS: Contracts missing bid/ask/delta
+    - OTHER: Forced exclusion or unknown error
+    """
+    # Build query
+    query = {"included": False}
+    
+    if run_id:
+        query["run_id"] = run_id
+    else:
+        # CRITICAL: Get latest run_id from eod_run_summary (same source as dashboard counts)
+        # This ensures drilldown matches summary counts
+        latest_summary = await db.eod_run_summary.find_one(
+            {},
+            sort=[("as_of", -1)],
+            projection={"run_id": 1}
+        )
+        if latest_summary and latest_summary.get("run_id"):
+            query["run_id"] = latest_summary["run_id"]
+        else:
+            # Fallback to scan_universe_audit if no summary exists
+            latest = await db.scan_universe_audit.find_one(
+                {},
+                sort=[("as_of", -1)],
+                projection={"run_id": 1}
+            )
+            if latest and latest.get("run_id"):
+                query["run_id"] = latest["run_id"]
+            else:
+                return {"total": 0, "items": [], "run_id": None, "reason_filter": reason, "stage_filter": stage}
+    
+    if reason:
+        query["exclude_reason"] = reason
+    
+    if stage:
+        query["exclude_stage"] = stage
+    
+    # Get total count
+    total = await db.scan_universe_audit.count_documents(query)
+    
+    # Fetch items with pagination
+    cursor = db.scan_universe_audit.find(
+        query,
+        {"_id": 0, "symbol": 1, "price_used": 1, "avg_volume": 1, "dollar_volume": 1, 
+         "exclude_stage": 1, "exclude_reason": 1, "exclude_detail": 1, "as_of": 1,
+         "raw_error_type": 1}  # Include raw error for debugging
+    ).sort("symbol", 1).skip(offset).limit(limit)
+    
+    items = []
+    async for doc in cursor:
+        items.append({
+            "symbol": doc.get("symbol"),
+            "price_used": doc.get("price_used", 0),
+            "avg_volume": doc.get("avg_volume", 0),
+            "dollar_volume": doc.get("dollar_volume", 0),
+            "exclude_stage": doc.get("exclude_stage"),
+            "exclude_reason": doc.get("exclude_reason"),
+            "exclude_detail": doc.get("exclude_detail"),
+            "raw_error_type": doc.get("raw_error_type"),  # Include for debugging
+            "as_of": doc.get("as_of").isoformat() if doc.get("as_of") else None
+        })
+    
+    return {
+        "total": total,
+        "items": items,
+        "run_id": query.get("run_id"),
+        "reason_filter": reason,
+        "stage_filter": stage
+    }
+
+
+@admin_router.get("/universe/excluded.csv")
+async def get_excluded_symbols_csv(
+    run_id: Optional[str] = Query(None, description="Specific run ID to query. If omitted, uses latest run."),
+    reason: Optional[str] = Query(None, description="Filter by exclusion reason"),
+    admin: dict = Depends(get_admin_user)
+):
+    """
+    Download excluded symbols as CSV.
+    
+    Columns: symbol,price_used,avg_volume,dollar_volume,exclude_stage,exclude_reason,exclude_detail,as_of
+    """
+    from fastapi.responses import Response
+    
+    # Build query
+    query = {"included": False}
+    
+    if run_id:
+        query["run_id"] = run_id
+    else:
+        # CRITICAL: Get latest run_id from eod_run_summary (same source as dashboard counts)
+        # This ensures CSV matches summary counts
+        latest_summary = await db.eod_run_summary.find_one(
+            {},
+            sort=[("as_of", -1)],
+            projection={"run_id": 1}
+        )
+        if latest_summary and latest_summary.get("run_id"):
+            query["run_id"] = latest_summary["run_id"]
+        else:
+            # Fallback to scan_universe_audit if no summary exists
+            latest = await db.scan_universe_audit.find_one(
+                {},
+                sort=[("as_of", -1)],
+                projection={"run_id": 1}
+            )
+            if latest and latest.get("run_id"):
+                query["run_id"] = latest["run_id"]
+            else:
+                # Return CSV with header + metadata only (never blank)
+                return Response(
+                    content="# No exclusion data available\nsymbol,price_used,avg_volume,dollar_volume,exclude_stage,exclude_reason,exclude_detail,as_of\n",
+                    media_type="text/csv",
+                    headers={"Content-Disposition": "attachment; filename=excluded_symbols.csv"}
+                )
+    
+    if reason:
+        query["exclude_reason"] = reason
+    
+    # Fetch all excluded symbols
+    cursor = db.scan_universe_audit.find(
+        query,
+        {"_id": 0, "symbol": 1, "price_used": 1, "avg_volume": 1, "dollar_volume": 1, 
+         "exclude_stage": 1, "exclude_reason": 1, "exclude_detail": 1, "as_of": 1,
+         "raw_error_type": 1}
+    ).sort("symbol", 1)
+    
+    # Build CSV with metadata header
+    lines = [
+        f"# run_id: {query.get('run_id', 'unknown')}",
+        f"# reason_filter: {reason or 'ALL'}",
+        "symbol,price_used,avg_volume,dollar_volume,exclude_stage,exclude_reason,exclude_detail,as_of"
+    ]
+    row_count = 0
+    async for doc in cursor:
+        as_of = doc.get("as_of").isoformat() if doc.get("as_of") else ""
+        # Escape quotes in exclude_detail
+        exclude_detail = (doc.get("exclude_detail") or "").replace('"', '""')
+        line = f'{doc.get("symbol", "")},{doc.get("price_used", 0)},{doc.get("avg_volume", 0)},{doc.get("dollar_volume", 0)},{doc.get("exclude_stage", "")},{doc.get("exclude_reason", "")},"{exclude_detail}",{as_of}'
+        lines.append(line)
+        row_count += 1
+    
+    # Add row count metadata
+    lines[0] = f"# run_id: {query.get('run_id', 'unknown')}, total_rows: {row_count}"
+    
+    csv_content = "\n".join(lines)
+    
+    return Response(
+        content=csv_content,
+        media_type="text/csv",
+        headers={"Content-Disposition": f"attachment; filename=excluded_symbols_{query.get('run_id', 'latest')}.csv"}
+    )
+
+
+@admin_router.get("/universe/runs")
+async def get_audit_runs(
+    limit: int = Query(10, ge=1, le=50),
+    admin: dict = Depends(get_admin_user)
+):
+    """
+    Get list of recent universe audit runs.
+    """
+    # Aggregate to get unique run_ids with their stats
+    pipeline = [
+        {"$group": {
+            "_id": "$run_id",
+            "as_of": {"$max": "$as_of"},
+            "total_symbols": {"$sum": 1},
+            "included": {"$sum": {"$cond": ["$included", 1, 0]}},
+            "excluded": {"$sum": {"$cond": ["$included", 0, 1]}}
+        }},
+        {"$sort": {"as_of": -1}},
+        {"$limit": limit}
+    ]
+    
+    runs = []
+    async for doc in db.scan_universe_audit.aggregate(pipeline):
+        runs.append({
+            "run_id": doc["_id"],
+            "as_of": doc["as_of"].isoformat() if doc.get("as_of") else None,
+            "total_symbols": doc.get("total_symbols", 0),
+            "included": doc.get("included", 0),
+            "excluded": doc.get("excluded", 0)
+        })
+    
+    return {"runs": runs}
+
+
+# ==================== SCAN RESILIENCE CONFIGURATION ====================
+
+@admin_router.get("/scan/resilience-config")
+async def get_scan_resilience_config(
+    admin: dict = Depends(get_admin_user)
+):
+    """
+    Get the current scan resilience configuration.
+    
+    SCAN TIMEOUT FIX (December 2025):
+    Shows bounded concurrency, timeout, and retry settings.
+    """
+    from services.resilient_fetch import get_resilience_config
+    
+    config = get_resilience_config()
+    return {
+        "config": config,
+        "description": {
+            "yahoo_scan_max_concurrency": "Maximum concurrent Yahoo Finance calls during scans (semaphore limit)",
+            "yahoo_timeout_seconds": "Timeout per symbol fetch in seconds",
+            "yahoo_max_retries": "Number of retry attempts before marking a symbol as failed",
+            "semaphore_initialized": "Whether the scan semaphore has been initialized"
+        },
+        "environment_variables": {
+            "YAHOO_SCAN_MAX_CONCURRENCY": os.environ.get("YAHOO_SCAN_MAX_CONCURRENCY", "5"),
+            "YAHOO_TIMEOUT_SECONDS": os.environ.get("YAHOO_TIMEOUT_SECONDS", "30"),
+            "YAHOO_MAX_RETRIES": os.environ.get("YAHOO_MAX_RETRIES", "2")
+        },
+        "notes": [
+            "These settings apply ONLY to batch scan workflows (Screener, PMCC scans)",
+            "Single-symbol lookups (Watchlist, Simulator) are NOT affected",
+            "Partial success: if a symbol times out, the scan continues with remaining symbols",
+            "Aggregated stats are logged at the end of each scan run"
+        ]
+    }
+
+
+# ==================== UNIVERSE AUDIT RUN ====================
+
+@admin_router.post("/universe/audit-run")
+async def run_universe_audit(
+    admin: dict = Depends(get_admin_user)
+):
+    """
+    Run a fresh universe audit with proper quote fetching.
+    
+    QUOTE FETCHING RULE:
+    - Uses previousClose (not regularMarketPrice) for after-hours consistency
+    - Only marks MISSING_QUOTE if previousClose is truly unavailable
+    - Records detailed failure reasons for debugging
+    
+    Returns:
+    - run_id: Unique identifier for this audit run
+    - summary: quote_success_count, quote_failure_count, provider_error_count
+    - top_failures: First 20 failures with raw reason
+    """
+    import uuid
+    import yfinance as yf
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+    from utils.universe import get_scan_universe, get_tier_counts, is_etf
+    
+    now_utc = datetime.now(timezone.utc)
+    run_id = f"audit_{now_utc.strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:8]}"
+    
+    universe = get_scan_universe()
+    tier_counts = get_tier_counts()
+    total_symbols = len(universe)
+    
+    # Counters
+    quote_success_count = 0
+    quote_failure_count = 0
+    provider_error_count = 0
+    
+    # Track failures for debugging
+    failures = []
+    
+    # Audit records
+    audit_records = []
+    
+    def fetch_quote_sync(symbol: str) -> dict:
+        """Fetch previousClose from Yahoo - blocking call for thread pool."""
+        try:
+            ticker = yf.Ticker(symbol)
+            info = ticker.info
+            
+            if not info:
+                return {
+                    "symbol": symbol,
+                    "success": False,
+                    "error_type": "EMPTY_RESPONSE",
+                    "error_detail": "Yahoo returned empty info dict"
+                }
+            
+            # Use previousClose for consistency (not regularMarketPrice)
+            prev_close = info.get("previousClose")
+            regular_price = info.get("regularMarketPrice")
+            
+            # Accept previousClose as primary, regularMarketPrice as fallback
+            price = prev_close or regular_price
+            
+            if price and price > 0:
+                return {
+                    "symbol": symbol,
+                    "success": True,
+                    "price": price,
+                    "price_source": "previousClose" if prev_close else "regularMarketPrice",
+                    "avg_volume": info.get("averageVolume", 0) or info.get("volume", 0),
+                    "market_cap": info.get("marketCap", 0)
+                }
+            else:
+                return {
+                    "symbol": symbol,
+                    "success": False,
+                    "error_type": "NO_PRICE",
+                    "error_detail": f"previousClose={prev_close}, regularMarketPrice={regular_price}"
+                }
+                
+        except Exception as e:
+            error_str = str(e)
+            error_type = "UNKNOWN_ERROR"
+            
+            if "Too Many Requests" in error_str or "Rate limit" in error_str.lower():
+                error_type = "RATE_LIMITED"
+            elif "404" in error_str or "Not Found" in error_str:
+                error_type = "HTTP_404"
+            elif "401" in error_str or "Unauthorized" in error_str:
+                error_type = "HTTP_401"
+            elif "timeout" in error_str.lower():
+                error_type = "TIMEOUT"
+            elif "delisted" in error_str.lower():
+                error_type = "DELISTED"
+            
+            return {
+                "symbol": symbol,
+                "success": False,
+                "error_type": error_type,
+                "error_detail": error_str[:200]  # Truncate long errors
+            }
+    
+    # Process in batches with thread pool
+    batch_size = 30
+    max_workers = 5
+    
+    logging.info(f"[AUDIT_RUN] Starting audit run_id={run_id} for {total_symbols} symbols")
+    
+    for i in range(0, total_symbols, batch_size):
+        batch = universe[i:i + batch_size]
+        
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            future_to_symbol = {executor.submit(fetch_quote_sync, sym): sym for sym in batch}
+            
+            for future in as_completed(future_to_symbol):
+                result = future.result()
+                symbol = result["symbol"]
+                
+                if result["success"]:
+                    quote_success_count += 1
+                    
+                    # Price band check
+                    price = result["price"]
+                    avg_volume = result.get("avg_volume", 0)
+                    dollar_volume = price * avg_volume if price and avg_volume else 0
+                    
+                    included = True
+                    exclude_stage = None
+                    exclude_reason = None
+                    exclude_detail = None
+                    
+                    # Price band filter ($5 - $500 for stocks, no limit for ETFs)
+                    if not is_etf(symbol):
+                        if price < 5 or price > 500:
+                            included = False
+                            exclude_stage = "LIQUIDITY_FILTER"
+                            exclude_reason = "OUT_OF_PRICE_BAND"
+                            exclude_detail = f"Price ${price:.2f} outside $5-$500 range"
+                    
+                    audit_records.append({
+                        "run_id": run_id,
+                        "symbol": symbol,
+                        "included": included,
+                        "exclude_stage": exclude_stage,
+                        "exclude_reason": exclude_reason,
+                        "exclude_detail": exclude_detail,
+                        "price_used": price,
+                        "price_source": result.get("price_source"),
+                        "avg_volume": avg_volume,
+                        "dollar_volume": dollar_volume,
+                        "is_etf": is_etf(symbol),
+                        "as_of": now_utc
+                    })
+                else:
+                    quote_failure_count += 1
+                    
+                    if result["error_type"] in ["RATE_LIMITED", "HTTP_404", "HTTP_401", "TIMEOUT"]:
+                        provider_error_count += 1
+                    
+                    # Track for top failures
+                    failures.append({
+                        "symbol": symbol,
+                        "error_type": result["error_type"],
+                        "error_detail": result["error_detail"]
+                    })
+                    
+                    audit_records.append({
+                        "run_id": run_id,
+                        "symbol": symbol,
+                        "included": False,
+                        "exclude_stage": "QUOTE",
+                        "exclude_reason": "MISSING_QUOTE",
+                        "exclude_detail": f"{result['error_type']}: {result['error_detail'][:100]}",
+                        "price_used": 0,
+                        "price_source": None,
+                        "avg_volume": 0,
+                        "dollar_volume": 0,
+                        "is_etf": is_etf(symbol),
+                        "as_of": now_utc
+                    })
+    
+    # Persist audit records
+    try:
+        if audit_records:
+            result = await db.scan_universe_audit.insert_many(audit_records)
+            logging.info(f"[AUDIT_RUN] Persisted {len(result.inserted_ids)} audit records for run_id={run_id}")
+    except Exception as e:
+        logging.error(f"[AUDIT_RUN] Failed to persist audit records: {e}")
+    
+    # Calculate included count
+    included_count = sum(1 for r in audit_records if r["included"])
+    excluded_count = sum(1 for r in audit_records if not r["included"])
+    
+    # Aggregate exclusion reasons
+    exclusion_by_reason = {}
+    exclusion_by_stage = {}
+    for r in audit_records:
+        if not r["included"]:
+            reason = r.get("exclude_reason")
+            stage = r.get("exclude_stage")
+            if reason:
+                exclusion_by_reason[reason] = exclusion_by_reason.get(reason, 0) + 1
+            if stage:
+                exclusion_by_stage[stage] = exclusion_by_stage.get(stage, 0) + 1
+    
+    # Calculate duration
+    end_time = datetime.now(timezone.utc)
+    duration_seconds = (end_time - now_utc).total_seconds()
+    
+    # Create scan_run_summary document (denormalized for fast reads)
+    summary_doc = {
+        "run_id": run_id,
+        "as_of": now_utc,
+        "completed_at": end_time,
+        "duration_seconds": round(duration_seconds, 2),
+        "tier_counts": tier_counts,
+        "total_symbols": total_symbols,
+        "included": included_count,
+        "excluded": excluded_count,
+        "excluded_counts_by_reason": exclusion_by_reason,
+        "excluded_counts_by_stage": exclusion_by_stage,
+        "quote_success_count": quote_success_count,
+        "quote_failure_count": quote_failure_count,
+        "provider_error_count": provider_error_count,
+        "top_failures": failures[:20]
+    }
+    
+    # Persist summary document
+    try:
+        await db.scan_run_summary.replace_one(
+            {"run_id": run_id},
+            summary_doc,
+            upsert=True
+        )
+        logging.info(f"[AUDIT_RUN] Persisted scan_run_summary for run_id={run_id}")
+    except Exception as e:
+        logging.error(f"[AUDIT_RUN] Failed to persist scan_run_summary: {e}")
+    
+    logging.info(f"[AUDIT_RUN] Completed run_id={run_id}: success={quote_success_count}, failure={quote_failure_count}, provider_errors={provider_error_count}, duration={duration_seconds:.1f}s")
+    
+    return {
+        "run_id": run_id,
+        "completed_at": end_time.isoformat(),
+        "duration_seconds": round(duration_seconds, 2),
+        "tier_counts": tier_counts,
+        "summary": {
+            "total_symbols": total_symbols,
+            "quote_success_count": quote_success_count,
+            "quote_failure_count": quote_failure_count,
+            "provider_error_count": provider_error_count,
+            "included_count": included_count,
+            "excluded_count": excluded_count,
+            "exclusion_by_reason": exclusion_by_reason,
+            "exclusion_by_stage": exclusion_by_stage
+        },
+        "top_failures": failures[:20],
+        "notes": [
+            "Quote source: previousClose (fallback to regularMarketPrice)",
+            "MISSING_QUOTE only if previousClose is truly unavailable",
+            "Provider errors: rate limits, HTTP errors, timeouts"
+        ]
+    }
+

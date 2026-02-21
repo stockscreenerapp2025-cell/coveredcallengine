@@ -1,101 +1,87 @@
 {
-  "summary": "T-1 Data Principle Implementation - ALL FEATURES VERIFIED WORKING. Backend APIs return T-1 data info correctly. Frontend pages (Dashboard, Screener, PMCC, Watchlist, Simulator) all display T-1 data banners. Admin Data Quality tab shows scan status with green/amber/red indicators.",
+  "summary": "Layer 3 Data Pipeline Fix verification completed successfully. All 37 backend tests passed (9 pipeline fix + 8 integration + 20 unit tests). UI testing confirmed all reported issues are fixed: IV column shows values, no duplicate symbols, PMCC columns (LEAPS Buy, Premium Ask, Delta, Width) all populated, Dashboard shows Weekly (cyan) and Monthly (violet) color coding.",
   "backend_issues": {
     "critical": [],
-    "minor": [
-      {
-        "endpoint": "/api/screener/precomputed/{strategy}/{profile}",
-        "issue": "Returns 404 - pre-computed scans may need refresh via Admin panel"
-      },
-      {
-        "endpoint": "/api/screener/available-scans",
-        "issue": "Returns 404 - endpoint may not be implemented or route mismatch"
-      }
-    ]
+    "minor": []
   },
   "frontend_issues": {
-    "ui_bugs": [],
-    "integration_issues": [],
-    "design_issues": [
+    "ui_bugs": [
       {
-        "screen": "Dashboard/Simulator charts",
-        "issues": ["Console warnings about chart dimensions (-1 width/height) - cosmetic issue, charts still render"]
+        "component": "Add to Simulator Modal",
+        "issue": "Expiry field shows 'NaNundefinedaN $67 C' - date formatting issue in modal",
+        "selector": "Add to Simulator modal",
+        "priority": "LOW"
       }
-    ]
+    ],
+    "integration_issues": [],
+    "design_issues": []
   },
   "test_report_links": [
-    "/app/tests/test_t1_data_principle.py",
-    "/app/test_reports/pytest/pytest_t1_data.xml"
+    "/app/backend/tests/test_layer3_pipeline_fix.py",
+    "/app/backend/tests/test_layer3_integration.py",
+    "/app/backend/tests/test_layer3_enrichment.py",
+    "/app/test_reports/pytest/pytest_layer3_pipeline_fix.xml"
   ],
-  "action_items": [],
-  "critical_code_review_comments": [],
+  "action_items": [
+    "Minor: Fix date formatting in 'Add to Simulator' modal - Expiry shows 'NaNundefinedaN' instead of proper date format"
+  ],
+  "critical_code_review_comments": [
+    "✓ Screener CC IV column fix verified - Line 1353 correctly handles implied_volatility fallback",
+    "✓ Deduplication working - Both CC and PMCC endpoints deduplicate by symbol",
+    "✓ PMCC normalizeOpp() correctly handles both leap_ and leaps_ prefixes",
+    "✓ Dashboard handleSimulate() correctly converts implied_volatility/100 for IV storage",
+    "✓ Dashboard Top 10 shows Weekly (cyan) + Monthly (violet) with expiry_type field"
+  ],
   "updated_files": [
-    "/app/tests/test_t1_data_principle.py"
+    "/app/backend/tests/test_layer3_pipeline_fix.py"
   ],
   "success_rate": {
-    "backend": "100% (12/12 tests passed)",
-    "frontend": "100% - All T-1 banners verified on all pages"
+    "backend": "100% (37/37 tests passed)",
+    "frontend": "95% (all major features working, minor modal formatting issue)"
   },
   "test_credentials": {
     "email": "admin@premiumhunter.com",
     "password": "admin123"
   },
-  "seed_data_creation": "None - used existing data",
+  "seed_data_creation": "None - used live API data from snapshots",
   "retest_needed": false,
   "should_main_agent_self_test": false,
-  "context_for_next_testing_agent": "T-1 data principle is fully implemented. All pages show T-1 data banners with date 2026-01-15. Admin Data Quality tab shows 6 scans with amber status (slightly stale). Pre-computed scan endpoints return 404 but the data is accessible via main screener endpoints.",
-  "t1_data_verification": {
-    "current_t1_date": "2026-01-15",
-    "data_age_hours": 16.0,
-    "next_refresh": "2026-01-16 16:00:00 ET",
-    "pages_with_t1_banner": [
-      "Dashboard - Shows 'T-1 Market Data - Data from: 2026-01-15 (Market Close)'",
-      "Screener - Shows 'T-1 Market Data - Data from: 2026-01-15 (Market Close)'",
-      "PMCC - Shows 'T-1 Market Data - Data from: 2026-01-15 (Market Close)'",
-      "Watchlist - Shows 'T-1 Market Data - Using previous trading day close data'",
-      "Simulator - Shows 'T-1 Market Data - Simulations use previous trading day close data'"
-    ],
-    "admin_data_quality": {
-      "overall_status": "amber",
-      "summary": {
-        "green": 0,
-        "amber": 6,
-        "red": 0
-      },
-      "scans": [
-        {"type": "Covered Call", "profile": "Conservative", "count": 6, "status": "amber"},
-        {"type": "Covered Call", "profile": "Balanced", "count": 18, "status": "amber"},
-        {"type": "Covered Call", "profile": "Aggressive", "count": 18, "status": "amber"},
-        {"type": "PMCC", "profile": "Conservative", "count": 2, "status": "amber"},
-        {"type": "PMCC", "profile": "Balanced", "count": 19, "status": "amber"},
-        {"type": "PMCC", "profile": "Aggressive", "count": 15, "status": "amber"}
-      ]
-    }
+  "context_for_next_testing_agent": "Layer 3 Data Pipeline Fix fully verified. All reported issues resolved: 1) Screener CC IV column populated with values (30.5%, 42.7%, etc.), 2) No duplicate symbols in Screener, 3) PMCC page shows all columns (LEAPS Buy, Premium Ask, Delta, Width), 4) Dashboard Top 10 shows Weekly (cyan) + Monthly (violet) color coding, 5) Simulator stores correct IV values. Minor issue: Add to Simulator modal has date formatting bug showing 'NaNundefinedaN'.",
+  "layer3_pipeline_fix_verification": {
+    "issue_1_screener_iv_blank": "FIXED - IV column shows values (30.5%, 42.7%, 70.2%, etc.)",
+    "issue_2_duplicate_symbols": "FIXED - Deduplication working, each symbol appears once",
+    "issue_3_pmcc_leaps_buy": "FIXED - LEAPS Buy column shows strike, delta, DTE",
+    "issue_3_pmcc_premium_ask": "FIXED - Premium Ask column shows values ($0.34, $24.80, etc.)",
+    "issue_3_pmcc_delta": "FIXED - Delta column shows values (δ0.95, etc.)",
+    "issue_3_pmcc_width": "FIXED - Width column shows non-zero values ($6, $25, $170, etc.)",
+    "issue_4_dashboard_color_coding": "FIXED - Weekly (cyan badge), Monthly (violet badge)",
+    "issue_5_simulator_iv": "FIXED - IV values correctly stored (30.5%, 43%, etc.)"
   },
   "api_verification": {
-    "/api/market-status": {
-      "status": "PASS",
-      "returns_t1_data": true,
-      "t1_date": "2026-01-15",
-      "data_note": "All scans use T-1 (previous trading day) close data from 2026-01-15"
+    "covered_calls_endpoint": "PASS - Returns implied_volatility in percentage form",
+    "pmcc_endpoint": "PASS - Returns leap_* fields with values",
+    "dashboard_opportunities": "PASS - Returns expiry_type (Weekly/Monthly)",
+    "deduplication": "PASS - No duplicate symbols in responses"
+  },
+  "sample_api_responses": {
+    "dashboard_opportunity": {
+      "symbol": "NKE",
+      "implied_volatility": 30.5,
+      "iv_rank": 24,
+      "dte": 7,
+      "expiry_type": "Weekly"
     },
-    "/api/screener/data-quality-dashboard": {
-      "status": "PASS",
-      "returns_t1_info": true,
-      "returns_scan_status": true,
-      "status_indicators": ["green", "amber", "red"]
-    },
-    "/api/screener/covered-calls": {
-      "status": "PASS",
-      "returns_t1_info": true,
-      "data_type": "t_minus_1_close",
-      "opportunities_count": 18
-    },
-    "/api/screener/pmcc": {
-      "status": "PASS",
-      "returns_t1_info": true,
-      "data_type": "t_minus_1_close",
-      "opportunities_count": 19
+    "pmcc_opportunity": {
+      "symbol": "LCID",
+      "leap_strike": 7,
+      "leap_dte": 693,
+      "leap_delta": 0.95,
+      "leap_ask": 0.34,
+      "leaps_buy_eligible": true,
+      "width": 6
     }
+  },
+  "mocked_apis": {
+    "note": "No mocked APIs - all data from real Yahoo Finance snapshots"
   }
 }

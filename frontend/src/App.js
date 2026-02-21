@@ -16,6 +16,7 @@ import Pricing from "./pages/Pricing";
 import Terms from "./pages/Terms";
 import Privacy from "./pages/Privacy";
 import AcceptInvitation from "./pages/AcceptInvitation";
+import AIWallet from "./pages/AIWallet";
 import Layout from "./components/Layout";
 import "@/App.css";
 
@@ -152,6 +153,14 @@ function App() {
             <ProtectedRoute>
               <Layout>
                 <Pricing />
+              </Layout>
+            </ProtectedRoute>
+          } />
+          
+          <Route path="/ai-wallet" element={
+            <ProtectedRoute>
+              <Layout>
+                <AIWallet />
               </Layout>
             </ProtectedRoute>
           } />

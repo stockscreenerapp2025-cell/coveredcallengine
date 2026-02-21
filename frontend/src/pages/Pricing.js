@@ -1,26 +1,31 @@
 import { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import api from '../lib/api';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Badge } from '../components/ui/badge';
+import { Checkbox } from '../components/ui/checkbox';
+import { Switch } from '../components/ui/switch';
 import {
-  Crown,
   Check,
-  Zap,
   Shield,
-  TrendingUp,
-  BarChart3,
-  Clock,
-  Star,
   Sparkles,
-  ArrowRight
+  Clock,
+  ExternalLink
 } from 'lucide-react';
+import { toast } from 'sonner';
 
 const Pricing = () => {
   const { user } = useAuth();
   const [subscriptionLinks, setSubscriptionLinks] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [isYearly, setIsYearly] = useState(false);
+  const [acceptedTerms, setAcceptedTerms] = useState({
+    basic: false,
+    standard: false,
+    premium: false
+  });
 
   useEffect(() => {
     fetchSubscriptionLinks();
@@ -37,8 +42,15 @@ const Pricing = () => {
     }
   };
 
-  const handleSubscribe = (link) => {
-    if (!link) return;
+  const handleSubscribe = (planId, link) => {
+    if (!acceptedTerms[planId]) {
+      toast.error('Please accept the Terms & Conditions to subscribe');
+      return;
+    }
+    if (!link) {
+      toast.error('Payment link not configured. Please contact support.');
+      return;
+    }
     // Add user email to the payment link if user is logged in
     let paymentUrl = link;
     if (user?.email) {
@@ -48,69 +60,68 @@ const Pricing = () => {
     window.open(paymentUrl, '_blank');
   };
 
+  // Plan definitions matching the uploaded subscription plan
   const plans = [
     {
-      id: 'trial',
-      name: '7-Day FREE Trial',
-      price: '$0',
-      period: '7 days',
-      description: 'Try premium features risk-free',
-      linkKey: 'trial_link',
+      id: 'basic',
+      name: 'Basic',
+      monthlyPrice: 29,
+      yearlyPrice: 290,
+      description: 'Essential tools for covered call trading',
       popular: false,
-      highlight: 'Start Free',
+      color: 'emerald',
       features: [
         'Access to Covered Call Dashboard',
-        'Limited Covered Call Scans',
-        'Near real-time options data',
-        'TradingView chart integration',
-        'Key Technical indicators'
-      ],
-      icon: Clock,
-      color: 'emerald',
-      buttonText: 'Start Free Trial',
-      note: '*Credit card required for verification only'
-    },
-    {
-      id: 'monthly',
-      name: 'Monthly Plan',
-      price: '$49',
-      period: '/month',
-      description: 'Perfect for active traders',
-      linkKey: 'monthly_link',
-      popular: true,
-      highlight: 'Most Popular',
-      features: [
-        'Everything in Free Trial',
-        'Unlimited Covered Call Scans',
-        'PMCC Strategy Scanner',
-        'Advanced filtering options',
+        'Covered Call Scans',
+        'Real Market Data',
+        'TradingView Integration Charts',
+        'Key Technical Indicators',
         'Portfolio Tracker',
-        'Cancel anytime'
+        'Cancel any time',
+        'Dedicated Support',
+        '7 Days FREE Trial',
+        '2,000 AI Tokens/month'
       ],
-      icon: Zap,
-      color: 'violet',
-      buttonText: 'Subscribe Monthly'
+      monthlyLinkKey: 'basic_monthly_link',
+      yearlyLinkKey: 'basic_yearly_link'
     },
     {
-      id: 'yearly',
-      name: 'Annual Plan',
-      price: '$499',
-      period: '/year',
-      description: 'Best value for serious traders',
-      linkKey: 'yearly_link',
-      popular: false,
-      highlight: 'Save 15%+',
-      savings: 'Save 15%+',
+      id: 'standard',
+      name: 'Standard',
+      monthlyPrice: 59,
+      yearlyPrice: 590,
+      description: 'Advanced features for serious traders',
+      popular: true,
+      color: 'violet',
       features: [
-        'Everything in Monthly Plan',
-        'Special Discount',
-        'Early access to new features',
-        'Dedicated support channel',
-        'Locked-in pricing'
+        'Everything in Basic',
+        'PMCC Strategy Scanner',
+        'Powerful Watch List with AI Features',
+        'Dedicated Support',
+        '7 Days FREE Trial',
+        '6,000 AI Tokens/month'
       ],
-      icon: Crown,
+      monthlyLinkKey: 'standard_monthly_link',
+      yearlyLinkKey: 'standard_yearly_link'
+    },
+    {
+      id: 'premium',
+      name: 'Premium',
+      monthlyPrice: 89,
+      yearlyPrice: 890,
+      description: 'Full suite for professional traders',
+      popular: false,
       color: 'amber',
-      buttonText: 'Subscribe Annual'
+      features: [
+        'Everything in Standard',
+        'Powerful Simulator and Analyser',
+        'AI Management of Trades Selected',
+        'Dedicated Support',
+        '7 Days FREE Trial',
+        '15,000 AI Tokens/month'
+      ],
+      monthlyLinkKey: 'premium_monthly_link',
+      yearlyLinkKey: 'premium_yearly_link'
     }
   ];
 
@@ -122,7 +133,8 @@ const Pricing = () => {
         text: 'text-emerald-400',
         button: 'bg-emerald-600 hover:bg-emerald-700',
         badge: 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30',
-        gradient: 'from-emerald-500/20 to-transparent'
+        gradient: 'from-emerald-500/20 to-transparent',
+        checkbox: 'data-[state=checked]:bg-emerald-600 data-[state=checked]:border-emerald-600'
       },
       violet: {
         bg: 'bg-violet-500/10',
@@ -130,7 +142,8 @@ const Pricing = () => {
         text: 'text-violet-400',
         button: 'bg-violet-600 hover:bg-violet-700',
         badge: 'bg-violet-500/20 text-violet-400 border-violet-500/30',
-        gradient: 'from-violet-500/20 to-transparent'
+        gradient: 'from-violet-500/20 to-transparent',
+        checkbox: 'data-[state=checked]:bg-violet-600 data-[state=checked]:border-violet-600'
       },
       amber: {
         bg: 'bg-amber-500/10',
@@ -138,7 +151,8 @@ const Pricing = () => {
         text: 'text-amber-400',
         button: 'bg-amber-600 hover:bg-amber-700',
         badge: 'bg-amber-500/20 text-amber-400 border-amber-500/30',
-        gradient: 'from-amber-500/20 to-transparent'
+        gradient: 'from-amber-500/20 to-transparent',
+        checkbox: 'data-[state=checked]:bg-amber-600 data-[state=checked]:border-amber-600'
       }
     };
     return colors[color] || colors.emerald;
@@ -153,65 +167,80 @@ const Pricing = () => {
           Premium Features
         </Badge>
         <h1 className="text-3xl md:text-4xl font-bold text-white mb-4">
-          Unlock the Full Power of
-          <span className="text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 to-cyan-400"> Covered Call Engine</span>
+          Choose Your
+          <span className="text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 to-cyan-400"> Trading Plan</span>
         </h1>
         <p className="text-zinc-400 text-lg">
-          Get access to professional-grade options screening tools, real-time data, and AI-powered insights.
+          All plans include a 7-day FREE trial. Cancel anytime.
         </p>
       </div>
 
+      {/* Monthly/Yearly Toggle */}
+      <div className="flex items-center justify-center gap-4">
+        <span className={`text-sm font-medium ${!isYearly ? 'text-white' : 'text-zinc-500'}`}>
+          Monthly
+        </span>
+        <Switch
+          checked={isYearly}
+          onCheckedChange={setIsYearly}
+          className="data-[state=checked]:bg-emerald-600"
+          data-testid="billing-toggle"
+        />
+        <span className={`text-sm font-medium ${isYearly ? 'text-white' : 'text-zinc-500'}`}>
+          Yearly
+        </span>
+        {isYearly && (
+          <Badge className="bg-emerald-500/20 text-emerald-400 border-emerald-500/30 ml-2">
+            Save 2 months
+          </Badge>
+        )}
+      </div>
+
       {/* Pricing Cards */}
-      <div className="grid md:grid-cols-3 gap-6 max-w-6xl mx-auto">
+      <div className="grid md:grid-cols-3 gap-6 max-w-6xl mx-auto items-stretch">
         {plans.map((plan) => {
           const colors = getColorClasses(plan.color);
-          const Icon = plan.icon;
-          const link = subscriptionLinks?.[plan.linkKey];
-          
+          const price = isYearly ? plan.yearlyPrice : plan.monthlyPrice;
+          const period = isYearly ? '/year' : '/month';
+          const linkKey = isYearly ? plan.yearlyLinkKey : plan.monthlyLinkKey;
+          const link = subscriptionLinks?.[linkKey];
+
           return (
-            <Card 
+            <Card
               key={plan.id}
-              className={`glass-card relative overflow-hidden transition-all duration-300 hover:scale-[1.02] h-full flex flex-col ${
+              className={`glass-card relative overflow-hidden transition-all duration-300 hover:scale-[1.02] flex flex-col ${
                 plan.popular ? `border-2 ${colors.border} shadow-lg shadow-violet-500/10` : ''
               }`}
               data-testid={`pricing-card-${plan.id}`}
             >
-              {/* Popular Badge - Left Side */}
+              {/* Popular Badge */}
               {plan.popular && (
-                <div className="absolute top-0 left-0 px-3 py-1 bg-violet-600 text-white text-xs font-medium rounded-br-lg">
-                  <Star className="w-3 h-3 inline mr-1" />
+                <div className="absolute top-0 left-0 right-0 bg-violet-600 text-white text-xs font-medium py-1.5 text-center">
                   Most Popular
-                </div>
-              )}
-              
-              {/* Savings Badge - Right Side */}
-              {plan.savings && (
-                <div className="absolute top-0 right-0 px-3 py-1 bg-amber-600 text-white text-xs font-medium rounded-bl-lg">
-                  {plan.savings}
                 </div>
               )}
 
               {/* Gradient Background */}
               <div className={`absolute inset-0 bg-gradient-to-b ${colors.gradient} pointer-events-none`} />
-              
-              <CardHeader className="text-center pb-2 relative">
-                <div className={`w-12 h-12 mx-auto mb-4 rounded-xl ${colors.bg} flex items-center justify-center`}>
-                  <Icon className={`w-6 h-6 ${colors.text}`} />
-                </div>
-                <Badge className={`${colors.badge} mb-2`}>
-                  {plan.highlight}
-                </Badge>
-                <CardTitle className="text-xl text-white">{plan.name}</CardTitle>
-                <CardDescription>{plan.description}</CardDescription>
+
+              <CardHeader className={`text-center pb-2 relative ${plan.popular ? 'pt-10' : ''}`}>
+                <CardTitle className="text-2xl text-white font-bold">{plan.name}</CardTitle>
+                <CardDescription className="text-zinc-400">{plan.description}</CardDescription>
               </CardHeader>
-              
-              <CardContent className="space-y-6 relative flex-grow flex flex-col">
+
+              <CardContent className="space-y-5 relative flex-grow flex flex-col">
                 {/* Price */}
-                <div className="text-center">
-                  <span className="text-4xl font-bold text-white">{plan.price}</span>
-                  <span className="text-zinc-500 ml-1">{plan.period}</span>
+                <div className="text-center py-4">
+                  <div className="flex items-baseline justify-center">
+                    <span className="text-lg text-zinc-500">$</span>
+                    <span className="text-5xl font-bold text-white">{price}</span>
+                    <span className="text-zinc-500 ml-1">{period}</span>
+                  </div>
+                  <div className="text-sm text-zinc-500 mt-1">
+                    (USD)
+                  </div>
                 </div>
-                
+
                 {/* Features */}
                 <ul className="space-y-3 flex-grow">
                   {plan.features.map((feature, idx) => (
@@ -221,63 +250,85 @@ const Pricing = () => {
                     </li>
                   ))}
                 </ul>
-                
-                {/* Note */}
-                {plan.note && (
-                  <p className="text-xs text-zinc-500 text-center italic">{plan.note}</p>
-                )}
-                
-                {/* CTA Button */}
-                <Button
-                  onClick={() => handleSubscribe(link)}
-                  disabled={loading || !link}
-                  className={`w-full ${colors.button} text-white font-medium py-6 mt-auto`}
-                  data-testid={`subscribe-btn-${plan.id}`}
-                >
-                  {plan.buttonText}
-                  <ArrowRight className="w-4 h-4 ml-2" />
-                </Button>
+
+                {/* Terms & Conditions Checkbox */}
+                <div className="flex items-start gap-2 pt-4 border-t border-zinc-800">
+                  <Checkbox
+                    id={`terms-${plan.id}`}
+                    checked={acceptedTerms[plan.id]}
+                    onCheckedChange={(checked) => setAcceptedTerms(prev => ({ ...prev, [plan.id]: checked }))}
+                    className={colors.checkbox}
+                    data-testid={`terms-checkbox-${plan.id}`}
+                  />
+                  <label htmlFor={`terms-${plan.id}`} className="text-xs text-zinc-400 leading-tight cursor-pointer">
+                    Read and Accept{' '}
+                    <Link to="/terms" className="text-emerald-400 hover:text-emerald-300 underline" target="_blank">
+                      Terms & Conditions
+                    </Link>
+                  </label>
+                </div>
+
+                {/* CTA Button - Fixed at bottom */}
+                <div className="pt-2">
+                  <Button
+                    onClick={() => handleSubscribe(plan.id, link)}
+                    disabled={loading || !acceptedTerms[plan.id]}
+                    className={`w-full ${acceptedTerms[plan.id] ? colors.button : 'bg-zinc-700 cursor-not-allowed'} text-white font-medium py-6`}
+                    data-testid={`subscribe-btn-${plan.id}`}
+                  >
+                    SUBSCRIBE
+                    {acceptedTerms[plan.id] && <ExternalLink className="w-4 h-4 ml-2" />}
+                  </Button>
+                </div>
               </CardContent>
             </Card>
           );
         })}
       </div>
 
-      {/* Features Grid */}
-      <div className="max-w-4xl mx-auto pt-8">
-        <h2 className="text-2xl font-bold text-white text-center mb-8">
-          What You Get With Premium
-        </h2>
-        <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-4">
-          {[
-            { icon: BarChart3, title: 'Real-Time Data', desc: 'Live options chain & stock quotes' },
-            { icon: TrendingUp, title: 'Smart Screening', desc: 'AI-powered opportunity scoring' },
-            { icon: Shield, title: 'Risk Analysis', desc: 'Greeks, IV rank & probability' },
-            { icon: Sparkles, title: 'PMCC Scanner', desc: 'Find LEAPS diagonal spreads' }
-          ].map((feature, idx) => (
-            <Card key={idx} className="glass-card p-4 text-center">
-              <feature.icon className="w-8 h-8 text-emerald-400 mx-auto mb-2" />
-              <h3 className="font-medium text-white text-sm">{feature.title}</h3>
-              <p className="text-xs text-zinc-500">{feature.desc}</p>
-            </Card>
-          ))}
-        </div>
+      {/* AI Credits Section */}
+      <div className="max-w-4xl mx-auto mt-8">
+        <Card className="glass-card border-amber-500/20">
+          <CardContent className="p-6 text-center">
+            <div className="flex items-center justify-center gap-2 mb-3">
+              <Sparkles className="w-5 h-5 text-amber-400" />
+              <h3 className="text-lg font-semibold text-white">AI Credits Included</h3>
+            </div>
+            <p className="text-zinc-400 mb-4">
+              All plans include free monthly AI credits. Use AI only if you want. Buy more credits anytime — no surprises.
+            </p>
+            <div className="grid md:grid-cols-3 gap-4 text-center">
+              <div className="bg-zinc-800/50 rounded-lg p-3">
+                <p className="text-zinc-400 text-sm">Basic</p>
+                <p className="text-white font-bold">2,000 tokens/mo</p>
+              </div>
+              <div className="bg-zinc-800/50 rounded-lg p-3 border border-violet-500/20">
+                <p className="text-zinc-400 text-sm">Standard</p>
+                <p className="text-white font-bold">6,000 tokens/mo</p>
+              </div>
+              <div className="bg-zinc-800/50 rounded-lg p-3">
+                <p className="text-zinc-400 text-sm">Premium</p>
+                <p className="text-white font-bold">15,000 tokens/mo</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
       </div>
 
       {/* Trust Badges */}
-      <div className="text-center text-zinc-500 text-sm">
-        <p className="flex items-center justify-center gap-4 flex-wrap">
+      <div className="text-center text-zinc-500 text-sm pt-4">
+        <p className="flex items-center justify-center gap-6 flex-wrap">
           <span className="flex items-center gap-1">
             <Shield className="w-4 h-4 text-emerald-400" />
-            Secure Payment via Stripe
+            Secure Payment via PayPal
+          </span>
+          <span className="flex items-center gap-1">
+            <Check className="w-4 h-4 text-emerald-400" />
+            7-Day FREE Trial
           </span>
           <span className="flex items-center gap-1">
             <Check className="w-4 h-4 text-emerald-400" />
             Cancel Anytime
-          </span>
-          <span className="flex items-center gap-1">
-            <Zap className="w-4 h-4 text-emerald-400" />
-            Instant Access
           </span>
         </p>
       </div>
