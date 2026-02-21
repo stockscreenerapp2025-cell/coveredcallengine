@@ -69,25 +69,41 @@ else
 fi
 
 # --------------------------------------------------
-# 4. Fix frontend Dockerfile - fix ajv dependency and Node version
-#    ajv-keywords requires ajv v6 which must be explicitly installed
+# 4. Fix frontend Dockerfile - use Node 18 and fix ajv
+#    Add ajv to package.json so it installs with npm install
 # --------------------------------------------------
-echo "[4/6] Fixing frontend Dockerfile..."
+echo "[4/6] Fixing frontend build dependencies..."
 FRONTEND_DOCKERFILE="frontend/Dockerfile"
 
-# Fix Node version - use Node 18 for stability
+# Fix Node version
 sed -i 's|node:20-alpine|node:18-alpine|g' "$FRONTEND_DOCKERFILE"
 sed -i 's|node:20|node:18|g' "$FRONTEND_DOCKERFILE"
 
-# Fix ajv issue - add explicit ajv install before npm run build
-if ! grep -q "npm install ajv" "$FRONTEND_DOCKERFILE"; then
-    sed -i 's|RUN npm run build|RUN npm install ajv@^6.12.6 --legacy-peer-deps \&\& npm run build|g' "$FRONTEND_DOCKERFILE"
-    echo "  ✅ Added ajv@6 install to fix build error"
-else
-    echo "  ✅ ajv fix already in Dockerfile"
-fi
+# Remove any previously added ajv line to avoid duplication
+sed -i '/npm install ajv/d' "$FRONTEND_DOCKERFILE"
 
-echo "  ✅ Frontend Dockerfile fixed"
+echo "  ✅ Frontend Dockerfile Node version fixed"
+
+# Add ajv to package.json dependencies so it installs with npm install
+cat > /tmp/fix_pkg.py << 'PYEOF'
+import json
+
+with open('frontend/package.json', 'r') as f:
+    pkg = json.load(f)
+
+if 'dependencies' not in pkg:
+    pkg['dependencies'] = {}
+
+# Add ajv v6 - required by ajv-keywords used by react-scripts/craco
+pkg['dependencies']['ajv'] = '6.12.6'
+
+with open('frontend/package.json', 'w') as f:
+    json.dump(pkg, f, indent=2)
+
+print('package.json updated with ajv 6.12.6')
+PYEOF
+python3 /tmp/fix_pkg.py
+echo "  ✅ Added ajv 6.12.6 to package.json"
 
 # --------------------------------------------------
 # 5. Fix frontend API URL - remove undefined REACT_APP_BACKEND_URL
