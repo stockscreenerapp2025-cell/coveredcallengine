@@ -1,0 +1,96 @@
+version: "3.9"
+
+services:
+  # --------------------------------------------------
+  # MongoDB (Production)
+  # --------------------------------------------------
+  mongo:
+    image: mongo:7.0
+    container_name: cce_mongo
+    restart: unless-stopped
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_INITDB_ROOT_USERNAME}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_INITDB_ROOT_PASSWORD}
+      MONGO_INITDB_DATABASE: ${DB_NAME}
+    volumes:
+      - mongo_data:/data/db
+      - mongo_config:/data/configdb
+    networks:
+      - internal
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 20s
+
+  # --------------------------------------------------
+  # Backend (FastAPI - Production)
+  # --------------------------------------------------
+  backend:
+    build:
+      context: ..
+      dockerfile: backend/Dockerfile
+      target: production
+    container_name: cce_backend
+    restart: unless-stopped
+    environment:
+      MONGO_URL: ${MONGO_URL}
+      DB_NAME: ${DB_NAME}
+      ENVIRONMENT: production
+      DEBUG: "False"
+    depends_on:
+      mongo:
+        condition: service_healthy
+    networks:
+      - internal
+    expose:
+      - "8000"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
+  # --------------------------------------------------
+  # Frontend (React + Nginx)
+  # --------------------------------------------------
+  frontend:
+    build:
+      context: ..
+      dockerfile: frontend/Dockerfile
+      target: production
+    container_name: cce_frontend
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - "8080:80"
+      - "8443:443"
+    networks:
+      - internal
+      - public
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+# --------------------------------------------------
+# Networks
+# --------------------------------------------------
+networks:
+  internal:
+    driver: bridge
+    internal: true
+  public:
+    driver: bridge
+
+# --------------------------------------------------
+# Volumes
+# --------------------------------------------------
+volumes:
+  mongo_data:
+  mongo_config:

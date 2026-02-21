@@ -1,0 +1,89 @@
+version: "3.9"
+
+services:
+  # --------------------------------------------------
+  # MongoDB (Test Environment)
+  # --------------------------------------------------
+  mongo:
+    image: mongo:7.0
+    container_name: cce_mongo_test
+    restart: unless-stopped
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_INITDB_ROOT_USERNAME}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_INITDB_ROOT_PASSWORD}
+      MONGO_INITDB_DATABASE: ${DB_NAME}
+    volumes:
+      - mongo_data_test:/data/db
+    networks:
+      - cce_test_network
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 20s
+      timeout: 10s
+      retries: 5
+      start_period: 10s
+
+  # --------------------------------------------------
+  # Backend (FastAPI - Test)
+  # --------------------------------------------------
+  backend:
+    build:
+      context: ..
+      dockerfile: backend/Dockerfile
+      target: production
+    container_name: cce_backend_test
+    restart: unless-stopped
+    environment:
+      MONGO_URL: ${MONGO_URL}
+      DB_NAME: ${DB_NAME}
+      ENVIRONMENT: test
+      DEBUG: "True"
+    depends_on:
+      mongo:
+        condition: service_healthy
+    networks:
+      - cce_test_network
+    expose:
+      - "8000"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
+  # --------------------------------------------------
+  # Frontend (React - Test)
+  # --------------------------------------------------
+  frontend:
+    build:
+      context: ..
+      dockerfile: frontend/Dockerfile
+      target: production
+    container_name: cce_frontend_test
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - "8081:80"
+    networks:
+      - cce_test_network
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+# --------------------------------------------------
+# Volumes
+# --------------------------------------------------
+volumes:
+  mongo_data_test:
+
+# --------------------------------------------------
+# Networks
+# --------------------------------------------------
+networks:
+  cce_test_network:
+    driver: bridge
