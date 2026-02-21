@@ -5,17 +5,15 @@ FROM node:20-alpine AS builder
 
 WORKDIR /app
 
-# Copy BOTH package.json and package-lock.json
-# This ensures deterministic installs inside Docker
+# Copy lockfile for deterministic installs
 COPY frontend/package.json frontend/package-lock.json ./
 
-# Use npm ci for clean, lockfile-based install
+# Clean, reproducible install
 RUN npm ci --legacy-peer-deps
 
-# Copy full frontend source
+# Copy source
 COPY frontend/ .
 
-# Production mode build
 ENV NODE_ENV=production
 
 RUN npm run build
@@ -26,16 +24,21 @@ RUN npm run build
 # ============================================================
 FROM nginx:1.27-alpine AS production
 
-# Remove default nginx config
+# Install wget for healthcheck
+RUN apk add --no-cache wget
+
+# Remove default config
 RUN rm /etc/nginx/conf.d/default.conf
 
-# Copy built React app from builder stage
+# Copy built app
 COPY --from=builder /app/build /usr/share/nginx/html
 
-# Write nginx config
+# Custom nginx config
 RUN cat > /etc/nginx/conf.d/app.conf << 'EOF'
 server {
-    listen 80;
+    listen 80 default_server;
+    listen [::]:80 default_server;
+
     server_name _;
 
     root /usr/share/nginx/html;
@@ -60,12 +63,12 @@ server {
         access_log off;
     }
 
-    # API proxy to backend (Docker service name)
+    # API proxy to backend
     location /api/ {
         proxy_pass http://backend:8000/api/;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection 'upgrade';
+        proxy_set_header Connection "upgrade";
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
@@ -83,7 +86,8 @@ EOF
 
 EXPOSE 80
 
-HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-    CMD wget -qO- http://localhost/ || exit 1
+# Healthcheck using IPv4 explicitly
+HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
+    CMD wget -qO- http://127.0.0.1/ || exit 1
 
 CMD ["nginx", "-g", "daemon off;"]
