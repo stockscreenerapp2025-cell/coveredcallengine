@@ -1,12 +1,9 @@
-version: "3.9"
-
 services:
   # --------------------------------------------------
   # MongoDB (Test Environment)
   # --------------------------------------------------
   mongo:
     image: mongo:7.0
-    container_name: cce_mongo_test
     restart: unless-stopped
     environment:
       MONGO_INITDB_ROOT_USERNAME: ${MONGO_INITDB_ROOT_USERNAME}
@@ -15,7 +12,7 @@ services:
     volumes:
       - mongo_data_test:/data/db
     networks:
-      - cce_test_network
+      - test_internal
     healthcheck:
       test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
       interval: 20s
@@ -31,7 +28,6 @@ services:
       context: ..
       dockerfile: backend/Dockerfile
       target: production
-    container_name: cce_backend_test
     restart: unless-stopped
     environment:
       MONGO_URL: ${MONGO_URL}
@@ -42,7 +38,7 @@ services:
       mongo:
         condition: service_healthy
     networks:
-      - cce_test_network
+      - test_internal
     expose:
       - "8000"
     healthcheck:
@@ -60,7 +56,6 @@ services:
       context: ..
       dockerfile: frontend/Dockerfile
       target: production
-    container_name: cce_frontend_test
     restart: unless-stopped
     depends_on:
       backend:
@@ -68,12 +63,7 @@ services:
     ports:
       - "8081:80"
     networks:
-      - cce_test_network
-    healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost/"]
-      interval: 30s
-      timeout: 5s
-      retries: 3
+      - test_internal
 
 # --------------------------------------------------
 # Volumes
@@ -85,6 +75,5 @@ volumes:
 # Networks
 # --------------------------------------------------
 networks:
-  cce_test_network:
+  test_internal:
     driver: bridge
-    name: cce_test_network

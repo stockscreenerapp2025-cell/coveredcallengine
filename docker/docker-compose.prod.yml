@@ -1,12 +1,9 @@
-version: "3.9"
-
 services:
   # --------------------------------------------------
   # MongoDB (Production)
   # --------------------------------------------------
   mongo:
     image: mongo:7.0
-    container_name: cce_mongo
     restart: unless-stopped
     environment:
       MONGO_INITDB_ROOT_USERNAME: ${MONGO_INITDB_ROOT_USERNAME}
@@ -32,7 +29,6 @@ services:
       context: ..
       dockerfile: backend/Dockerfile
       target: production
-    container_name: cce_backend
     restart: unless-stopped
     environment:
       MONGO_URL: ${MONGO_URL}
@@ -61,7 +57,6 @@ services:
       context: ..
       dockerfile: frontend/Dockerfile
       target: production
-    container_name: cce_frontend
     restart: unless-stopped
     depends_on:
       backend:
@@ -72,11 +67,6 @@ services:
     networks:
       - internal
       - public
-    healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost/"]
-      interval: 30s
-      timeout: 5s
-      retries: 3
 
 # --------------------------------------------------
 # Networks
