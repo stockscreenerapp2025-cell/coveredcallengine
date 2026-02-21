@@ -38,16 +38,21 @@ jobs:
             echo "==> Building and starting test containers..."
             docker compose --env-file .env.test -f docker/docker-compose.test.yml up -d --build
 
-            echo "==> Waiting for containers to be healthy..."
-            sleep 30
+            echo "==> Waiting for containers to be ready..."
+            sleep 45
 
-            echo "==> Health check..."
-            HEALTH=$(docker exec cce_backend_test curl -sf http://localhost:8000/api/health || echo "FAILED")
-            if echo "$HEALTH" | grep -q "healthy"; then
-              echo "==> Test deployment successful!"
-              docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
-            else
-              echo "==> Health check failed on test environment!"
-              docker logs cce_backend_test --tail 50
-              exit 1
-            fi
+            echo "==> Health check with retry..."
+            for i in 1 2 3 4 5; do
+              HEALTH=$(docker exec cce_backend_test curl -sf http://localhost:8000/api/health 2>/dev/null || echo "FAILED")
+              if echo "$HEALTH" | grep -q "healthy"; then
+                echo "==> Test deployment successful!"
+                docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
+                exit 0
+              fi
+              echo "==> Attempt $i failed, retrying in 10s..."
+              sleep 10
+            done
+
+            echo "==> Health check failed after 5 attempts!"
+            docker logs cce_backend_test --tail 50
+            exit 1
