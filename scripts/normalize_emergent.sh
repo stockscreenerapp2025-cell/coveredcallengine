@@ -23,14 +23,14 @@ fi
 # 2. Fix health check endpoint in docker-compose files
 # --------------------------------------------------
 echo "[2/4] Fixing health check endpoints..."
-if grep -q "localhost:8000/health\"" docker/docker-compose.prod.yml 2>/dev/null; then
+if grep -q 'localhost:8000/health"' docker/docker-compose.prod.yml 2>/dev/null; then
     sed -i 's|http://localhost:8000/health|http://localhost:8000/api/health|g' docker/docker-compose.prod.yml
     echo "  ✅ Fixed health endpoint in docker-compose.prod.yml"
 else
     echo "  ✅ Health endpoint already correct in prod"
 fi
 
-if grep -q "localhost:8000/health\"" docker/docker-compose.test.yml 2>/dev/null; then
+if grep -q 'localhost:8000/health"' docker/docker-compose.test.yml 2>/dev/null; then
     sed -i 's|http://localhost:8000/health|http://localhost:8000/api/health|g' docker/docker-compose.test.yml
     echo "  ✅ Fixed health endpoint in docker-compose.test.yml"
 else
@@ -43,35 +43,26 @@ fi
 echo "[3/4] Removing Emergent branding from frontend..."
 INDEX_HTML="frontend/public/index.html"
 
-if grep -q "emergent" "$INDEX_HTML" 2>/dev/null; then
-    # Fix title
-    sed -i 's|<title>Emergent.*</title>|<title>Covered Call Engine</title>|g' "$INDEX_HTML"
-    
-    # Remove emergent-main.js script tag
-    sed -i '/emergent-main\.js/d' "$INDEX_HTML"
-    
-    # Remove emergent badge anchor tag (multi-line removal)
-    python3 -c "
-import re, sys
-with open('$INDEX_HTML', 'r') as f:
+if grep -qi "emergent" "$INDEX_HTML" 2>/dev/null; then
+    cat > /tmp/fix_index.py << 'PYEOF'
+import re
+
+with open('frontend/public/index.html', 'r') as f:
     content = f.read()
 
-# Remove emergent badge
-content = re.sub(r'<a[^>]*id=[\"'"'"']emergent-badge[\"'"'"'][^>]*>.*?</a>', '', content, flags=re.DOTALL)
-
-# Remove emergent scripts block
-content = re.sub(r'<script>\s*//\s*Only load visual edit scripts.*?</script>', '', content, flags=re.DOTALL)
-
-# Remove posthog analytics
-content = re.sub(r'<script>\s*!\(function.*?posthog\.init.*?</script>', '', content, flags=re.DOTALL)
-
-# Fix meta description
+content = re.sub(r'<title>Emergent[^<]*</title>', '<title>Covered Call Engine</title>', content)
+content = re.sub(r'<script[^>]*emergent-main\.js[^>]*></script>\s*', '', content)
+content = re.sub(r'<a[^>]*id="emergent-badge"[^>]*>.*?</a>', '', content, flags=re.DOTALL)
+content = re.sub(r'<!--\s*These two scripts.*?-->\s*<script>\s*// Only load visual edit.*?</script>', '', content, flags=re.DOTALL)
+content = re.sub(r'<script>\s*!\(function \(t, e\).*?posthog\.init.*?</script>', '', content, flags=re.DOTALL)
 content = content.replace('A product of emergent.sh', 'Professional-grade options screening engine')
 
-with open('$INDEX_HTML', 'w') as f:
+with open('frontend/public/index.html', 'w') as f:
     f.write(content)
-print('Done')
-"
+
+print('Emergent branding removed successfully')
+PYEOF
+    python3 /tmp/fix_index.py
     echo "  ✅ Removed Emergent branding from index.html"
 else
     echo "  ✅ No Emergent branding found (already clean)"
@@ -82,16 +73,14 @@ fi
 # --------------------------------------------------
 echo "[4/4] Checking environment files..."
 if [ ! -f "$ROOT_DIR/.env.production" ]; then
-    echo "  ❌ ERROR: .env.production not found at $ROOT_DIR/.env.production"
-    echo "     Please create this file on the server before deploying"
+    echo "  ❌ ERROR: .env.production not found"
     exit 1
 else
     echo "  ✅ .env.production exists"
 fi
 
 if [ ! -f "$ROOT_DIR/.env.test" ]; then
-    echo "  ❌ ERROR: .env.test not found at $ROOT_DIR/.env.test"
-    echo "     Please create this file on the server before deploying"
+    echo "  ❌ ERROR: .env.test not found"
     exit 1
 else
     echo "  ✅ .env.test exists"
