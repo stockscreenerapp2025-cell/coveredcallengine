@@ -61,7 +61,7 @@ services:
       backend:
         condition: service_healthy
     ports:
-      - "8081:80"
+      - "8082:80"
     networks:
       - test_internal
 
