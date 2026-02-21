@@ -27,7 +27,8 @@ jobs:
 
             echo "==> Pulling latest code..."
             git config pull.rebase false
-            git pull origin develop
+            git fetch origin
+            git reset --hard origin/develop
 
             echo "==> Running normalization (Emergent → VPS fixes)..."
             bash scripts/normalize_emergent.sh
@@ -43,7 +44,7 @@ jobs:
 
             echo "==> Health check with retry..."
             for i in 1 2 3 4 5; do
-              HEALTH=$(docker exec cce_backend_test curl -sf http://localhost:8000/api/health 2>/dev/null || echo "FAILED")
+              HEALTH=$(docker exec cce_test-backend-1 curl -sf http://localhost:8000/api/health 2>/dev/null || echo "FAILED")
               if echo "$HEALTH" | grep -q "healthy\|ok\|status"; then
                 echo "==> Backend healthy!"
                 break
