@@ -29,16 +29,33 @@ services:
       dockerfile: backend/Dockerfile
       target: production
     restart: unless-stopped
+    dns:
+      - 8.8.8.8
+      - 8.8.4.4
     environment:
       MONGO_URL: ${MONGO_URL}
       DB_NAME: ${DB_NAME}
       ENVIRONMENT: test
       DEBUG: "True"
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      MARKETAUX_API_TOKEN: ${MARKETAUX_API_TOKEN}
+      PAYPAL_API_USERNAME: ${PAYPAL_API_USERNAME}
+      PAYPAL_API_PASSWORD: ${PAYPAL_API_PASSWORD}
+      PAYPAL_API_SIGNATURE: ${PAYPAL_API_SIGNATURE}
+      IMAP_HOST: ${IMAP_HOST}
+      IMAP_PORT: ${IMAP_PORT}
+      IMAP_USERNAME: ${IMAP_USERNAME}
+      IMAP_PASSWORD: ${IMAP_PASSWORD}
+      SMTP_HOST: ${SMTP_HOST}
+      SMTP_PORT: ${SMTP_PORT}
+      SMTP_USERNAME: ${SMTP_USERNAME}
+      SMTP_PASSWORD: ${SMTP_PASSWORD}
     depends_on:
       mongo:
         condition: service_healthy
     networks:
       - test_internal
+      - test_public
     expose:
       - "8000"
     healthcheck:
@@ -77,3 +94,7 @@ volumes:
 networks:
   test_internal:
     driver: bridge
+    name: cce_test_internal
+  test_public:
+    driver: bridge
+    name: cce_test_public
