@@ -56,7 +56,7 @@ const Dashboard = () => {
   const [ibkrSummary, setIbkrSummary] = useState(null);
   const [ibkrTrades, setIbkrTrades] = useState([]);
   const [openTrades, setOpenTrades] = useState([]);
-  
+
   // Redirect support-only staff away from dashboard
   useEffect(() => {
     if (isSupportStaff && !isAdmin) {
@@ -68,7 +68,7 @@ const Dashboard = () => {
   const [loading, setLoading] = useState(true);
   const [oppsLoading, setOppsLoading] = useState(false);
   const [marketStatus, setMarketStatus] = useState(null);
-  
+
   // Simulator state
   const [simulateModalOpen, setSimulateModalOpen] = useState(false);
   const [simulateOpp, setSimulateOpp] = useState(null);
@@ -78,19 +78,19 @@ const Dashboard = () => {
   // Handle adding to simulator from Top 10 Covered Calls
   const handleSimulate = async () => {
     if (!simulateOpp) return;
-    
+
     setSimulateLoading(true);
     try {
       // LAYER 3 CONTRACT: IV is stored as percentage (39.5 = 39.5%)
       // short_call_iv should be stored as DECIMAL for calculation compatibility (0.395)
       // Get IV from short_call object or flat fields
-      let ivPct = simulateOpp.short_call?.implied_volatility || 
-                  simulateOpp.implied_volatility || 
-                  simulateOpp.iv || 0;
-      
+      let ivPct = simulateOpp.short_call?.implied_volatility ||
+        simulateOpp.implied_volatility ||
+        simulateOpp.iv || 0;
+
       // If IV is already in percentage form (> 1), convert to decimal for storage
       const ivDecimal = ivPct > 1 ? ivPct / 100 : ivPct;
-      
+
       const tradeData = {
         symbol: simulateOpp.symbol,
         strategy_type: 'covered_call',
@@ -110,7 +110,7 @@ const Dashboard = () => {
           iv_pct: ivPct  // Store percentage for display
         }
       };
-      
+
       await simulatorApi.addTrade(tradeData);
       toast.success(`Added ${simulateOpp.symbol} to Simulator!`);
       setSimulateModalOpen(false);
@@ -128,7 +128,7 @@ const Dashboard = () => {
   const formatOptionContract = (dte, strike, expiry) => {
     const months = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
     let expiryDate;
-    
+
     if (expiry) {
       expiryDate = new Date(expiry);
     } else if (dte !== undefined && dte !== null) {
@@ -137,7 +137,7 @@ const Dashboard = () => {
     } else {
       return `$${strike?.toFixed(0)} C`;
     }
-    
+
     const day = expiryDate.getDate().toString().padStart(2, '0');
     const month = months[expiryDate.getMonth()];
     const year = expiryDate.getFullYear().toString().slice(-2);
@@ -171,7 +171,7 @@ const Dashboard = () => {
       setIndices(indicesRes.data);
       setNews(newsRes.data);
       setPortfolio(portfolioRes.data);
-      
+
       // Fetch IBKR portfolio data
       try {
         const [ibkrSummaryRes, ibkrClosedRes, ibkrOpenRes] = await Promise.all([
@@ -188,7 +188,7 @@ const Dashboard = () => {
         setIbkrTrades([]);
         setOpenTrades([]);
       }
-      
+
       // Fetch dashboard opportunities separately (may take longer)
       try {
         const oppsRes = await screenerApi.getDashboardOpportunities();
@@ -201,7 +201,7 @@ const Dashboard = () => {
         setOpportunitiesInfo({ is_live: fallbackRes.data.is_live, fallback: true });
       }
       setOppsLoading(false);
-      
+
     } catch (error) {
       console.error('Dashboard fetch error:', error);
       toast.error('Failed to load dashboard data');
@@ -313,8 +313,8 @@ const Dashboard = () => {
             )}
           </h1>
           <p className="text-zinc-400 mt-1">
-            {marketStatus && !marketStatus.is_open 
-              ? "Showing data from last market session" 
+            {marketStatus && !marketStatus.is_open
+              ? "Showing data from last market session"
               : "Real-time market overview and opportunities"}
           </p>
         </div>
@@ -415,7 +415,7 @@ const Dashboard = () => {
                     </div>
                   </div>
                 </div>
-                
+
                 {/* Portfolio Performance Graph */}
                 {(strategyData.length > 0 || closedPositions.length > 0) && (
                   <div className="mt-6">
@@ -446,7 +446,7 @@ const Dashboard = () => {
                                     <Cell key={`cell-${index}`} fill={entry.color} />
                                   ))}
                                 </Pie>
-                                <Tooltip 
+                                <Tooltip
                                   contentStyle={{ background: '#18181b', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', color: '#fff' }}
                                   itemStyle={{ color: '#fff' }}
                                   labelStyle={{ color: '#fff' }}
@@ -468,7 +468,7 @@ const Dashboard = () => {
                           </div>
                         </div>
                       )}
-                      
+
                       {/* Closed Positions P/L Bar Chart */}
                       {closedPositions.length > 0 && (
                         <div className="bg-zinc-800/30 rounded-lg p-4">
@@ -477,9 +477,9 @@ const Dashboard = () => {
                             <ResponsiveContainer width="100%" height="100%">
                               <BarChart data={closedPositions} layout="vertical" margin={{ left: 5, right: 10, top: 5, bottom: 5 }} barSize={12}>
                                 <CartesianGrid strokeDasharray="3 3" stroke="#333" horizontal={false} />
-                                <XAxis type="number" tickFormatter={(v) => v >= 1000 || v <= -1000 ? `$${(v/1000).toFixed(1)}k` : `$${v.toFixed(0)}`} stroke="#666" fontSize={9} />
+                                <XAxis type="number" tickFormatter={(v) => v >= 1000 || v <= -1000 ? `$${(v / 1000).toFixed(1)}k` : `$${v.toFixed(0)}`} stroke="#666" fontSize={9} />
                                 <YAxis type="category" dataKey="symbol" stroke="#999" fontSize={10} width={40} interval={0} />
-                                <Tooltip 
+                                <Tooltip
                                   contentStyle={{ background: '#18181b', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px' }}
                                   formatter={(value, name, props) => [
                                     <span style={{ color: value >= 0 ? '#10b981' : '#ef4444' }}>{formatCurrency(value)}</span>,
@@ -516,9 +516,9 @@ const Dashboard = () => {
                             <ResponsiveContainer width="100%" height="100%">
                               <BarChart data={openPositions} layout="vertical" margin={{ left: 5, right: 10, top: 5, bottom: 5 }} barSize={12}>
                                 <CartesianGrid strokeDasharray="3 3" stroke="#333" horizontal={false} />
-                                <XAxis type="number" tickFormatter={(v) => v >= 1000 || v <= -1000 ? `$${(v/1000).toFixed(1)}k` : `$${v.toFixed(0)}`} stroke="#666" fontSize={9} />
+                                <XAxis type="number" tickFormatter={(v) => v >= 1000 || v <= -1000 ? `$${(v / 1000).toFixed(1)}k` : `$${v.toFixed(0)}`} stroke="#666" fontSize={9} />
                                 <YAxis type="category" dataKey="symbol" stroke="#999" fontSize={10} width={40} interval={0} />
-                                <Tooltip 
+                                <Tooltip
                                   contentStyle={{ background: '#18181b', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px' }}
                                   formatter={(value, name, props) => [
                                     <span style={{ color: value >= 0 ? '#10b981' : '#ef4444' }}>{formatCurrency(value)}</span>,
@@ -619,7 +619,7 @@ const Dashboard = () => {
                             <Cell fill="#06b6d4" />
                             <Cell fill="#3b82f6" />
                           </Pie>
-                          <Tooltip 
+                          <Tooltip
                             contentStyle={{ background: '#18181b', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', color: '#fff' }}
                             itemStyle={{ color: '#fff' }}
                             labelStyle={{ color: '#fff' }}
@@ -642,13 +642,13 @@ const Dashboard = () => {
                       </div>
                     </div>
                   </div>
-                  
+
                   {/* Sample P/L Bar Chart */}
                   <div className="bg-zinc-800/30 rounded-lg p-4 border border-zinc-700/30">
                     <h5 className="text-xs text-zinc-400 mb-3">💰 Sample Realized P/L by Position</h5>
                     <div className="h-48">
                       <ResponsiveContainer width="100%" height="100%">
-                        <BarChart 
+                        <BarChart
                           data={[
                             { symbol: 'AAPL', pnl: 520 },
                             { symbol: 'MSFT', pnl: 380 },
@@ -656,15 +656,15 @@ const Dashboard = () => {
                             { symbol: 'NVDA', pnl: -120 },
                             { symbol: 'INTC', pnl: 410 },
                             { symbol: 'SPY', pnl: 310 }
-                          ]} 
-                          layout="vertical" 
-                          margin={{ left: 5, right: 10, top: 5, bottom: 5 }} 
+                          ]}
+                          layout="vertical"
+                          margin={{ left: 5, right: 10, top: 5, bottom: 5 }}
                           barSize={14}
                         >
                           <CartesianGrid strokeDasharray="3 3" stroke="#333" horizontal={false} />
                           <XAxis type="number" tickFormatter={(v) => `$${v}`} stroke="#666" fontSize={9} />
                           <YAxis type="category" dataKey="symbol" stroke="#999" fontSize={10} width={40} interval={0} />
-                          <Tooltip 
+                          <Tooltip
                             contentStyle={{ background: '#18181b', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px' }}
                             formatter={(value) => [`$${value}`, 'P/L']}
                           />
@@ -723,19 +723,26 @@ const Dashboard = () => {
             ) : (
               <div className="divide-y divide-white/5">
                 {news.map((item, index) => (
-                  <div key={index} className="news-item">
+                  <div
+                    key={index}
+                    className="news-item"
+                    onClick={() => item.url && window.open(item.url, '_blank')}
+                    style={{ cursor: item.url ? 'pointer' : 'default' }}
+                  >
                     <div className="title">{item.title}</div>
                     <div className="meta">
                       <span>{item.source}</span>
                       <span>•</span>
-                      <span>{item.time || 'Recent'}</span>
+                      <span>{item.time || item.published_at ? new Date(item.published_at).toLocaleDateString() : 'Recent'}</span>
                       {item.sentiment && (
-                        <Badge className={`ml-2 ${
-                          item.sentiment === 'positive' ? 'badge-success' :
-                          item.sentiment === 'negative' ? 'badge-danger' : 'badge-info'
-                        }`}>
+                        <Badge className={`ml-2 ${item.sentiment === 'positive' ? 'badge-success' :
+                            item.sentiment === 'negative' ? 'badge-danger' : 'badge-info'
+                          }`}>
                           {item.sentiment}
                         </Badge>
+                      )}
+                      {!item.sentiment && (
+                        <Badge className="ml-2 badge-info">neutral</Badge>
                       )}
                     </div>
                   </div>
@@ -816,13 +823,13 @@ const Dashboard = () => {
                 <tbody>
                   {opportunities.map((opp, index) => {
                     const isWeekly = opp.expiry_type === 'Weekly' || opp.dte <= 14;
-                    const rowBorderClass = isWeekly 
-                      ? 'border-l-2 border-l-cyan-500/50' 
+                    const rowBorderClass = isWeekly
+                      ? 'border-l-2 border-l-cyan-500/50'
                       : 'border-l-2 border-l-violet-500/50';
-                    
+
                     return (
-                      <tr 
-                        key={index} 
+                      <tr
+                        key={index}
                         className={`cursor-pointer hover:bg-zinc-800/50 transition-colors ${rowBorderClass}`}
                         data-testid={`opportunity-${opp.symbol}`}
                         onClick={() => {
@@ -847,8 +854,8 @@ const Dashboard = () => {
                           </div>
                         </td>
                         <td>
-                          <Badge className={isWeekly 
-                            ? 'bg-cyan-500/20 text-cyan-400 border-cyan-500/30' 
+                          <Badge className={isWeekly
+                            ? 'bg-cyan-500/20 text-cyan-400 border-cyan-500/30'
                             : 'bg-violet-500/20 text-violet-400 border-violet-500/30'
                           }>
                             {isWeekly ? 'Weekly' : 'Monthly'}
@@ -884,15 +891,14 @@ const Dashboard = () => {
                         </td>
                         <td>
                           {(opp.analyst_rating_label || opp.analyst_rating) ? (
-                            <Badge className={`text-xs ${
-                              (opp.analyst_rating_label || opp.analyst_rating) === 'Strong Buy' 
+                            <Badge className={`text-xs ${(opp.analyst_rating_label || opp.analyst_rating) === 'Strong Buy'
                                 ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30'
                                 : (opp.analyst_rating_label || opp.analyst_rating) === 'Buy'
                                   ? 'bg-green-500/20 text-green-400 border-green-500/30'
                                   : (opp.analyst_rating_label || opp.analyst_rating) === 'Hold'
                                     ? 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30'
                                     : 'bg-red-500/20 text-red-400 border-red-500/30'
-                            }`}>
+                              }`}>
                               {opp.analyst_rating_label || opp.analyst_rating}
                             </Badge>
                           ) : (
@@ -966,7 +972,7 @@ const Dashboard = () => {
                   <span className="text-white">{simulateOpp.dte} days</span>
                 </div>
               </div>
-              
+
               <div>
                 <Label>Number of Contracts</Label>
                 <Input
@@ -981,7 +987,7 @@ const Dashboard = () => {
                   Capital required: ${((simulateOpp.stock_price || 0) * 100 * simulateContracts).toLocaleString()}
                 </p>
               </div>
-              
+
               <div className="flex gap-2 pt-2">
                 <Button
                   variant="outline"
@@ -1004,7 +1010,7 @@ const Dashboard = () => {
       </Dialog>
 
       {/* Stock Detail Modal */}
-      <StockDetailModal 
+      <StockDetailModal
         symbol={selectedStock}
         isOpen={isModalOpen}
         onClose={() => {
@@ -1015,11 +1021,10 @@ const Dashboard = () => {
 
       {/* Data Source Notice - EOD Pipeline Status */}
       {opportunitiesInfo && (
-        <div className={`glass-card p-4 border-l-4 ${
-          opportunitiesInfo?.data_source === 'eod_pipeline' && opportunitiesInfo?.run_info?.run_id 
-            ? 'border-emerald-500' 
+        <div className={`glass-card p-4 border-l-4 ${opportunitiesInfo?.data_source === 'eod_pipeline' && opportunitiesInfo?.run_info?.run_id
+            ? 'border-emerald-500'
             : 'border-yellow-500'
-        }`}>
+          }`}>
           <div className="flex items-center gap-3">
             {opportunitiesInfo?.data_source === 'eod_pipeline' && opportunitiesInfo?.run_info?.run_id ? (
               <CheckCircle className="w-5 h-5 text-emerald-400" />
@@ -1027,13 +1032,12 @@ const Dashboard = () => {
               <Activity className="w-5 h-5 text-yellow-400" />
             )}
             <div>
-              <div className={`text-sm font-medium ${
-                opportunitiesInfo?.data_source === 'eod_pipeline' && opportunitiesInfo?.run_info?.run_id 
-                  ? 'text-emerald-400' 
+              <div className={`text-sm font-medium ${opportunitiesInfo?.data_source === 'eod_pipeline' && opportunitiesInfo?.run_info?.run_id
+                  ? 'text-emerald-400'
                   : 'text-yellow-400'
-              }`}>
-                {opportunitiesInfo?.data_source === 'eod_pipeline' && opportunitiesInfo?.run_info?.run_id 
-                  ? 'EOD Pre-computed Data' 
+                }`}>
+                {opportunitiesInfo?.data_source === 'eod_pipeline' && opportunitiesInfo?.run_info?.run_id
+                  ? 'EOD Pre-computed Data'
                   : 'Using Mock Data'}
               </div>
               <div className="text-xs text-zinc-500">
