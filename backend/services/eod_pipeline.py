@@ -1437,7 +1437,7 @@ def calculate_greeks_simple(stock_price: float, strike: float, dte: int, iv: flo
 
 def calculate_cc_score(trade_data: Dict[str, Any]) -> float:
     """Calculate simplified CC quality score (0-100)."""
-    score = 0.0  # Base score
+    score = 30.0  # Base score
     
     # ROI scoring (max +20)
     roi_pct = trade_data.get("roi_pct", 0)
