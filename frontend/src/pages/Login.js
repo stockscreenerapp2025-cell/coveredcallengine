@@ -89,7 +89,10 @@ const Login = () => {
             </div>
 
             <div className="form-group">
-              <Label htmlFor="password" className="form-label">Password</Label>
+              <div className="flex items-center justify-between mb-1">
+                <Label htmlFor="password" className="form-label">Password</Label>
+                <Link to="/reset-password" className="text-xs text-emerald-400 hover:text-emerald-300">Forgot password?</Link>
+              </div>
               <div className="relative">
                 <Input
                   id="password"
