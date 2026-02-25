@@ -1119,8 +1119,8 @@ def is_manual_run_allowed() -> bool:
 # ============================================================
 
 # CC Eligibility Constants (MATCHING PRODUCTION)
-CC_MIN_PRICE = 30.0
-CC_MAX_PRICE = 90.0
+CC_MIN_PRICE = 20.0
+CC_MAX_PRICE = 500.0
 CC_MIN_VOLUME = 1_000_000
 CC_MIN_MARKET_CAP = 5_000_000_000
 CC_MIN_DTE = 7

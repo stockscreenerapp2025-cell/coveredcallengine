@@ -79,49 +79,53 @@ _calendar_valid_trading_days = None
 def _get_nyse_calendar():
     """Get NYSE trading calendar (lazy load)"""
     global _nyse_calendar, _calendar_valid_trading_days
-    
+
     if _nyse_calendar is None:
         try:
             import pandas_market_calendars as mcal
             _nyse_calendar = mcal.get_calendar('NYSE')
-            
+
             # Pre-compute valid trading days for 2024-2027
             start_date = '2024-01-01'
             end_date = '2027-12-31'
-            schedule = _nyse_calendar.schedule(start_date=start_date, end_date=end_date)
-            _calendar_valid_trading_days = set(schedule.index.strftime('%Y-%m-%d').tolist())
-            
-            logger.info(f"NYSE calendar initialized with {len(_calendar_valid_trading_days)} trading days")
+            schedule = _nyse_calendar.schedule(
+                start_date=start_date, end_date=end_date)
+            _calendar_valid_trading_days = set(
+                schedule.index.strftime('%Y-%m-%d').tolist())
+
+            logger.info(
+                f"NYSE calendar initialized with {len(_calendar_valid_trading_days)} trading days")
         except Exception as e:
-            logger.warning(f"Failed to initialize NYSE calendar: {e}. Using fallback holidays.")
+            logger.warning(
+                f"Failed to initialize NYSE calendar: {e}. Using fallback holidays.")
             _nyse_calendar = "fallback"
             _calendar_valid_trading_days = None
-    
+
     return _nyse_calendar, _calendar_valid_trading_days
 
 
 def is_trading_day(check_date: date) -> bool:
     """
     Check if a given date is a valid US trading day.
-    
+
     Args:
         check_date: The date to check
-        
+
     Returns:
         True if it's a trading day, False otherwise
     """
     date_str = check_date.strftime('%Y-%m-%d')
-    
+
     # Weekend check first (fastest)
     if check_date.weekday() >= 5:  # Saturday=5, Sunday=6
         return False
-    
+
     # Try pandas_market_calendars
     calendar, valid_days = _get_nyse_calendar()
-    
+
     if valid_days is not None:
         return date_str in valid_days
-    
+
     # Fallback to hardcoded holidays
     return date_str not in FALLBACK_US_HOLIDAYS
 
@@ -129,13 +133,13 @@ def is_trading_day(check_date: date) -> bool:
 def get_t_minus_1() -> Tuple[str, datetime]:
     """
     Get the T-1 (previous completed trading day) date.
-    
+
     This is the PRIMARY function for data sourcing. All scans, calculations,
     and trade suggestions should use this date.
-    
+
     Returns:
         Tuple of (date_string 'YYYY-MM-DD', datetime object at market close)
-        
+
     Rules:
         - If today is a trading day and market has closed (after 4 PM ET): T-1 = today
         - If today is a trading day and market is open: T-1 = previous trading day
@@ -143,15 +147,15 @@ def get_t_minus_1() -> Tuple[str, datetime]:
     """
     now_eastern = datetime.now(EASTERN_TZ)
     current_date = now_eastern.date()
-    
+
     # Market close time for today
     market_close_today = now_eastern.replace(
-        hour=MARKET_CLOSE_HOUR, 
-        minute=MARKET_CLOSE_MINUTE, 
-        second=0, 
+        hour=MARKET_CLOSE_HOUR,
+        minute=MARKET_CLOSE_MINUTE,
+        second=0,
         microsecond=0
     )
-    
+
     # Determine if we should use today or go back
     if is_trading_day(current_date) and now_eastern >= market_close_today:
         # Today is a trading day and market has closed - T-1 is today
@@ -159,52 +163,53 @@ def get_t_minus_1() -> Tuple[str, datetime]:
     else:
         # Need to find the previous trading day
         t_minus_1_date = current_date - timedelta(days=1)
-        
+
         # Roll back until we find a valid trading day (max 10 days for safety)
         attempts = 0
         while not is_trading_day(t_minus_1_date) and attempts < 10:
             t_minus_1_date -= timedelta(days=1)
             attempts += 1
-    
+
     # Create datetime at market close
     t_minus_1_datetime = EASTERN_TZ.localize(
         datetime.combine(t_minus_1_date, datetime.min.time().replace(
             hour=MARKET_CLOSE_HOUR, minute=MARKET_CLOSE_MINUTE
         ))
     )
-    
-    logger.debug(f"T-1 calculated: {t_minus_1_date} (market close: {t_minus_1_datetime})")
-    
+
+    logger.debug(
+        f"T-1 calculated: {t_minus_1_date} (market close: {t_minus_1_datetime})")
+
     return t_minus_1_date.strftime('%Y-%m-%d'), t_minus_1_datetime
 
 
 def get_trading_days_range(start_date: str, end_date: str) -> List[str]:
     """
     Get list of trading days between two dates.
-    
+
     Args:
         start_date: Start date 'YYYY-MM-DD'
         end_date: End date 'YYYY-MM-DD'
-        
+
     Returns:
         List of trading day date strings
     """
     calendar, valid_days = _get_nyse_calendar()
-    
+
     if valid_days is not None:
         # Use calendar
         return sorted([d for d in valid_days if start_date <= d <= end_date])
-    
+
     # Fallback: enumerate dates and filter
     result = []
     current = datetime.strptime(start_date, '%Y-%m-%d').date()
     end = datetime.strptime(end_date, '%Y-%m-%d').date()
-    
+
     while current <= end:
         if is_trading_day(current):
             result.append(current.strftime('%Y-%m-%d'))
         current += timedelta(days=1)
-    
+
     return result
 
 
@@ -212,10 +217,10 @@ def is_valid_expiration_date(expiry_date: str) -> Tuple[bool, Optional[str]]:
     """
     Validate if an option expiration date is valid.
     Options expire on trading days only (typically Fridays, but not always).
-    
+
     Args:
         expiry_date: Expiration date 'YYYY-MM-DD'
-        
+
     Returns:
         Tuple of (is_valid, reason if invalid)
     """
@@ -223,26 +228,27 @@ def is_valid_expiration_date(expiry_date: str) -> Tuple[bool, Optional[str]]:
         exp_date = datetime.strptime(expiry_date, '%Y-%m-%d').date()
     except ValueError:
         return False, f"Invalid date format: {expiry_date}"
-    
+
     # Check if it's a weekend (options don't expire on weekends)
     if exp_date.weekday() >= 5:
-        weekday_name = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'][exp_date.weekday()]
+        weekday_name = ['Monday', 'Tuesday', 'Wednesday', 'Thursday',
+                        'Friday', 'Saturday', 'Sunday'][exp_date.weekday()]
         return False, f"Options cannot expire on {weekday_name}"
-    
+
     # Check if it's a holiday
     if not is_trading_day(exp_date):
         return False, f"{expiry_date} is a market holiday"
-    
+
     return True, None
 
 
 def is_friday_expiration(expiry_date: str) -> bool:
     """
     Check if an expiration date is a Friday (standard weekly expiration).
-    
+
     Args:
         expiry_date: Expiration date 'YYYY-MM-DD'
-        
+
     Returns:
         True if the date is a Friday
     """
@@ -256,24 +262,24 @@ def is_friday_expiration(expiry_date: str) -> bool:
 def is_monthly_expiration(expiry_date: str) -> bool:
     """
     Check if an expiration is a standard monthly (3rd Friday of the month).
-    
+
     Args:
         expiry_date: Expiration date 'YYYY-MM-DD'
-        
+
     Returns:
         True if the date is a monthly expiration (3rd Friday)
     """
     try:
         exp_date = datetime.strptime(expiry_date, '%Y-%m-%d').date()
-        
+
         # Must be a Friday
         if exp_date.weekday() != 4:
             return False
-        
+
         # Check if it's the 3rd Friday (day 15-21)
         if 15 <= exp_date.day <= 21:
             return True
-        
+
         return False
     except ValueError:
         return False
@@ -282,11 +288,11 @@ def is_monthly_expiration(expiry_date: str) -> bool:
 def filter_valid_expirations(expirations: List[str], friday_only: bool = True) -> List[str]:
     """
     Filter a list of expiration dates to only include valid trading days.
-    
+
     Args:
         expirations: List of expiration date strings
         friday_only: If True, only include Friday expirations (default True)
-        
+
     Returns:
         Filtered list of valid expiration dates
     """
@@ -304,38 +310,38 @@ def filter_valid_expirations(expirations: List[str], friday_only: bool = True) -
 def categorize_expirations(expirations: List[str]) -> Dict[str, List[str]]:
     """
     Categorize expirations into weekly and monthly buckets.
-    
+
     Args:
         expirations: List of valid expiration date strings
-        
+
     Returns:
         Dict with 'weekly' and 'monthly' lists
     """
     weekly = []
     monthly = []
-    
+
     for exp in expirations:
         if is_monthly_expiration(exp):
             monthly.append(exp)
         elif is_friday_expiration(exp):
             weekly.append(exp)
-    
+
     return {"weekly": weekly, "monthly": monthly}
 
 
 def get_market_data_status() -> Dict:
     """
     Get current market data status for display/debugging.
-    
+
     Returns:
         Dict with market status information
     """
     now_eastern = datetime.now(EASTERN_TZ)
     t1_date, t1_datetime = get_t_minus_1()
-    
+
     # Calculate data age
     data_age_hours = (now_eastern - t1_datetime).total_seconds() / 3600
-    
+
     # Determine next trading day
     next_trading = now_eastern.date()
     if not is_trading_day(next_trading) or now_eastern.hour >= MARKET_CLOSE_HOUR:
@@ -344,14 +350,14 @@ def get_market_data_status() -> Dict:
         while not is_trading_day(next_trading) and attempts < 10:
             next_trading += timedelta(days=1)
             attempts += 1
-    
+
     # Next data refresh time (4:00 PM ET on next trading day)
     next_refresh = EASTERN_TZ.localize(
         datetime.combine(next_trading, datetime.min.time().replace(
             hour=MARKET_CLOSE_HOUR, minute=0
         ))
     )
-    
+
     return {
         "current_time_et": now_eastern.strftime('%Y-%m-%d %H:%M:%S ET'),
         "t_minus_1_date": t1_date,
@@ -367,12 +373,12 @@ def get_market_data_status() -> Dict:
 def calculate_dte_from_t1(expiry_date: str) -> int:
     """
     Calculate Days to Expiration (DTE) from T-1 date.
-    
+
     This ensures consistent DTE calculations across all components.
-    
+
     Args:
         expiry_date: Expiration date 'YYYY-MM-DD'
-        
+
     Returns:
         Number of calendar days from T-1 to expiration
     """
@@ -389,21 +395,21 @@ def calculate_dte_from_t1(expiry_date: str) -> int:
 def get_data_freshness_status(data_date: str) -> Dict:
     """
     Get freshness status for data with a specific date.
-    
+
     Args:
         data_date: Date of the data 'YYYY-MM-DD'
-        
+
     Returns:
         Dict with freshness status (green/amber/red) and description
     """
     t1_date_str, _ = get_t_minus_1()
-    
+
     try:
         data_dt = datetime.strptime(data_date, '%Y-%m-%d').date()
         t1_dt = datetime.strptime(t1_date_str, '%Y-%m-%d').date()
-        
+
         days_diff = (t1_dt - data_dt).days
-        
+
         if days_diff == 0:
             return {
                 "status": "green",
@@ -451,26 +457,26 @@ OPTION_FRESHNESS_THRESHOLDS = {
 def get_option_chain_staleness(snapshot_timestamp: datetime) -> Dict:
     """
     Evaluate option chain data staleness based on snapshot timestamp.
-    
+
     Staleness Rules:
     - 🟢 Fresh: snapshot ≤ 24h old
     - 🟠 Stale: 24-48h old  
     - 🔴 Invalid: >48h old → should be excluded from scans
-    
+
     Args:
         snapshot_timestamp: Datetime of the option chain snapshot
-        
+
     Returns:
         Dict with status, age_hours, is_valid, and description
     """
     now = datetime.now(EASTERN_TZ)
-    
+
     # Make snapshot timezone-aware if needed
     if snapshot_timestamp.tzinfo is None:
         snapshot_timestamp = EASTERN_TZ.localize(snapshot_timestamp)
-    
+
     age_hours = (now - snapshot_timestamp).total_seconds() / 3600
-    
+
     if age_hours <= OPTION_FRESHNESS_THRESHOLDS["fresh_hours"]:
         return {
             "status": "green",
@@ -500,40 +506,41 @@ def get_option_chain_staleness(snapshot_timestamp: datetime) -> Dict:
 def validate_option_chain_data(option: Dict) -> Tuple[bool, List[str]]:
     """
     Validate that an option has all required data fields.
-    
+
     Validation Rules:
     - Must have valid strike price
     - Must have valid premium (close/last price)
     - Must have IV (implied volatility) - reject if missing
     - Must have Open Interest
     - Must have valid expiry date
-    
+
     Args:
         option: Option dictionary with chain data
-        
+
     Returns:
         Tuple of (is_valid, list of missing/invalid fields)
     """
     issues = []
-    
+
     # Check required fields
     if not option.get("strike") or option.get("strike", 0) <= 0:
         issues.append("missing_strike")
-    
-    premium = option.get("close") or option.get("last_price") or option.get("premium", 0)
+
+    premium = option.get("close") or option.get(
+        "last_price") or option.get("premium", 0)
     if premium <= 0:
         issues.append("missing_premium")
-    
+
     # IV is critical - reject if missing
     iv = option.get("implied_volatility") or option.get("iv", 0)
     if iv <= 0:
         issues.append("missing_iv")
-    
+
     # Open Interest - important for liquidity
     oi = option.get("open_interest") or option.get("oi", 0)
     if oi <= 0:
         issues.append("missing_open_interest")
-    
+
     # Expiry validation
     expiry = option.get("expiry") or option.get("expiration_date")
     if not expiry:
@@ -542,20 +549,20 @@ def validate_option_chain_data(option: Dict) -> Tuple[bool, List[str]]:
         is_valid, reason = is_valid_expiration_date(expiry)
         if not is_valid:
             issues.append(f"invalid_expiry: {reason}")
-    
+
     return len(issues) == 0, issues
 
 
 def get_data_metadata() -> Dict:
     """
     Get comprehensive data metadata for display.
-    
+
     Returns:
         Dict with equity date, next refresh, and staleness thresholds
     """
     t1_date, t1_datetime = get_t_minus_1()
     market_status = get_market_data_status()
-    
+
     return {
         "equity_price_date": t1_date,
         "equity_price_source": "T-1 Market Close",
@@ -567,6 +574,60 @@ def get_data_metadata() -> Dict:
             "invalid_hours": OPTION_FRESHNESS_THRESHOLDS["invalid_hours"]
         }
     }
+
+
+# =============================================================================
+# SNAPSHOT SCHEDULING UTILITIES (Non-Breaking Additions)
+# =============================================================================
+
+SNAPSHOT_DELAY_MINUTES = 45  # Snapshot runs 45 minutes after market close
+
+
+def get_market_close_datetime(check_date: date) -> datetime:
+    """
+    Returns market close datetime for a trading day.
+    Handles early close automatically if pandas_market_calendars is active.
+    """
+    calendar, _ = _get_nyse_calendar()
+
+    if calendar == "fallback":
+        # Fallback assumes normal 4PM close (no early close support)
+        return EASTERN_TZ.localize(
+            datetime.combine(
+                check_date,
+                datetime.min.time().replace(hour=MARKET_CLOSE_HOUR, minute=0)
+            )
+        )
+
+    try:
+        schedule = calendar.schedule(
+            start_date=check_date.strftime("%Y-%m-%d"),
+            end_date=check_date.strftime("%Y-%m-%d")
+        )
+
+        if schedule.empty:
+            raise ValueError(f"{check_date} is not a trading day.")
+
+        close_time = schedule.iloc[0]["market_close"]
+        return close_time.tz_convert(EASTERN_TZ).to_pydatetime()
+
+    except Exception as e:
+        logger.warning(f"Error getting market close for {check_date}: {e}")
+        return EASTERN_TZ.localize(
+            datetime.combine(
+                check_date,
+                datetime.min.time().replace(hour=MARKET_CLOSE_HOUR, minute=0)
+            )
+        )
+
+
+def get_snapshot_time(check_date: date) -> datetime:
+    """
+    Returns when snapshot job should run: market close + 45 minutes.
+    Automatically handles early close days.
+    """
+    market_close = get_market_close_datetime(check_date)
+    return market_close + timedelta(minutes=SNAPSHOT_DELAY_MINUTES)
 
 
 # Initialize calendar on module load
