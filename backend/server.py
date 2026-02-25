@@ -1661,9 +1661,6 @@ async def startup():
 
     scheduler.add_job(
         run_precomputed_scans,
-        # BEFORE
-        CronTrigger(hour=16, minute=5, day_of_week='mon-fri',
-                    timezone='America/New_York'),
         CronTrigger(hour=17, minute=0, day_of_week='mon-fri',
                     timezone='America/New_York'),
         id='precomputed_scans',
