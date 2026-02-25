@@ -71,7 +71,8 @@ class IVMetrics:
     iv_rank_source: str  # Source/quality indicator
     proxy_meta: Dict[str, Any]  # Metadata about proxy selection
     iv_rank_confidence: str = "LOW"  # "LOW", "MEDIUM", "HIGH"
-    iv_samples_used: int = 0  # Samples used in calculation (may differ from iv_samples)
+    # Samples used in calculation (may differ from iv_samples)
+    iv_samples_used: int = 0
 
 
 # =============================================================================
@@ -87,33 +88,33 @@ def compute_iv_atm_proxy(
 ) -> Tuple[Optional[float], Dict[str, Any]]:
     """
     Compute representative IV (ATM proxy) from an options chain.
-    
+
     Selection logic:
     1. Filter options within DTE range [min_dte, max_dte]
     2. Find expiry nearest to target_dte
     3. Select strike closest to stock_price (ATM)
     4. Return that option's impliedVolatility
-    
+
     Args:
         options: List of option contracts from chain
         stock_price: Current underlying price
         target_dte: Target DTE for selection (default 35)
         min_dte: Minimum DTE to consider
         max_dte: Maximum DTE to consider
-    
+
     Returns:
         Tuple of (iv_decimal, metadata_dict) or (None, {}) if cannot compute
     """
     if not options or stock_price <= 0:
         return None, {"error": "No options or invalid stock price"}
-    
+
     # Filter options within DTE range with valid IV
     valid_options = []
     for opt in options:
         dte = opt.get("dte", 0)
         iv = opt.get("implied_volatility", 0) or opt.get("iv", 0)
         strike = opt.get("strike", 0)
-        
+
         if min_dte <= dte <= max_dte and iv > 0.01 and iv < 5.0 and strike > 0:
             valid_options.append({
                 "strike": strike,
@@ -122,23 +123,23 @@ def compute_iv_atm_proxy(
                 "iv": iv,
                 "contract": opt.get("contract_ticker", opt.get("symbol", ""))
             })
-    
+
     if not valid_options:
         return None, {"error": "No valid options in DTE range"}
-    
+
     # Find expiry nearest to target_dte
     valid_options.sort(key=lambda x: abs(x["dte"] - target_dte))
     target_expiry = valid_options[0]["expiry"]
-    
+
     # Filter to only that expiry
     expiry_options = [o for o in valid_options if o["expiry"] == target_expiry]
-    
+
     # Select strike closest to stock price (ATM)
     expiry_options.sort(key=lambda x: abs(x["strike"] - stock_price))
     atm_option = expiry_options[0]
-    
+
     iv_decimal = atm_option["iv"]
-    
+
     meta = {
         "selected_strike": atm_option["strike"],
         "selected_expiry": atm_option["expiry"],
@@ -148,7 +149,7 @@ def compute_iv_atm_proxy(
         "options_considered": len(valid_options),
         "target_dte": target_dte
     }
-    
+
     return iv_decimal, meta
 
 
@@ -159,7 +160,7 @@ def compute_iv_atm_proxy(
 def get_trading_date_eastern() -> str:
     """
     Get current trading date in US/Eastern timezone.
-    
+
     Returns date string in YYYY-MM-DD format.
     """
     eastern = pytz.timezone('US/Eastern')
@@ -176,14 +177,14 @@ async def upsert_iv_history(
 ) -> bool:
     """
     Store or update IV history entry (idempotent per date).
-    
+
     Args:
         db: MongoDB database instance
         symbol: Stock symbol (uppercase)
         trading_date: Date string YYYY-MM-DD (US/Eastern)
         iv_decimal: IV value (decimal form, e.g., 0.30)
         meta: Metadata about the proxy selection
-    
+
     Returns:
         True if successful, False otherwise
     """
@@ -195,16 +196,17 @@ async def upsert_iv_history(
             "captured_at": datetime.now(timezone.utc),
             "meta": meta
         }
-        
+
         await db[IV_HISTORY_COLLECTION].update_one(
             {"symbol": symbol.upper(), "trading_date": trading_date},
             {"$set": doc},
             upsert=True
         )
-        
-        logger.debug(f"Upserted IV history for {symbol} on {trading_date}: IV={iv_decimal:.4f}")
+
+        logger.debug(
+            f"Upserted IV history for {symbol} on {trading_date}: IV={iv_decimal:.4f}")
         return True
-        
+
     except Exception as e:
         logger.warning(f"Failed to upsert IV history for {symbol}: {e}")
         return False
@@ -217,18 +219,19 @@ async def get_iv_history_series(
 ) -> List[float]:
     """
     Retrieve IV history series for a symbol.
-    
+
     Args:
         db: MongoDB database instance
         symbol: Stock symbol
         limit_days: Max days of history to retrieve
-    
+
     Returns:
         List of IV values (decimals), most recent last
     """
     try:
-        cutoff_date = (datetime.now(timezone.utc) - timedelta(days=limit_days)).strftime('%Y-%m-%d')
-        
+        cutoff_date = (datetime.now(timezone.utc) -
+                       timedelta(days=limit_days)).strftime('%Y-%m-%d')
+
         cursor = db[IV_HISTORY_COLLECTION].find(
             {
                 "symbol": symbol.upper(),
@@ -236,11 +239,11 @@ async def get_iv_history_series(
             },
             {"iv_atm_proxy": 1, "trading_date": 1, "_id": 0}
         ).sort("trading_date", 1)
-        
+
         docs = await cursor.to_list(500)
-        
+
         return [doc["iv_atm_proxy"] for doc in docs if doc.get("iv_atm_proxy")]
-        
+
     except Exception as e:
         logger.warning(f"Failed to get IV history for {symbol}: {e}")
         return []
@@ -249,7 +252,7 @@ async def get_iv_history_series(
 async def ensure_iv_history_indexes(db) -> None:
     """
     Create required indexes for iv_history collection.
-    
+
     Should be called during app startup.
     """
     try:
@@ -259,22 +262,22 @@ async def ensure_iv_history_indexes(db) -> None:
             unique=True,
             name="symbol_date_unique"
         )
-        
+
         # Index for efficient lookups by symbol + date range
         await db[IV_HISTORY_COLLECTION].create_index(
             [("symbol", 1), ("captured_at", -1)],
             name="symbol_captured_desc"
         )
-        
+
         # TTL index to auto-expire old data (~450 days)
         await db[IV_HISTORY_COLLECTION].create_index(
             "captured_at",
             expireAfterSeconds=450 * 24 * 60 * 60,
             name="ttl_expire"
         )
-        
+
         logger.info("IV history indexes ensured")
-        
+
     except Exception as e:
         logger.warning(f"Failed to create IV history indexes: {e}")
 
@@ -289,30 +292,30 @@ def compute_iv_rank_percentile(
 ) -> Dict[str, Any]:
     """
     Compute IV Rank and IV Percentile from historical series.
-    
+
     Industry Standard Formulas:
     - IV Rank = 100 * (iv_current - iv_low) / (iv_high - iv_low)
     - IV Percentile = 100 * count(iv_hist < iv_current) / N
-    
+
     STAGED BOOTSTRAP BEHAVIOR (to reduce 50/100 clustering):
     - < 5 samples: return neutral 50 with LOW confidence
     - 5-19 samples: compute true rank with shrinkage toward 50, MEDIUM confidence
     - >= 20 samples: true rank/percentile unchanged, HIGH/MEDIUM confidence
-    
+
     Shrinkage formula (5-19 samples):
         w = samples / 20
         iv_rank = 50 + w * (raw_iv_rank - 50)
-    
+
     Args:
         iv_current: Current IV proxy value (decimal)
         series: Historical IV values (decimals)
-    
+
     Returns:
         Dict with iv_rank, iv_percentile, iv_low, iv_high, iv_samples, 
         iv_rank_source, iv_rank_confidence, iv_samples_used
     """
     sample_count = len(series)
-    
+
     # ==========================================================================
     # STAGE 1: Too few samples (< 5) - Pure neutral
     # ==========================================================================
@@ -327,13 +330,13 @@ def compute_iv_rank_percentile(
             "iv_rank_source": "DEFAULT_NEUTRAL_TOO_FEW_SAMPLES",
             "iv_rank_confidence": "LOW"
         }
-    
+
     # ==========================================================================
     # Calculate raw statistics (used for both bootstrap and full calculation)
     # ==========================================================================
     iv_low = min(series)
     iv_high = max(series)
-    
+
     # Raw IV Rank (industry standard)
     if iv_high == iv_low:
         # Flat series - return neutral
@@ -341,12 +344,12 @@ def compute_iv_rank_percentile(
     else:
         raw_iv_rank = 100 * (iv_current - iv_low) / (iv_high - iv_low)
         raw_iv_rank = max(0.0, min(100.0, raw_iv_rank))
-    
+
     # Raw IV Percentile (industry standard)
     count_below = sum(1 for iv in series if iv < iv_current)
     raw_percentile = 100 * count_below / sample_count
     raw_percentile = max(0.0, min(100.0, raw_percentile))
-    
+
     # ==========================================================================
     # STAGE 2: Bootstrap phase (5-19 samples) - Shrinkage toward 50
     # ==========================================================================
@@ -354,10 +357,10 @@ def compute_iv_rank_percentile(
         # Apply shrinkage: pull extreme values toward 50
         # w = 0.25 at 5 samples, w = 0.95 at 19 samples
         w = sample_count / MIN_SAMPLES_BOOTSTRAP
-        
+
         iv_rank = 50.0 + w * (raw_iv_rank - 50.0)
         iv_percentile = 50.0 + w * (raw_percentile - 50.0)
-        
+
         return {
             "iv_rank": round(iv_rank, 1),
             "iv_percentile": round(iv_percentile, 1),
@@ -368,12 +371,12 @@ def compute_iv_rank_percentile(
             "iv_rank_source": "OBSERVED_ATM_PROXY_BOOTSTRAP_SHRUNK",
             "iv_rank_confidence": "MEDIUM"
         }
-    
+
     # ==========================================================================
     # STAGE 3: Full history (>= 20 samples) - True rank/percentile
     # ==========================================================================
     confidence = "HIGH" if sample_count >= MIN_SAMPLES_HIGH_CONF else "MEDIUM"
-    
+
     return {
         "iv_rank": round(raw_iv_rank, 1),
         "iv_percentile": round(raw_percentile, 1),
@@ -399,34 +402,34 @@ async def get_iv_metrics_for_symbol(
 ) -> IVMetrics:
     """
     Get complete IV metrics for a symbol.
-    
+
     This is the main function to call from endpoints.
-    
+
     CRITICAL ORDER (Part B fix - prevent self-teaching):
     1. Compute ATM proxy IV from current chain
     2. Load historical series (BEFORE storing today)
     3. Compute IV Rank and Percentile from history
     4. Store today's value in history (idempotent)
     5. Return metrics
-    
+
     This ensures custom scans don't artificially teach history and 
     immediately consume it, which would cause rank=100 clustering.
-    
+
     Args:
         db: MongoDB database instance
         symbol: Stock symbol
         options: Current options chain data
         stock_price: Current underlying price
         store_history: Whether to store current IV in history
-    
+
     Returns:
         IVMetrics with all populated fields (never None)
     """
     symbol = symbol.upper()
-    
+
     # Step 1: Compute ATM proxy from current chain
     iv_proxy, proxy_meta = compute_iv_atm_proxy(options, stock_price)
-    
+
     # If we can't compute proxy, return defaults
     if iv_proxy is None:
         return IVMetrics(
@@ -442,19 +445,19 @@ async def get_iv_metrics_for_symbol(
             iv_rank_confidence="LOW",
             iv_samples_used=0
         )
-    
+
     # Step 2: Get historical series BEFORE storing today's value
     # This prevents "self-teaching" where we store and immediately rank ourselves
     series = await get_iv_history_series(db, symbol)
-    
+
     # Step 3: Compute IV Rank and Percentile from historical data
     metrics = compute_iv_rank_percentile(iv_proxy, series)
-    
+
     # Step 4: Store in history if requested (AFTER computing rank)
     if store_history:
         trading_date = get_trading_date_eastern()
         await upsert_iv_history(db, symbol, trading_date, iv_proxy, proxy_meta)
-    
+
     # Step 5: Return complete metrics
     return IVMetrics(
         iv_proxy=round(iv_proxy, 4),
@@ -477,19 +480,19 @@ async def get_iv_metrics_quick(
 ) -> Dict[str, Any]:
     """
     Get IV metrics from stored history only (no chain computation).
-    
+
     Used when we don't have a fresh chain but need IV metrics.
     Returns neutral values if no history available.
-    
+
     Args:
         db: MongoDB database instance
         symbol: Stock symbol
-    
+
     Returns:
         Dict with iv_rank, iv_percentile, iv_samples, iv_rank_source, iv_rank_confidence
     """
     series = await get_iv_history_series(db, symbol.upper())
-    
+
     if not series:
         return {
             "iv_proxy": 0.0,
@@ -503,11 +506,11 @@ async def get_iv_metrics_quick(
             "iv_rank_source": "NO_HISTORY_AVAILABLE",
             "iv_rank_confidence": "LOW"
         }
-    
+
     # Use most recent as current
     iv_current = series[-1]
     metrics = compute_iv_rank_percentile(iv_current, series)
-    
+
     return {
         "iv_proxy": round(iv_current, 4),
         "iv_proxy_pct": round(iv_current * 100, 1),
@@ -526,12 +529,12 @@ async def get_iv_history_debug(
 ) -> List[Dict[str, Any]]:
     """
     Get recent IV history entries for debugging.
-    
+
     Args:
         db: MongoDB database instance
         symbol: Stock symbol
         limit: Number of entries to return
-    
+
     Returns:
         List of history documents (most recent first)
     """
@@ -540,9 +543,9 @@ async def get_iv_history_debug(
             {"symbol": symbol.upper()},
             {"_id": 0}
         ).sort("trading_date", -1).limit(limit)
-        
+
         return await cursor.to_list(limit)
-        
+
     except Exception as e:
         logger.warning(f"Failed to get IV history debug for {symbol}: {e}")
         return []
@@ -551,16 +554,16 @@ async def get_iv_history_debug(
 async def get_iv_collection_stats(db) -> Dict[str, Any]:
     """
     Get statistics about the iv_history collection.
-    
+
     Returns:
         Dict with count, unique symbols, date range, etc.
     """
     try:
         total_count = await db[IV_HISTORY_COLLECTION].count_documents({})
-        
+
         # Get unique symbols
         unique_symbols = await db[IV_HISTORY_COLLECTION].distinct("symbol")
-        
+
         # Get date range
         oldest = await db[IV_HISTORY_COLLECTION].find_one(
             {}, {"trading_date": 1, "_id": 0}, sort=[("trading_date", 1)]
@@ -568,7 +571,7 @@ async def get_iv_collection_stats(db) -> Dict[str, Any]:
         newest = await db[IV_HISTORY_COLLECTION].find_one(
             {}, {"trading_date": 1, "_id": 0}, sort=[("trading_date", -1)]
         )
-        
+
         return {
             "total_entries": total_count,
             "unique_symbols": len(unique_symbols),
@@ -579,7 +582,108 @@ async def get_iv_collection_stats(db) -> Dict[str, Any]:
             "min_samples_for_any_rank": MIN_SAMPLES_TOO_FEW,
             "min_samples_for_high_confidence": MIN_SAMPLES_HIGH_CONF
         }
-        
+
     except Exception as e:
         logger.warning(f"Failed to get IV collection stats: {e}")
         return {"error": str(e)}
+
+    # =============================================================================
+# BACKFILL UTILITY
+# =============================================================================
+
+
+async def backfill_iv_history_from_snapshots(db) -> Dict[str, int]:
+    """
+    One-time backfill: extract ATM IV from existing symbol_snapshot documents
+    and populate iv_history. Safe to run multiple times (idempotent).
+
+    Called automatically after first snapshot run if iv_history is empty.
+
+    Returns:
+        Dict with written, skipped, failed counts
+    """
+    written, skipped, failed = 0, 0, 0
+    seen = set()
+
+    try:
+        snapshots = await db.symbol_snapshot.find(
+            {},
+            {"symbol": 1, "underlying_price": 1, "as_of": 1, "option_chain": 1}
+        ).to_list(length=10000)
+
+        logger.info(f"IV backfill: processing {len(snapshots)} snapshots")
+
+        for snap in snapshots:
+            symbol = snap.get("symbol")
+            stock_price = snap.get("underlying_price", 0)
+            as_of = snap.get("as_of")
+            option_chain = snap.get("option_chain", [])
+
+            if not symbol or not stock_price or not as_of or not option_chain:
+                skipped += 1
+                continue
+
+            trading_date = (
+                as_of.strftime("%Y-%m-%d")
+                if isinstance(as_of, datetime)
+                else str(as_of)[:10]
+            )
+
+            key = f"{symbol}_{trading_date}"
+            if key in seen:
+                skipped += 1
+                continue
+            seen.add(key)
+
+            # Prefer near-term calls (7-45 DTE) for ATM IV proxy
+            near_calls = []
+            for chain in option_chain:
+                dte = chain.get("dte", 0)
+                if 7 <= dte <= 45:
+                    near_calls.extend(chain.get("calls", []))
+            if not near_calls:
+                for chain in option_chain:
+                    near_calls.extend(chain.get("calls", []))
+
+            if not near_calls or not stock_price:
+                skipped += 1
+                continue
+
+            # Find ATM call by impliedVolatility field
+            valid = [
+                (c, abs(c.get("strike", 0) - stock_price))
+                for c in near_calls
+                if c.get("impliedVolatility", 0) > 0.01
+                and c.get("strike", 0) > 0
+            ]
+            if not valid:
+                skipped += 1
+                continue
+
+            valid.sort(key=lambda x: x[1])
+            iv_proxy = valid[0][0].get("impliedVolatility")
+
+            if not iv_proxy:
+                skipped += 1
+                continue
+
+            meta = {
+                "source": "BACKFILL_FROM_SNAPSHOT",
+                "stock_price": stock_price,
+                "calls_checked": len(valid)
+            }
+
+            ok = await upsert_iv_history(db, symbol, trading_date, float(iv_proxy), meta)
+            if ok:
+                written += 1
+            else:
+                failed += 1
+
+        logger.info(
+            f"IV backfill complete: written={written}, skipped={skipped}, failed={failed}"
+        )
+
+    except Exception as e:
+        logger.error(f"IV backfill failed: {e}")
+
+    return {"written": written, "skipped": skipped, "failed": failed}
