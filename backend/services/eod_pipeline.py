@@ -51,7 +51,7 @@ from services.yf_pricing import (
     get_underlying_prices_bulk_yf
 )
 from services.data_provider import get_market_state
-from services.iv_rank_service import backfill_iv_history_from_snapshots
+from services.iv_rank_service import backfill_iv_history_from_snapshots, get_iv_metrics_quick
 
 logger = logging.getLogger(__name__)
 
@@ -1602,6 +1602,14 @@ async def compute_scan_results(
             except Exception:
                 pass
 
+        # Fetch IV rank metrics from stored history (once per symbol)
+        iv_rank_metrics = {}
+        if db is not None:
+            try:
+                iv_rank_metrics = await get_iv_metrics_quick(db, symbol)
+            except Exception as e:
+                logger.warning(f"IV rank fetch failed for {symbol}: {e}")
+
         # Process option chains for CC opportunities
         for chain in option_chains:
             expiry = chain.get("expiry", "")
@@ -1788,11 +1796,13 @@ async def compute_scan_results(
                     "theta": greeks["theta"],
                     "vega": greeks["vega"],
 
-                    "iv": iv_decimal,
-                    "iv_pct": iv_percent,
-                    "iv_rank": iv_rank,
-                    "iv_percentile": iv_percentile,
-                    "iv_rank_source": iv_rank_source,
+                    # IV (explicit units)
+                    "iv": iv_decimal,           # Decimal (0.65)
+                    "iv_pct": iv_percent,       # Percent (65.0)
+                    "iv_rank": iv_rank_metrics.get("iv_rank"),
+                    "iv_percentile": iv_rank_metrics.get("iv_percentile"),
+                    "iv_rank_source": iv_rank_metrics.get("iv_rank_source"),
+                    "iv_rank_confidence": iv_rank_metrics.get("iv_rank_confidence"),
 
                     "open_interest": oi,
                     "volume": volume,
@@ -2093,7 +2103,10 @@ async def compute_scan_results(
                     # IV (from short leg)
                     "iv": iv_decimal,           # Decimal (0.65)
                     "iv_pct": iv_percent,       # Percent (65.0)
-                    "iv_rank": None,            # Will be enriched if available
+                    "iv_rank": iv_rank_metrics.get("iv_rank"),
+                    "iv_percentile": iv_rank_metrics.get("iv_percentile"),
+                    "iv_rank_source": iv_rank_metrics.get("iv_rank_source"),
+                    "iv_rank_confidence": iv_rank_metrics.get("iv_rank_confidence"),
 
                     # Quality flags (combined from validation + soft flags)
                     "quality_flags": combined_quality_flags,
