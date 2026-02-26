@@ -306,6 +306,25 @@ const Screener = () => {
       params.include_etfs = stockFilters.includeETFs;
       params.include_index = stockFilters.includeIndex;
 
+      // Greeks - theta
+      if (greeksFilters.maxTheta !== '' && greeksFilters.maxTheta !== undefined) params.max_theta = greeksFilters.maxTheta;
+
+      // ROI - annualized
+      if (roiFilters.minAnnualizedRoi !== '' && roiFilters.minAnnualizedRoi !== undefined) params.min_annualized_roi = roiFilters.minAnnualizedRoi;
+
+      // Technical filters
+      if (technicalFilters.smaFilter !== 'none') params.sma_filter = technicalFilters.smaFilter;
+      if (technicalFilters.rsiFilter !== 'all') params.rsi_filter = technicalFilters.rsiFilter;
+      if (technicalFilters.macdSignal !== 'all') params.macd_signal = technicalFilters.macdSignal;
+      if (technicalFilters.trendStrength !== 'all') params.trend_strength = technicalFilters.trendStrength;
+      if (technicalFilters.overallSignal !== 'all') params.overall_signal = technicalFilters.overallSignal;
+
+      // Fundamental filters
+      if (fundamentalFilters.analystRating !== 'all') params.analyst_rating = fundamentalFilters.analystRating;
+      if (fundamentalFilters.minAnalystCount !== '' && fundamentalFilters.minAnalystCount !== undefined) params.min_analyst_count = fundamentalFilters.minAnalystCount;
+      if (fundamentalFilters.peRatio !== 'all') params.pe_ratio = fundamentalFilters.peRatio;
+      if (fundamentalFilters.minRoe !== '' && fundamentalFilters.minRoe !== undefined) params.min_roe = fundamentalFilters.minRoe;
+
       const response = await screenerApi.getCoveredCalls(params);
 
       let results = response.data.opportunities || [];
