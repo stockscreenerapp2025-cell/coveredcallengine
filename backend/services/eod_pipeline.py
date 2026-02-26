@@ -28,6 +28,7 @@ import random
 from datetime import datetime, timezone, timedelta
 from typing import List, Dict, Optional, Tuple, Any
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from backend.services.iv_rank_service import get_iv_rank_for_symbol
 
 import yfinance as yf
 import pandas as pd
@@ -1720,23 +1721,33 @@ async def compute_scan_results(
                 except Exception:
                     contract_symbol = f"{symbol}_{strike}_{expiry}"
 
-                # IV validation: store as decimal (0.65) and percent (65.0)
+                    # IV validation: store as decimal (0.65) and percent (65.0)
                 iv_decimal = round(iv, 4) if iv and iv > 0 else 0.0
                 iv_percent = round(iv * 100, 1) if iv and iv > 0 else 0.0
 
-                # === EXPLICIT CC SCHEMA (Feb 2026) ===
-                # WITH MANDATORY MARKET CONTEXT FIELDS + OPTION PARITY MODEL
+                # Fetch IV Rank safely
+                iv_rank = None
+                iv_percentile = None
+                iv_rank_source = None
+
+                try:
+                    metrics = await get_iv_rank_for_symbol(db, symbol, iv_decimal)
+                    if metrics:
+                        iv_rank = metrics.get("iv_rank")
+                        iv_percentile = metrics.get("iv_percentile")
+                        iv_rank_source = metrics.get("iv_rank_source")
+                except Exception:
+                    pass
+
+                # === CC Opportunity ===
                 cc_opp = {
-                    # Run metadata
                     "run_id": run_id,
                     "as_of": as_of,
                     "created_at": datetime.now(timezone.utc),
 
-                    # Underlying
                     "symbol": symbol,
                     "stock_price": round(stock_price, 2),
 
-                    # MANDATORY MARKET CONTEXT FIELDS
                     "stock_price_source": snapshot.get("stock_price_source", "SESSION_CLOSE"),
                     "session_close_price": snapshot.get("session_close_price"),
                     "prior_close_price": snapshot.get("prior_close_price"),
@@ -1747,61 +1758,48 @@ async def compute_scan_results(
                     "market_cap": market_cap,
                     "avg_volume": avg_volume,
 
-                    # Option contract
                     "contract_symbol": contract_symbol,
                     "strike": strike,
                     "expiry": expiry,
                     "dte": dte,
                     "dte_category": "weekly" if dte <= 14 else "monthly",
 
-                    # Pricing (EXPLICIT - no ambiguity)
                     "premium_bid": round(premium_bid, 2),
                     "premium_ask": round(premium_ask_val, 2) if premium_ask_val else None,
-                    "premium_mid": mid,  # (bid+ask)/2 when valid
+                    "premium_mid": mid,
                     "premium_last": round(last_price, 2) if last_price and last_price > 0 else None,
                     "premium_prev_close": round(prev_close, 2) if prev_close and prev_close > 0 else None,
-                    # = premium_bid (SELL rule)
                     "premium_used": round(premium_used, 2),
                     "pricing_rule": "SELL_BID",
-
-                    # OPTION PARITY MODEL: Display price (matches Yahoo display)
                     "premium_display": display_price,
                     "premium_display_source": display_price_source,
+                    "premium": round(premium_bid, 2),
 
-                    # Legacy fields for backward compatibility
-                    "premium": round(premium_bid, 2),  # Alias for premium_bid
-
-                    # Economics
                     "premium_yield": round(premium_yield, 2),
                     "otm_pct": round(otm_pct, 2),
                     "roi_pct": round(roi_pct, 2),
-                    "roi_annualized": round(roi_annualized, 1),
+                    "roi_annualized": round(roi_annualized, 1) if roi_annualized else None,
                     "max_profit": round(premium_bid * 100, 2),
                     "breakeven": round(stock_price - premium_bid, 2),
 
-                    # Greeks
                     "delta": greeks["delta"],
                     "delta_source": "BLACK_SCHOLES_APPROX",
                     "gamma": greeks["gamma"],
                     "theta": greeks["theta"],
                     "vega": greeks["vega"],
 
-                    # IV (explicit units)
-                    "iv": iv_decimal,           # Decimal (0.65)
-                    "iv_pct": iv_percent,       # Percent (65.0)
-                    "iv_rank": None,            # Will be enriched if available
+                    "iv": iv_decimal,
+                    "iv_pct": iv_percent,
+                    "iv_rank": iv_rank,
+                    "iv_percentile": iv_percentile,
+                    "iv_rank_source": iv_rank_source,
 
-                    # Liquidity
                     "open_interest": oi,
                     "volume": volume,
 
-                    # Quality flags (from validation + soft flags)
                     "quality_flags": quality_flags,
-
-                    # Analyst (from enrichment)
                     "analyst_rating": analyst_rating,
 
-                    # Scoring
                     "score": round(score, 1)
                 }
 
