@@ -28,7 +28,7 @@ import random
 from datetime import datetime, timezone, timedelta
 from typing import List, Dict, Optional, Tuple, Any
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from backend.services.iv_rank_service import get_iv_rank_for_symbol
+from backend.services.iv_rank_service import get_iv_metrics_for_symbol
 
 import yfinance as yf
 import pandas as pd
@@ -1739,11 +1739,11 @@ async def compute_scan_results(
                 iv_rank_source = None
 
                 try:
-                    metrics = await get_iv_rank_for_symbol(db, symbol, iv_decimal)
+                    metrics = await get_iv_metrics_for_symbol(db, symbol, option_chains, stock_price, store_history=True)
                     if metrics:
-                        iv_rank = metrics.get("iv_rank")
-                        iv_percentile = metrics.get("iv_percentile")
-                        iv_rank_source = metrics.get("iv_rank_source")
+                        iv_rank = metrics.iv_rank
+                        iv_percentile = metrics.iv_percentile
+                        iv_rank_source = metrics.iv_rank_source
                 except Exception:
                     pass
 
