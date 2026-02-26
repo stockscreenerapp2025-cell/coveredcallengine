@@ -265,8 +265,10 @@ def fetch_bulk_quotes_sync(symbols: List[str], retry_count: int = 0) -> Dict[str
 
                 # Validate prices
                 raw_prices = {
-                    "session_close": session_close_price,
-                    "prior_close": prior_close_price
+                    "regularMarketClose": session_close_price,       # Official 4:00 PM close
+                    "regularMarketPreviousClose": prior_close_price,  # Prior day close
+                    "session_close": session_close_price,            # backward compat
+                    "prior_close": prior_close_price                 # backward compat
                 }
 
                 if session_close_price is None and prior_close_price is None:
