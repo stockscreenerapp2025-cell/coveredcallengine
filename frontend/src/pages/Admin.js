@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { adminApi } from '../lib/api';
+import { TriggerButton } from "../components/TriggerButton";
 import api from '../lib/api';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../components/ui/card';
 import { Button } from '../components/ui/button';
@@ -54,10 +54,8 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import AdminSupport from '../components/AdminSupport';
-
 const Admin = () => {
   const [activeTab, setActiveTab] = useState('dashboard');
-
   // API Settings
   const [settings, setSettings] = useState({
     massive_api_key: '',
@@ -70,29 +68,24 @@ const Admin = () => {
   });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-
   // Dashboard Stats
   const [dashboardStats, setDashboardStats] = useState(null);
   const [statsLoading, setStatsLoading] = useState(true);
-
   // User Management
   const [users, setUsers] = useState([]);
   const [usersLoading, setUsersLoading] = useState(false);
   const [usersPagination, setUsersPagination] = useState({ page: 1, pages: 1, total: 0 });
   const [userFilters, setUserFilters] = useState({ status: '', plan: '', search: '' });
   const [selectedUser, setSelectedUser] = useState(null);
-
   // Screener Status (Phase 8)
   const [screenerStatus, setScreenerStatus] = useState(null);
   const [screenerStatusLoading, setScreenerStatusLoading] = useState(false);
-
   // Invitations
   const [invitations, setInvitations] = useState([]);
   const [invitationsLoading, setInvitationsLoading] = useState(false);
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [inviteForm, setInviteForm] = useState({ email: '', name: '', role: 'tester', environment: 'test', message: '' });
   const [sendingInvite, setSendingInvite] = useState(false);
-
   // Subscription settings
   const [subscriptionSettings, setSubscriptionSettings] = useState({
     active_mode: 'test',
@@ -100,7 +93,6 @@ const Admin = () => {
     live_links: { trial: '', monthly: '', yearly: '' }
   });
   const [savingSubscription, setSavingSubscription] = useState(false);
-
   // Integration settings
   const [integrationSettings, setIntegrationSettings] = useState({
     stripe_webhook_secret: '',
@@ -117,7 +109,6 @@ const Admin = () => {
   const [savingIntegration, setSavingIntegration] = useState(false);
   const [testEmailAddress, setTestEmailAddress] = useState('');
   const [sendingTestEmail, setSendingTestEmail] = useState(false);
-
   // Visibility toggles
   const [showMassiveApiKey, setShowMassiveApiKey] = useState(false);
   const [showMassiveAccessId, setShowMassiveAccessId] = useState(false);
@@ -129,7 +120,6 @@ const Admin = () => {
   const [showResendKey, setShowResendKey] = useState(false);
   const [showPayPalPassword, setShowPayPalPassword] = useState(false);
   const [showPayPalSignature, setShowPayPalSignature] = useState(false);
-
   // Email Automation
   const [emailTemplates, setEmailTemplates] = useState([]);
   const [automationRules, setAutomationRules] = useState([]);
@@ -147,7 +137,6 @@ const Admin = () => {
     announcement_content: ''
   });
   const [sendingBroadcast, setSendingBroadcast] = useState(false);
-
   // IMAP Email Sync
   const [imapSettings, setImapSettings] = useState({
     imap_server: 'imap.hostinger.com',
@@ -161,11 +150,9 @@ const Admin = () => {
   const [imapSaving, setImapSaving] = useState(false);
   const [imapSyncing, setImapSyncing] = useState(false);
   const [showImapPassword, setShowImapPassword] = useState(false);
-
   // Pre-computed Scans Trigger
   const [triggeringScan, setTriggeringScan] = useState(false);
   const [lastScanResult, setLastScanResult] = useState(null);
-
   // Universe Exclusions Drilldown (Data Quality Tab)
   const [exclusionDrilldown, setExclusionDrilldown] = useState({
     open: false,
@@ -175,7 +162,6 @@ const Admin = () => {
     offset: 0,
     total: 0
   });
-
   useEffect(() => {
     fetchSettings();
     fetchDashboardStats();
@@ -183,7 +169,6 @@ const Admin = () => {
     fetchIntegrationSettings();
     fetchScreenerStatus();
   }, []);
-
   // Keep Data Quality tab fresh (without masking missing backend fields)
   useEffect(() => {
     if (activeTab !== 'data-quality') return;
@@ -195,10 +180,23 @@ const Admin = () => {
     const interval = setInterval(() => {
       fetchScreenerStatus();
     }, 60000);
-    return () => clearInterval(interval);
+
+  
+  
+
+  
+  const handleRunEngine = async (userId) => {
+    try {
+      await api.post("/admin/run-engine/" + userId);
+      alert("Engine started for user");
+    } catch (err) {
+      alert("Failed to start engine");
+    }
+  };
+
+  return () => clearInterval(interval);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab]);
-
   const fetchSettings = async () => {
     setLoading(true);
     try {
@@ -210,7 +208,6 @@ const Admin = () => {
       setLoading(false);
     }
   };
-
   const fetchDashboardStats = async () => {
     setStatsLoading(true);
     try {
@@ -222,7 +219,6 @@ const Admin = () => {
       setStatsLoading(false);
     }
   };
-
   const fetchScreenerStatus = async () => {
     setScreenerStatusLoading(true);
     try {
@@ -234,7 +230,6 @@ const Admin = () => {
       setScreenerStatusLoading(false);
     }
   };
-
   // Fetch exclusion drilldown data for a specific reason
   const fetchExclusionDrilldown = async (reason, offset = 0) => {
     setExclusionDrilldown(prev => ({ ...prev, loading: true, reason, offset }));
@@ -246,7 +241,6 @@ const Admin = () => {
       });
       if (runId) params.append('run_id', runId);
       if (reason) params.append('reason', reason);
-      
       const response = await api.get(`/admin/universe/excluded?${params.toString()}`);
       setExclusionDrilldown(prev => ({
         ...prev,
@@ -261,7 +255,6 @@ const Admin = () => {
       setExclusionDrilldown(prev => ({ ...prev, loading: false }));
     }
   };
-
   // Download CSV with authentication (fixes auth header issue)
   const downloadExclusionCsv = async (reason) => {
     try {
@@ -269,37 +262,29 @@ const Admin = () => {
       const params = new URLSearchParams();
       if (runId) params.append('run_id', runId);
       if (reason) params.append('reason', reason);
-      
       // Use authenticated API call
       const response = await api.get(`/admin/universe/excluded.csv?${params.toString()}`, {
         responseType: 'blob'
       });
-      
       // Create blob and trigger download
       const blob = new Blob([response.data], { type: 'text/csv' });
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      
       // Generate filename
       const reasonPart = reason ? `_${reason.toLowerCase()}` : '_all';
       const runIdPart = runId ? `_${runId}` : '';
       link.download = `excluded${reasonPart}${runIdPart}.csv`;
-      
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
       window.URL.revokeObjectURL(url);
-      
       toast.success('CSV downloaded successfully');
     } catch (error) {
       console.error('CSV download error:', error);
       toast.error('Failed to download CSV');
     }
   };
-
-
-
   const fetchSubscriptionSettings = async () => {
     try {
       const response = await api.get('/subscription/admin/settings');
@@ -308,7 +293,6 @@ const Admin = () => {
       console.error('Subscription settings error:', error);
     }
   };
-
   const fetchIntegrationSettings = async () => {
     try {
       const response = await api.get('/admin/integration-settings');
@@ -317,7 +301,6 @@ const Admin = () => {
       console.error('Integration settings error:', error);
     }
   };
-
   // IMAP Functions
   const fetchImapStatus = async () => {
     setImapLoading(true);
@@ -344,7 +327,6 @@ const Admin = () => {
       setImapLoading(false);
     }
   };
-
   const saveImapSettings = async () => {
     setImapSaving(true);
     try {
@@ -361,7 +343,6 @@ const Admin = () => {
       setImapSaving(false);
     }
   };
-
   const testImapConnection = async () => {
     try {
       const response = await api.post('/admin/imap/test-connection');
@@ -374,7 +355,6 @@ const Admin = () => {
       toast.error(error.response?.data?.detail || 'Connection test failed');
     }
   };
-
   const syncImapNow = async () => {
     setImapSyncing(true);
     try {
@@ -391,7 +371,6 @@ const Admin = () => {
       setImapSyncing(false);
     }
   };
-
   const fetchEmailTemplates = async () => {
     setEmailLoading(true);
     try {
@@ -403,7 +382,6 @@ const Admin = () => {
       setEmailLoading(false);
     }
   };
-
   const fetchAutomationRules = async () => {
     try {
       const response = await api.get('/admin/email-automation/rules');
@@ -414,7 +392,6 @@ const Admin = () => {
       console.error('Automation rules error:', error);
     }
   };
-
   const fetchEmailLogs = async () => {
     try {
       const response = await api.get('/admin/email-automation/logs');
@@ -423,7 +400,6 @@ const Admin = () => {
       console.error('Email logs error:', error);
     }
   };
-
   const fetchEmailStats = async () => {
     try {
       const response = await api.get('/admin/email-automation/stats');
@@ -432,7 +408,6 @@ const Admin = () => {
       console.error('Email stats error:', error);
     }
   };
-
   const handleUpdateTemplate = async (templateId, updates) => {
     try {
       await api.put(`/admin/email-automation/templates/${templateId}`, null, { params: updates });
@@ -443,7 +418,6 @@ const Admin = () => {
       toast.error('Failed to update template');
     }
   };
-
   const handleToggleRule = async (ruleId, enabled) => {
     try {
       await api.put(`/admin/email-automation/rules/${ruleId}`, null, { params: { enabled } });
@@ -453,13 +427,11 @@ const Admin = () => {
       toast.error('Failed to update rule');
     }
   };
-
   const handleSendBroadcast = async () => {
     if (!broadcastData.announcement_title || !broadcastData.announcement_content) {
       toast.error('Please fill in title and content');
       return;
     }
-
     setSendingBroadcast(true);
     try {
       const response = await api.post('/admin/email-automation/broadcast', null, {
@@ -479,7 +451,6 @@ const Admin = () => {
       setSendingBroadcast(false);
     }
   };
-
   const handleTestEmail = async (templateKey, email) => {
     try {
       await api.post('/admin/email-automation/test-send', null, {
@@ -490,7 +461,6 @@ const Admin = () => {
       toast.error('Failed to send test email');
     }
   };
-
   const fetchUsers = async (page = 1) => {
     setUsersLoading(true);
     try {
@@ -498,7 +468,6 @@ const Admin = () => {
       if (userFilters.status && userFilters.status !== 'all') params.append('status', userFilters.status);
       if (userFilters.plan && userFilters.plan !== 'all') params.append('plan', userFilters.plan);
       if (userFilters.search) params.append('search', userFilters.search);
-
       const response = await api.get(`/admin/users?${params.toString()}`);
       setUsers(response.data.users);
       setUsersPagination({ page: response.data.page, pages: response.data.pages, total: response.data.total });
@@ -509,7 +478,6 @@ const Admin = () => {
       setUsersLoading(false);
     }
   };
-
   const fetchInvitations = async () => {
     setInvitationsLoading(true);
     try {
@@ -521,13 +489,11 @@ const Admin = () => {
       setInvitationsLoading(false);
     }
   };
-
   const sendInvitation = async () => {
     if (!inviteForm.email || !inviteForm.name) {
       toast.error('Please fill in email and name');
       return;
     }
-
     setSendingInvite(true);
     try {
       await api.post('/invitations/send', inviteForm);
@@ -541,10 +507,8 @@ const Admin = () => {
       setSendingInvite(false);
     }
   };
-
   const revokeInvitation = async (invitationId) => {
     if (!window.confirm('Are you sure you want to revoke this invitation?')) return;
-
     try {
       await api.delete(`/invitations/${invitationId}`);
       toast.success('Invitation revoked');
@@ -553,7 +517,6 @@ const Admin = () => {
       toast.error('Failed to revoke invitation');
     }
   };
-
   const resendInvitation = async (invitationId) => {
     try {
       await api.post(`/invitations/${invitationId}/resend`);
@@ -562,7 +525,6 @@ const Admin = () => {
       toast.error('Failed to resend invitation');
     }
   };
-
   const saveSettings = async () => {
     setSaving(true);
     try {
@@ -574,7 +536,6 @@ const Admin = () => {
       setSaving(false);
     }
   };
-
   const saveSubscriptionSettings = async () => {
     setSavingSubscription(true);
     try {
@@ -595,7 +556,6 @@ const Admin = () => {
       setSavingSubscription(false);
     }
   };
-
   const saveIntegrationSettings = async () => {
     setSavingIntegration(true);
     try {
@@ -610,7 +570,6 @@ const Admin = () => {
       if (integrationSettings.paypal_api_username) params.append('paypal_api_username', integrationSettings.paypal_api_username);
       if (integrationSettings.paypal_api_password) params.append('paypal_api_password', integrationSettings.paypal_api_password);
       if (integrationSettings.paypal_api_signature) params.append('paypal_api_signature', integrationSettings.paypal_api_signature);
-
       await api.post(`/admin/integration-settings?${params.toString()}`);
       toast.success('Integration settings saved');
       fetchIntegrationSettings();
@@ -620,7 +579,6 @@ const Admin = () => {
       setSavingIntegration(false);
     }
   };
-
   const sendTestEmail = async () => {
     if (!testEmailAddress) {
       toast.error('Please enter an email address');
@@ -640,7 +598,6 @@ const Admin = () => {
       setSendingTestEmail(false);
     }
   };
-
   const switchSubscriptionMode = async (mode) => {
     try {
       await api.post(`/subscription/admin/switch-mode?mode=${mode}`);
@@ -650,7 +607,6 @@ const Admin = () => {
       toast.error('Failed to switch mode');
     }
   };
-
   const extendUserTrial = async (userId, days) => {
     try {
       await api.post(`/admin/users/${userId}/extend-trial?days=${days}`);
@@ -660,7 +616,6 @@ const Admin = () => {
       toast.error('Failed to extend trial');
     }
   };
-
   const setUserSubscription = async (userId, status, plan = 'monthly') => {
     try {
       await api.post(`/admin/users/${userId}/set-subscription?status=${status}&plan=${plan}`);
@@ -671,12 +626,10 @@ const Admin = () => {
       toast.error('Failed to set subscription');
     }
   };
-
   const deleteUser = async (userId, userEmail) => {
     if (!window.confirm(`Are you sure you want to delete user "${userEmail}"?\n\nThis action cannot be undone.`)) {
       return;
     }
-
     try {
       await api.delete(`/admin/users/${userId}`);
       toast.success(`User ${userEmail} deleted`);
@@ -686,10 +639,8 @@ const Admin = () => {
       toast.error(error.response?.data?.detail || 'Failed to delete user');
     }
   };
-
   const PasswordInput = ({ value, onChange, show, onToggle, placeholder, label }) => (
-    <div className="space-y-2">
-      <Label className="text-zinc-400">{label}</Label>
+    <div className="space-y-2"> <Label className="text-zinc-400">{label}</Label>
       <div className="relative">
         <Input
           type={show ? 'text' : 'password'}
@@ -708,7 +659,6 @@ const Admin = () => {
       </div>
     </div>
   );
-
   const StatCard = ({ title, value, icon: Icon, trend, color = "emerald" }) => (
     <Card className="glass-card">
       <CardContent className="p-4">
@@ -729,7 +679,6 @@ const Admin = () => {
       </CardContent>
     </Card>
   );
-
   const getStatusBadge = (status) => {
     const styles = {
       active: 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30',
@@ -738,17 +687,13 @@ const Admin = () => {
       past_due: 'bg-red-500/20 text-red-400 border-red-500/30',
       expired: 'bg-orange-500/20 text-orange-400 border-orange-500/30'
     };
-
     if (!status) {
       return <Badge className="bg-zinc-700/50 text-zinc-500 border-zinc-600/30">No Sub</Badge>;
     }
-
     return <Badge className={styles[status] || styles.expired}>{status}</Badge>;
   };
-
   // Helpers for Data Quality tab (avoid masking missing values with hardcoded defaults)
   const isNumber = (v) => typeof v === 'number' && !Number.isNaN(v);
-
   const formatUtc = (isoString) => {
     if (!isoString) return 'N/A';
     try {
@@ -761,9 +706,7 @@ const Admin = () => {
       return 'N/A';
     }
   };
-
   const healthScoreValue = isNumber(screenerStatus?.health_score) ? screenerStatus.health_score : null;
-
   const lastFullRunIso =
     screenerStatus?.last_full_run_at ??
     screenerStatus?.last_full_run_utc ??
@@ -771,36 +714,29 @@ const Admin = () => {
     screenerStatus?.last_run_at ??
     screenerStatus?.last_run ??
     null;
-
   const marketState = screenerStatus?.market_state ?? screenerStatus?.market?.state ?? null;
   const priceSource =
     screenerStatus?.underlying_price_source ??
     screenerStatus?.price_source ??
     screenerStatus?.pricing_rule ??
     null;
-
   const realtimeBadgeText = (() => {
     if (!marketState && !priceSource) return '⚠️ Data source unknown';
     const ms = String(marketState || '').toUpperCase();
     const ps = String(priceSource || '').toUpperCase();
-
     const isLive = ps.includes('REAL') || ps.includes('LIVE') || ps.includes('INTRADAY') || ps.includes('OPEN');
     const isClose = ps.includes('CLOSE') || ps.includes('PREV') || ps.includes('EOD');
-
     if (ms === 'OPEN') return isLive ? '✅ Real-time (OPEN)' : '🟡 Market OPEN (non-live source)';
     if (ms === 'CLOSED') return isClose ? '🕐 Market Close data' : '🟡 Market CLOSED (source unclear)';
     if (ms === 'PREMARKET' || ms === 'AFTERHOURS') return isLive ? `✅ ${ms} live` : `🟡 ${ms} (non-live)`;
     return isLive ? '✅ Live pricing' : isClose ? '🕐 Market close pricing' : '⚠️ Data source unknown';
   })();
-
   const sdHigh = isNumber(screenerStatus?.score_distribution?.high) ? screenerStatus.score_distribution.high : null;
   const sdMediumHigh = isNumber(screenerStatus?.score_distribution?.medium_high) ? screenerStatus.score_distribution.medium_high : null;
   const sdMedium = isNumber(screenerStatus?.score_distribution?.medium) ? screenerStatus.score_distribution.medium : null;
   const sdLow = isNumber(screenerStatus?.score_distribution?.low) ? screenerStatus.score_distribution.low : null;
-
   const scoreDriftValue = isNumber(screenerStatus?.score_drift) ? screenerStatus.score_drift : null;
   const outlierSwingsValue = isNumber(screenerStatus?.outlier_swings) ? screenerStatus.outlier_swings : null;
-
   // Universe tier counts and exclusion breakdown
   const tierCounts = screenerStatus?.tier_counts || screenerStatus?.universe?.tier_counts || null;
   const universeIncluded = screenerStatus?.included ?? screenerStatus?.universe?.included ?? null;
@@ -808,6 +744,9 @@ const Admin = () => {
   const excludedCountsByReason = screenerStatus?.excluded_counts_by_reason || screenerStatus?.universe?.excluded_counts_by_reason || screenerStatus?.universe?.excluded_counts || null;
   const excludedCountsByStage = screenerStatus?.excluded_counts_by_stage || screenerStatus?.universe?.excluded_counts_by_stage || null;
   const currentRunId = screenerStatus?.run_id || null;
+
+  
+  
 
   return (
     <div className="space-y-6" data-testid="admin-page">
@@ -817,6 +756,7 @@ const Admin = () => {
           <h1 className="text-2xl font-bold text-white flex items-center gap-3">
             <Settings className="w-8 h-8 text-emerald-500" />
             Admin Panel
+                <div className="pt-4"><TriggerButton /></div>
           </h1>
           <p className="text-zinc-400 mt-1">Manage users, subscriptions, and settings</p>
         </div>
@@ -825,7 +765,6 @@ const Admin = () => {
           Refresh
         </Button>
       </div>
-
       {/* Main Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
         <TabsList className="flex w-full bg-zinc-800/50 p-1 overflow-x-auto">
@@ -866,7 +805,6 @@ const Admin = () => {
             API Keys
           </TabsTrigger>
         </TabsList>
-
         {/* Dashboard Tab */}
         <TabsContent value="dashboard" className="space-y-6 mt-6">
           {statsLoading ? (
@@ -882,7 +820,6 @@ const Admin = () => {
                 <StatCard title="Trial Users" value={dashboardStats.users?.trial || 0} icon={Clock} color="blue" />
                 <StatCard title="Paid Subs" value={dashboardStats.subscriptions?.active || 0} icon={CreditCard} color="amber" />
               </div>
-
               {/* Revenue & Metrics */}
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 <StatCard
@@ -910,7 +847,6 @@ const Admin = () => {
                   color="red"
                 />
               </div>
-
               {/* Alerts */}
               <Card className="glass-card">
                 <CardHeader>
@@ -951,7 +887,6 @@ const Admin = () => {
                   </div>
                 </CardContent>
               </Card>
-
               {/* Subscription Breakdown */}
               <div className="grid md:grid-cols-2 gap-6">
                 <Card className="glass-card">
@@ -977,7 +912,6 @@ const Admin = () => {
                     </div>
                   </CardContent>
                 </Card>
-
                 <Card className="glass-card">
                   <CardHeader>
                     <CardTitle className="text-lg">Quick Actions</CardTitle>
@@ -1010,7 +944,6 @@ const Admin = () => {
             </Card>
           )}
         </TabsContent>
-
         {/* Data Quality Tab */}
         <TabsContent value="data-quality" className="space-y-6 mt-6">
           {screenerStatusLoading ? (
@@ -1080,7 +1013,6 @@ const Admin = () => {
                   </div>
                 </CardContent>
               </Card>
-
               {/* 2️⃣ Core Metrics */}
               <div className="grid md:grid-cols-4 gap-4">
                 <Card className="glass-card">
@@ -1114,7 +1046,6 @@ const Admin = () => {
                   </CardContent>
                 </Card>
               </div>
-
               {/* 3️⃣ Score Distribution */}
               <Card className="glass-card">
                 <CardHeader>
@@ -1144,7 +1075,6 @@ const Admin = () => {
                   </div>
                 </CardContent>
               </Card>
-
               {/* 3.5️⃣ Universe Breakdown (Tier Counts) */}
               <Card className="glass-card">
                 <CardHeader>
@@ -1182,7 +1112,6 @@ const Admin = () => {
                           <p className="text-xs text-zinc-400 mt-1">Total</p>
                         </div>
                       </div>
-                      
                       {/* Included / Excluded Summary */}
                       <div className="flex gap-4 mt-4">
                         <div className="flex-1 p-4 rounded-lg bg-emerald-500/10 border border-emerald-500/20">
@@ -1204,7 +1133,6 @@ const Admin = () => {
                   )}
                 </CardContent>
               </Card>
-
               {/* 3.6️⃣ Exclusions Breakdown (Clickable) */}
               <Card className="glass-card">
                 <CardHeader className="flex flex-row items-center justify-between">
@@ -1283,7 +1211,6 @@ const Admin = () => {
                           </tbody>
                         </table>
                       </div>
-
                       {/* By Stage (Optional - if available) */}
                       {excludedCountsByStage && Object.values(excludedCountsByStage).some(v => v > 0) && (
                         <div className="mt-4 pt-4 border-t border-zinc-700">
@@ -1305,7 +1232,6 @@ const Admin = () => {
                   )}
                 </CardContent>
               </Card>
-
               {/* 4️⃣ Data Quality Indicators */}
               <div className="grid md:grid-cols-2 gap-4">
                 <Card className="glass-card">
@@ -1359,7 +1285,6 @@ const Admin = () => {
                     </div>
                   </CardContent>
                 </Card>
-
                 <Card className="glass-card">
                   <CardHeader>
                     <CardTitle className="text-lg">System Info</CardTitle>
@@ -1410,7 +1335,6 @@ const Admin = () => {
             </Card>
           )}
         </TabsContent>
-
         {/* Users Tab */}
         <TabsContent value="users" className="space-y-6 mt-6">
           {/* Filters */}
@@ -1468,7 +1392,6 @@ const Admin = () => {
               </div>
             </CardContent>
           </Card>
-
           {/* Users Table */}
           <Card className="glass-card">
             <CardHeader className="flex flex-row items-center justify-between">
@@ -1509,6 +1432,7 @@ const Admin = () => {
                           <td className="py-3">
                             {getStatusBadge(user.subscription?.status)}
                           </td>
+                          <td className="py-3 text-right"><button onClick={() => handleRunEngine(user.id)} className="px-2 py-1 text-xs bg-green-600 text-white rounded mr-2">Run Engine</button></td>
                           <td className="py-3">
                             <span className="text-zinc-400">{user.subscription?.plan || '-'}</span>
                           </td>
@@ -1517,6 +1441,11 @@ const Admin = () => {
                               <span className="text-xs text-zinc-400">
                                 {new Date(user.subscription.trial_end).toLocaleDateString()}
                               </span>
+                          <div className="flex items-center justify-end gap-2"> 
+                            <button 
+                            > 
+                            </button> 
+                          </div>
                             ) : '-'}
                           </td>
                           <td className="py-3">
@@ -1536,6 +1465,11 @@ const Admin = () => {
                                   +7 days
                                 </Button>
                               )}
+                          <div className="flex items-center justify-end gap-2"> 
+                            <button 
+                            > 
+                            </button> 
+                          </div>
                               <Select onValueChange={(status) => setUserSubscription(user.id, status)}>
                                 <SelectTrigger className="h-8 w-24 text-xs">
                                   <SelectValue placeholder="Set..." />
@@ -1562,7 +1496,6 @@ const Admin = () => {
                   </table>
                 </div>
               )}
-
               {/* Pagination */}
               {usersPagination.pages > 1 && (
                 <div className="flex items-center justify-between mt-4 pt-4 border-t border-zinc-800">
@@ -1591,7 +1524,6 @@ const Admin = () => {
               )}
             </CardContent>
           </Card>
-
           {/* Invitations Section */}
           <Card className="glass-card">
             <CardHeader>
@@ -1634,7 +1566,6 @@ const Admin = () => {
               )}
             </CardContent>
           </Card>
-
           {/* Invite Modal */}
           {showInviteModal && (
             <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
@@ -1698,12 +1629,10 @@ const Admin = () => {
             </div>
           )}
         </TabsContent>
-
         {/* Support Tab */}
         <TabsContent value="support" className="mt-6">
           <AdminSupport />
         </TabsContent>
-
         {/* Email Automation Tab */}
         <TabsContent value="email-automation" className="space-y-6 mt-6">
           {/* Email Stats */}
@@ -1715,7 +1644,6 @@ const Admin = () => {
               <StatCard title="Pending" value={emailStats.pending || 0} icon={Clock} color="yellow" />
             </div>
           )}
-
           {/* Sub-tabs */}
           <Tabs value={emailSubTab} onValueChange={setEmailSubTab}>
             <TabsList className="bg-zinc-800/50">
@@ -1724,7 +1652,6 @@ const Admin = () => {
               <TabsTrigger value="broadcast">Broadcast</TabsTrigger>
               <TabsTrigger value="logs">Logs</TabsTrigger>
             </TabsList>
-
             {/* Templates */}
             <TabsContent value="templates" className="mt-4">
               <Card className="glass-card">
@@ -1762,7 +1689,6 @@ const Admin = () => {
                 </CardContent>
               </Card>
             </TabsContent>
-
             {/* Automation Rules */}
             <TabsContent value="rules" className="mt-4">
               <Card className="glass-card">
@@ -1792,7 +1718,6 @@ const Admin = () => {
                 </CardContent>
               </Card>
             </TabsContent>
-
             {/* Broadcast */}
             <TabsContent value="broadcast" className="mt-4">
               <Card className="glass-card">
@@ -1826,7 +1751,6 @@ const Admin = () => {
                 </CardContent>
               </Card>
             </TabsContent>
-
             {/* Logs */}
             <TabsContent value="logs" className="mt-4">
               <Card className="glass-card">
@@ -1856,7 +1780,6 @@ const Admin = () => {
               </Card>
             </TabsContent>
           </Tabs>
-
           {/* Template Editor Modal */}
           {editingTemplate && (
             <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
@@ -1908,7 +1831,6 @@ const Admin = () => {
             </div>
           )}
         </TabsContent>
-
         {/* Subscriptions Tab */}
         <TabsContent value="subscriptions" className="space-y-6 mt-6">
           <Card className="glass-card">
@@ -1964,14 +1886,12 @@ const Admin = () => {
                   </Button>
                 </div>
               </div>
-
               {/* Payment Links */}
               <Tabs defaultValue="test" className="w-full">
                 <TabsList className="grid w-full grid-cols-2 bg-zinc-800/50">
                   <TabsTrigger value="test"><TestTube className="w-4 h-4 mr-2" />Test Links</TabsTrigger>
                   <TabsTrigger value="live"><Zap className="w-4 h-4 mr-2" />Live Links</TabsTrigger>
                 </TabsList>
-
                 <TabsContent value="test" className="space-y-4 mt-4">
                   <div className="space-y-4">
                     <div className="space-y-2">
@@ -2012,7 +1932,6 @@ const Admin = () => {
                     </div>
                   </div>
                 </TabsContent>
-
                 <TabsContent value="live" className="space-y-4 mt-4">
                   <div className="p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/30 mb-4">
                     <p className="text-xs text-emerald-400">
@@ -2059,7 +1978,6 @@ const Admin = () => {
                   </div>
                 </TabsContent>
               </Tabs>
-
               <div className="flex justify-end pt-4 border-t border-zinc-800">
                 <Button onClick={saveSubscriptionSettings} className="bg-emerald-600 hover:bg-emerald-700" disabled={savingSubscription}>
                   {savingSubscription ? <RefreshCw className="w-4 h-4 mr-2 animate-spin" /> : <Save className="w-4 h-4 mr-2" />}
@@ -2068,7 +1986,6 @@ const Admin = () => {
               </div>
             </CardContent>
           </Card>
-
           {/* PayPal Configuration Card */}
           <Card className={`glass-card border-l-4 ${integrationStatus?.paypal?.configured ? 'border-emerald-500' : 'border-yellow-500'}`}>
             <CardHeader>
@@ -2090,7 +2007,6 @@ const Admin = () => {
                   onCheckedChange={(checked) => setIntegrationSettings(prev => ({ ...prev, paypal_enabled: checked }))}
                 />
               </div>
-
               {/* Mode Toggle */}
               <div className="flex items-center justify-between p-4 rounded-lg bg-zinc-800/50 border border-zinc-700">
                 <div className="flex items-center gap-3">
@@ -2135,7 +2051,6 @@ const Admin = () => {
                   </Button>
                 </div>
               </div>
-
               {/* API Credentials */}
               <div className="space-y-4">
                 <div className="space-y-2">
@@ -2190,7 +2105,6 @@ const Admin = () => {
                   </div>
                 </div>
               </div>
-
               {/* IPN URL Info */}
               <div className="p-3 rounded-lg bg-cyan-500/10 border border-cyan-500/20">
                 <p className="text-xs text-cyan-400 flex items-center gap-2">
@@ -2198,7 +2112,6 @@ const Admin = () => {
                   Set your PayPal IPN URL to: <code className="bg-zinc-800 px-1 rounded">{window.location.origin}/api/paypal/ipn</code>
                 </p>
               </div>
-
               <div className="flex justify-end">
                 <Button onClick={saveIntegrationSettings} className="bg-cyan-600 hover:bg-cyan-700" disabled={savingIntegration}>
                   {savingIntegration ? <RefreshCw className="w-4 h-4 mr-2 animate-spin" /> : <Save className="w-4 h-4 mr-2" />}
@@ -2208,7 +2121,6 @@ const Admin = () => {
             </CardContent>
           </Card>
         </TabsContent>
-
         {/* Integrations Tab */}
         <TabsContent value="integrations" className="space-y-6 mt-6">
           {/* Integration Status */}
@@ -2266,7 +2178,6 @@ const Admin = () => {
               </CardContent>
             </Card>
           </div>
-
           {/* Stripe Settings */}
           <Card className="glass-card">
             <CardHeader>
@@ -2298,7 +2209,6 @@ const Admin = () => {
               />
             </CardContent>
           </Card>
-
           {/* Email Settings */}
           <Card className="glass-card">
             <CardHeader>
@@ -2329,7 +2239,6 @@ const Admin = () => {
               <p className="text-xs text-zinc-500">
                 Get your API key from <a href="https://resend.com" target="_blank" rel="noopener noreferrer" className="text-cyan-400 hover:underline">resend.com</a>
               </p>
-
               {/* Test Email Section */}
               <div className="mt-4 pt-4 border-t border-zinc-700">
                 <Label className="text-zinc-400 mb-2 block">Send Test Email</Label>
@@ -2360,7 +2269,6 @@ const Admin = () => {
               </div>
             </CardContent>
           </Card>
-
           <div className="flex justify-end">
             <Button onClick={saveIntegrationSettings} className="bg-emerald-600 hover:bg-emerald-700" disabled={savingIntegration}>
               {savingIntegration ? <RefreshCw className="w-4 h-4 mr-2 animate-spin" /> : <Save className="w-4 h-4 mr-2" />}
@@ -2368,7 +2276,6 @@ const Admin = () => {
             </Button>
           </div>
         </TabsContent>
-
         {/* IMAP Email Sync Tab */}
         <TabsContent value="imap" className="space-y-6 mt-6">
           {/* Status Cards */}
@@ -2390,7 +2297,6 @@ const Admin = () => {
                 </div>
               </CardContent>
             </Card>
-
             <Card className={`glass-card border-l-4 ${imapStatus?.last_sync_success ? 'border-emerald-500' : imapStatus?.last_sync_error ? 'border-red-500' : 'border-zinc-600'}`}>
               <CardContent className="p-4">
                 <div className="flex items-center gap-3">
@@ -2412,7 +2318,6 @@ const Admin = () => {
                 </div>
               </CardContent>
             </Card>
-
             <Card className="glass-card border-l-4 border-violet-500">
               <CardContent className="p-4">
                 <div className="flex items-center gap-3">
@@ -2427,7 +2332,6 @@ const Admin = () => {
               </CardContent>
             </Card>
           </div>
-
           {/* Error Alert */}
           {imapStatus?.last_sync_error && (
             <Card className="glass-card border-red-500/50 bg-red-500/5">
@@ -2447,7 +2351,6 @@ const Admin = () => {
               </CardContent>
             </Card>
           )}
-
           {/* IMAP Settings */}
           <Card className="glass-card">
             <CardHeader>
@@ -2512,7 +2415,6 @@ const Admin = () => {
                   <p className="text-xs text-zinc-500 mt-1">Leave blank to keep existing password</p>
                 </div>
               </div>
-
               <div className="flex gap-3">
                 <Button onClick={testImapConnection} variant="outline" className="border-zinc-700">
                   <Activity className="w-4 h-4 mr-2" />
@@ -2529,7 +2431,6 @@ const Admin = () => {
               </div>
             </CardContent>
           </Card>
-
           {/* Sync History */}
           <Card className="glass-card">
             <CardHeader>
@@ -2575,7 +2476,6 @@ const Admin = () => {
             </CardContent>
           </Card>
         </TabsContent>
-
         {/* API Keys Tab */}
         <TabsContent value="api-keys" className="space-y-6 mt-6">
           <Card className="glass-card">
@@ -2618,7 +2518,6 @@ const Admin = () => {
                   placeholder="Your Secret Key"
                 />
               </div>
-
               {/* MarketAux */}
               <div className="p-4 rounded-lg bg-zinc-800/50 space-y-4">
                 <h4 className="font-medium text-white flex items-center gap-2">
@@ -2634,7 +2533,6 @@ const Admin = () => {
                   placeholder="Your MarketAux API Token"
                 />
               </div>
-
               {/* OpenAI */}
               <div className="p-4 rounded-lg bg-zinc-800/50 space-y-4">
                 <h4 className="font-medium text-white flex items-center gap-2">
@@ -2650,7 +2548,6 @@ const Admin = () => {
                   placeholder="sk-..."
                 />
               </div>
-
               <div className="flex justify-end pt-4 border-t border-zinc-800">
                 <Button onClick={saveSettings} className="bg-emerald-600 hover:bg-emerald-700" disabled={saving}>
                   {saving ? <RefreshCw className="w-4 h-4 mr-2 animate-spin" /> : <Save className="w-4 h-4 mr-2" />}
@@ -2661,7 +2558,6 @@ const Admin = () => {
           </Card>
         </TabsContent>
       </Tabs>
-
       {/* Exclusion Drilldown Modal */}
       {exclusionDrilldown.open && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
@@ -2693,7 +2589,6 @@ const Admin = () => {
                 </button>
               </div>
             </div>
-
             {/* Modal Body */}
             <div className="flex-1 overflow-auto p-4">
               {exclusionDrilldown.loading ? (
@@ -2744,7 +2639,6 @@ const Admin = () => {
                 </div>
               )}
             </div>
-
             {/* Modal Footer - Pagination */}
             {exclusionDrilldown.total > 100 && (
               <div className="flex items-center justify-between p-4 border-t border-zinc-700">
@@ -2777,5 +2671,4 @@ const Admin = () => {
     </div>
   );
 };
-
 export default Admin;
