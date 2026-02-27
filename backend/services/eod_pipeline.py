@@ -1739,7 +1739,8 @@ async def compute_scan_results(
                 iv_rank_source = None
 
                 try:
-                    metrics = await get_iv_metrics_for_symbol(db, symbol, option_chains, stock_price, store_history=True)
+                    flat_options = [dict(c, expiry=chain.get("expiry",""), dte=chain.get("dte", 0), implied_volatility=c.get("impliedVolatility", 0)) for chain in option_chains for c in chain.get("calls", [])]
+                    metrics = await get_iv_metrics_for_symbol(db, symbol, flat_options, stock_price, store_history=True)
                     if metrics:
                         iv_rank = metrics.iv_rank
                         iv_percentile = metrics.iv_percentile

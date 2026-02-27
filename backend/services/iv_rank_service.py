@@ -43,9 +43,9 @@ MIN_SAMPLES_BOOTSTRAP = 20    # Below this: shrinkage applied
 MIN_SAMPLES_HIGH_CONF = 60    # Above this: HIGH confidence
 
 # Target DTE for ATM proxy selection
-TARGET_DTE = 35
-MIN_DTE_FOR_PROXY = 25
-MAX_DTE_FOR_PROXY = 60
+TARGET_DTE = 30
+MIN_DTE_FOR_PROXY = 10
+MAX_DTE_FOR_PROXY = 90
 
 # History retention (days)
 HISTORY_RETENTION_DAYS = 400
@@ -82,9 +82,9 @@ class IVMetrics:
 def compute_iv_atm_proxy(
     options: List[Dict],
     stock_price: float,
-    target_dte: int = TARGET_DTE,
-    min_dte: int = MIN_DTE_FOR_PROXY,
-    max_dte: int = MAX_DTE_FOR_PROXY
+    target_dte: int = 30,
+    min_dte: int = 10,
+    max_dte: int = 90
 ) -> Tuple[Optional[float], Dict[str, Any]]:
     """
     Compute representative IV (ATM proxy) from an options chain.
@@ -111,8 +111,8 @@ def compute_iv_atm_proxy(
     # Filter options within DTE range with valid IV
     valid_options = []
     for opt in options:
-        dte = opt.get("dte", 0)
-        iv = opt.get("implied_volatility", 0) or opt.get("iv", 0)
+        dte = opt.get("dte", 0) or opt.get("daysToExpiration", 0)
+        iv = opt.get("impliedVolatility", 0) or opt.get("implied_volatility", 0) or opt.get("iv", 0)
         strike = opt.get("strike", 0)
 
         if min_dte <= dte <= max_dte and iv > 0.01 and iv < 5.0 and strike > 0:
@@ -127,9 +127,11 @@ def compute_iv_atm_proxy(
     if not valid_options:
         return None, {"error": "No valid options in DTE range"}
 
+    if not valid_options: return None, {"error": "No valid options after filter"}
+    if not valid_options: return None, {"error": "No valid options after filter"}
     # Find expiry nearest to target_dte
     valid_options.sort(key=lambda x: abs(x["dte"] - target_dte))
-    target_expiry = valid_options[0]["expiry"]
+    target_expiry = valid_options[0]["expiry"] if valid_options else "" if valid_options else ""
 
     # Filter to only that expiry
     expiry_options = [o for o in valid_options if o["expiry"] == target_expiry]
@@ -451,7 +453,7 @@ async def get_iv_metrics_for_symbol(
     series = await get_iv_history_series(db, symbol)
 
     # Step 3: Compute IV Rank and Percentile from historical data
-    metrics = compute_iv_rank_percentile(iv_proxy, series)
+    rank_data = compute_iv_rank_percentile(iv_proxy, series)
 
     # Step 4: Store in history if requested (AFTER computing rank)
     if store_history:
@@ -462,15 +464,15 @@ async def get_iv_metrics_for_symbol(
     return IVMetrics(
         iv_proxy=round(iv_proxy, 4),
         iv_proxy_pct=round(iv_proxy * 100, 1),
-        iv_rank=metrics["iv_rank"],
-        iv_percentile=metrics["iv_percentile"],
-        iv_low=metrics["iv_low"],
-        iv_high=metrics["iv_high"],
-        iv_samples=metrics["iv_samples"],
-        iv_rank_source=metrics["iv_rank_source"],
+        iv_rank=rank_data["iv_rank"],
+        iv_percentile=rank_data["iv_percentile"],
+        iv_low=rank_data["iv_low"],
+        iv_high=rank_data["iv_high"],
+        iv_samples=rank_data["iv_samples"],
+        iv_rank_source=rank_data["iv_rank_source"],
         proxy_meta=proxy_meta,
-        iv_rank_confidence=metrics["iv_rank_confidence"],
-        iv_samples_used=metrics["iv_samples_used"]
+        iv_rank_confidence=rank_data["iv_rank_confidence"],
+        iv_samples_used=rank_data["iv_samples_used"]
     )
 
 
