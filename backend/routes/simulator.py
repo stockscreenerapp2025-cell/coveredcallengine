@@ -437,7 +437,7 @@ async def add_simulator_trade(trade: SimulatorTradeEntry, user: dict = Depends(g
     # Calculate DTE
     try:
         expiry_dt = datetime.strptime(trade.short_call_expiry, "%Y-%m-%d")
-        dte = (expiry_dt - datetime.now()).days
+        dte = max((expiry_dt - datetime.now()).days, 0)
     except:
         dte = 30  # Default
     
@@ -740,7 +740,7 @@ async def roll_pmcc_short_call(
     # Calculate new DTE
     try:
         new_expiry_dt = datetime.strptime(roll_request.new_expiry, "%Y-%m-%d")
-        new_dte = (new_expiry_dt - datetime.now()).days
+        new_dte = max((new_expiry_dt - datetime.now()).days, 0)
     except:
         new_dte = 30
     
@@ -923,10 +923,10 @@ async def update_simulator_prices(user: dict = Depends(get_current_user)):
         # Calculate DTE remaining
         try:
             expiry_dt = datetime.strptime(trade["short_call_expiry"], "%Y-%m-%d")
-            dte_remaining = (expiry_dt - datetime.now()).days
+            dte_remaining = max((expiry_dt - datetime.now()).days, 0)
             time_to_expiry = max(dte_remaining / 365, 0.001)  # In years
         except:
-            dte_remaining = trade.get("dte_remaining", 0)
+            dte_remaining = max(trade.get("dte_remaining", 0), 0)
             time_to_expiry = max(dte_remaining / 365, 0.001)
         
         # Calculate days held
@@ -961,19 +961,27 @@ async def update_simulator_prices(user: dict = Depends(get_current_user)):
             option_pnl = (entry_premium - current_option_value) * 100 * trade["contracts"]
             unrealized_pnl = stock_pnl + option_pnl
         else:  # PMCC
-            leaps_iv = trade.get("leaps_iv") or iv
-            leaps_dte = trade.get("leaps_dte_remaining") or 365
-            leaps_time_to_expiry = max(leaps_dte / 365, 0.001)
-            
-            leaps_greeks = calculate_greeks(
-                S=current_price,
-                K=trade.get("leaps_strike", current_price * 0.8),
-                T=leaps_time_to_expiry,
-                r=risk_free_rate,
-                sigma=leaps_iv
-            )
-            
-            leaps_value_change = (leaps_greeks["option_value"] - (trade.get("leaps_premium", 0))) * 100 * trade["contracts"]
+            leaps_strike_val = trade.get("leaps_strike")
+            leaps_premium_stored = trade.get("leaps_premium")
+
+            # Guard: validate LEAPS fields before pricing to prevent insane Unrealized P&L
+            if leaps_strike_val and leaps_strike_val > 0 and leaps_premium_stored and leaps_premium_stored > 0:
+                leaps_iv = trade.get("leaps_iv") or iv
+                leaps_dte = max(trade.get("leaps_dte_remaining") or 365, 0)
+                leaps_time_to_expiry = max(leaps_dte / 365, 0.001)
+
+                leaps_greeks = calculate_greeks(
+                    S=current_price,
+                    K=leaps_strike_val,
+                    T=leaps_time_to_expiry,
+                    r=risk_free_rate,
+                    sigma=leaps_iv
+                )
+
+                leaps_value_change = (leaps_greeks["option_value"] - leaps_premium_stored) * 100 * trade["contracts"]
+            else:
+                leaps_value_change = 0
+
             short_call_pnl = (entry_premium - current_option_value) * 100 * trade["contracts"]
             unrealized_pnl = leaps_value_change + short_call_pnl
         
@@ -998,6 +1006,14 @@ async def update_simulator_prices(user: dict = Depends(get_current_user)):
             "current_vega": greeks["vega"],
         }
         
+        # Auto-expire or assign when DTE reaches 0
+        if dte_remaining == 0 and trade.get("status") in ["open", "rolled"]:
+            is_itm = current_price >= trade["short_call_strike"]
+            update_doc["status"] = "assigned" if is_itm else "expired"
+            update_doc["final_pnl"] = round(unrealized_pnl, 2)
+            update_doc["realized_pnl"] = round(unrealized_pnl, 2)
+            update_doc["close_date"] = now.strftime("%Y-%m-%d")
+
         await db.simulator_trades.update_one({"id": trade["id"]}, {"$set": update_doc})
         updated_count += 1
     
@@ -1692,7 +1708,7 @@ async def get_pmcc_summary(user: dict = Depends(get_current_user)):
             days_to_leaps_expiry = 0
             try:
                 leaps_expiry_dt = datetime.strptime(trade.get("leaps_expiry", ""), "%Y-%m-%d")
-                days_to_leaps_expiry = (leaps_expiry_dt - now).days
+                days_to_leaps_expiry = max((leaps_expiry_dt - now).days, 0)
             except:
                 days_to_leaps_expiry = 365
             

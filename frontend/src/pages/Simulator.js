@@ -111,7 +111,9 @@ const OPERATORS = [
 ];
 
 const Simulator = () => {
-  const [activeTab, setActiveTab] = useState('trades');
+  // Status helper: backend uses 'open'/'rolled'/'active' for live trades
+  const isLive = (status) => ['open', 'rolled', 'active'].includes(status);
+activeTab, setActiveTab] = useState('trades');
   const [trades, setTrades] = useState([]);
   const [summary, setSummary] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -175,7 +177,7 @@ const Simulator = () => {
   // Auto-update prices on first load if there are active trades without current data
   useEffect(() => {
     if (!initialUpdateDone && trades.length > 0 && !loading) {
-      const needsUpdate = trades.some(t => t.status === 'active' && (!t.current_delta || t.current_delta === 0));
+      const needsUpdate = trades.some(t => isLive(t.status) && (!t.current_delta || t.current_delta === 0));
       if (needsUpdate) {
         setInitialUpdateDone(true);
         handleUpdatePrices();
@@ -798,7 +800,7 @@ const Simulator = () => {
                           {formatOptionContract(trade.short_call_expiry, trade.short_call_strike)}
                         </td>
                         <td className={`${trade.dte_remaining <= 7 ? 'text-amber-400' : 'text-zinc-300'}`}>
-                          {trade.status === 'active' ? `${trade.dte_remaining}d` : '-'}
+                          {isLive(trade.status) ? `${trade.dte_remaining}d` : '-'}
                         </td>
                         <td className="text-cyan-400 font-mono">
                           {trade.current_delta?.toFixed(2) || trade.short_call_delta?.toFixed(2) || '-'}
@@ -823,21 +825,21 @@ const Simulator = () => {
                           {trade.premium_capture_pct?.toFixed(0) || 0}%
                         </td>
                         <td className={`font-mono ${
-                          trade.status === 'active' 
+                          isLive(trade.status) 
                             ? (trade.unrealized_pnl >= 0 ? 'text-emerald-400' : 'text-red-400')
                             : (trade.final_pnl >= 0 ? 'text-emerald-400' : 'text-red-400')
                         }`}>
-                          {trade.status === 'active' 
+                          {isLive(trade.status) 
                             ? formatCurrency(trade.unrealized_pnl)
                             : formatCurrency(trade.final_pnl)
                           }
                         </td>
                         <td className={`font-mono ${
-                          trade.status === 'active'
+                          isLive(trade.status)
                             ? ((trade.unrealized_pnl / trade.capital_deployed * 100) >= 0 ? 'text-emerald-400' : 'text-red-400')
                             : (trade.roi_percent >= 0 ? 'text-emerald-400' : 'text-red-400')
                         }`}>
-                          {trade.status === 'active'
+                          {isLive(trade.status)
                             ? formatPercent(trade.capital_deployed > 0 ? (trade.unrealized_pnl / trade.capital_deployed * 100) : 0)
                             : formatPercent(trade.roi_percent)
                           }
@@ -1906,13 +1908,13 @@ const Simulator = () => {
                   <div className="text-lg font-semibold text-white">${selectedTrade.breakeven?.toFixed(2)}</div>
                 </div>
                 <div className="p-3 bg-zinc-800/50 rounded-lg">
-                  <div className="text-xs text-zinc-500 mb-1">{selectedTrade.status === 'active' ? 'Unrealized P/L' : 'Final P/L'}</div>
+                  <div className="text-xs text-zinc-500 mb-1">{isLive(selectedTrade.status) ? 'Unrealized P/L' : 'Final P/L'}</div>
                   <div className={`text-lg font-semibold ${
-                    selectedTrade.status === 'active'
+                    isLive(selectedTrade.status)
                       ? (selectedTrade.unrealized_pnl >= 0 ? 'text-emerald-400' : 'text-red-400')
                       : (selectedTrade.final_pnl >= 0 ? 'text-emerald-400' : 'text-red-400')
                   }`}>
-                    {selectedTrade.status === 'active' 
+                    {isLive(selectedTrade.status) 
                       ? formatCurrency(selectedTrade.unrealized_pnl)
                       : formatCurrency(selectedTrade.final_pnl)
                     }
@@ -1969,7 +1971,7 @@ const Simulator = () => {
                 <div>
                   <span className="text-zinc-500">DTE Remaining:</span>
                   <span className={`ml-2 ${selectedTrade.dte_remaining <= 7 ? 'text-amber-400' : 'text-white'}`}>
-                    {selectedTrade.status === 'active' ? `${selectedTrade.dte_remaining}d` : '-'}
+                    {isLive(selectedTrade.status) ? `${selectedTrade.dte_remaining}d` : '-'}
                   </span>
                 </div>
                 {selectedTrade.cumulative_premium && (
@@ -1981,7 +1983,7 @@ const Simulator = () => {
               </div>
 
               {/* Greeks Section */}
-              {selectedTrade.status === 'active' && (
+              {isLive(selectedTrade.status) && (
                 <div className="p-4 bg-zinc-800/30 rounded-lg">
                   <h4 className="text-sm font-medium text-zinc-400 mb-3 flex items-center gap-2">
                     <Activity className="w-4 h-4" />
@@ -2027,13 +2029,11 @@ const Simulator = () => {
                     <div className="text-center">
                       <div className="text-xs text-zinc-500 mb-1">Gamma</div>
                       <div className="text-violet-400 font-mono font-semibold">
-                        {selectedTrade.current_gamma?.toFixed(4) || '-'}
                       </div>
                     </div>
                     <div className="text-center">
                       <div className="text-xs text-zinc-500 mb-1">Vega</div>
                       <div className="text-amber-400 font-mono font-semibold">
-                        {selectedTrade.current_vega?.toFixed(2) || '-'}
                       </div>
                     </div>
                   </div>
