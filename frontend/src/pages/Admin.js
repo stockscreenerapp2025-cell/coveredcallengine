@@ -181,20 +181,20 @@ const Admin = () => {
       fetchScreenerStatus();
     }, 60000);
 
-  
-  
 
-  
-  const handleRunEngine = async (userId) => {
-    try {
-      await api.post("/admin/run-engine/" + userId);
-      alert("Engine started for user");
-    } catch (err) {
-      alert("Failed to start engine");
-    }
-  };
 
-  return () => clearInterval(interval);
+
+
+    const handleRunEngine = async (userId) => {
+      try {
+        await api.post("/admin/run-engine/" + userId);
+        alert("Engine started for user");
+      } catch (err) {
+        alert("Failed to start engine");
+      }
+    };
+
+    return () => clearInterval(interval);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab]);
   const fetchSettings = async () => {
@@ -745,8 +745,8 @@ const Admin = () => {
   const excludedCountsByStage = screenerStatus?.excluded_counts_by_stage || screenerStatus?.universe?.excluded_counts_by_stage || null;
   const currentRunId = screenerStatus?.run_id || null;
 
-  
-  
+
+
 
   return (
     <div className="space-y-6" data-testid="admin-page">
@@ -756,7 +756,7 @@ const Admin = () => {
           <h1 className="text-2xl font-bold text-white flex items-center gap-3">
             <Settings className="w-8 h-8 text-emerald-500" />
             Admin Panel
-                <div className="pt-4"><TriggerButton /></div>
+            <div className="pt-4"><TriggerButton /></div>
           </h1>
           <p className="text-zinc-400 mt-1">Manage users, subscriptions, and settings</p>
         </div>
@@ -957,50 +957,46 @@ const Admin = () => {
           ) : screenerStatus ? (
             <div className="space-y-6">
               {/* 1️⃣ Overall System Health */}
-              <Card className={`glass-card border-2 ${
-                healthScoreValue === null
+              <Card className={`glass-card border-2 ${healthScoreValue === null
                   ? 'border-zinc-700 bg-gradient-to-r from-zinc-700/10 to-transparent'
                   : healthScoreValue >= 80
                     ? 'border-emerald-500/30 bg-gradient-to-r from-emerald-500/5 to-transparent'
                     : healthScoreValue >= 60
                       ? 'border-yellow-500/30 bg-gradient-to-r from-yellow-500/5 to-transparent'
                       : 'border-red-500/30 bg-gradient-to-r from-red-500/5 to-transparent'
-              }`}>
+                }`}>
                 <CardContent className="pt-6">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-4">
-                      <div className={`w-16 h-16 rounded-full flex items-center justify-center ${
-                        healthScoreValue === null
+                      <div className={`w-16 h-16 rounded-full flex items-center justify-center ${healthScoreValue === null
                           ? 'bg-zinc-700/30'
                           : healthScoreValue >= 80
                             ? 'bg-emerald-500/20'
                             : healthScoreValue >= 60
                               ? 'bg-yellow-500/20'
                               : 'bg-red-500/20'
-                      }`}>
-                        <span className={`text-2xl ${
-                          healthScoreValue === null
+                        }`}>
+                        <span className={`text-2xl ${healthScoreValue === null
                             ? 'text-zinc-400'
                             : healthScoreValue >= 80
                               ? 'text-emerald-400'
                               : healthScoreValue >= 60
                                 ? 'text-yellow-400'
                                 : 'text-red-400'
-                        }`}>
+                          }`}>
                           {healthScoreValue === null ? '⚪' : healthScoreValue >= 80 ? '🟢' : healthScoreValue >= 60 ? '🟡' : '🔴'}
                         </span>
                       </div>
                       <div>
                         <p className="text-sm text-zinc-400 uppercase tracking-wider">System Health</p>
-                        <p className={`text-3xl font-bold ${
-                          healthScoreValue === null
+                        <p className={`text-3xl font-bold ${healthScoreValue === null
                             ? 'text-zinc-300'
                             : healthScoreValue >= 80
                               ? 'text-emerald-400'
                               : healthScoreValue >= 60
                                 ? 'text-yellow-400'
                                 : 'text-red-400'
-                        }`}>
+                          }`}>
                           {healthScoreValue === null ? 'UNKNOWN' : healthScoreValue >= 80 ? 'HEALTHY' : healthScoreValue >= 60 ? 'DEGRADED' : 'CRITICAL'}
                           <span className="text-xl ml-2">({healthScoreValue ?? 'N/A'} / 100)</span>
                         </p>
@@ -1241,29 +1237,27 @@ const Admin = () => {
                   <CardContent className="space-y-3">
                     <div className="flex items-center justify-between p-3 rounded-lg bg-zinc-800/50">
                       <span className="text-zinc-400">Score Drift (vs 24h ago)</span>
-                      <span className={`font-bold ${
-                        scoreDriftValue === null
+                      <span className={`font-bold ${scoreDriftValue === null
                           ? 'text-zinc-500'
                           : Math.abs(scoreDriftValue) < 5
                             ? 'text-emerald-400'
                             : Math.abs(scoreDriftValue) < 10
                               ? 'text-yellow-400'
                               : 'text-red-400'
-                      }`}>
+                        }`}>
                         {scoreDriftValue === null ? 'N/A' : `${scoreDriftValue > 0 ? '+' : ''}${scoreDriftValue.toFixed(1)}%`}
                       </span>
                     </div>
                     <div className="flex items-center justify-between p-3 rounded-lg bg-zinc-800/50">
                       <span className="text-zinc-400">Outlier Swings</span>
-                      <span className={`font-bold ${
-                        outlierSwingsValue === null
+                      <span className={`font-bold ${outlierSwingsValue === null
                           ? 'text-zinc-500'
                           : outlierSwingsValue === 0
                             ? 'text-emerald-400'
                             : outlierSwingsValue < 3
                               ? 'text-yellow-400'
                               : 'text-red-400'
-                      }`}>
+                        }`}>
                         {outlierSwingsValue ?? 'N/A'}
                       </span>
                     </div>
@@ -1302,15 +1296,14 @@ const Admin = () => {
                     </div>
                     <div className="flex items-center justify-between p-3 rounded-lg bg-zinc-800/50">
                       <span className="text-zinc-400">API Errors (24h)</span>
-                      <span className={`font-bold ${
-                        !isNumber(screenerStatus?.api_errors_24h)
+                      <span className={`font-bold ${!isNumber(screenerStatus?.api_errors_24h)
                           ? 'text-zinc-500'
                           : screenerStatus.api_errors_24h === 0
                             ? 'text-emerald-400'
                             : screenerStatus.api_errors_24h < 5
                               ? 'text-yellow-400'
                               : 'text-red-400'
-                      }`}>
+                        }`}>
                         {screenerStatus?.api_errors_24h ?? 'N/A'}
                       </span>
                     </div>
@@ -1438,6 +1431,7 @@ const Admin = () => {
                           </td>
                           <td className="py-3">
                             {user.subscription?.trial_end ? (
+                              <>
                               <span className="text-xs text-zinc-400">
                                 {new Date(user.subscription.trial_end).toLocaleDateString()}
                               </span>
@@ -1446,6 +1440,7 @@ const Admin = () => {
                             > 
                             </button> 
                           </div>
+                          </>
                             ) : '-'}
                           </td>
                           <td className="py-3">
@@ -1465,11 +1460,11 @@ const Admin = () => {
                                   +7 days
                                 </Button>
                               )}
-                          <div className="flex items-center justify-end gap-2"> 
-                            <button 
-                            > 
-                            </button> 
-                          </div>
+                              <div className="flex items-center justify-end gap-2">
+                                <button
+                                >
+                                </button>
+                              </div>
                               <Select onValueChange={(status) => setUserSubscription(user.id, status)}>
                                 <SelectTrigger className="h-8 w-24 text-xs">
                                   <SelectValue placeholder="Set..." />

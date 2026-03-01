@@ -834,7 +834,7 @@ const PMCC = () => {
         )}
 
         {/* Results Section */}
-        <div className={`space-y-4 ${filtersOpen ? 'lg:col-span-3' : 'lg:col-span-5'}`}>
+        <div className={`space-y-4 ${filtersOpen ? 'lg:col-span-4' : 'lg:col-span-5'}`}>
           {/* Live Data Badge */}
           {apiInfo?.is_live && (
             <div className="flex items-center gap-2">
