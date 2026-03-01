@@ -623,7 +623,7 @@ const PMCC = () => {
         </CardContent>
       </Card>
 
-      <div className="grid lg:grid-cols-5 gap-6">
+      <div className="grid lg:grid-cols-6 gap-6">
         {/* Filters Panel */}
         {filtersOpen && (
           <Card className="glass-card lg:col-span-1 h-fit" data-testid="pmcc-filters-panel">
@@ -689,12 +689,12 @@ const PMCC = () => {
                   </AccordionContent>
                 </AccordionItem>
 
-                {/* LEAPS (Long Leg) Filters */}
+                {/* LEAPS (Long) Filters */}
                 <AccordionItem value="leaps" className="border-zinc-800">
                   <AccordionTrigger className="text-sm font-medium hover:no-underline">
                     <div className="flex items-center gap-2">
                       <TrendingUp className="w-4 h-4 text-emerald-400" />
-                      LEAPS (Long Leg)
+                      LEAPS (Long)
                     </div>
                   </AccordionTrigger>
                   <AccordionContent className="space-y-4 pt-2">
@@ -747,7 +747,7 @@ const PMCC = () => {
                   <AccordionTrigger className="text-sm font-medium hover:no-underline">
                     <div className="flex items-center gap-2">
                       <TrendingDown className="w-4 h-4 text-cyan-400" />
-                      Short Call (Short Leg)
+                      Short Call
                     </div>
                   </AccordionTrigger>
                   <AccordionContent className="space-y-4 pt-2">
@@ -834,7 +834,7 @@ const PMCC = () => {
         )}
 
         {/* Results Section */}
-        <div className={`space-y-4 ${filtersOpen ? 'lg:col-span-4' : 'lg:col-span-5'}`}>
+        <div className={`space-y-4 ${filtersOpen ? 'lg:col-span-5' : 'lg:col-span-6'}`}>
           {/* Live Data Badge */}
           {apiInfo?.is_live && (
             <div className="flex items-center gap-2">
