@@ -2640,13 +2640,13 @@ async def delete_scanner_profile(profile_id: str, user: dict = Depends(get_curre
 
 # ─── AI Manage Routes (auto-appended) ───
 @simulator_router.get("/wallet")
-async def get_wallet_balance(current_user=Depends(get_current_user), db=Depends(get_db)):
+async def get_wallet_balance(user: dict = Depends(get_current_user)):
     """
     Return the user's current AI credit balance.
     Frontend calls this to show "You have X credits" in the Manage modal.
     """
     from services.wallet_service import get_balance
-    balance = await get_balance(db, str(current_user["_id"]))
+    balance = await get_balance(db, str(user["_id"]))
     return {"balance_credits": balance}
 
 
@@ -2655,8 +2655,7 @@ async def get_wallet_balance(current_user=Depends(get_current_user), db=Depends(
 async def manage_trade(
     trade_id: str,
     body: dict,
-    current_user=Depends(get_current_user),
-    db=Depends(get_db)
+    user: dict = Depends(get_current_user)
 ):
     """
     AI trade management endpoint.
@@ -2684,14 +2683,14 @@ async def manage_trade(
     from services.wallet_service import debit_wallet, get_balance, MANAGE_COST_CREDITS
     from services.ai_trade_manager import generate_recommendation
 
-    user_id = str(current_user["_id"])
+    user_id = str(user["_id"])
     mode    = body.get("mode", "recommend_only")
     goals   = body.get("goals", {})
 
     # ── 1. Load trade ────────────────────────────────────────────────────────
     try:
         from bson import ObjectId
-        trade = await db.simulator_trades.find_one({
+        trade = await db_instance.simulator_trades.find_one({
             "_id": ObjectId(trade_id),
             "user_id": user_id
         })
@@ -2778,10 +2777,10 @@ async def manage_trade(
             "unrealized_pnl":  trade.get("unrealized_pnl"),
         }
     }
-    await db.simulator_action_logs.insert_one(action_log_entry)
+    await db_instance.simulator_action_logs.insert_one(action_log_entry)
 
     # Also write to recommendations collection for history
-    await db.simulator_ai_recommendations.insert_one({
+    await db_instance.simulator_ai_recommendations.insert_one({
         **action_log_entry,
         "status": "pending_approval"
     })
@@ -2800,8 +2799,7 @@ async def manage_trade(
 async def apply_trade_recommendation(
     trade_id: str,
     body: dict,
-    current_user=Depends(get_current_user),
-    db=Depends(get_db)
+    user: dict = Depends(get_current_user)
 ):
     """
     Apply a previously generated recommendation to the actual trade.
@@ -2826,7 +2824,7 @@ async def apply_trade_recommendation(
     from services.wallet_service import debit_wallet, APPLY_COST_CREDITS
     from services.ai_trade_manager import apply_recommendation_to_trade
 
-    user_id        = str(current_user["_id"])
+    user_id        = str(user["_id"])
     recommendation = body.get("recommendation", {})
     current_price  = float(body.get("current_price", 0))
 
@@ -2836,7 +2834,7 @@ async def apply_trade_recommendation(
     # ── Load trade ────────────────────────────────────────────────────────────
     try:
         from bson import ObjectId
-        trade = await db.simulator_trades.find_one({
+        trade = await db_instance.simulator_trades.find_one({
             "_id": ObjectId(trade_id),
             "user_id": user_id
         })
@@ -2866,14 +2864,14 @@ async def apply_trade_recommendation(
     # ── Build and apply updates ────────────────────────────────────────────────
     field_updates = apply_recommendation_to_trade(trade, recommendation, current_price)
 
-    await db.simulator_trades.update_one(
+    await db_instance.simulator_trades.update_one(
         {"_id": trade["_id"]},
         {"$set": field_updates}
     )
 
     # Log the apply action
     symbol = trade.get("symbol", "")
-    await db.simulator_action_logs.insert_one({
+    await db_instance.simulator_action_logs.insert_one({
         "user_id":        user_id,
         "trade_id":       trade_id,
         "symbol":         symbol,
@@ -2888,13 +2886,13 @@ async def apply_trade_recommendation(
     })
 
     # Mark recommendation as applied
-    await db.simulator_ai_recommendations.update_many(
+    await db_instance.simulator_ai_recommendations.update_many(
         {"trade_id": trade_id, "status": "pending_approval"},
         {"$set": {"status": "applied", "applied_at": datetime.utcnow()}}
     )
 
     # Return the updated trade
-    updated = await db.simulator_trades.find_one({"_id": trade["_id"]})
+    updated = await db_instance.simulator_trades.find_one({"_id": trade["_id"]})
     updated["id"] = str(updated.pop("_id"))
 
     return {
