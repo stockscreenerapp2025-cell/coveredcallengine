@@ -2646,7 +2646,7 @@ async def get_wallet_balance(user: dict = Depends(get_current_user)):
     Frontend calls this to show "You have X credits" in the Manage modal.
     """
     from services.wallet_service import get_balance
-    balance = await get_balance(db, str(user["_id"]))
+    balance = await get_balance(db, user["id"])
     return {"balance_credits": balance}
 
 
@@ -2683,7 +2683,7 @@ async def manage_trade(
     from services.wallet_service import debit_wallet, get_balance, MANAGE_COST_CREDITS
     from services.ai_trade_manager import generate_recommendation
 
-    user_id = str(user["_id"])
+    user_id = user["id"]
     mode    = body.get("mode", "recommend_only")
     goals   = body.get("goals", {})
 
@@ -2824,7 +2824,7 @@ async def apply_trade_recommendation(
     from services.wallet_service import debit_wallet, APPLY_COST_CREDITS
     from services.ai_trade_manager import apply_recommendation_to_trade
 
-    user_id        = str(user["_id"])
+    user_id        = user["id"]
     recommendation = body.get("recommendation", {})
     current_price  = float(body.get("current_price", 0))
 
