@@ -623,7 +623,7 @@ const PMCC = () => {
         </CardContent>
       </Card>
 
-      <div className="grid lg:grid-cols-4 gap-6">
+      <div className="grid lg:grid-cols-5 gap-6">
         {/* Filters Panel */}
         {filtersOpen && (
           <Card className="glass-card lg:col-span-1 h-fit" data-testid="pmcc-filters-panel">
@@ -834,7 +834,7 @@ const PMCC = () => {
         )}
 
         {/* Results Section */}
-        <div className={`space-y-4 ${filtersOpen ? 'lg:col-span-3' : 'lg:col-span-4'}`}>
+        <div className={`space-y-4 ${filtersOpen ? 'lg:col-span-3' : 'lg:col-span-5'}`}>
           {/* Live Data Badge */}
           {apiInfo?.is_live && (
             <div className="flex items-center gap-2">

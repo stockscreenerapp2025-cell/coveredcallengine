@@ -895,7 +895,7 @@ const Screener = () => {
                             onCheckedChange={(checked) => setStockFilters(f => ({ ...f, includeIndex: checked }))}
                             className="border-emerald-500 data-[state=checked]:bg-emerald-500"
                           />
-                          <Label htmlFor="type-index" className="text-sm cursor-pointer">Index Options</Label>
+                          
                         </div>
                       </div>
                     </div>
@@ -929,7 +929,7 @@ const Screener = () => {
                         value={optionsFilters.minOpenInterest || ""} placeholder="Min"
                         onChange={(e) => setOptionsFilters(f => ({ ...f, minOpenInterest: parseInt(e.target.value) || 0 }))}
                         className="input-dark mt-2"
-                        placeholder="100"
+                        placeholder="0"
                         data-testid="min-oi-input"
                       />
                     </div>
