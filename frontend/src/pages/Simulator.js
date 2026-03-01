@@ -113,7 +113,7 @@ const OPERATORS = [
 const Simulator = () => {
   // Status helper: backend uses 'open'/'rolled'/'active' for live trades
   const isLive = (status) => ['open', 'rolled', 'active'].includes(status);
-activeTab, setActiveTab] = useState('trades');
+  const [activeTab, setActiveTab] = useState('trades');
   const [trades, setTrades] = useState([]);
   const [summary, setSummary] = useState(null);
   const [loading, setLoading] = useState(true);
