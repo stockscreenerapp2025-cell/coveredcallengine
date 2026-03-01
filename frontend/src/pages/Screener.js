@@ -760,10 +760,10 @@ const Screener = () => {
         </div>
       </div>
 
-      <div className="grid lg:grid-cols-6 gap-6">
+      <div className="grid lg:grid-cols-7 gap-4">
         {/* Filters Panel */}
         {filtersOpen && (
-          <Card className="glass-card lg:col-span-1 max-h-[calc(100vh-200px)] overflow-y-auto" data-testid="filters-panel">
+          <Card className="glass-card lg:col-span-2 max-h-[calc(100vh-200px)] overflow-y-auto" data-testid="filters-panel">
             <CardHeader className="pb-2">
               <CardTitle className="text-lg flex items-center gap-2">
                 <Filter className="w-5 h-5 text-emerald-400" />
@@ -1286,7 +1286,7 @@ const Screener = () => {
         )}
 
         {/* Results Table - Enhanced for Pre-computed Scans */}
-        <Card className={`glass-card ${filtersOpen ? 'lg:col-span-5' : 'lg:col-span-6'}`} data-testid="results-table">
+        <Card className={`glass-card ${filtersOpen ? 'lg:col-span-5' : 'lg:col-span-7'}`} data-testid="results-table">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-lg flex items-center gap-2">
               Results
@@ -1321,8 +1321,8 @@ const Screener = () => {
               </div>
             ) : (
               /* Table View for all results (both pre-computed and custom scans) */
-              <div className="overflow-x-auto">
-                <table className="data-table">
+              <div className="overflow-x-auto w-full">
+                <table className="data-table text-xs w-full">
                   <thead>
                     <tr>
                       <SortHeader field="symbol" label="Symbol" />

@@ -623,10 +623,10 @@ const PMCC = () => {
         </CardContent>
       </Card>
 
-      <div className="grid lg:grid-cols-6 gap-6">
+      <div className="grid lg:grid-cols-7 gap-4">
         {/* Filters Panel */}
         {filtersOpen && (
-          <Card className="glass-card lg:col-span-1 h-fit" data-testid="pmcc-filters-panel">
+          <Card className="glass-card lg:col-span-2 h-fit" data-testid="pmcc-filters-panel">
             <CardHeader className="pb-2">
               <div className="flex items-center justify-between">
                 <CardTitle className="text-lg flex items-center gap-2">
@@ -834,7 +834,7 @@ const PMCC = () => {
         )}
 
         {/* Results Section */}
-        <div className={`space-y-4 ${filtersOpen ? 'lg:col-span-5' : 'lg:col-span-6'}`}>
+        <div className={`space-y-4 ${filtersOpen ? 'lg:col-span-5' : 'lg:col-span-7'}`}>
           {/* Live Data Badge */}
           {apiInfo?.is_live && (
             <div className="flex items-center gap-2">
@@ -881,8 +881,8 @@ const PMCC = () => {
                   <p className="text-sm mt-2">Try adjusting your filters</p>
                 </div>
               ) : (
-                <div className="overflow-x-auto">
-                  <table className="data-table">
+                <div className="overflow-x-auto w-full">
+                  <table className="data-table text-xs w-full">
                     <thead>
                       <tr>
                         <SortHeader field="symbol" label="Symbol" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
