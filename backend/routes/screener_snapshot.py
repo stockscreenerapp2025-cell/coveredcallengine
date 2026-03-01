@@ -1669,6 +1669,11 @@ async def screen_pmcc(
         "min_short_dte": min_short_dte,
         "max_short_dte": max_short_dte,
         "min_delta": min_delta,
+        "max_delta": max_delta,
+        "min_short_delta": min_short_delta,
+        "max_short_delta": max_short_delta,
+        "min_price": min_price,
+        "max_price": max_price,
         "risk_profile": risk_profile
     }
     
