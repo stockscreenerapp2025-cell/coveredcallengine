@@ -1424,6 +1424,31 @@ async def _get_pmcc_from_eod(
     # Apply delta filter
     if filters.get("min_delta"):
         query["leap_delta"] = {"$gte": filters["min_delta"]}
+
+        # Apply price filter
+        if filters.get('min_price') is not None or filters.get('max_price') is not None:
+            price_filter = {}
+            if filters.get('min_price') is not None:
+                price_filter['$gte'] = filters['min_price']
+            if filters.get('max_price') is not None:
+                price_filter['$lte'] = filters['max_price']
+            query['stock_price'] = price_filter
+
+        # Apply short delta filter
+        if filters.get("min_short_delta") or filters.get("max_short_delta"):
+            short_delta_filter = {}
+            if filters.get("min_short_delta"):
+                short_delta_filter["$gte"] = filters["min_short_delta"]
+            if filters.get("max_short_delta"):
+                short_delta_filter["$lte"] = filters["max_short_delta"]
+            query["short_delta"] = short_delta_filter
+
+        # Apply max delta filter
+        if filters.get("max_delta"):
+            if "leap_delta" in query:
+                query["leap_delta"]["$lte"] = filters["max_delta"]
+            else:
+                query["leap_delta"] = {"$lte": filters["max_delta"]}
     
     try:
         cursor = db.scan_results_pmcc.find(
@@ -1565,6 +1590,8 @@ def _transform_pmcc_result(r: Dict) -> tuple:
         
         # Greeks (NOT monetary - use sanitize_float)
         "delta": sanitize_float(r.get("delta") or r.get("leap_delta")),
+        "leap_delta": sanitize_float(r.get("leap_delta")),
+        "short_delta": sanitize_float(r.get("short_delta")),
         "delta_source": r.get("delta_source", "BLACK_SCHOLES_APPROX"),
         
         # IV (explicit units)
