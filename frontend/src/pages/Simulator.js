@@ -2276,7 +2276,6 @@ const Simulator = () => {
           )}
         </DialogContent>
       </Dialog>
-    </div>
       {/* ── AI Manage Modal ─────────────────────────────────────────── */}
       {manageOpen && manageTrade && (
         <div style={{
@@ -2361,6 +2360,7 @@ const Simulator = () => {
           </div>
         </div>
       )}
+    </div>
   );
 };
 
