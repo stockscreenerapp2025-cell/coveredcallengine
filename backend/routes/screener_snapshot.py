@@ -898,14 +898,49 @@ async def _get_cc_from_eod(
         else:
             query["otm_pct"] = {"$lte": filters["max_otm_pct"]}
     
-    # Apply delta filter based on risk profile
-    risk_profile = filters.get("risk_profile", "moderate")
-    if risk_profile == "conservative":
-        query["delta"] = {"$gte": 0.15, "$lte": 0.30}
-    elif risk_profile == "aggressive":
-        query["delta"] = {"$gte": 0.30, "$lte": 0.50}
-    # moderate: no delta filter (use all)
-    
+    # Apply delta filter: explicit user filter takes precedence over risk_profile defaults
+    if filters.get("min_delta") is not None or filters.get("max_delta") is not None:
+        delta_filter = {}
+        if filters.get("min_delta") is not None:
+            delta_filter["$gte"] = filters["min_delta"]
+        if filters.get("max_delta") is not None:
+            delta_filter["$lte"] = filters["max_delta"]
+        query["delta"] = delta_filter
+    else:
+        risk_profile = filters.get("risk_profile", "moderate")
+        if risk_profile == "conservative":
+            query["delta"] = {"$gte": 0.15, "$lte": 0.30}
+        elif risk_profile == "aggressive":
+            query["delta"] = {"$gte": 0.30, "$lte": 0.50}
+        # moderate: no delta filter (use all)
+
+    # Apply stock price filter
+    if filters.get("min_price") is not None:
+        query["stock_price"] = {"$gte": filters["min_price"]}
+    if filters.get("max_price") is not None:
+        if "stock_price" in query:
+            query["stock_price"]["$lte"] = filters["max_price"]
+        else:
+            query["stock_price"] = {"$lte": filters["max_price"]}
+
+    # Apply volume and open interest filters
+    if filters.get("min_volume") is not None:
+        query["volume"] = {"$gte": filters["min_volume"]}
+    if filters.get("min_open_interest") is not None:
+        query["open_interest"] = {"$gte": filters["min_open_interest"]}
+
+    # Apply security type filters
+    if not filters.get("include_etfs", True) and filters.get("include_stocks", True):
+        query["is_etf"] = False
+    elif filters.get("include_etfs", True) and not filters.get("include_stocks", True):
+        query["is_etf"] = True
+
+    # Apply ROI filters
+    if filters.get("min_roi") is not None:
+        query["roi_pct"] = {"$gte": filters["min_roi"]}
+    if filters.get("min_annualized_roi") is not None:
+        query["roi_annualized"] = {"$gte": filters["min_annualized_roi"]}
+
     try:
         cursor = db.scan_results_cc.find(
             query,
@@ -1236,6 +1271,16 @@ async def screen_covered_calls(
     max_premium_yield: float = Query(20.0, le=50),
     min_otm_pct: float = Query(0.0, ge=0),
     max_otm_pct: float = Query(20.0, le=50),
+    min_price: float = Query(None, ge=0, description="Min stock price filter"),
+    max_price: float = Query(None, le=10000, description="Max stock price filter"),
+    min_delta: float = Query(None, ge=0, le=1, description="Min option delta"),
+    max_delta: float = Query(None, ge=0, le=1, description="Max option delta"),
+    min_volume: int = Query(None, ge=0, description="Min option volume"),
+    min_open_interest: int = Query(None, ge=0, description="Min open interest"),
+    include_etfs: bool = Query(True, description="Include ETFs in results"),
+    include_stocks: bool = Query(True, description="Include stocks in results"),
+    min_roi: float = Query(None, ge=0, description="Min ROI % per cycle"),
+    min_annualized_roi: float = Query(None, ge=0, description="Min annualized ROI %"),
     use_eod_contract: bool = Query(True, description="Deprecated - always uses EOD data"),
     debug_enrichment: bool = Query(False, description="Include enrichment debug info"),
     user: dict = Depends(get_current_user)
@@ -1275,7 +1320,17 @@ async def screen_covered_calls(
             "max_premium_yield": max_premium_yield,
             "min_otm_pct": min_otm_pct,
             "max_otm_pct": max_otm_pct,
-            "risk_profile": risk_profile
+            "risk_profile": risk_profile,
+            "min_price": min_price,
+            "max_price": max_price,
+            "min_delta": min_delta,
+            "max_delta": max_delta,
+            "min_volume": min_volume,
+            "min_open_interest": min_open_interest,
+            "include_etfs": include_etfs,
+            "include_stocks": include_stocks,
+            "min_roi": min_roi,
+            "min_annualized_roi": min_annualized_roi,
         }
         
         # Try EOD pipeline results first
@@ -1421,10 +1476,40 @@ async def _get_pmcc_from_eod(
         else:
             query["short_dte"] = {"$lte": filters["max_short_dte"]}
     
-    # Apply delta filter
-    if filters.get("min_delta"):
-        query["leap_delta"] = {"$gte": filters["min_delta"]}
-    
+    # Apply LEAP delta filter (min_delta is the legacy param; min_leaps_delta takes precedence if set)
+    effective_min_leap_delta = filters.get("min_leaps_delta") or filters.get("min_delta")
+    if effective_min_leap_delta:
+        query["leap_delta"] = {"$gte": effective_min_leap_delta}
+    if filters.get("max_leaps_delta"):
+        if "leap_delta" in query:
+            query["leap_delta"]["$lte"] = filters["max_leaps_delta"]
+        else:
+            query["leap_delta"] = {"$lte": filters["max_leaps_delta"]}
+
+    # Apply short leg delta filter
+    if filters.get("min_short_delta"):
+        query["short_delta"] = {"$gte": filters["min_short_delta"]}
+    if filters.get("max_short_delta"):
+        if "short_delta" in query:
+            query["short_delta"]["$lte"] = filters["max_short_delta"]
+        else:
+            query["short_delta"] = {"$lte": filters["max_short_delta"]}
+
+    # Apply stock price filter
+    if filters.get("min_price") is not None:
+        query["stock_price"] = {"$gte": filters["min_price"]}
+    if filters.get("max_price") is not None:
+        if "stock_price" in query:
+            query["stock_price"]["$lte"] = filters["max_price"]
+        else:
+            query["stock_price"] = {"$lte": filters["max_price"]}
+
+    # Apply ROI filters
+    if filters.get("min_roi") is not None:
+        query["roi_cycle"] = {"$gte": filters["min_roi"]}
+    if filters.get("min_annualized_roi") is not None:
+        query["roi_annualized"] = {"$gte": filters["min_annualized_roi"]}
+
     try:
         cursor = db.scan_results_pmcc.find(
             query,
@@ -1611,6 +1696,14 @@ async def screen_pmcc(
     min_short_dte: int = Query(PMCC_MIN_SHORT_DTE, ge=1),
     max_short_dte: int = Query(PMCC_MAX_SHORT_DTE, le=60),
     min_delta: float = Query(PMCC_MIN_DELTA, ge=0.5, le=0.95),
+    min_price: float = Query(None, ge=0, description="Min stock price filter"),
+    max_price: float = Query(None, le=10000, description="Max stock price filter"),
+    min_leaps_delta: float = Query(None, ge=0, le=1, description="Min LEAP leg delta"),
+    max_leaps_delta: float = Query(None, ge=0, le=1, description="Max LEAP leg delta"),
+    min_short_delta: float = Query(None, ge=0, le=1, description="Min short leg delta"),
+    max_short_delta: float = Query(None, ge=0, le=1, description="Max short leg delta"),
+    min_roi: float = Query(None, ge=0, description="Min ROI per cycle (%)"),
+    min_annualized_roi: float = Query(None, ge=0, description="Min annualized ROI (%)"),
     debug_enrichment: bool = Query(False, description="Include enrichment debug info"),
     user: dict = Depends(get_current_user)
 ):
@@ -1642,7 +1735,15 @@ async def screen_pmcc(
         "min_short_dte": min_short_dte,
         "max_short_dte": max_short_dte,
         "min_delta": min_delta,
-        "risk_profile": risk_profile
+        "risk_profile": risk_profile,
+        "min_price": min_price,
+        "max_price": max_price,
+        "min_leaps_delta": min_leaps_delta,
+        "max_leaps_delta": max_leaps_delta,
+        "min_short_delta": min_short_delta,
+        "max_short_delta": max_short_delta,
+        "min_roi": min_roi,
+        "min_annualized_roi": min_annualized_roi,
     }
     
     # Try EOD pipeline results first

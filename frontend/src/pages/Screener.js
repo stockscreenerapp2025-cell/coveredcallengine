@@ -888,15 +888,6 @@ const Screener = () => {
                           />
                           <Label htmlFor="type-etf" className="text-sm cursor-pointer">ETFs</Label>
                         </div>
-                        <div className="flex items-center space-x-3 p-2 rounded-lg hover:bg-zinc-800/50">
-                          <Checkbox
-                            id="type-index"
-                            checked={stockFilters.includeIndex}
-                            onCheckedChange={(checked) => setStockFilters(f => ({ ...f, includeIndex: checked }))}
-                            className="border-emerald-500 data-[state=checked]:bg-emerald-500"
-                          />
-                          
-                        </div>
                       </div>
                     </div>
                   </AccordionContent>

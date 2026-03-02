@@ -320,8 +320,8 @@ const PMCC = () => {
       if (filters.maxPrice) params.max_price = filters.maxPrice;
       if (filters.minLeapsDelta) params.min_leaps_delta = filters.minLeapsDelta;
       if (filters.maxLeapsDelta) params.max_leaps_delta = filters.maxLeapsDelta;
-      if (filters.minLeapsDte) params.min_leaps_dte = filters.minLeapsDte;
-      if (filters.maxLeapsDte) params.max_leaps_dte = filters.maxLeapsDte;
+      if (filters.minLeapsDte) params.min_leap_dte = filters.minLeapsDte;
+      if (filters.maxLeapsDte) params.max_leap_dte = filters.maxLeapsDte;
       if (filters.minShortDelta) params.min_short_delta = filters.minShortDelta;
       if (filters.maxShortDelta) params.max_short_delta = filters.maxShortDelta;
       if (filters.minShortDte) params.min_short_dte = filters.minShortDte;
