@@ -1152,10 +1152,12 @@ async def get_simulator_summary(user: dict = Depends(get_current_user)):
         "closed_trades": len(closed_trades),
         "total_realized_pnl": round(total_realized, 2),
         "total_unrealized_pnl": round(total_unrealized, 2),
+        "total_pnl": round(total_pnl, 2),
         "total_capital_deployed": round(total_capital_deployed, 2),
         "win_rate": round(win_rate, 1),
         "avg_roi": round(avg_roi, 2),
         "avg_return_pct": round(avg_return_pct, 2),
+        "avg_return_per_trade": round(avg_return_pct, 2),
         "assignment_rate": assignment_rate,
         "by_strategy": by_strategy,
         "by_status": by_status
