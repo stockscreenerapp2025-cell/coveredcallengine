@@ -764,7 +764,7 @@ const Admin = () => {
             fetchSettings();
             if (!window.confirm("Trigger manual EOD snapshot?")) return;
             try {
-              await api.post('/admin/trigger-snapshot');
+              await api.post('/eod-pipeline/run');
               alert("EOD snapshot triggered. Check dashboard in 5 minutes.");
             } catch (e) {
               alert("Error triggering EOD snapshot.");

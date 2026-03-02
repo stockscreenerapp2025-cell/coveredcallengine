@@ -1170,8 +1170,8 @@ def is_production() -> bool:
 
 
 def is_manual_run_allowed() -> bool:
-    """Check if manual runs are allowed (disabled in production)."""
-    return not is_production()
+    """Check if manual runs are allowed (always allowed for admin triggers)."""
+    return True
 
 
 # ============================================================
