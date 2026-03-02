@@ -1476,39 +1476,41 @@ async def _get_pmcc_from_eod(
         else:
             query["short_dte"] = {"$lte": filters["max_short_dte"]}
     
-    # Apply LEAP delta filter (min_delta is the legacy param; min_leaps_delta takes precedence if set)
+    # Apply LEAP delta filter (min_leaps_delta takes precedence over legacy min_delta)
     effective_min_leap_delta = filters.get("min_leaps_delta") or filters.get("min_delta")
     if effective_min_leap_delta:
         query["leap_delta"] = {"$gte": effective_min_leap_delta}
-    if filters.get("max_leaps_delta"):
+    effective_max_leap_delta = filters.get("max_leaps_delta") or filters.get("max_delta")
+    if effective_max_leap_delta:
         if "leap_delta" in query:
-            query["leap_delta"]["$lte"] = filters["max_leaps_delta"]
+            query["leap_delta"]["$lte"] = effective_max_leap_delta
         else:
-            query["leap_delta"] = {"$lte": filters["max_leaps_delta"]}
+            query["leap_delta"] = {"$lte": effective_max_leap_delta}
 
     # Apply short leg delta filter
-    if filters.get("min_short_delta"):
-        query["short_delta"] = {"$gte": filters["min_short_delta"]}
-    if filters.get("max_short_delta"):
-        if "short_delta" in query:
-            query["short_delta"]["$lte"] = filters["max_short_delta"]
-        else:
-            query["short_delta"] = {"$lte": filters["max_short_delta"]}
+    if filters.get("min_short_delta") or filters.get("max_short_delta"):
+        short_delta_filter = {}
+        if filters.get("min_short_delta"):
+            short_delta_filter["$gte"] = filters["min_short_delta"]
+        if filters.get("max_short_delta"):
+            short_delta_filter["$lte"] = filters["max_short_delta"]
+        query["short_delta"] = short_delta_filter
 
     # Apply stock price filter
-    if filters.get("min_price") is not None:
-        query["stock_price"] = {"$gte": filters["min_price"]}
-    if filters.get("max_price") is not None:
-        if "stock_price" in query:
-            query["stock_price"]["$lte"] = filters["max_price"]
-        else:
-            query["stock_price"] = {"$lte": filters["max_price"]}
+    if filters.get("min_price") is not None or filters.get("max_price") is not None:
+        price_filter = {}
+        if filters.get("min_price") is not None:
+            price_filter["$gte"] = filters["min_price"]
+        if filters.get("max_price") is not None:
+            price_filter["$lte"] = filters["max_price"]
+        query["stock_price"] = price_filter
 
     # Apply ROI filters
     if filters.get("min_roi") is not None:
         query["roi_cycle"] = {"$gte": filters["min_roi"]}
     if filters.get("min_annualized_roi") is not None:
         query["roi_annualized"] = {"$gte": filters["min_annualized_roi"]}
+
 
     try:
         cursor = db.scan_results_pmcc.find(
@@ -1650,6 +1652,8 @@ def _transform_pmcc_result(r: Dict) -> tuple:
         
         # Greeks (NOT monetary - use sanitize_float)
         "delta": sanitize_float(r.get("delta") or r.get("leap_delta")),
+        "leap_delta": sanitize_float(r.get("leap_delta")),
+        "short_delta": sanitize_float(r.get("short_delta")),
         "delta_source": r.get("delta_source", "BLACK_SCHOLES_APPROX"),
         
         # IV (explicit units)
@@ -1696,6 +1700,7 @@ async def screen_pmcc(
     min_short_dte: int = Query(PMCC_MIN_SHORT_DTE, ge=1),
     max_short_dte: int = Query(PMCC_MAX_SHORT_DTE, le=60),
     min_delta: float = Query(PMCC_MIN_DELTA, ge=0.5, le=0.95),
+    max_delta: float = Query(None, ge=0.5, le=1.0, description="Max LEAP delta"),
     min_price: float = Query(None, ge=0, description="Min stock price filter"),
     max_price: float = Query(None, le=10000, description="Max stock price filter"),
     min_leaps_delta: float = Query(None, ge=0, le=1, description="Min LEAP leg delta"),
@@ -1735,6 +1740,7 @@ async def screen_pmcc(
         "min_short_dte": min_short_dte,
         "max_short_dte": max_short_dte,
         "min_delta": min_delta,
+        "max_delta": max_delta,
         "risk_profile": risk_profile,
         "min_price": min_price,
         "max_price": max_price,

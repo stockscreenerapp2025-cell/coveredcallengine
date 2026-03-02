@@ -170,6 +170,7 @@ def _get_server_functions():
 async def screen_covered_calls(
     min_roi: float = Query(0.5, ge=0),
     max_dte: int = Query(45, ge=1),
+    min_dte: int = Query(1, ge=1),
     min_delta: float = Query(0.15, ge=0, le=1),
     max_delta: float = Query(0.45, ge=0, le=1),
     min_iv_rank: float = Query(0, ge=0, le=100),
@@ -277,39 +278,29 @@ async def screen_covered_calls(
         
         logging.info(f"CC Screener: market_state={current_market_state}, price_source={underlying_price_source}")
         
-        # Symbol lists for scanning
-        tier1_symbols = [
-            "INTC", "AMD", "BAC", "WFC", "C", "F", "GM", "T", "VZ",
-            "PFE", "MRK", "KO", "PEP", "NKE", "DIS",
-            "PYPL", "UBER", "SNAP", "PLTR", "SOFI",
-            "AAL", "DAL", "CCL",
-            "USB", "PNC", "CFG",
-            "DVN", "APA", "HAL", "OXY"
-        ]
-        
-        tier2_symbols = [
-            "AAPL", "MSFT", "META",
-            "JPM", "GS", "V", "MA",
-            "HD", "COST",
-            "XOM", "CVX"
-        ]
-        
-        etf_symbols = ["SPY", "QQQ", "IWM", "DIA", "XLF", "XLE", "XLK"]
-        
-        # Build symbols list based on filters
+        # Load symbol universe from MongoDB (replaces hardcoded tiers)
+        from services.universe_builder import get_latest_universe
+        universe_doc = await get_latest_universe(db)
+        if universe_doc and universe_doc.get("symbols"):
+            all_symbols = universe_doc["symbols"]
+            logging.info(f"Loaded {len(all_symbols)} symbols from DB universe")
+        else:
+            from utils.universe import refresh_universe
+            all_symbols, _ = refresh_universe()
+            logging.warning(f"DB universe empty, using sync fallback: {len(all_symbols)} symbols")
+
+        etf_set = ETF_WHITELIST
+        stock_symbols = [s for s in all_symbols if s not in etf_set]
+        etf_symbols_list = [s for s in all_symbols if s in etf_set]
+
         symbols_to_scan = []
-        
         if include_stocks:
-            if max_price <= 100:
-                symbols_to_scan.extend(tier1_symbols)
-            elif min_price >= 100:
-                symbols_to_scan.extend(tier2_symbols)
-            else:
-                symbols_to_scan.extend(tier1_symbols + tier2_symbols)
-        
+            symbols_to_scan.extend(stock_symbols)
         if include_etfs:
-            symbols_to_scan.extend(etf_symbols)
-        
+            symbols_to_scan.extend(etf_symbols_list)
+
+        symbols_to_scan = symbols_to_scan[:200]
+        logging.info(f"Scanning {len(symbols_to_scan)} symbols for covered calls")
         logging.info(f"Scanning {len(symbols_to_scan)} symbols for covered calls")
         
         # PHASE 2: Batch fetch snapshots with cache-first approach
@@ -320,7 +311,7 @@ async def screen_covered_calls(
             api_key=api_key,
             include_options=True,
             max_dte=max_dte,
-            min_dte=1,
+            min_dte=min_dte,
             batch_size=10,
             is_scan_path=True  # Use bounded concurrency for screener
         )

@@ -47,6 +47,13 @@ from services.greeks_service import (
 )
 # Import enrichment service for IV Rank and Analyst data
 from services.enrichment_service import enrich_row, strip_enrichment_debug
+# AI Trade Manager imports
+try:
+    from services.wallet_service import debit_wallet, get_balance, MANAGE_COST_CREDITS, APPLY_COST_CREDITS, credit_wallet
+    from services.ai_trade_manager import generate_recommendation, apply_recommendation_to_trade
+    _MANAGE_AVAILABLE = True
+except ImportError:
+    _MANAGE_AVAILABLE = False
 
 simulator_router = APIRouter(tags=["Simulator"])
 
@@ -366,6 +373,9 @@ async def execute_rule_action(trade: dict, rule: dict, db_instance) -> dict:
             "current_delta": trade.get("current_delta")
         }
     }
+    # Ensure top-level fields for Logs tab rendering
+    log_entry["symbol"] = log_entry.get("symbol") or trade.get("symbol", "UNKNOWN")
+    log_entry["strategy_type"] = log_entry.get("strategy_type") or trade.get("strategy_type", "unknown")
     await db_instance.simulator_action_logs.insert_one(log_entry)
     
     return result
@@ -437,7 +447,7 @@ async def add_simulator_trade(trade: SimulatorTradeEntry, user: dict = Depends(g
     # Calculate DTE
     try:
         expiry_dt = datetime.strptime(trade.short_call_expiry, "%Y-%m-%d")
-        dte = (expiry_dt - datetime.now()).days
+        dte = max((expiry_dt - datetime.now()).days, 0)
     except:
         dte = 30  # Default
     
@@ -740,7 +750,7 @@ async def roll_pmcc_short_call(
     # Calculate new DTE
     try:
         new_expiry_dt = datetime.strptime(roll_request.new_expiry, "%Y-%m-%d")
-        new_dte = (new_expiry_dt - datetime.now()).days
+        new_dte = max((new_expiry_dt - datetime.now()).days, 0)
     except:
         new_dte = 30
     
@@ -923,10 +933,10 @@ async def update_simulator_prices(user: dict = Depends(get_current_user)):
         # Calculate DTE remaining
         try:
             expiry_dt = datetime.strptime(trade["short_call_expiry"], "%Y-%m-%d")
-            dte_remaining = (expiry_dt - datetime.now()).days
+            dte_remaining = max((expiry_dt - datetime.now()).days, 0)
             time_to_expiry = max(dte_remaining / 365, 0.001)  # In years
         except:
-            dte_remaining = trade.get("dte_remaining", 0)
+            dte_remaining = max(trade.get("dte_remaining", 0), 0)
             time_to_expiry = max(dte_remaining / 365, 0.001)
         
         # Calculate days held
@@ -961,19 +971,27 @@ async def update_simulator_prices(user: dict = Depends(get_current_user)):
             option_pnl = (entry_premium - current_option_value) * 100 * trade["contracts"]
             unrealized_pnl = stock_pnl + option_pnl
         else:  # PMCC
-            leaps_iv = trade.get("leaps_iv") or iv
-            leaps_dte = trade.get("leaps_dte_remaining") or 365
-            leaps_time_to_expiry = max(leaps_dte / 365, 0.001)
-            
-            leaps_greeks = calculate_greeks(
-                S=current_price,
-                K=trade.get("leaps_strike", current_price * 0.8),
-                T=leaps_time_to_expiry,
-                r=risk_free_rate,
-                sigma=leaps_iv
-            )
-            
-            leaps_value_change = (leaps_greeks["option_value"] - (trade.get("leaps_premium", 0))) * 100 * trade["contracts"]
+            leaps_strike_val = trade.get("leaps_strike")
+            leaps_premium_stored = trade.get("leaps_premium")
+
+            # Guard: validate LEAPS fields before pricing to prevent insane Unrealized P&L
+            if leaps_strike_val and leaps_strike_val > 0 and leaps_premium_stored and leaps_premium_stored > 0:
+                leaps_iv = trade.get("leaps_iv") or iv
+                leaps_dte = max(trade.get("leaps_dte_remaining") or 365, 0)
+                leaps_time_to_expiry = max(leaps_dte / 365, 0.001)
+
+                leaps_greeks = calculate_greeks(
+                    S=current_price,
+                    K=leaps_strike_val,
+                    T=leaps_time_to_expiry,
+                    r=risk_free_rate,
+                    sigma=leaps_iv
+                )
+
+                leaps_value_change = (leaps_greeks["option_value"] - leaps_premium_stored) * 100 * trade["contracts"]
+            else:
+                leaps_value_change = 0
+
             short_call_pnl = (entry_premium - current_option_value) * 100 * trade["contracts"]
             unrealized_pnl = leaps_value_change + short_call_pnl
         
@@ -998,6 +1016,14 @@ async def update_simulator_prices(user: dict = Depends(get_current_user)):
             "current_vega": greeks["vega"],
         }
         
+        # Auto-expire or assign when DTE reaches 0
+        if dte_remaining == 0 and trade.get("status") in ["open", "rolled"]:
+            is_itm = current_price >= trade["short_call_strike"]
+            update_doc["status"] = "assigned" if is_itm else "expired"
+            update_doc["final_pnl"] = round(unrealized_pnl, 2)
+            update_doc["realized_pnl"] = round(unrealized_pnl, 2)
+            update_doc["close_date"] = now.strftime("%Y-%m-%d")
+
         await db.simulator_trades.update_one({"id": trade["id"]}, {"$set": update_doc})
         updated_count += 1
     
@@ -1692,7 +1718,7 @@ async def get_pmcc_summary(user: dict = Depends(get_current_user)):
             days_to_leaps_expiry = 0
             try:
                 leaps_expiry_dt = datetime.strptime(trade.get("leaps_expiry", ""), "%Y-%m-%d")
-                days_to_leaps_expiry = (leaps_expiry_dt - now).days
+                days_to_leaps_expiry = max((leaps_expiry_dt - now).days, 0)
             except:
                 days_to_leaps_expiry = 365
             
@@ -2610,3 +2636,268 @@ async def delete_scanner_profile(profile_id: str, user: dict = Depends(get_curre
         raise HTTPException(status_code=404, detail="Profile not found")
     
     return {"message": "Profile deleted"}
+
+
+# ─── AI Manage Routes (auto-appended) ───
+@simulator_router.get("/wallet")
+async def get_wallet_balance(user: dict = Depends(get_current_user)):
+    """
+    Return the user's current AI credit balance.
+    Frontend calls this to show "You have X credits" in the Manage modal.
+    """
+    from services.wallet_service import get_balance
+    balance = await get_balance(db, user["id"])
+    return {"balance_credits": balance}
+
+
+# ─── POST /simulator/manage/{trade_id} ───────────────────────────────────────
+@simulator_router.post("/manage/{trade_id}")
+async def manage_trade(
+    trade_id: str,
+    body: dict,
+    user: dict = Depends(get_current_user)
+):
+    """
+    AI trade management endpoint.
+
+    Body:
+        {
+            "mode": "recommend_only" | "apply_after_approval",
+            "goals": {
+                "min_weekly_return_pct": 1.0,
+                "dca_enabled": false
+            }
+        }
+
+    Flow:
+        1. Load trade, verify ownership
+        2. Fetch live price + options chain
+        3. Debit wallet (charge MANAGE_COST_CREDITS)
+        4. Generate recommendation (deterministic rule engine)
+        5. Log to simulator_action_logs + simulator_ai_recommendations
+        6. Return recommendation for user to review
+
+    Returns:
+        { "recommendation": {...}, "balance_after": int }
+    """
+    from services.wallet_service import debit_wallet, get_balance, MANAGE_COST_CREDITS
+    from services.ai_trade_manager import generate_recommendation
+
+    user_id = user["id"]
+    mode    = body.get("mode", "recommend_only")
+    goals   = body.get("goals", {})
+
+    # ── 1. Load trade ────────────────────────────────────────────────────────
+    try:
+        from bson import ObjectId
+        trade = await db_instance.simulator_trades.find_one({
+            "_id": ObjectId(trade_id),
+            "user_id": user_id
+        })
+    except Exception:
+        trade = None
+
+    if not trade:
+        raise HTTPException(status_code=404, detail="Trade not found")
+
+    if trade.get("status") not in ("open", "rolled", "active"):
+        raise HTTPException(status_code=400, detail="Trade is not active — cannot manage closed/assigned trades")
+
+    symbol = trade.get("symbol", "UNKNOWN")
+
+    # ── 2. Fetch live price ──────────────────────────────────────────────────
+    try:
+        quote = await fetch_live_stock_quote(symbol)
+        current_price = float(quote.get("price") or quote.get("last", 0))
+    except Exception as e:
+        raise HTTPException(status_code=503, detail=f"Could not fetch live price for {symbol}: {e}")
+
+    if current_price <= 0:
+        raise HTTPException(status_code=503, detail=f"Invalid price returned for {symbol}")
+
+    # ── 3. Fetch options chain ───────────────────────────────────────────────
+    try:
+        expiry = trade.get("expiry_date", "")
+        chain  = await fetch_options_chain(symbol, expiry) if expiry else []
+    except Exception:
+        chain = []
+
+    # ── 4. Debit wallet ──────────────────────────────────────────────────────
+    debit_result = await debit_wallet(
+        db, user_id,
+        amount=MANAGE_COST_CREDITS,
+        reason=f"AI manage: {symbol} trade",
+        ref_id=trade_id
+    )
+    if not debit_result["success"]:
+        raise HTTPException(
+            status_code=402,
+            detail={
+                "error": "insufficient_credits",
+                "message": f"You need {MANAGE_COST_CREDITS} credits to run AI management. "
+                           f"Current balance: {debit_result['balance']}.",
+                "balance": debit_result["balance"]
+            }
+        )
+
+    balance_after = debit_result["balance_after"]
+
+    # ── 5. Generate recommendation ───────────────────────────────────────────
+    try:
+        recommendation = await generate_recommendation(
+            trade=trade,
+            current_price=current_price,
+            options_chain=chain,
+            goals=goals
+        )
+    except Exception as e:
+        # Refund on failure
+        from services.wallet_service import credit_wallet
+        await credit_wallet(db, user_id, MANAGE_COST_CREDITS, reason="Refund: manage failed", ref_id=trade_id)
+        raise HTTPException(status_code=500, detail=f"Recommendation engine error: {e}")
+
+    # ── 6. Log to simulator_action_logs ──────────────────────────────────────
+    now = datetime.utcnow()
+    action_log_entry = {
+        "user_id":        user_id,
+        "trade_id":       trade_id,
+        "symbol":         symbol,                          # ← top-level so Logs tab shows it
+        "strategy_type":  trade.get("strategy_type"),      # ← top-level
+        "action_type":    f"ai_manage:{recommendation['action']}",
+        "trigger":        "manual_manage",
+        "result":         "recommendation_generated",
+        "recommendation": recommendation,
+        "current_price":  current_price,
+        "credits_charged": MANAGE_COST_CREDITS,
+        "mode":           mode,
+        "timestamp":      now,
+        "trade_snapshot": {
+            "dte_remaining":   trade.get("dte_remaining"),
+            "short_strike":    trade.get("short_call_strike"),
+            "unrealized_pnl":  trade.get("unrealized_pnl"),
+        }
+    }
+    await db_instance.simulator_action_logs.insert_one(action_log_entry)
+
+    # Also write to recommendations collection for history
+    await db_instance.simulator_ai_recommendations.insert_one({
+        **action_log_entry,
+        "status": "pending_approval"
+    })
+
+    return {
+        "recommendation": recommendation,
+        "balance_after":  balance_after,
+        "current_price":  current_price,
+        "trade_id":       trade_id,
+        "symbol":         symbol
+    }
+
+
+# ─── POST /simulator/manage/{trade_id}/apply ─────────────────────────────────
+@simulator_router.post("/manage/{trade_id}/apply")
+async def apply_trade_recommendation(
+    trade_id: str,
+    body: dict,
+    user: dict = Depends(get_current_user)
+):
+    """
+    Apply a previously generated recommendation to the actual trade.
+
+    Body:
+        {
+            "recommendation": { ...the recommendation object returned by /manage... },
+            "current_price": 185.50
+        }
+
+    Flow:
+        1. Load trade, verify ownership
+        2. Debit APPLY_COST_CREDITS
+        3. Compute trade field updates
+        4. Apply to MongoDB
+        5. Log action
+        6. Return updated trade
+
+    Returns:
+        { "trade": {...updated trade...}, "balance_after": int }
+    """
+    from services.wallet_service import debit_wallet, APPLY_COST_CREDITS
+    from services.ai_trade_manager import apply_recommendation_to_trade
+
+    user_id        = user["id"]
+    recommendation = body.get("recommendation", {})
+    current_price  = float(body.get("current_price", 0))
+
+    if not recommendation:
+        raise HTTPException(status_code=400, detail="recommendation is required")
+
+    # ── Load trade ────────────────────────────────────────────────────────────
+    try:
+        from bson import ObjectId
+        trade = await db_instance.simulator_trades.find_one({
+            "_id": ObjectId(trade_id),
+            "user_id": user_id
+        })
+    except Exception:
+        trade = None
+
+    if not trade:
+        raise HTTPException(status_code=404, detail="Trade not found")
+
+    # ── Debit wallet ──────────────────────────────────────────────────────────
+    debit_result = await debit_wallet(
+        db, user_id,
+        amount=APPLY_COST_CREDITS,
+        reason=f"AI apply: {trade.get('symbol')} {recommendation.get('action')}",
+        ref_id=trade_id
+    )
+    if not debit_result["success"]:
+        raise HTTPException(
+            status_code=402,
+            detail={
+                "error": "insufficient_credits",
+                "message": f"Need {APPLY_COST_CREDITS} credits to apply. Balance: {debit_result['balance']}",
+                "balance": debit_result["balance"]
+            }
+        )
+
+    # ── Build and apply updates ────────────────────────────────────────────────
+    field_updates = apply_recommendation_to_trade(trade, recommendation, current_price)
+
+    await db_instance.simulator_trades.update_one(
+        {"_id": trade["_id"]},
+        {"$set": field_updates}
+    )
+
+    # Log the apply action
+    symbol = trade.get("symbol", "")
+    await db_instance.simulator_action_logs.insert_one({
+        "user_id":        user_id,
+        "trade_id":       trade_id,
+        "symbol":         symbol,
+        "strategy_type":  trade.get("strategy_type"),
+        "action_type":    f"ai_apply:{recommendation['action']}",
+        "trigger":        "user_approved",
+        "result":         "trade_updated",
+        "field_updates":  field_updates,
+        "recommendation": recommendation,
+        "credits_charged": APPLY_COST_CREDITS,
+        "timestamp":      datetime.utcnow()
+    })
+
+    # Mark recommendation as applied
+    await db_instance.simulator_ai_recommendations.update_many(
+        {"trade_id": trade_id, "status": "pending_approval"},
+        {"$set": {"status": "applied", "applied_at": datetime.utcnow()}}
+    )
+
+    # Return the updated trade
+    updated = await db_instance.simulator_trades.find_one({"_id": trade["_id"]})
+    updated["id"] = str(updated.pop("_id"))
+
+    return {
+        "trade":        updated,
+        "balance_after": debit_result["balance_after"],
+        "action_applied": recommendation["action"]
+    }
+

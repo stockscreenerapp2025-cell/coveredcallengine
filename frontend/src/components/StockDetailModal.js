@@ -113,11 +113,16 @@ const StockDetailModal = ({ symbol, isOpen, onClose, scanData = null }) => {
   const [loading, setLoading] = useState(true);
   const [sentimentData, setSentimentData] = useState(null);
   const [analyzingSentiment, setAnalyzingSentiment] = useState(false);
+  const [quote, setQuote] = useState(null);
 
   useEffect(() => {
     if (isOpen && symbol) {
       fetchStockData();
       setSentimentData(null); // Reset sentiment when modal opens
+      setQuote(null);
+      stocksApi.getQuote(symbol)
+        .then(res => setQuote(res.data))
+        .catch(e => console.error('Quote fetch failed', e));
     }
   }, [isOpen, symbol]);
 
@@ -626,19 +631,19 @@ const StockDetailModal = ({ symbol, isOpen, onClose, scanData = null }) => {
                       <div className="grid grid-cols-2 gap-3">
                         <div className="p-2 rounded bg-zinc-900/50">
                           <div className="text-xs text-zinc-500">Open</div>
-                          <div className="font-mono text-white">${stockData?.open?.toFixed(2) || 'N/A'}</div>
+                          <div className="font-mono text-white">{quote?.open != null ? '$' + quote.open.toFixed(2) : 'N/A'}</div>
                         </div>
                         <div className="p-2 rounded bg-zinc-900/50">
                           <div className="text-xs text-zinc-500">Volume</div>
-                          <div className="font-mono text-white">{stockData?.volume ? (stockData.volume / 1e6)?.toFixed(2) + 'M' : 'N/A'}</div>
+                          <div className="font-mono text-white">{quote?.volume != null ? (quote.volume / 1e6).toFixed(2) + 'M' : 'N/A'}</div>
                         </div>
                         <div className="p-2 rounded bg-zinc-900/50">
                           <div className="text-xs text-zinc-500">High</div>
-                          <div className="font-mono text-emerald-400">${stockData?.high?.toFixed(2) || 'N/A'}</div>
+                          <div className="font-mono text-emerald-400">{quote?.high != null ? '$' + quote.high.toFixed(2) : 'N/A'}</div>
                         </div>
                         <div className="p-2 rounded bg-zinc-900/50">
                           <div className="text-xs text-zinc-500">Low</div>
-                          <div className="font-mono text-red-400">${stockData?.low?.toFixed(2) || 'N/A'}</div>
+                          <div className="font-mono text-red-400">{quote?.low != null ? '$' + quote.low.toFixed(2) : 'N/A'}</div>
                         </div>
                       </div>
                     </CardContent>

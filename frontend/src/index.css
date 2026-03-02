@@ -159,11 +159,11 @@
 }
 
 .data-table th {
-    @apply px-4 py-3 text-left font-medium text-zinc-400 bg-zinc-900/50 border-b border-white/5;
+    @apply px-2 py-2 text-left font-medium text-zinc-400 bg-zinc-900/50 border-b border-white/5 text-xs;
 }
 
 .data-table td {
-    @apply px-4 py-3 border-b border-white/5 font-mono;
+    @apply px-2 py-2 border-b border-white/5 font-mono text-xs;
 }
 
 .data-table tr:hover {

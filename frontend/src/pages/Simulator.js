@@ -111,6 +111,16 @@ const OPERATORS = [
 ];
 
 const Simulator = () => {
+  // Status helper: backend uses 'open'/'rolled'/'active' for live trades
+  const isLive = (status) => ['open', 'rolled', 'active'].includes(status);
+
+  // AI Manage modal state
+  const [manageOpen, setManageOpen] = useState(false);
+  const [manageTrade, setManageTrade] = useState(null);
+  const [manageLoading, setManageLoading] = useState(false);
+  const [manageResult, setManageResult] = useState(null);   // { recommendation, balance_after, current_price }
+  const [applyLoading, setApplyLoading] = useState(false);
+  const [walletBalance, setWalletBalance] = useState(null);
   const [activeTab, setActiveTab] = useState('trades');
   const [trades, setTrades] = useState([]);
   const [summary, setSummary] = useState(null);
@@ -167,6 +177,91 @@ const Simulator = () => {
   // Track if initial price update has been done
   const [initialUpdateDone, setInitialUpdateDone] = useState(false);
 
+  // ── AI Manage helpers ──────────────────────────────────────────────
+  const fetchWalletBalance = async () => {
+    try {
+      const res = await fetch('/api/simulator/wallet', {
+        headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setWalletBalance(data.balance_credits);
+      }
+    } catch (e) { /* silent */ }
+  };
+
+  const handleManageTrade = async (trade) => {
+    setManageTrade(trade);
+    setManageResult(null);
+    setManageOpen(true);
+    await fetchWalletBalance();
+  };
+
+  const runManageAI = async (goals = {}) => {
+    if (!manageTrade) return;
+    setManageLoading(true);
+    setManageResult(null);
+    try {
+      const res = await fetch(`/api/simulator/manage/${manageTrade.id}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        },
+        body: JSON.stringify({ mode: 'recommend_only', goals })
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        if (res.status === 402) {
+          alert(`Insufficient credits. You need 5 credits. Current balance: ${data.detail?.balance ?? 0}`);
+        } else {
+          alert(`Error: ${data.detail || 'Unknown error'}`);
+        }
+        return;
+      }
+      setManageResult(data);
+      setWalletBalance(data.balance_after);
+    } catch (e) {
+      alert('Network error running AI manage.');
+    } finally {
+      setManageLoading(false);
+    }
+  };
+
+  const applyRecommendation = async () => {
+    if (!manageResult || !manageTrade) return;
+    setApplyLoading(true);
+    try {
+      const res = await fetch(`/api/simulator/manage/${manageTrade.id}/apply`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        },
+        body: JSON.stringify({
+          recommendation: manageResult.recommendation,
+          current_price: manageResult.current_price
+        })
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        alert(`Apply failed: ${data.detail || 'Unknown error'}`);
+        return;
+      }
+      setWalletBalance(data.balance_after);
+      setManageOpen(false);
+      setManageResult(null);
+      // Refresh trades list
+      if (typeof loadTrades === 'function') loadTrades();
+      else window.location.reload();
+      alert(`✅ Applied: ${data.action_applied}. Trade updated successfully.`);
+    } catch (e) {
+      alert('Network error applying recommendation.');
+    } finally {
+      setApplyLoading(false);
+    }
+  };
+
   useEffect(() => {
     fetchTrades();
     fetchSummary();
@@ -175,7 +270,7 @@ const Simulator = () => {
   // Auto-update prices on first load if there are active trades without current data
   useEffect(() => {
     if (!initialUpdateDone && trades.length > 0 && !loading) {
-      const needsUpdate = trades.some(t => t.status === 'active' && (!t.current_delta || t.current_delta === 0));
+      const needsUpdate = trades.some(t => isLive(t.status) && (!t.current_delta || t.current_delta === 0));
       if (needsUpdate) {
         setInitialUpdateDone(true);
         handleUpdatePrices();
@@ -798,7 +893,7 @@ const Simulator = () => {
                           {formatOptionContract(trade.short_call_expiry, trade.short_call_strike)}
                         </td>
                         <td className={`${trade.dte_remaining <= 7 ? 'text-amber-400' : 'text-zinc-300'}`}>
-                          {trade.status === 'active' ? `${trade.dte_remaining}d` : '-'}
+                          {isLive(trade.status) ? `${trade.dte_remaining}d` : '-'}
                         </td>
                         <td className="text-cyan-400 font-mono">
                           {trade.current_delta?.toFixed(2) || trade.short_call_delta?.toFixed(2) || '-'}
@@ -823,26 +918,40 @@ const Simulator = () => {
                           {trade.premium_capture_pct?.toFixed(0) || 0}%
                         </td>
                         <td className={`font-mono ${
-                          trade.status === 'active' 
+                          isLive(trade.status) 
                             ? (trade.unrealized_pnl >= 0 ? 'text-emerald-400' : 'text-red-400')
                             : (trade.final_pnl >= 0 ? 'text-emerald-400' : 'text-red-400')
                         }`}>
-                          {trade.status === 'active' 
+                          {isLive(trade.status) 
                             ? formatCurrency(trade.unrealized_pnl)
                             : formatCurrency(trade.final_pnl)
                           }
                         </td>
                         <td className={`font-mono ${
-                          trade.status === 'active'
+                          isLive(trade.status)
                             ? ((trade.unrealized_pnl / trade.capital_deployed * 100) >= 0 ? 'text-emerald-400' : 'text-red-400')
                             : (trade.roi_percent >= 0 ? 'text-emerald-400' : 'text-red-400')
                         }`}>
-                          {trade.status === 'active'
+                          {isLive(trade.status)
                             ? formatPercent(trade.capital_deployed > 0 ? (trade.unrealized_pnl / trade.capital_deployed * 100) : 0)
                             : formatPercent(trade.roi_percent)
                           }
                         </td>
                         <td>
+                          {isLive(trade.status) && (
+                            <button
+                              onClick={(e) => { e.stopPropagation(); handleManageTrade(trade); }}
+                              style={{
+                                background: 'linear-gradient(135deg, #7c3aed, #a855f7)',
+                                color: 'white', border: 'none', borderRadius: '6px',
+                                padding: '4px 10px', fontSize: '12px', cursor: 'pointer',
+                                fontWeight: '600', marginRight: '6px'
+                              }}
+                              title="AI will analyze this trade and suggest an action (5 credits)"
+                            >
+                              🤖 Manage
+                            </button>
+                          )}
                           <Button
                             variant="ghost"
                             size="sm"
@@ -1906,13 +2015,13 @@ const Simulator = () => {
                   <div className="text-lg font-semibold text-white">${selectedTrade.breakeven?.toFixed(2)}</div>
                 </div>
                 <div className="p-3 bg-zinc-800/50 rounded-lg">
-                  <div className="text-xs text-zinc-500 mb-1">{selectedTrade.status === 'active' ? 'Unrealized P/L' : 'Final P/L'}</div>
+                  <div className="text-xs text-zinc-500 mb-1">{isLive(selectedTrade.status) ? 'Unrealized P/L' : 'Final P/L'}</div>
                   <div className={`text-lg font-semibold ${
-                    selectedTrade.status === 'active'
+                    isLive(selectedTrade.status)
                       ? (selectedTrade.unrealized_pnl >= 0 ? 'text-emerald-400' : 'text-red-400')
                       : (selectedTrade.final_pnl >= 0 ? 'text-emerald-400' : 'text-red-400')
                   }`}>
-                    {selectedTrade.status === 'active' 
+                    {isLive(selectedTrade.status) 
                       ? formatCurrency(selectedTrade.unrealized_pnl)
                       : formatCurrency(selectedTrade.final_pnl)
                     }
@@ -1969,7 +2078,7 @@ const Simulator = () => {
                 <div>
                   <span className="text-zinc-500">DTE Remaining:</span>
                   <span className={`ml-2 ${selectedTrade.dte_remaining <= 7 ? 'text-amber-400' : 'text-white'}`}>
-                    {selectedTrade.status === 'active' ? `${selectedTrade.dte_remaining}d` : '-'}
+                    {isLive(selectedTrade.status) ? `${selectedTrade.dte_remaining}d` : '-'}
                   </span>
                 </div>
                 {selectedTrade.cumulative_premium && (
@@ -1981,7 +2090,7 @@ const Simulator = () => {
               </div>
 
               {/* Greeks Section */}
-              {selectedTrade.status === 'active' && (
+              {isLive(selectedTrade.status) && (
                 <div className="p-4 bg-zinc-800/30 rounded-lg">
                   <h4 className="text-sm font-medium text-zinc-400 mb-3 flex items-center gap-2">
                     <Activity className="w-4 h-4" />
@@ -2027,13 +2136,11 @@ const Simulator = () => {
                     <div className="text-center">
                       <div className="text-xs text-zinc-500 mb-1">Gamma</div>
                       <div className="text-violet-400 font-mono font-semibold">
-                        {selectedTrade.current_gamma?.toFixed(4) || '-'}
                       </div>
                     </div>
                     <div className="text-center">
                       <div className="text-xs text-zinc-500 mb-1">Vega</div>
                       <div className="text-amber-400 font-mono font-semibold">
-                        {selectedTrade.current_vega?.toFixed(2) || '-'}
                       </div>
                     </div>
                   </div>
@@ -2169,6 +2276,90 @@ const Simulator = () => {
           )}
         </DialogContent>
       </Dialog>
+      {/* ── AI Manage Modal ─────────────────────────────────────────── */}
+      {manageOpen && manageTrade && (
+        <div style={{
+          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          zIndex: 1000, padding: '20px'
+        }}>
+          <div style={{
+            background: '#1a1a2e', border: '1px solid #7c3aed',
+            borderRadius: '12px', padding: '28px', width: '100%', maxWidth: '600px',
+            maxHeight: '85vh', overflowY: 'auto', color: '#e2e8f0'
+          }}>
+            {/* Header */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '20px' }}>
+              <div>
+                <h2 style={{ margin: 0, fontSize: '20px', fontWeight: '700', color: '#a855f7' }}>
+                  🤖 AI Trade Manager
+                </h2>
+                <div style={{ fontSize: '14px', color: '#94a3b8', marginTop: '4px' }}>
+                  {manageTrade.symbol} · {manageTrade.strategy_type?.toUpperCase()} · {manageTrade.dte_remaining}d DTE
+                </div>
+              </div>
+              <div style={{ textAlign: 'right' }}>
+                {walletBalance !== null && (
+                  <div style={{
+                    background: walletBalance >= 5 ? '#14532d' : '#7f1d1d',
+                    border: `1px solid ${walletBalance >= 5 ? '#16a34a' : '#dc2626'}`,
+                    borderRadius: '8px', padding: '6px 12px', fontSize: '13px'
+                  }}>
+                    💳 {walletBalance} credits
+                  </div>
+                )}
+                <button
+                  onClick={() => { setManageOpen(false); setManageResult(null); }}
+                  style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', marginTop: '8px', fontSize: '18px' }}
+                >✕</button>
+              </div>
+            </div>
+
+            {/* Trade snapshot */}
+            <div style={{
+              display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '10px',
+              marginBottom: '20px', background: '#0f172a', borderRadius: '8px', padding: '14px'
+            }}>
+              {[
+                ['Short Strike', `$${manageTrade.short_call_strike ?? '—'}`],
+                ['Unrealized P/L', `$${manageTrade.unrealized_pnl?.toFixed(2) ?? '0.00'}`],
+                ['Premium Capture', `${manageTrade.premium_capture_pct?.toFixed(0) ?? '0'}%`],
+                ['Delta', manageTrade.current_delta?.toFixed(2) ?? '—'],
+                ['IV', manageTrade.current_iv ? `${(manageTrade.current_iv * 100).toFixed(1)}%` : '—'],
+                ['Status', manageTrade.status]
+              ].map(([label, val]) => (
+                <div key={label} style={{ textAlign: 'center' }}>
+                  <div style={{ fontSize: '11px', color: '#64748b', marginBottom: '3px' }}>{label}</div>
+                  <div style={{ fontSize: '14px', fontWeight: '600' }}>{val}</div>
+                </div>
+              ))}
+            </div>
+
+            {/* Goals config */}
+            {!manageResult && !manageLoading && (
+              <ManageGoalsForm onRun={runManageAI} loading={manageLoading} walletBalance={walletBalance} />
+            )}
+
+            {/* Loading state */}
+            {manageLoading && (
+              <div style={{ textAlign: 'center', padding: '30px', color: '#a855f7' }}>
+                <div style={{ fontSize: '28px', marginBottom: '10px' }}>⚙️</div>
+                <div>Analyzing trade... (5 credits)</div>
+              </div>
+            )}
+
+            {/* Recommendation result */}
+            {manageResult && !manageLoading && (
+              <RecommendationCard
+                result={manageResult}
+                onApply={applyRecommendation}
+                onDismiss={() => { setManageResult(null); }}
+                applyLoading={applyLoading}
+              />
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 };
