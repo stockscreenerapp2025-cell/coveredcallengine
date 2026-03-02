@@ -298,8 +298,9 @@ const Screener = () => {
       if (stockFilters.maxPrice !== '' && stockFilters.maxPrice !== undefined) params.max_price = stockFilters.maxPrice;
       if (optionsFilters.minVolume !== '' && optionsFilters.minVolume !== undefined) params.min_volume = optionsFilters.minVolume;
       if (optionsFilters.minOpenInterest !== '' && optionsFilters.minOpenInterest !== undefined) params.min_open_interest = optionsFilters.minOpenInterest;
-      if (expirationFilters.expirationType === 'weekly') params.weekly_only = true;
-      if (expirationFilters.expirationType === 'monthly') params.monthly_only = true;
+      if (expirationFilters.expirationType === 'weekly') params.dte_mode = 'weekly';
+      else if (expirationFilters.expirationType === 'monthly') params.dte_mode = 'monthly';
+      else params.dte_mode = 'all';
 
       // Security type filters
       params.include_stocks = stockFilters.includeStocks;
