@@ -315,15 +315,16 @@ const PMCC = () => {
     setLoading(true);
     try {
       // Only pass non-empty filter values
+      const clampDelta = (v) => v !== '' && v !== undefined ? Math.min(Math.max(parseFloat(v), 0), 1) : v;
       const params = {};
       if (filters.minPrice) params.min_price = filters.minPrice;
       if (filters.maxPrice) params.max_price = filters.maxPrice;
-      if (filters.minLeapsDelta) params.min_leaps_delta = filters.minLeapsDelta;
-      if (filters.maxLeapsDelta) params.max_leaps_delta = filters.maxLeapsDelta;
+      if (filters.minLeapsDelta !== '') params.min_leaps_delta = clampDelta(filters.minLeapsDelta);
+      if (filters.maxLeapsDelta !== '') params.max_leaps_delta = clampDelta(filters.maxLeapsDelta);
       if (filters.minLeapsDte) params.min_leap_dte = filters.minLeapsDte;
       if (filters.maxLeapsDte) params.max_leap_dte = filters.maxLeapsDte;
-      if (filters.minShortDelta) params.min_short_delta = filters.minShortDelta;
-      if (filters.maxShortDelta) params.max_short_delta = filters.maxShortDelta;
+      if (filters.minShortDelta !== '') params.min_short_delta = clampDelta(filters.minShortDelta);
+      if (filters.maxShortDelta !== '') params.max_short_delta = clampDelta(filters.maxShortDelta);
       if (filters.minShortDte) params.min_short_dte = filters.minShortDte;
       if (filters.maxShortDte) params.max_short_dte = filters.maxShortDte;
       if (filters.minRoiPerCycle) params.min_roi = filters.minRoiPerCycle;
@@ -703,6 +704,8 @@ const PMCC = () => {
                         <Input
                           type="number"
                           step="0.05"
+                          min="0"
+                          max="1"
                           value={filters.minLeapsDelta}
                           onChange={(e) => setFilters(f => ({ ...f, minLeapsDelta: e.target.value }))}
                           className="input-dark w-20 text-center"
@@ -711,6 +714,8 @@ const PMCC = () => {
                         <Input
                           type="number"
                           step="0.05"
+                          min="0"
+                          max="1"
                           value={filters.maxLeapsDelta}
                           onChange={(e) => setFilters(f => ({ ...f, maxLeapsDelta: e.target.value }))}
                           className="input-dark w-20 text-center"
@@ -756,6 +761,8 @@ const PMCC = () => {
                         <Input
                           type="number"
                           step="0.05"
+                          min="0"
+                          max="1"
                           value={filters.minShortDelta}
                           onChange={(e) => setFilters(f => ({ ...f, minShortDelta: e.target.value }))}
                           className="input-dark w-20 text-center"
@@ -764,6 +771,8 @@ const PMCC = () => {
                         <Input
                           type="number"
                           step="0.05"
+                          min="0"
+                          max="1"
                           value={filters.maxShortDelta}
                           onChange={(e) => setFilters(f => ({ ...f, maxShortDelta: e.target.value }))}
                           className="input-dark w-20 text-center"
