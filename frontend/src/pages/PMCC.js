@@ -671,16 +671,16 @@ const PMCC = () => {
                       <div className="flex items-center gap-2 mt-2">
                         <Input
                           type="number"
-                          value={filters.minPrice}
-                          onChange={(e) => setFilters(f => ({ ...f, minPrice: parseFloat(e.target.value) || 0 }))}
+                          value={filters.minPrice ?? ''}
+                          onChange={(e) => setFilters(f => ({ ...f, minPrice: e.target.value }))}
                           className="input-dark w-24 text-center"
                           placeholder="Min"
                         />
                         <span className="text-zinc-500">to</span>
                         <Input
                           type="number"
-                          value={filters.maxPrice}
-                          onChange={(e) => setFilters(f => ({ ...f, maxPrice: parseFloat(e.target.value) || 1000 }))}
+                          value={filters.maxPrice ?? ''}
+                          onChange={(e) => setFilters(f => ({ ...f, maxPrice: e.target.value }))}
                           className="input-dark w-24 text-center"
                           placeholder="Max"
                         />
@@ -705,7 +705,7 @@ const PMCC = () => {
                           type="number"
                           step="0.05"
                           value={filters.minLeapsDelta}
-                          onChange={(e) => setFilters(f => ({ ...f, minLeapsDelta: parseFloat(e.target.value) || 0.7 }))}
+                          onChange={(e) => setFilters(f => ({ ...f, minLeapsDelta: e.target.value }))}
                           className="input-dark w-20 text-center"
                         />
                         <span className="text-zinc-500">to</span>
@@ -713,7 +713,7 @@ const PMCC = () => {
                           type="number"
                           step="0.05"
                           value={filters.maxLeapsDelta}
-                          onChange={(e) => setFilters(f => ({ ...f, maxLeapsDelta: parseFloat(e.target.value) || 1 }))}
+                          onChange={(e) => setFilters(f => ({ ...f, maxLeapsDelta: e.target.value }))}
                           className="input-dark w-20 text-center"
                         />
                       </div>
@@ -725,14 +725,14 @@ const PMCC = () => {
                         <Input
                           type="number"
                           value={filters.minLeapsDte}
-                          onChange={(e) => setFilters(f => ({ ...f, minLeapsDte: parseInt(e.target.value) || 300 }))}
+                          onChange={(e) => setFilters(f => ({ ...f, minLeapsDte: e.target.value }))}
                           className="input-dark w-20 text-center"
                         />
                         <span className="text-zinc-500">to</span>
                         <Input
                           type="number"
                           value={filters.maxLeapsDte}
-                          onChange={(e) => setFilters(f => ({ ...f, maxLeapsDte: parseInt(e.target.value) || 730 }))}
+                          onChange={(e) => setFilters(f => ({ ...f, maxLeapsDte: e.target.value }))}
                           className="input-dark w-20 text-center"
                         />
                         <span className="text-zinc-500 text-xs">days</span>
@@ -758,7 +758,7 @@ const PMCC = () => {
                           type="number"
                           step="0.05"
                           value={filters.minShortDelta}
-                          onChange={(e) => setFilters(f => ({ ...f, minShortDelta: parseFloat(e.target.value) || 0.15 }))}
+                          onChange={(e) => setFilters(f => ({ ...f, minShortDelta: e.target.value }))}
                           className="input-dark w-20 text-center"
                         />
                         <span className="text-zinc-500">to</span>
@@ -766,7 +766,7 @@ const PMCC = () => {
                           type="number"
                           step="0.05"
                           value={filters.maxShortDelta}
-                          onChange={(e) => setFilters(f => ({ ...f, maxShortDelta: parseFloat(e.target.value) || 0.40 }))}
+                          onChange={(e) => setFilters(f => ({ ...f, maxShortDelta: e.target.value }))}
                           className="input-dark w-20 text-center"
                         />
                       </div>
@@ -778,14 +778,14 @@ const PMCC = () => {
                         <Input
                           type="number"
                           value={filters.minShortDte}
-                          onChange={(e) => setFilters(f => ({ ...f, minShortDte: parseInt(e.target.value) || 7 }))}
+                          onChange={(e) => setFilters(f => ({ ...f, minShortDte: e.target.value }))}
                           className="input-dark w-20 text-center"
                         />
                         <span className="text-zinc-500">to</span>
                         <Input
                           type="number"
                           value={filters.maxShortDte}
-                          onChange={(e) => setFilters(f => ({ ...f, maxShortDte: parseInt(e.target.value) || 45 }))}
+                          onChange={(e) => setFilters(f => ({ ...f, maxShortDte: e.target.value }))}
                           className="input-dark w-20 text-center"
                         />
                         <span className="text-zinc-500 text-xs">days</span>
@@ -809,7 +809,7 @@ const PMCC = () => {
                         type="number"
                         step="0.5"
                         value={filters.minRoiPerCycle}
-                        onChange={(e) => setFilters(f => ({ ...f, minRoiPerCycle: e.target.value === '' ? '' : parseFloat(e.target.value) || 0 }))}
+                        onChange={(e) => setFilters(f => ({ ...f, minRoiPerCycle: e.target.value }))}
                         className="input-dark mt-2"
                         placeholder="Min"
                       />
@@ -820,7 +820,7 @@ const PMCC = () => {
                       <Input
                         type="number"
                         value={filters.minAnnualizedRoi}
-                        onChange={(e) => setFilters(f => ({ ...f, minAnnualizedRoi: e.target.value === '' ? '' : parseFloat(e.target.value) || 0 }))}
+                        onChange={(e) => setFilters(f => ({ ...f, minAnnualizedRoi: e.target.value }))}
                         className="input-dark mt-2"
                         placeholder="Min"
                       />

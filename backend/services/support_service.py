@@ -535,6 +535,21 @@ The Covered Call Engine Team"""
             {"$or": [{"id": ticket_id}, {"ticket_number": ticket_id}]},
             {"_id": 0}
         )
+        if ticket:
+            from datetime import datetime, timezone
+
+            def _msg_dt(m):
+                v = m.get("created_at") or m.get("sent_at") or m.get("timestamp")
+                if not v:
+                    return datetime(1970, 1, 1, tzinfo=timezone.utc)
+                if isinstance(v, datetime):
+                    return v
+                try:
+                    return datetime.fromisoformat(v.replace("Z", "+00:00"))
+                except Exception:
+                    return datetime(1970, 1, 1, tzinfo=timezone.utc)
+
+            ticket["messages"] = sorted(ticket.get("messages", []), key=_msg_dt)
         return ticket
     
     async def get_tickets(

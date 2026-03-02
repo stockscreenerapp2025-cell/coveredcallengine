@@ -811,7 +811,7 @@ const Screener = () => {
                         <Input
                           type="number"
                           value={expirationFilters.minDte || ''}
-                          onChange={(e) => setExpirationFilters(f => ({ ...f, minDte: parseInt(e.target.value) || 1 }))}
+                          onChange={(e) => setExpirationFilters(f => ({ ...f, minDte: e.target.value }))}
                           className="input-dark w-20 text-center"
                           placeholder="Min"
                           min={1}
@@ -821,7 +821,7 @@ const Screener = () => {
                         <Input
                           type="number"
                           value={expirationFilters.maxDte || ''}
-                          onChange={(e) => setExpirationFilters(f => ({ ...f, maxDte: parseInt(e.target.value) || 45 }))}
+                          onChange={(e) => setExpirationFilters(f => ({ ...f, maxDte: e.target.value }))}
                           className="input-dark w-20 text-center"
                           placeholder="Max"
                           data-testid="max-dte-input"
@@ -847,8 +847,8 @@ const Screener = () => {
                       <div className="flex items-center gap-2 mt-2">
                         <Input
                           type="number"
-                          value={stockFilters.minPrice || ""} placeholder="Min"
-                          onChange={(e) => setStockFilters(f => ({ ...f, minPrice: parseFloat(e.target.value) || 0 }))}
+                          value={stockFilters.minPrice || ""}
+                          onChange={(e) => setStockFilters(f => ({ ...f, minPrice: e.target.value }))}
                           className="input-dark w-24 text-center"
                           placeholder="Min"
                           data-testid="min-price-input"
@@ -856,8 +856,8 @@ const Screener = () => {
                         <span className="text-zinc-500">to</span>
                         <Input
                           type="number"
-                          value={stockFilters.maxPrice || ""} placeholder="Max"
-                          onChange={(e) => setStockFilters(f => ({ ...f, maxPrice: parseFloat(e.target.value) || 1000 }))}
+                          value={stockFilters.maxPrice || ""}
+                          onChange={(e) => setStockFilters(f => ({ ...f, maxPrice: e.target.value }))}
                           className="input-dark w-24 text-center"
                           placeholder="Max"
                           data-testid="max-price-input"
@@ -905,8 +905,8 @@ const Screener = () => {
                       <Label className="text-xs text-zinc-400">Minimum Option Volume</Label>
                       <Input
                         type="number"
-                        value={optionsFilters.minVolume || ""} placeholder="Min"
-                        onChange={(e) => setOptionsFilters(f => ({ ...f, minVolume: parseInt(e.target.value) || 0 }))}
+                        value={optionsFilters.minVolume || ""}
+                        onChange={(e) => setOptionsFilters(f => ({ ...f, minVolume: e.target.value }))}
                         className="input-dark mt-2"
                         placeholder="0"
                         data-testid="min-volume-input"
@@ -916,8 +916,8 @@ const Screener = () => {
                       <Label className="text-xs text-zinc-400">Minimum Open Interest</Label>
                       <Input
                         type="number"
-                        value={optionsFilters.minOpenInterest || ""} placeholder="Min"
-                        onChange={(e) => setOptionsFilters(f => ({ ...f, minOpenInterest: parseInt(e.target.value) || 0 }))}
+                        value={optionsFilters.minOpenInterest || ""}
+                        onChange={(e) => setOptionsFilters(f => ({ ...f, minOpenInterest: e.target.value }))}
                         className="input-dark mt-2"
                         placeholder="0"
                         data-testid="min-oi-input"
@@ -960,8 +960,8 @@ const Screener = () => {
                         <Input
                           type="number"
                           step="0.05"
-                          value={greeksFilters.minDelta || ""} placeholder="Min"
-                          onChange={(e) => setGreeksFilters(f => ({ ...f, minDelta: parseFloat(e.target.value) || 0 }))}
+                          value={greeksFilters.minDelta || ""}
+                          onChange={(e) => setGreeksFilters(f => ({ ...f, minDelta: e.target.value }))}
                           className="input-dark w-20 text-center"
                           data-testid="min-delta-input"
                         />
@@ -969,8 +969,8 @@ const Screener = () => {
                         <Input
                           type="number"
                           step="0.05"
-                          value={greeksFilters.maxDelta || ""} placeholder="Max"
-                          onChange={(e) => setGreeksFilters(f => ({ ...f, maxDelta: parseFloat(e.target.value) || 1 }))}
+                          value={greeksFilters.maxDelta || ""}
+                          onChange={(e) => setGreeksFilters(f => ({ ...f, maxDelta: e.target.value }))}
                           className="input-dark w-20 text-center"
                           data-testid="max-delta-input"
                         />
@@ -982,8 +982,8 @@ const Screener = () => {
                       <Input
                         type="number"
                         step="0.01"
-                        value={greeksFilters.maxTheta || ""} placeholder="Max"
-                        onChange={(e) => setGreeksFilters(f => ({ ...f, maxTheta: parseFloat(e.target.value) || 0 }))}
+                        value={greeksFilters.maxTheta || ""}
+                        onChange={(e) => setGreeksFilters(f => ({ ...f, maxTheta: e.target.value }))}
                         className="input-dark mt-2"
                         placeholder="-0.05"
                         data-testid="max-theta-input"
@@ -1006,16 +1006,16 @@ const Screener = () => {
                       <div className="flex items-center gap-2 mt-2">
                         <Input
                           type="number"
-                          value={probabilityFilters.minProbOTM || ""} placeholder="Min"
-                          onChange={(e) => setProbabilityFilters(f => ({ ...f, minProbOTM: parseInt(e.target.value) || 0 }))}
+                          value={probabilityFilters.minProbOTM || ""}
+                          onChange={(e) => setProbabilityFilters(f => ({ ...f, minProbOTM: e.target.value }))}
                           className="input-dark w-20 text-center"
                           data-testid="min-prob-otm-input"
                         />
                         <span className="text-zinc-500">% to</span>
                         <Input
                           type="number"
-                          value={probabilityFilters.maxProbOTM || ""} placeholder="Max"
-                          onChange={(e) => setProbabilityFilters(f => ({ ...f, maxProbOTM: parseInt(e.target.value) || 100 }))}
+                          value={probabilityFilters.maxProbOTM || ""}
+                          onChange={(e) => setProbabilityFilters(f => ({ ...f, maxProbOTM: e.target.value }))}
                           className="input-dark w-20 text-center"
                           data-testid="max-prob-otm-input"
                         />
@@ -1165,7 +1165,7 @@ const Screener = () => {
                       <Input
                         type="number"
                         value={fundamentalFilters.minAnalystCount}
-                        onChange={(e) => setFundamentalFilters(f => ({ ...f, minAnalystCount: e.target.value === '' ? '' : parseInt(e.target.value) || 0 }))}
+                        onChange={(e) => setFundamentalFilters(f => ({ ...f, minAnalystCount: e.target.value }))}
                         className="input-dark mt-2"
                         placeholder="Min"
                         data-testid="min-analyst-input"
@@ -1197,7 +1197,7 @@ const Screener = () => {
                       <Input
                         type="number"
                         value={fundamentalFilters.minRoe}
-                        onChange={(e) => setFundamentalFilters(f => ({ ...f, minRoe: e.target.value === '' ? '' : parseFloat(e.target.value) || 0 }))}
+                        onChange={(e) => setFundamentalFilters(f => ({ ...f, minRoe: e.target.value }))}
                         className="input-dark mt-2"
                         placeholder="Min"
                         data-testid="min-roe-input"
@@ -1221,7 +1221,7 @@ const Screener = () => {
                         type="number"
                         step="0.25"
                         value={roiFilters.minRoi}
-                        onChange={(e) => setRoiFilters(f => ({ ...f, minRoi: e.target.value === '' ? '' : parseFloat(e.target.value) || 0 }))}
+                        onChange={(e) => setRoiFilters(f => ({ ...f, minRoi: e.target.value }))}
                         className="input-dark mt-2"
                         placeholder="Min"
                         data-testid="min-roi-input"
@@ -1233,7 +1233,7 @@ const Screener = () => {
                       <Input
                         type="number"
                         value={roiFilters.minAnnualizedRoi}
-                        onChange={(e) => setRoiFilters(f => ({ ...f, minAnnualizedRoi: e.target.value === '' ? '' : parseFloat(e.target.value) || 0 }))}
+                        onChange={(e) => setRoiFilters(f => ({ ...f, minAnnualizedRoi: e.target.value }))}
                         className="input-dark mt-2"
                         placeholder="Min"
                         data-testid="min-annual-roi-input"

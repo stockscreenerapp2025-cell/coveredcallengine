@@ -1104,8 +1104,8 @@ async def get_simulator_summary(user: dict = Depends(get_current_user)):
     closed_trades = [t for t in all_trades if t.get("status") in ["closed", "expired", "assigned"]]
     
     # Calculate P&L
-    total_realized = sum(t.get("realized_pnl", 0) or t.get("final_pnl", 0) for t in closed_trades)
-    total_unrealized = sum(t.get("unrealized_pnl", 0) for t in active_trades)
+    total_realized = sum((t.get("realized_pnl") or t.get("final_pnl") or 0) for t in closed_trades)
+    total_unrealized = sum((t.get("unrealized_pnl") or 0) for t in active_trades)
     
     # Win rate
     winners = [t for t in closed_trades if (t.get("realized_pnl", 0) or t.get("final_pnl", 0)) > 0]
@@ -1118,7 +1118,7 @@ async def get_simulator_summary(user: dict = Depends(get_current_user)):
     # Avg return % across ALL trades (realized + unrealized vs capital deployed)
     total_capital_deployed = sum((t.get("capital_deployed", 0) or 0) for t in active_trades)
     total_pnl = total_realized + total_unrealized
-    avg_return_pct = (total_pnl / total_capital_deployed * 100) if total_capital_deployed > 0 else avg_roi
+    avg_return_pct = (total_pnl / total_capital_deployed * 100) if total_capital_deployed > 0 else 0
 
     # Assignment rate
     assigned_count = sum(1 for t in all_trades if t.get("status") == "assigned")
@@ -1564,17 +1564,46 @@ async def create_rule_from_template(template_id: str, user: dict = Depends(get_c
     if not template:
         raise HTTPException(status_code=404, detail="Template not found")
     
+    # Templates store action as {"action_type": "...", "reason": "..."}
+    # but TradeRuleCreate.action expects a plain str — extract and map it
+    ACTION_MAP = {
+        "hold": "alert",
+        "expire": "alert",
+        "assignment": "alert",
+        "suggest": "alert",
+        "manage_short": "alert",
+        "roll": "roll_out",
+        "prompt": "alert",
+        "guidance": "alert",
+        "info": "alert",
+    }
+    raw_action = template["action"]
+    if isinstance(raw_action, dict):
+        action_type = raw_action.get("action_type")
+        if not action_type:
+            raise HTTPException(status_code=400, detail="Template action missing action_type")
+        action_str = ACTION_MAP.get(action_type, action_type)
+        # Merge template reason into action_params
+        existing_params = dict(template.get("action_params") or {})
+        reason = raw_action.get("reason")
+        if reason:
+            existing_params.setdefault("reason", reason)
+        action_params = existing_params or None
+    else:
+        action_str = raw_action
+        action_params = template.get("action_params")
+
     rule = TradeRuleCreate(
         name=template["name"],
         description=template["description"],
         rule_type=template["rule_type"],
         conditions=template["conditions"],
-        action=template["action"],
-        action_params=template.get("action_params"),
+        action=action_str,
+        action_params=action_params,
         priority=template.get("priority", 0),
         is_enabled=True
     )
-    
+
     return await create_trade_rule(rule, user)
 
 

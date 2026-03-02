@@ -226,9 +226,10 @@ async def forgot_password(request: ForgotPasswordRequest):
                 <p style="color:#999;font-size:12px;border-top:1px solid #333;padding-top:16px;">Or copy: <a href="{reset_url}" style="color:#00d4aa;">{reset_url}</a></p>
             </div>"""
         )
+        return {"message": "If that email exists, a reset link has been sent."}
     except Exception as e:
         import logging; logging.error(f"Reset email error: {e}")
-    return {"message": "If that email exists, a reset link has been sent."}
+        raise HTTPException(status_code=500, detail="Failed to send reset email. Please try again later.")
 
 
 @auth_router.post("/reset-password")
