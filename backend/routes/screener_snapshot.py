@@ -1557,24 +1557,20 @@ async def _get_pmcc_from_eod(
 
         results = await cursor.to_list(length=fetch_limit)
 
-        # If too few results from latest run, expand to recent runs and deduplicate by symbol
+        # If too few results from latest run, expand to ALL historical data (no run_id filter)
         if len(results) < 20:
             try:
-                recent_runs_cursor = db.scan_runs.find(
-                    {"status": "completed"},
-                    {"run_id": 1, "_id": 0}
-                ).sort("completed_at", -1).limit(10)
-                recent_runs = await recent_runs_cursor.to_list(10)
-                all_run_ids = [r["run_id"] for r in recent_runs if r.get("run_id")]
-                if len(all_run_ids) > 1:
-                    multi_query = {**{k: v for k, v in query.items() if k != "run_id"}, "run_id": {"$in": all_run_ids}}
-                    multi_cursor = db.scan_results_pmcc.find(multi_query, {"_id": 0}).sort("score", -1).limit(fetch_limit)
-                    all_results = await multi_cursor.to_list(fetch_limit)
-                    by_symbol = {}
-                    for r in all_results:
-                        sym = r.get("symbol")
-                        if sym and (sym not in by_symbol or (r.get("score") or 0) > (by_symbol[sym].get("score") or 0)):
-                            by_symbol[sym] = r
+                # Remove run_id constraint entirely — query all PMCC results ever stored
+                all_query = {k: v for k, v in query.items() if k != "run_id"}
+                all_cursor = db.scan_results_pmcc.find(all_query, {"_id": 0}).sort("score", -1).limit(fetch_limit * 5)
+                all_results = await all_cursor.to_list(fetch_limit * 5)
+                # Deduplicate by symbol, keeping best score
+                by_symbol = {}
+                for r in all_results:
+                    sym = r.get("symbol")
+                    if sym and (sym not in by_symbol or (r.get("score") or 0) > (by_symbol[sym].get("score") or 0)):
+                        by_symbol[sym] = r
+                if len(by_symbol) > len(results):
                     results = sorted(by_symbol.values(), key=lambda x: x.get("score") or 0, reverse=True)
             except Exception:
                 pass
