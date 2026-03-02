@@ -1703,19 +1703,28 @@ async def get_action_logs(
     user: dict = Depends(get_current_user)
 ):
     """Get action logs for rule executions"""
-    
-    query = {"user_id": user["id"]}
-    if trade_id:
-        query["trade_id"] = trade_id
-    if rule_id:
-        query["rule_id"] = rule_id
-    
-    logs = await db.simulator_action_logs.find(
-        query,
-        {"_id": 0}
-    ).sort("timestamp", -1).limit(limit).to_list(limit)
-    
-    return {"logs": logs, "count": len(logs)}
+    try:
+        query = {"user_id": user["id"]}
+        if trade_id:
+            query["trade_id"] = trade_id
+        if rule_id:
+            query["rule_id"] = rule_id
+
+        total = await db.simulator_action_logs.count_documents(query)
+        logs = await db.simulator_action_logs.find(
+            query,
+            {"_id": 0}
+        ).sort("timestamp", -1).limit(limit).to_list(limit)
+
+        return {
+            "logs": logs,
+            "count": len(logs),
+            "total": total,
+            "pages": max(1, (total + limit - 1) // limit)
+        }
+    except Exception as e:
+        logging.error(f"Failed to fetch action logs: {e}")
+        return {"logs": [], "count": 0, "total": 0, "pages": 1}
 
 
 # ==================== PMCC SUMMARY ====================
