@@ -1,5 +1,4 @@
 import { useState, useEffect } from 'react';
-import { TriggerButton } from "../components/TriggerButton";
 import api from '../lib/api';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../components/ui/card';
 import { Button } from '../components/ui/button';
@@ -317,7 +316,7 @@ const Admin = () => {
           imap_server: settingsRes.data.imap_server || 'imap.hostinger.com',
           imap_port: settingsRes.data.imap_port || 993,
           username: settingsRes.data.username || '',
-          password: settingsRes.data.password || ''
+          password: ''  // Never pre-fill with masked value; leave blank = keep existing
         }));
       }
       setImapHistory(historyRes.data.history || []);
@@ -756,13 +755,26 @@ const Admin = () => {
           <h1 className="text-2xl font-bold text-white flex items-center gap-3">
             <Settings className="w-8 h-8 text-emerald-500" />
             Admin Panel
-            <div className="pt-4"><TriggerButton /></div>
           </h1>
           <p className="text-zinc-400 mt-1">Manage users, subscriptions, and settings</p>
         </div>
-        <Button onClick={() => { fetchDashboardStats(); fetchSettings(); }} variant="outline" className="btn-outline">
+        <Button
+          onClick={async () => {
+            fetchDashboardStats();
+            fetchSettings();
+            if (!window.confirm("Trigger manual EOD snapshot?")) return;
+            try {
+              await api.post('/admin/trigger-snapshot');
+              alert("EOD snapshot triggered. Check dashboard in 5 minutes.");
+            } catch (e) {
+              alert("Error triggering EOD snapshot.");
+            }
+          }}
+          variant="outline"
+          className="btn-outline"
+        >
           <RefreshCw className="w-4 h-4 mr-2" />
-          Refresh
+          EOD Refresh
         </Button>
       </div>
       {/* Main Tabs */}

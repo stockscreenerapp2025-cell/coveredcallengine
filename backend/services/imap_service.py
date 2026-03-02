@@ -29,30 +29,38 @@ class IMAPService:
         self.last_error = None
     
     async def initialize(self) -> Tuple[bool, Optional[str]]:
-        """Load IMAP settings from database and test connection
-        
+        """Load IMAP settings from database, falling back to environment variables.
+
         Returns:
             Tuple of (success: bool, error_message: Optional[str])
         """
         try:
             settings = await self.db.admin_settings.find_one(
-                {"type": "imap_settings"}, 
+                {"type": "imap_settings"},
                 {"_id": 0}
             )
-            
-            if not settings:
-                return False, "IMAP settings not configured"
-            
-            self.imap_server = settings.get("imap_server")
-            self.imap_port = settings.get("imap_port", 993)
-            self.username = settings.get("username")
-            self.password = settings.get("password")
-            
+
+            if settings:
+                self.imap_server = settings.get("imap_server")
+                self.imap_port = int(settings.get("imap_port") or 993)
+                self.username = settings.get("username")
+                self.password = settings.get("password")
+
+            # Fall back to environment variables for any missing values
+            if not self.imap_server:
+                self.imap_server = os.environ.get("IMAP_HOST", "imap.hostinger.com")
+            if not self.imap_port:
+                self.imap_port = int(os.environ.get("IMAP_PORT", 993))
+            if not self.username:
+                self.username = os.environ.get("IMAP_USERNAME") or os.environ.get("EMAIL_USERNAME", "")
+            if not self.password:
+                self.password = os.environ.get("IMAP_PASSWORD") or os.environ.get("EMAIL_PASSWORD", "")
+
             if not all([self.imap_server, self.username, self.password]):
-                return False, "IMAP settings incomplete"
-            
+                return False, "IMAP settings incomplete — set IMAP_USERNAME and IMAP_PASSWORD env vars or save settings in Admin panel"
+
             return True, None
-            
+
         except Exception as e:
             error_msg = f"Failed to load IMAP settings: {str(e)}"
             logger.error(error_msg)

@@ -992,25 +992,43 @@ async def get_imap_settings(admin: dict = Depends(get_admin_user)):
             settings["password"] = "••••••••"
         return settings
     
+    import os
     return {
         "type": "imap_settings",
-        "imap_server": "imap.hostinger.com",
-        "imap_port": 993,
-        "username": "",
-        "password": "",
-        "configured": False
+        "imap_server": os.environ.get("IMAP_HOST", "imap.hostinger.com"),
+        "imap_port": int(os.environ.get("IMAP_PORT", 993)),
+        "username": os.environ.get("IMAP_USERNAME") or os.environ.get("EMAIL_USERNAME", ""),
+        "password": "••••••••" if (os.environ.get("IMAP_PASSWORD") or os.environ.get("EMAIL_PASSWORD")) else "",
+        "configured": bool(os.environ.get("IMAP_USERNAME") or os.environ.get("EMAIL_USERNAME"))
     }
 
 
 @admin_router.post("/imap/settings")
 async def update_imap_settings(settings: IMAPSettings, admin: dict = Depends(get_admin_user)):
     """Save or update IMAP settings"""
+    import os
+
+    # If password is blank or still the masked placeholder, keep the existing one
+    incoming_pw = settings.password or ""
+    is_masked = all(c == '\u2022' for c in incoming_pw) if incoming_pw else True
+    if is_masked:
+        existing = await db.admin_settings.find_one({"type": "imap_settings"}, {"_id": 0})
+        if existing and existing.get("password"):
+            resolved_password = existing["password"]
+        else:
+            resolved_password = (
+                os.environ.get("IMAP_PASSWORD") or
+                os.environ.get("EMAIL_PASSWORD") or ""
+            )
+    else:
+        resolved_password = incoming_pw
+
     settings_dict = {
         "type": "imap_settings",
         "imap_server": settings.imap_server,
         "imap_port": settings.imap_port,
         "username": settings.username,
-        "password": settings.password,
+        "password": resolved_password,
         "configured": True,
         "updated_at": datetime.now(timezone.utc).isoformat(),
         "updated_by": admin["email"]
