@@ -623,7 +623,7 @@ const PMCC = () => {
         </CardContent>
       </Card>
 
-      <div className="grid lg:grid-cols-7 gap-4">
+      <div className="grid lg:grid-cols-8 gap-4">
         {/* Filters Panel */}
         {filtersOpen && (
           <Card className="glass-card lg:col-span-2 h-fit" data-testid="pmcc-filters-panel">
@@ -834,7 +834,7 @@ const PMCC = () => {
         )}
 
         {/* Results Section */}
-        <div className={`space-y-4 ${filtersOpen ? 'lg:col-span-5' : 'lg:col-span-7'}`}>
+        <div className={`space-y-4 ${filtersOpen ? 'lg:col-span-6' : 'lg:col-span-8'}`}>
           {/* Live Data Badge */}
           {apiInfo?.is_live && (
             <div className="flex items-center gap-2">
@@ -898,7 +898,7 @@ const PMCC = () => {
                         <th>Ann. ROI</th>
                         <SortHeader field="score" label="AI Score" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
                         <th>Analyst</th>
-                        <th className="text-center">Action</th>
+                        <th className="text-center w-px whitespace-nowrap">Action</th>
                       </tr>
                     </thead>
                     <tbody>

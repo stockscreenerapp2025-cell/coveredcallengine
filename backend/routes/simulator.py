@@ -599,18 +599,34 @@ async def get_simulator_trades(
     
     total = await db.simulator_trades.count_documents(query)
     
+    # ========== UI FIELD ALIASES (normalize simulator doc shape for frontend) ==========
+    for trade in trades:
+        trade["entry"] = trade.get("entry_underlying_price")
+        trade["current"] = trade.get("current_underlying_price")
+        trade["expiry"] = trade.get("short_call_expiry")
+        trade["strike"] = trade.get("short_call_strike")
+        trade["premium"] = trade.get("short_call_premium")
+        trade["dte"] = trade.get("dte_remaining")
+        trade["delta"] = trade.get("current_delta") or trade.get("short_call_delta")
+        trade["iv"] = trade.get("short_call_iv")
+        status = trade.get("status", "open")
+        if status in ["open", "rolled"]:
+            trade["p_l"] = trade.get("unrealized_pnl", 0)
+        else:
+            trade["p_l"] = trade.get("realized_pnl") or trade.get("final_pnl", 0)
+
     # ========== ENRICHMENT: IV Rank + Analyst Data (LAST STEP) ==========
     for trade in trades:
         sym = trade.get("symbol", "")
         if sym:
             enrich_row(
                 sym, trade,
-                stock_price=trade.get("stock_price") or trade.get("entry_stock_price"),
-                expiry=trade.get("expiry") or trade.get("expiration"),
-                iv=trade.get("iv") or trade.get("implied_volatility")
+                stock_price=trade.get("current_underlying_price") or trade.get("entry_underlying_price"),
+                expiry=trade.get("short_call_expiry"),
+                iv=trade.get("short_call_iv")
             )
             strip_enrichment_debug(trade, include_debug=debug_enrichment)
-    
+
     return {
         "trades": trades,
         "total": total,
@@ -889,6 +905,8 @@ async def get_roll_suggestions(
         "suggestions": suggestions,
         "warning": "In PMCC, short call assignment should be AVOIDED. Roll before the short call goes ITM!"
     }
+
+@simulator_router.post("/update-prices")
 async def update_simulator_prices(user: dict = Depends(get_current_user)):
     """
     Manually trigger LIVE price update for user's active trades.
@@ -1093,40 +1111,52 @@ async def get_simulator_summary(user: dict = Depends(get_current_user)):
     winners = [t for t in closed_trades if (t.get("realized_pnl", 0) or t.get("final_pnl", 0)) > 0]
     win_rate = (len(winners) / len(closed_trades) * 100) if closed_trades else 0
     
-    # Average ROI
+    # Average ROI (closed trades only)
     rois = [t.get("roi_percent", 0) for t in closed_trades if t.get("roi_percent") is not None]
     avg_roi = sum(rois) / len(rois) if rois else 0
-    
+
+    # Avg return % across ALL trades (realized + unrealized vs capital deployed)
+    total_capital_deployed = sum((t.get("capital_deployed", 0) or 0) for t in active_trades)
+    total_pnl = total_realized + total_unrealized
+    avg_return_pct = (total_pnl / total_capital_deployed * 100) if total_capital_deployed > 0 else avg_roi
+
+    # Assignment rate
+    assigned_count = sum(1 for t in all_trades if t.get("status") == "assigned")
+    completed_count = len(closed_trades)  # already includes expired + assigned + closed
+    assignment_rate = round(assigned_count / completed_count * 100, 1) if completed_count > 0 else 0
+
     # By strategy
     by_strategy = {}
     for strategy in ["covered_call", "pmcc"]:
         strategy_trades = [t for t in all_trades if t.get("strategy_type") == strategy]
         strategy_closed = [t for t in strategy_trades if t.get("status") in ["closed", "expired", "assigned"]]
         strategy_active = [t for t in strategy_trades if t.get("status") in ["open", "rolled"]]
-        
+
         by_strategy[strategy] = {
             "total": len(strategy_trades),
             "active": len(strategy_active),
             "closed": len(strategy_closed),
-            "realized_pnl": sum(t.get("realized_pnl", 0) or t.get("final_pnl", 0) for t in strategy_closed),
-            "unrealized_pnl": sum(t.get("unrealized_pnl", 0) for t in strategy_active)
+            "realized_pnl": sum((t.get("realized_pnl", 0) or t.get("final_pnl", 0) or 0) for t in strategy_closed),
+            "unrealized_pnl": sum((t.get("unrealized_pnl", 0) or 0) for t in strategy_active)
         }
-    
+
     # By status
     by_status = {}
     for status in ["open", "rolled", "closed", "expired", "assigned"]:
         status_trades = [t for t in all_trades if t.get("status") == status]
         by_status[status] = len(status_trades)
-    
+
     return {
         "total_trades": len(all_trades),
         "active_trades": len(active_trades),
         "closed_trades": len(closed_trades),
         "total_realized_pnl": round(total_realized, 2),
         "total_unrealized_pnl": round(total_unrealized, 2),
-        "total_capital_deployed": sum(t.get("capital_deployed", 0) for t in active_trades),
+        "total_capital_deployed": round(total_capital_deployed, 2),
         "win_rate": round(win_rate, 1),
         "avg_roi": round(avg_roi, 2),
+        "avg_return_pct": round(avg_return_pct, 2),
+        "assignment_rate": assignment_rate,
         "by_strategy": by_strategy,
         "by_status": by_status
     }
