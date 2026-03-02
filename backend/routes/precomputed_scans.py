@@ -136,26 +136,45 @@ async def _get_eod_pmcc_opportunities(
 ) -> tuple:
     """
     Get PMCC opportunities from EOD scan_results_pmcc.
+    If the latest run has few results, expands to recent runs (PMCCs don't expire quickly).
     Returns (opportunities, run_info).
     """
-    query = {"run_id": run_id}
-    
-    # Risk profile determines thresholds
-    if risk_profile == "conservative":
-        query["score"] = {"$gte": 60}
-    elif risk_profile == "balanced":
-        query["score"] = {"$gte": 45}
-    elif risk_profile == "aggressive":
-        query["score"] = {"$gte": 30}
-    
-    if min_score > 0:
-        query["score"] = {"$gte": min_score}
-    
-    results = await db.scan_results_pmcc.find(
-        query,
-        {"_id": 0}
-    ).sort("score", -1).limit(limit).to_list(limit)
-    
+    score_floor = min_score if min_score > 0 else (
+        60 if risk_profile == "conservative" else
+        45 if risk_profile == "balanced" else 30
+    )
+
+    async def _fetch_for_runs(run_ids):
+        if not run_ids:
+            return []
+        query = {"run_id": {"$in": run_ids}, "score": {"$gte": score_floor}}
+        return await db.scan_results_pmcc.find(
+            query, {"_id": 0}
+        ).sort("score", -1).limit(limit * 3).to_list(limit * 3)
+
+    # Try latest run first
+    results = await _fetch_for_runs([run_id])
+
+    # If too few results, expand to the 5 most recent runs and deduplicate by symbol
+    if len(results) < 20:
+        recent_runs_cursor = db.scan_runs.find(
+            {"status": "completed"},
+            {"run_id": 1, "_id": 0}
+        ).sort("completed_at", -1).limit(5)
+        recent_runs = await recent_runs_cursor.to_list(5)
+        all_run_ids = list({r["run_id"] for r in recent_runs if r.get("run_id")})
+        if len(all_run_ids) > 1:
+            all_results = await _fetch_for_runs(all_run_ids)
+            # Deduplicate: keep best score per symbol
+            by_symbol = {}
+            for r in all_results:
+                sym = r.get("symbol")
+                if sym and (sym not in by_symbol or (r.get("score") or 0) > (by_symbol[sym].get("score") or 0)):
+                    by_symbol[sym] = r
+            results = sorted(by_symbol.values(), key=lambda x: x.get("score") or 0, reverse=True)
+
+    results = results[:limit]
+
     # Get run metadata
     run_doc = await db.scan_runs.find_one({"run_id": run_id}, {"_id": 0})
     run_info = {
@@ -163,7 +182,7 @@ async def _get_eod_pmcc_opportunities(
         "as_of": run_doc.get("as_of") if run_doc else None,
         "completed_at": run_doc.get("completed_at") if run_doc else None
     }
-    
+
     return results, run_info
 
 def _transform_cc_for_scans(row: Dict) -> Dict:
