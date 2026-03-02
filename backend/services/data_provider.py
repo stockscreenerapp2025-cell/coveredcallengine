@@ -428,6 +428,12 @@ def _fetch_stock_quote_yahoo_sync(symbol: str) -> Optional[Dict[str, Any]]:
         }
         analyst_rating = rating_map.get(recommendation, recommendation.replace("_", " ").title() if recommendation else None)
 
+        # OHLCV fields for Today's Stats display
+        open_val   = info.get("regularMarketOpen") or info.get("open")
+        high_val   = info.get("regularMarketDayHigh") or info.get("dayHigh")
+        low_val    = info.get("regularMarketDayLow") or info.get("dayLow")
+        volume_val = info.get("regularMarketVolume") or info.get("volume")
+
         return {
             "symbol": symbol.upper(),
             # SNAPSHOT price: from shared yf_pricing helper
@@ -447,6 +453,11 @@ def _fetch_stock_quote_yahoo_sync(symbol: str) -> Optional[Dict[str, Any]]:
             "avg_volume": info.get("averageVolume", 0) or info.get("averageDailyVolume10Day", 0),
             "earnings_date": None,
             "source": "yahoo",
+            # OHLCV for Today's Stats
+            "open":   round(float(open_val), 2)   if open_val   is not None else None,
+            "high":   round(float(high_val), 2)   if high_val   is not None else None,
+            "low":    round(float(low_val), 2)    if low_val    is not None else None,
+            "volume": int(volume_val)              if volume_val is not None else None,
         }
     except Exception as e:
         logging.warning(f"Yahoo stock quote failed for {symbol}: {e}")
