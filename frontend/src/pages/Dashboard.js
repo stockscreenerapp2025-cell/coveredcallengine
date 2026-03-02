@@ -236,29 +236,42 @@ const Dashboard = () => {
     color: STRATEGY_COLORS[key] || STRATEGY_COLORS.OTHER
   })) : [];
 
-  // Prepare performance data for bar chart - closed positions by realized P/L
-  const closedPositions = ibkrTrades
-    .filter(t => t.realized_pnl !== null && t.realized_pnl !== undefined)
-    .map(t => ({
-      symbol: t.symbol,
-      pnl: t.realized_pnl || 0,
-      roi: t.roi || 0
-    }))
-    .sort((a, b) => b.pnl - a.pnl)
-    .slice(0, 12);
+  // ROI % = Premium Collected / Total Invested * 100
+  const totalInvested = ibkrSummary?.total_invested || 0;
+  const totalPremium = ibkrSummary?.total_premium || 0;
+  const roiPct = totalInvested > 0 ? (totalPremium / totalInvested) * 100 : 0;
+
+  // Prepare performance data for bar chart - closed positions grouped by symbol
+  const closedPositions = (() => {
+    const map = new Map();
+    (ibkrTrades || [])
+      .filter(t => t.realized_pnl !== null && t.realized_pnl !== undefined)
+      .forEach(t => {
+        const symbol = t.symbol || '—';
+        const pnl = Number(t.realized_pnl) || 0;
+        map.set(symbol, (map.get(symbol) || 0) + pnl);
+      });
+    return Array.from(map.entries())
+      .map(([symbol, pnl]) => ({ symbol, pnl }))
+      .sort((a, b) => Math.abs(b.pnl) - Math.abs(a.pnl))
+      .slice(0, 12);
+  })();
 
   // Prepare performance data for bar chart - open positions by unrealized P/L or ROI
-  const openPositions = openTrades
-    .filter(t => t.unrealized_pnl !== null && t.unrealized_pnl !== undefined || t.roi !== null && t.roi !== undefined)
-    .map(t => ({
-      symbol: t.symbol,
-      pnl: t.unrealized_pnl || 0,
-      roi: t.roi || 0,
-      current_price: t.current_price || 0,
-      entry_price: t.entry_price || 0
-    }))
-    .sort((a, b) => Math.abs(b.pnl) - Math.abs(a.pnl))
-    .slice(0, 12);
+  const openPositions = (() => {
+    const map = new Map();
+    (openTrades || [])
+      .filter(t => t.unrealized_pnl !== null && t.unrealized_pnl !== undefined)
+      .forEach(t => {
+        const symbol = t.symbol || '—';
+        const pnl = Number(t.unrealized_pnl) || 0;
+        map.set(symbol, (map.get(symbol) || 0) + pnl);
+      });
+    return Array.from(map.entries())
+      .map(([symbol, pnl]) => ({ symbol, pnl }))
+      .sort((a, b) => Math.abs(b.pnl) - Math.abs(a.pnl))
+      .slice(0, 12);
+  })();
 
   const formatCurrency = (value) => {
     return new Intl.NumberFormat('en-US', {
@@ -389,7 +402,7 @@ const Dashboard = () => {
             ) : ibkrSummary && ibkrSummary.total_trades > 0 ? (
               <>
                 {/* IBKR Portfolio Stats */}
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+                <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
                   <div className="p-4 rounded-lg bg-zinc-800/30">
                     <div className="text-xs text-zinc-500 mb-1">Total Invested</div>
                     <div className="text-xl font-bold font-mono text-white">
@@ -400,6 +413,21 @@ const Dashboard = () => {
                     <div className="text-xs text-zinc-500 mb-1">Premium Collected</div>
                     <div className="text-xl font-bold font-mono text-cyan-400">
                       {formatCurrency(ibkrSummary?.total_premium || 0)}
+                    </div>
+                  </div>
+                  <div className="p-4 rounded-lg bg-zinc-800/30">
+                    <TooltipProvider>
+                      <ShadcnTooltip>
+                        <TooltipTrigger asChild>
+                          <div className="text-xs text-zinc-500 mb-1 cursor-help">ROI %</div>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p>ROI % = Total Premium Collected ÷ Total Invested</p>
+                        </TooltipContent>
+                      </ShadcnTooltip>
+                    </TooltipProvider>
+                    <div className="text-xl font-bold font-mono text-amber-400">
+                      {roiPct.toFixed(2)}%
                     </div>
                   </div>
                   <div className="p-4 rounded-lg bg-zinc-800/30">
