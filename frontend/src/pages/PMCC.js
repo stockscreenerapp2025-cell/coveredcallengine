@@ -234,11 +234,11 @@ const PMCC = () => {
     }
   };
 
-  // PMCC Filters - Phase 5 defaults: $30-$90 stock price (ETFs exempt)
+  // PMCC Filters
   const [filters, setFilters] = useState({
-    // Stock filters - Phase 5 strict pricing
-    minPrice: 30,
-    maxPrice: 90,
+    // Stock filters
+    minPrice: '',
+    maxPrice: '',
     // LEAPS filters
     minLeapsDelta: '',
     maxLeapsDelta: '',
@@ -354,10 +354,9 @@ const PMCC = () => {
   };
 
   const resetFilters = () => {
-    // Reset to Phase 5 defaults: $30-$90 price range
     setFilters({
-      minPrice: 30,
-      maxPrice: 90,
+      minPrice: '',
+      maxPrice: '',
       minLeapsDelta: '',
       maxLeapsDelta: '',
       minLeapsDte: '',
