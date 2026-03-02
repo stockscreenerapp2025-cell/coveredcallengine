@@ -1199,20 +1199,20 @@ CC_MAX_IV = 2.0             # Max 200% IV
 # These rules reduce opportunities but ensure institutional-grade trades
 
 # LEAP (Long leg) constraints
-PMCC_MIN_LEAP_DTE = 365          # Minimum 1 year
-PMCC_MAX_LEAP_DTE = 730          # Maximum 2 years
-PMCC_MIN_LEAP_DELTA = 0.75       # Deep ITM (was 0.70)
-PMCC_MIN_LEAP_OI = 100           # Minimum open interest
-PMCC_MAX_LEAP_SPREAD_PCT = 5.0   # Maximum bid-ask spread %
+PMCC_MIN_LEAP_DTE = 180          # Minimum 6 months (was 365)
+PMCC_MAX_LEAP_DTE = 1095         # Maximum 3 years (was 730)
+PMCC_MIN_LEAP_DELTA = 0.60       # ITM (was 0.75 — too restrictive, yfinance often missing delta)
+PMCC_MIN_LEAP_OI = 10            # Minimum open interest (was 100)
+PMCC_MAX_LEAP_SPREAD_PCT = 15.0  # Maximum bid-ask spread % (was 5.0)
 
 # SHORT (Short leg) constraints
-PMCC_MIN_SHORT_DTE = 30          # Minimum 30 days (was 7)
-PMCC_MAX_SHORT_DTE = 45          # Maximum 45 days (was 60)
-PMCC_MIN_SHORT_DELTA = 0.25      # Minimum delta
-PMCC_MAX_SHORT_DELTA = 0.35      # Maximum delta
-PMCC_MIN_SHORT_OI = 100          # Minimum open interest
-PMCC_MAX_SHORT_SPREAD_PCT = 5.0  # Maximum bid-ask spread %
-PMCC_MIN_SHORT_OTM_PCT = 0.01    # Short strike must be >= 2% OTM from stock_price
+PMCC_MIN_SHORT_DTE = 14          # Minimum 2 weeks (was 30)
+PMCC_MAX_SHORT_DTE = 60          # Maximum 60 days (was 45)
+PMCC_MIN_SHORT_DELTA = 0.15      # Minimum delta (was 0.25)
+PMCC_MAX_SHORT_DELTA = 0.45      # Maximum delta (was 0.35)
+PMCC_MIN_SHORT_OI = 10           # Minimum open interest (was 100)
+PMCC_MAX_SHORT_SPREAD_PCT = 15.0 # Maximum bid-ask spread % (was 5.0)
+PMCC_MIN_SHORT_OTM_PCT = 0.01    # Short strike must be >= 1% OTM from stock_price
 
 # Structure constraints
 PMCC_MIN_IV = 0.05               # Min 5% IV
