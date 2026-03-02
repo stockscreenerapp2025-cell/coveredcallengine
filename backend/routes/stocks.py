@@ -75,7 +75,11 @@ async def get_stock_quote(symbol: str, user: dict = Depends(get_current_user)):
                 "change_pct": result.get("change_pct", 0),
                 "close_date": result.get("close_date"),
                 "source": result.get("source", "yahoo"),
-                "is_live": True
+                "is_live": True,
+                "open": result.get("open"),
+                "high": result.get("high"),
+                "low": result.get("low"),
+                "volume": result.get("volume"),
             }
     except Exception as e:
         logging.error(f"data_provider fetch_stock_quote error for {symbol}: {e}")
