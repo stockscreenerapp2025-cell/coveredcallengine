@@ -252,8 +252,7 @@ const Simulator = () => {
       setManageOpen(false);
       setManageResult(null);
       // Refresh trades list
-      if (typeof loadTrades === 'function') loadTrades();
-      else window.location.reload();
+      fetchTrades();
       alert(`✅ Applied: ${data.action_applied}. Trade updated successfully.`);
     } catch (e) {
       alert('Network error applying recommendation.');

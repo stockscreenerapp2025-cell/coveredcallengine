@@ -82,8 +82,8 @@ async def register(user_data: UserCreate):
     try:
         import asyncio
         asyncio.create_task(_send_activation_email(user))
-    except Exception:
-        pass
+    except Exception as e:
+        logging.warning(f"Failed to queue activation email for {user.get('email')}: {e}")
 
     return TokenResponse(
         access_token=token,
