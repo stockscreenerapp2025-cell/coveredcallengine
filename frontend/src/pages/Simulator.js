@@ -2133,16 +2133,6 @@ const Simulator = () => {
                         {selectedTrade.premium_capture_pct?.toFixed(1) || 0}%
                       </div>
                     </div>
-                    <div className="text-center">
-                      <div className="text-xs text-zinc-500 mb-1">Gamma</div>
-                      <div className="text-violet-400 font-mono font-semibold">
-                      </div>
-                    </div>
-                    <div className="text-center">
-                      <div className="text-xs text-zinc-500 mb-1">Vega</div>
-                      <div className="text-amber-400 font-mono font-semibold">
-                      </div>
-                    </div>
                   </div>
                   <div className="mt-3 pt-3 border-t border-zinc-700 flex justify-between text-xs">
                     <span className="text-zinc-500">Current Option Value:</span>
