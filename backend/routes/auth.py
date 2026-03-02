@@ -179,7 +179,7 @@ async def _send_activation_email(user: dict):
         await _send_smtp_email(
             to_email=user["email"],
             subject="Activate Your Account - Covered Call Engine",
-            html=f"""<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;background:#1a1a2e;color:#fff;padding:40px;border-radius:12px;">
+            html_content=f"""<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;background:#1a1a2e;color:#fff;padding:40px;border-radius:12px;">
                 <h1 style="color:#00d4aa;">Covered Call Engine</h1>
                 <h2>Activate Your Account</h2>
                 <p style="color:#ccc;">Hi {user.get('name','there')}, welcome! Please activate your account:</p>
@@ -215,7 +215,7 @@ async def forgot_password(request: ForgotPasswordRequest):
         await _send_smtp_email(
             to_email=user["email"],
             subject="Reset Your Password - Covered Call Engine",
-            html=f"""<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;background:#1a1a2e;color:#fff;padding:40px;border-radius:12px;">
+            html_content=f"""<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;background:#1a1a2e;color:#fff;padding:40px;border-radius:12px;">
                 <h1 style="color:#00d4aa;">Covered Call Engine</h1>
                 <h2>Password Reset Request</h2>
                 <p style="color:#ccc;">Hi {user.get('name','there')}, click below to reset your password:</p>
