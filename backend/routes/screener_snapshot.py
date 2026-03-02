@@ -1549,13 +1549,38 @@ async def _get_pmcc_from_eod(
 
 
     try:
+        fetch_limit = limit * 3
         cursor = db.scan_results_pmcc.find(
             query,
             {"_id": 0}
-        ).sort("score", -1).limit(limit)
-        
-        results = await cursor.to_list(length=limit)
-        return results
+        ).sort("score", -1).limit(fetch_limit)
+
+        results = await cursor.to_list(length=fetch_limit)
+
+        # Recalculate actual DTE from expiry dates (stored values go stale)
+        today = _today_date()
+        for r in results:
+            leap_actual = _calc_actual_dte({"expiry": r.get("leap_expiry")}, today)
+            if leap_actual is not None:
+                r["leap_dte"] = leap_actual
+            short_actual = _calc_actual_dte({"expiry": r.get("short_expiry")}, today)
+            if short_actual is not None:
+                r["short_dte"] = short_actual
+
+        # Re-filter on recalculated DTE values
+        lo_leap = filters.get("min_leap_dte") or 0
+        hi_leap = filters.get("max_leap_dte") or 9999
+        lo_short = filters.get("min_short_dte") or 0
+        hi_short = filters.get("max_short_dte") or 9999
+        if any([filters.get("min_leap_dte"), filters.get("max_leap_dte"),
+                filters.get("min_short_dte"), filters.get("max_short_dte")]):
+            results = [
+                r for r in results
+                if lo_leap <= (r.get("leap_dte") or 0) <= hi_leap
+                and lo_short <= (r.get("short_dte") or 0) <= hi_short
+            ]
+
+        return results[:limit]
     except Exception as e:
         logging.error(f"Failed to query scan_results_pmcc: {e}")
         return []
@@ -1731,11 +1756,11 @@ def _transform_pmcc_result(r: Dict) -> tuple:
 async def screen_pmcc(
     limit: int = Query(50, ge=1, le=200),
     risk_profile: str = Query("moderate", regex="^(conservative|moderate|aggressive)$"),
-    min_leap_dte: int = Query(PMCC_MIN_LEAP_DTE, ge=365),
-    max_leap_dte: int = Query(PMCC_MAX_LEAP_DTE, le=1095),
-    min_short_dte: int = Query(PMCC_MIN_SHORT_DTE, ge=1),
-    max_short_dte: int = Query(PMCC_MAX_SHORT_DTE, le=60),
-    min_delta: float = Query(PMCC_MIN_DELTA, ge=0.5, le=0.95),
+    min_leap_dte: Optional[int] = Query(None, ge=0),
+    max_leap_dte: Optional[int] = Query(None, le=1095),
+    min_short_dte: Optional[int] = Query(None, ge=1),
+    max_short_dte: Optional[int] = Query(None, le=60),
+    min_delta: Optional[float] = Query(None, ge=0.0, le=1.0),
     max_delta: float = Query(None, ge=0.5, le=1.0, description="Max LEAP delta"),
     min_price: float = Query(None, ge=0, description="Min stock price filter"),
     max_price: float = Query(None, le=10000, description="Max stock price filter"),
