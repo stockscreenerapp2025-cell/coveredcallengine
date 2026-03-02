@@ -1557,6 +1557,28 @@ async def _get_pmcc_from_eod(
 
         results = await cursor.to_list(length=fetch_limit)
 
+        # If too few results from latest run, expand to recent runs and deduplicate by symbol
+        if len(results) < 20:
+            try:
+                recent_runs_cursor = db.scan_runs.find(
+                    {"status": "completed"},
+                    {"run_id": 1, "_id": 0}
+                ).sort("completed_at", -1).limit(10)
+                recent_runs = await recent_runs_cursor.to_list(10)
+                all_run_ids = [r["run_id"] for r in recent_runs if r.get("run_id")]
+                if len(all_run_ids) > 1:
+                    multi_query = {**{k: v for k, v in query.items() if k != "run_id"}, "run_id": {"$in": all_run_ids}}
+                    multi_cursor = db.scan_results_pmcc.find(multi_query, {"_id": 0}).sort("score", -1).limit(fetch_limit)
+                    all_results = await multi_cursor.to_list(fetch_limit)
+                    by_symbol = {}
+                    for r in all_results:
+                        sym = r.get("symbol")
+                        if sym and (sym not in by_symbol or (r.get("score") or 0) > (by_symbol[sym].get("score") or 0)):
+                            by_symbol[sym] = r
+                    results = sorted(by_symbol.values(), key=lambda x: x.get("score") or 0, reverse=True)
+            except Exception:
+                pass
+
         # Recalculate actual DTE from expiry dates (stored values go stale)
         today = _today_date()
         for r in results:
