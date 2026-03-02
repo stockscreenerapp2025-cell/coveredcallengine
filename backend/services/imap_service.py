@@ -40,24 +40,39 @@ class IMAPService:
                 {"_id": 0}
             )
 
+            def _is_masked(v):
+                """Return True if value is blank or the bullet-masked placeholder."""
+                return not v or all(c == '\u2022' for c in str(v))
+
             if settings:
                 self.imap_server = settings.get("imap_server")
                 self.imap_port = int(settings.get("imap_port") or 993)
                 self.username = settings.get("username")
-                self.password = settings.get("password")
+                raw_pw = settings.get("password")
+                self.password = None if _is_masked(raw_pw) else raw_pw
 
-            # Fall back to environment variables for any missing values
+            # Fall back to environment variables for any missing/masked values
             if not self.imap_server:
                 self.imap_server = os.environ.get("IMAP_HOST", "imap.hostinger.com")
             if not self.imap_port:
                 self.imap_port = int(os.environ.get("IMAP_PORT", 993))
-            if not self.username:
+            if _is_masked(self.username):
                 self.username = os.environ.get("IMAP_USERNAME") or os.environ.get("EMAIL_USERNAME", "")
-            if not self.password:
+            if _is_masked(self.password):
                 self.password = os.environ.get("IMAP_PASSWORD") or os.environ.get("EMAIL_PASSWORD", "")
 
             if not all([self.imap_server, self.username, self.password]):
                 return False, "IMAP settings incomplete — set IMAP_USERNAME and IMAP_PASSWORD env vars or save settings in Admin panel"
+
+            # Auto-repair: overwrite any corrupted (masked) password stored in DB
+            if settings and _is_masked(settings.get("password")):
+                try:
+                    await self.db.admin_settings.update_one(
+                        {"type": "imap_settings"},
+                        {"$set": {"password": self.password, "username": self.username}}
+                    )
+                except Exception:
+                    pass
 
             return True, None
 
