@@ -186,6 +186,24 @@ MONTHLY_MIN_DTE = 21
 MONTHLY_MAX_DTE = 45
 
 # Earnings exclusion window (days before and after)
+
+def _today_date():
+    from datetime import date
+    return date.today()
+
+def _calc_actual_dte(r: dict, today=None) -> Optional[int]:
+    """Compute actual DTE from expiry date. Returns None if expiry is missing/unparseable."""
+    from datetime import date as _date
+    if today is None:
+        today = _date.today()
+    expiry_str = r.get("expiry") or r.get("short_call_expiry")
+    if not expiry_str:
+        return None
+    try:
+        expiry_date = _date.fromisoformat(str(expiry_str)[:10])
+        return max((expiry_date - today).days, 0)
+    except Exception:
+        return None
 EARNINGS_EXCLUSION_DAYS = 7
 
 # Symbol universe (now built dynamically from universe builder)
@@ -945,10 +963,26 @@ async def _get_cc_from_eod(
         cursor = db.scan_results_cc.find(
             query,
             {"_id": 0}
-        ).sort("score", -1).limit(limit)
-        
-        results = await cursor.to_list(length=limit)
-        return results
+        ).sort("score", -1).limit(limit * 3)  # Fetch more to account for DTE re-filter
+
+        results = await cursor.to_list(length=limit * 3)
+
+        # Recalculate DTE from expiry date (stored DTE may be stale if pipeline ran days ago)
+        today = _today_date()
+        for r in results:
+            actual_dte = _calc_actual_dte(r, today)
+            if actual_dte is not None:
+                r["dte"] = actual_dte
+
+        # Re-apply DTE filter in Python using recalculated values
+        actual_min = filters.get("actual_min_dte")
+        actual_max = filters.get("actual_max_dte")
+        if actual_min is not None or actual_max is not None:
+            lo = actual_min if actual_min is not None else 0
+            hi = actual_max if actual_max is not None else 9999
+            results = [r for r in results if lo <= (r.get("dte") or 0) <= hi]
+
+        return results[:limit]
     except Exception as e:
         logging.error(f"Failed to query scan_results_cc: {e}")
         return []
@@ -1315,6 +1349,8 @@ async def screen_covered_calls(
         filters = {
             "min_dte": min_dte,
             "max_dte": max_dte,
+            "actual_min_dte": min_dte,   # used for Python-level re-filter after DTE recalculation
+            "actual_max_dte": max_dte,
             "dte_mode": dte_mode if dte_mode != "all" else None,
             "min_premium_yield": min_premium_yield,
             "max_premium_yield": max_premium_yield,

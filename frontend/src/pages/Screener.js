@@ -283,7 +283,7 @@ const Screener = () => {
     }
   };
 
-  const fetchOpportunities = async (bypassCache = false) => {
+  const fetchOpportunities = async (bypassCache = false, overrides = {}) => {
     setLoading(true);
     try {
       // Only pass filter values that are set (not empty strings)
@@ -298,8 +298,14 @@ const Screener = () => {
       if (stockFilters.maxPrice !== '' && stockFilters.maxPrice !== undefined) params.max_price = stockFilters.maxPrice;
       if (optionsFilters.minVolume !== '' && optionsFilters.minVolume !== undefined) params.min_volume = optionsFilters.minVolume;
       if (optionsFilters.minOpenInterest !== '' && optionsFilters.minOpenInterest !== undefined) params.min_open_interest = optionsFilters.minOpenInterest;
-      if (expirationFilters.expirationType === 'weekly') params.dte_mode = 'weekly';
-      else if (expirationFilters.expirationType === 'monthly') params.dte_mode = 'monthly';
+      // Moneyness → map to OTM% range sent to backend
+      if (optionsFilters.moneyness === 'atm') { params.min_otm_pct = 0; params.max_otm_pct = 2; }
+      else if (optionsFilters.moneyness === 'otm') { params.min_otm_pct = 2; params.max_otm_pct = 10; }
+      else if (optionsFilters.moneyness === 'itm') { params.min_otm_pct = 10; params.max_otm_pct = 25; }
+      // Use override expirationType if provided (avoids stale state when called from onValueChange)
+      const expirationType = overrides.expirationType ?? expirationFilters.expirationType;
+      if (expirationType === 'weekly') params.dte_mode = 'weekly';
+      else if (expirationType === 'monthly') params.dte_mode = 'monthly';
       else params.dte_mode = 'all';
 
       // Security type filters
@@ -334,17 +340,6 @@ const Screener = () => {
         market_closed: response.data.market_closed,
         is_last_trading_day: response.data.is_last_trading_day
       });
-
-      // Client-side filtering for moneyness
-      if (optionsFilters.moneyness !== 'all') {
-        results = results.filter(o => {
-          const moneyness = (o.strike - o.stock_price) / o.stock_price;
-          if (optionsFilters.moneyness === 'itm') return moneyness < -0.02;
-          if (optionsFilters.moneyness === 'atm') return Math.abs(moneyness) <= 0.02;
-          if (optionsFilters.moneyness === 'otm') return moneyness > 0.02;
-          return true;
-        });
-      }
 
       // Filter by probability OTM (only if filters are set)
       if (probabilityFilters.minProbOTM !== '' || probabilityFilters.maxProbOTM !== '') {
@@ -682,7 +677,7 @@ const Screener = () => {
               ? `Showing ${dataInfo.label} pre-computed results`
               : dataInfo?.from_cache && marketStatus && !marketStatus.is_open
                 ? "Showing data from last market session"
-                : "Advanced filtering for optimal premium opportunities"}
+                : "Scans a curated ~1500 symbol liquid universe · S&P 500 · Nasdaq 100 · ETFs · High-volume stocks"}
           </p>
         </div>
         <div className="flex flex-wrap gap-3">
@@ -740,7 +735,7 @@ const Screener = () => {
             Export
           </Button>
           <Button
-            onClick={() => { setActiveScan(null); fetchOpportunities(false); }}
+            onClick={() => { setActiveScan(null); fetchOpportunities(true); }}
             className="bg-emerald-600 hover:bg-emerald-700 text-white"
             data-testid="apply-filters-btn"
           >
@@ -788,7 +783,10 @@ const Screener = () => {
                       <Label className="text-xs text-zinc-400 mb-3 block">Expiration Type</Label>
                       <RadioGroup
                         value={expirationFilters.expirationType}
-                        onValueChange={(value) => setExpirationFilters(f => ({ ...f, expirationType: value }))}
+                        onValueChange={(value) => {
+                          setExpirationFilters(f => ({ ...f, expirationType: value }));
+                          fetchOpportunities(true, { expirationType: value });
+                        }}
                         className="space-y-2"
                       >
                         <div className="flex items-center space-x-3 p-2 rounded-lg hover:bg-zinc-800/50">
