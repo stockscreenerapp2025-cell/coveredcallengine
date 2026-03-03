@@ -32,7 +32,8 @@ async def _smtp_send(to_email: str, subject: str, html: str, from_email: str = N
     def _send():
         msg = MIMEMultipart("alternative")
         msg["Subject"] = subject
-        msg["From"] = f"Covered Call Engine <{sender}>"
+        # Use from_email for display header if provided, but always send via authenticated username
+        msg["From"] = sender if sender == cfg["username"] else f"{sender} via {cfg['username']}"
         msg["To"] = to_email
         if reply_to:
             msg["Reply-To"] = reply_to
@@ -40,7 +41,8 @@ async def _smtp_send(to_email: str, subject: str, html: str, from_email: str = N
         context = ssl.create_default_context()
         with smtplib.SMTP_SSL(cfg["host"], cfg["port"], context=context) as s:
             s.login(cfg["username"], cfg["password"])
-            s.sendmail(sender, to_email, msg.as_string())
+            # Always use authenticated username as envelope sender to avoid SMTP rejection
+            s.sendmail(cfg["username"], to_email, msg.as_string())
 
     try:
         await asyncio.to_thread(_send)

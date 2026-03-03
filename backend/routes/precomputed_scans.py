@@ -165,22 +165,43 @@ async def _get_eod_pmcc_opportunities(
         all_run_ids = list({r["run_id"] for r in recent_runs if r.get("run_id")})
         if len(all_run_ids) > 1:
             all_results = await _fetch_for_runs(all_run_ids)
-            # Deduplicate: keep best score per symbol
-            by_symbol = {}
+            # Deduplicate by (symbol, expiry, strike) — prefer newest run per key
+            run_order = {rid: i for i, rid in enumerate(all_run_ids)}  # lower index = newer
+            by_key = {}
             for r in all_results:
-                sym = r.get("symbol")
-                if sym and (sym not in by_symbol or (r.get("score") or 0) > (by_symbol[sym].get("score") or 0)):
-                    by_symbol[sym] = r
-            results = sorted(by_symbol.values(), key=lambda x: x.get("score") or 0, reverse=True)
+                key = (r.get("symbol"), r.get("short_expiry"), r.get("short_strike"))
+                if not key[0]:
+                    continue
+                if key not in by_key:
+                    by_key[key] = r
+                else:
+                    # Prefer newer run (lower index in run_order)
+                    existing_order = run_order.get(by_key[key].get("run_id"), 999)
+                    new_order = run_order.get(r.get("run_id"), 999)
+                    if new_order < existing_order:
+                        by_key[key] = r
+            results = sorted(by_key.values(), key=lambda x: x.get("score") or 0, reverse=True)
 
     results = results[:limit]
 
-    # Get run metadata
-    run_doc = await db.scan_runs.find_one({"run_id": run_id}, {"_id": 0})
+    # Get run metadata — build a lookup so we can stamp as_of per row
+    run_docs = {}
+    all_result_run_ids = list({r.get("run_id") for r in results if r.get("run_id")})
+    if all_result_run_ids:
+        cursor = db.scan_runs.find({"run_id": {"$in": all_result_run_ids}}, {"run_id": 1, "as_of": 1, "completed_at": 1, "_id": 0})
+        for doc in await cursor.to_list(len(all_result_run_ids)):
+            run_docs[doc["run_id"]] = doc
+
+    # Stamp as_of on each row so users can see data freshness
+    for r in results:
+        row_run = run_docs.get(r.get("run_id"), {})
+        r["as_of"] = row_run.get("as_of") or row_run.get("completed_at")
+
+    run_doc = run_docs.get(run_id) or {}
     run_info = {
         "run_id": run_id,
-        "as_of": run_doc.get("as_of") if run_doc else None,
-        "completed_at": run_doc.get("completed_at") if run_doc else None
+        "as_of": run_doc.get("as_of"),
+        "completed_at": run_doc.get("completed_at")
     }
 
     return results, run_info

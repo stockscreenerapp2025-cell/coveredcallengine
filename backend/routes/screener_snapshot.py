@@ -1638,16 +1638,16 @@ async def _get_pmcc_from_eod(
             try:
                 # Remove run_id constraint entirely — query all PMCC results ever stored
                 all_query = {k: v for k, v in query.items() if k != "run_id"}
-                all_cursor = db.scan_results_pmcc.find(all_query, {"_id": 0}).sort("score", -1).limit(fetch_limit * 5)
+                all_cursor = db.scan_results_pmcc.find(all_query, {"_id": 0}).sort([("created_at", -1), ("score", -1)]).limit(fetch_limit * 5)
                 all_results = await all_cursor.to_list(fetch_limit * 5)
-                # Deduplicate by symbol, keeping best score
-                by_symbol = {}
+                # Deduplicate by (symbol, expiry, strike) — prefer newest record per key
+                by_key = {}
                 for r in all_results:
-                    sym = r.get("symbol")
-                    if sym and (sym not in by_symbol or (r.get("score") or 0) > (by_symbol[sym].get("score") or 0)):
-                        by_symbol[sym] = r
-                if len(by_symbol) > len(results):
-                    results = sorted(by_symbol.values(), key=lambda x: x.get("score") or 0, reverse=True)
+                    key = (r.get("symbol"), r.get("short_expiry"), r.get("short_strike"))
+                    if key[0] and key not in by_key:
+                        by_key[key] = r  # first seen = newest (sorted by created_at desc)
+                if len(by_key) > len(results):
+                    results = sorted(by_key.values(), key=lambda x: x.get("score") or 0, reverse=True)
             except Exception:
                 pass
 
