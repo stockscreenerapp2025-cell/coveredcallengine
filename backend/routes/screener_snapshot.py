@@ -1099,6 +1099,17 @@ async def _merge_analyst_enrichment(opportunities: List[Dict], debug_enrichment:
                 # Legacy field used by UI
                 opp["analyst_rating"] = enrichment.get("analyst_rating_label")
 
+                # SMA fields — compare stock_price against stored SMA values
+                stock_price = opp.get("stock_price") or 0
+                fifty_day_avg = enrichment.get("fifty_day_avg")
+                two_hundred_day_avg = enrichment.get("two_hundred_day_avg")
+                if fifty_day_avg:
+                    opp["above_sma50"] = stock_price > fifty_day_avg
+                    opp["sma50"] = round(fifty_day_avg, 2)
+                if two_hundred_day_avg:
+                    opp["above_sma200"] = stock_price > two_hundred_day_avg
+                    opp["sma200"] = round(two_hundred_day_avg, 2)
+
                 if debug_enrichment:
                     opp["enrichment_applied"] = True
                     opp["enrichment_sources"] = {"analyst": "db", "iv_rank": "none"}
@@ -1316,6 +1327,7 @@ async def screen_covered_calls(
     min_roi: float = Query(None, ge=0, description="Min ROI % per cycle"),
     min_annualized_roi: float = Query(None, ge=0, description="Min annualized ROI %"),
     analyst_rating: str = Query(None, description="Filter by analyst rating: strong_buy|buy|hold|sell"),
+    sma_filter: str = Query(None, description="SMA filter: above_sma50|above_sma200|above_both"),
     use_eod_contract: bool = Query(True, description="Deprecated - always uses EOD data"),
     debug_enrichment: bool = Query(False, description="Include enrichment debug info"),
     user: dict = Depends(get_current_user)
@@ -1426,6 +1438,15 @@ async def screen_covered_calls(
                 o for o in opportunities
                 if _norm_rating(o.get("analyst_rating_label") or o.get("analyst_rating")) == target
             ]
+
+        # Filter by SMA after enrichment (enrichment adds above_sma50/above_sma200)
+        if sma_filter and sma_filter != 'none':
+            if sma_filter == 'above_sma50':
+                opportunities = [o for o in opportunities if o.get("above_sma50") is True]
+            elif sma_filter == 'above_sma200':
+                opportunities = [o for o in opportunities if o.get("above_sma200") is True]
+            elif sma_filter == 'above_both':
+                opportunities = [o for o in opportunities if o.get("above_sma50") is True and o.get("above_sma200") is True]
 
         elapsed_ms = (time.time() - start_time) * 1000
         logging.info(f"CC Screener: {len(opportunities)} results, {dropped_rows} dropped in {elapsed_ms:.1f}ms from {data_source} trace_id={trace_id}")

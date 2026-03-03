@@ -54,7 +54,12 @@ def fetch_analyst_data_sync(symbol: str) -> Dict:
         }
 
         rec_label = label_map.get(rec_key, rec_key.replace("_", " ").title() if rec_key else None)
-        
+
+        # SMA data — available directly from yfinance info (no extra API call)
+        fifty_day_avg = info.get("fiftyDayAverage")
+        two_hundred_day_avg = info.get("twoHundredDayAverage")
+        current_price = info.get("currentPrice") or info.get("regularMarketPrice")
+
         return {
             "symbol": symbol,
             "success": True,
@@ -64,6 +69,9 @@ def fetch_analyst_data_sync(symbol: str) -> Dict:
             "target_price_high": target_high,
             "target_price_low": target_low,
             "target_price_mean": target_mean,
+            "fifty_day_avg": fifty_day_avg,
+            "two_hundred_day_avg": two_hundred_day_avg,
+            "current_price": current_price,
             "source": "yahoo"
         }
         
@@ -120,6 +128,8 @@ async def enrich_symbols(
                         "target_price_high": result.get("target_price_high"),
                         "target_price_low": result.get("target_price_low"),
                         "target_price_mean": result.get("target_price_mean"),
+                        "fifty_day_avg": result.get("fifty_day_avg"),
+                        "two_hundred_day_avg": result.get("two_hundred_day_avg"),
                         "source": "yahoo",
                         "as_of": datetime.now(timezone.utc),
                         "updated_at": datetime.now(timezone.utc)
