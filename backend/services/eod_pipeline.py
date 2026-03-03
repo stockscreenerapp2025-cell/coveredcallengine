@@ -1587,17 +1587,19 @@ async def compute_scan_results(
         if not is_eligible:
             continue
 
-        # Fetch analyst enrichment from symbol_enrichment collection
+        # Fetch analyst enrichment and sector from symbol_enrichment collection
         analyst_data = None
         analyst_rating = None
+        symbol_sector = None
         if db is not None:
             try:
                 analyst_data = await db.symbol_enrichment.find_one(
                     {"symbol": symbol},
-                    {"_id": 0, "analyst_rating_label": 1, "analyst_rating_value": 1}
+                    {"_id": 0, "analyst_rating_label": 1, "analyst_rating_value": 1, "sector": 1}
                 )
                 analyst_rating = analyst_data.get(
                     "analyst_rating_label") if analyst_data else None
+                symbol_sector = analyst_data.get("sector") if analyst_data else None
             except Exception:
                 pass
 
@@ -1809,6 +1811,7 @@ async def compute_scan_results(
 
                     "quality_flags": quality_flags,
                     "analyst_rating": analyst_rating,
+                    "sector": symbol_sector,
 
                     "score": round(score, 1)
                 }
@@ -2111,8 +2114,9 @@ async def compute_scan_results(
                     # Quality flags (combined from validation + soft flags)
                     "quality_flags": combined_quality_flags,
 
-                    # Analyst (from enrichment)
+                    # Analyst and sector (from enrichment)
                     "analyst_rating": analyst_rating,
+                    "sector": symbol_sector,
 
                     # Scoring
                     "score": round(50 + roi_per_cycle * 5, 1)
