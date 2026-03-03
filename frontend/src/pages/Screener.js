@@ -1046,7 +1046,7 @@ const Screener = () => {
                       <Label className="text-xs text-zinc-400">Moving Average Filter</Label>
                       <Select
                         value={technicalFilters.smaFilter}
-                        onValueChange={(value) => setTechnicalFilters(f => ({ ...f, smaFilter: value }))}
+                        onValueChange={(value) => { setTechnicalFilters(f => ({ ...f, smaFilter: value })); fetchOpportunities(true, { smaFilter: value }); }}
                       >
                         <SelectTrigger className="input-dark mt-2" data-testid="sma-filter-select">
                           <SelectValue placeholder="Select MA filter" />
