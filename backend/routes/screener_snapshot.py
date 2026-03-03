@@ -1315,6 +1315,7 @@ async def screen_covered_calls(
     include_stocks: bool = Query(True, description="Include stocks in results"),
     min_roi: float = Query(None, ge=0, description="Min ROI % per cycle"),
     min_annualized_roi: float = Query(None, ge=0, description="Min annualized ROI %"),
+    analyst_rating: str = Query(None, description="Filter by analyst rating: strong_buy|buy|hold|sell"),
     use_eod_contract: bool = Query(True, description="Deprecated - always uses EOD data"),
     debug_enrichment: bool = Query(False, description="Include enrichment debug info"),
     user: dict = Depends(get_current_user)
@@ -1415,7 +1416,16 @@ async def screen_covered_calls(
         
         # ANALYST ENRICHMENT MERGE (READ-TIME)
         opportunities = await _merge_analyst_enrichment(opportunities, debug_enrichment=debug_enrichment)
-        
+
+        # Filter by analyst rating after enrichment (enrichment adds the label)
+        if analyst_rating and analyst_rating != 'all':
+            _rating_map = {"strong_buy": "Strong Buy", "buy": "Buy", "hold": "Hold", "sell": "Sell"}
+            target_label = _rating_map.get(analyst_rating, analyst_rating)
+            opportunities = [
+                o for o in opportunities
+                if (o.get("analyst_rating_label") or o.get("analyst_rating")) == target_label
+            ]
+
         elapsed_ms = (time.time() - start_time) * 1000
         logging.info(f"CC Screener: {len(opportunities)} results, {dropped_rows} dropped in {elapsed_ms:.1f}ms from {data_source} trace_id={trace_id}")
         
