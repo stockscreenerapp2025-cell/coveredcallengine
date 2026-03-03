@@ -37,7 +37,9 @@ from services.universe_builder import (
     build_universe,
     persist_universe_version,
     get_latest_universe,
-    is_etf
+    is_etf,
+    build_pmcc_universe,
+    get_pmcc_universe_symbols
 )
 from utils.symbol_normalization import normalize_symbol
 from data.leaps_safe_universe import is_leaps_safe, get_leaps_safe_universe
@@ -754,20 +756,17 @@ async def run_eod_pipeline(db, force_build_universe: bool = False) -> EODPipelin
 
     logger.info(f"[EOD_PIPELINE] Starting run_id={run_id}")
 
-    # Step 1: Get universe
+    # Step 1: Get universe from pmcc_universe collection (Nasdaq CSV-based)
     if force_build_universe:
-        universe, tier_counts, universe_version = await build_universe(db)
-        await persist_universe_version(db, universe, tier_counts, universe_version)
+        universe = await build_pmcc_universe(db)
     else:
-        latest = await get_latest_universe(db)
-        if latest:
-            universe = latest.get("universe_symbols", [])
-            tier_counts = latest.get("tier_counts", {})
-            universe_version = latest.get("universe_version", "UNKNOWN")
-        else:
-            # Build fresh if no persisted version
-            universe, tier_counts, universe_version = await build_universe(db)
-            await persist_universe_version(db, universe, tier_counts, universe_version)
+        universe = await get_pmcc_universe_symbols(db)
+        if not universe:
+            # First-run fallback: build from nasdaq_optionable_symbols if pmcc_universe is empty
+            universe = await build_pmcc_universe(db)
+
+    universe_version = f"PMCC_U{datetime.now(timezone.utc).strftime('%Y-%m-%d')}_{len(universe)}"
+    tier_counts = {"total": len(universe), "source": "pmcc_universe"}
 
     result.symbols_total = len(universe)
     as_of = datetime.now(timezone.utc)

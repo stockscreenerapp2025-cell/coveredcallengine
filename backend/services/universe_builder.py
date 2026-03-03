@@ -268,12 +268,12 @@ def get_tier_counts() -> Dict[str, int]:
     """
     tier1 = get_tier1_symbols()
     included = set(tier1)
-    
+
     tier2 = get_tier2_symbols(included)
     included.update(tier2)
-    
+
     tier3 = get_tier3_symbols(included)
-    
+
     return {
         "sp500": len(tier1),
         "nasdaq100_net": len(tier2),
@@ -281,3 +281,41 @@ def get_tier_counts() -> Dict[str, int]:
         "liquidity_expansion": 0,
         "total": len(tier1) + len(tier2) + len(tier3)
     }
+
+
+async def build_pmcc_universe(db) -> List[str]:
+    """
+    Build pmcc_universe from nasdaq_optionable_symbols.
+    Applies: Market Cap >= 500M, Volume >= 100K, Price $10-600.
+    Called nightly before EOD scan, or manually via admin endpoint.
+    """
+    pipeline = [
+        {"$match": {
+            "market_cap": {"$gte": 500_000_000},
+            "volume": {"$gte": 100_000},
+            "last_price": {"$gte": 10.0, "$lte": 600.0}
+        }},
+        {"$project": {"symbol": 1, "_id": 0}}
+    ]
+    cursor = db.nasdaq_optionable_symbols.aggregate(pipeline)
+    docs = await cursor.to_list(length=5000)
+    symbols = [normalize_symbol(d["symbol"]) for d in docs]
+
+    # Repopulate pmcc_universe atomically
+    await db.pmcc_universe.delete_many({})
+    if symbols:
+        now = datetime.now(timezone.utc)
+        await db.pmcc_universe.insert_many(
+            [{"symbol": s, "updated_at": now} for s in symbols]
+        )
+    await db.pmcc_universe.create_index("symbol", unique=True)
+
+    logger.info(f"[PMCC_UNIVERSE] Built {len(symbols)} symbols from nasdaq_optionable_symbols")
+    return symbols
+
+
+async def get_pmcc_universe_symbols(db) -> List[str]:
+    """Get symbols from pmcc_universe collection."""
+    cursor = db.pmcc_universe.find({}, {"symbol": 1, "_id": 0})
+    docs = await cursor.to_list(length=5000)
+    return [d["symbol"] for d in docs]

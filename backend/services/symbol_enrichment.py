@@ -287,10 +287,12 @@ async def run_enrichment_job(db) -> Dict:
     
     Called by APScheduler daily at 5:00 AM ET.
     """
-    from services.universe_builder import get_scan_universe
-    
-    # Get current universe symbols
-    symbols = get_scan_universe()
+    from services.universe_builder import get_pmcc_universe_symbols, get_scan_universe
+
+    # Get current universe symbols from pmcc_universe (Nasdaq CSV-based)
+    symbols = await get_pmcc_universe_symbols(db)
+    if not symbols:
+        symbols = get_scan_universe()  # fallback to static tier list
     
     logger.info(f"[ENRICHMENT] Running enrichment job for {len(symbols)} symbols...")
     

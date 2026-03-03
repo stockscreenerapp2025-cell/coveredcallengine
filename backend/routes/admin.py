@@ -2180,3 +2180,108 @@ async def run_universe_audit(
         ]
     }
 
+
+
+# ==================== NASDAQ UNIVERSE IMPORT ====================
+
+@admin_router.post("/import-nasdaq-symbols/csv")
+async def import_nasdaq_symbols_csv(
+    request,
+    admin: dict = Depends(get_admin_user)
+):
+    """
+    Import Nasdaq optionable CSV (raw CSV body) into nasdaq_optionable_symbols collection.
+    POST the raw CSV file content as the request body (Content-Type: text/csv).
+    Expected CSV columns: Symbol, Name, Last Sale, Market Cap, Volume
+    """
+    import csv
+    import io
+
+    body = await request.body()
+    text = body.decode("utf-8-sig")  # handles BOM
+    reader = csv.DictReader(io.StringIO(text))
+
+    imported = 0
+    now = datetime.now(timezone.utc)
+
+    def parse_num(s: str):
+        if not s or s.strip() in ("", "N/A", "--"):
+            return None
+        s = s.replace("$", "").replace(",", "").strip()
+        multipliers = {"T": 1e12, "B": 1e9, "M": 1e6, "K": 1e3}
+        for suffix, mult in multipliers.items():
+            if s.upper().endswith(suffix):
+                try:
+                    return float(s[:-1]) * mult
+                except ValueError:
+                    return None
+        try:
+            return float(s)
+        except ValueError:
+            return None
+
+    from utils.symbol_normalization import normalize_symbol as _norm
+
+    for row in reader:
+        symbol = row.get("Symbol", "").strip().upper()
+        if not symbol:
+            continue
+
+        doc = {
+            "symbol": _norm(symbol),
+            "name": row.get("Name", "").strip(),
+            "last_price": parse_num(row.get("Last Sale", "")),
+            "market_cap": parse_num(row.get("Market Cap", "")),
+            "volume": parse_num(row.get("Volume", "")),
+            "imported_at": now
+        }
+
+        await db.nasdaq_optionable_symbols.update_one(
+            {"symbol": doc["symbol"]},
+            {"$set": doc},
+            upsert=True
+        )
+        imported += 1
+
+    await db.nasdaq_optionable_symbols.create_index("symbol", unique=True)
+    logging.info(f"[NASDAQ_IMPORT] Imported {imported} symbols into nasdaq_optionable_symbols")
+    return {"imported": imported, "message": f"Imported {imported} symbols. Run /admin/build-pmcc-universe next."}
+
+
+@admin_router.post("/build-pmcc-universe")
+async def trigger_build_pmcc_universe(
+    admin: dict = Depends(get_admin_user)
+):
+    """
+    Rebuild pmcc_universe from nasdaq_optionable_symbols with filters:
+    Market Cap >= $500M, Volume >= 100K, Price $10-$600.
+    """
+    from services.universe_builder import build_pmcc_universe
+    symbols = await build_pmcc_universe(db)
+    logging.info(f"[PMCC_UNIVERSE] Admin triggered rebuild: {len(symbols)} symbols")
+    return {
+        "symbol_count": len(symbols),
+        "message": f"pmcc_universe rebuilt with {len(symbols)} symbols"
+    }
+
+
+@admin_router.get("/pmcc-universe/stats")
+async def get_pmcc_universe_stats(
+    admin: dict = Depends(get_admin_user)
+):
+    """Get stats about the current pmcc_universe and nasdaq_optionable_symbols collections."""
+    pmcc_count = await db.pmcc_universe.count_documents({})
+    nasdaq_count = await db.nasdaq_optionable_symbols.count_documents({})
+
+    last_doc = await db.pmcc_universe.find_one({}, sort=[("updated_at", -1)])
+    last_updated = last_doc.get("updated_at") if last_doc else None
+
+    return {
+        "pmcc_universe": {
+            "symbol_count": pmcc_count,
+            "last_updated": last_updated
+        },
+        "nasdaq_optionable_symbols": {
+            "symbol_count": nasdaq_count
+        }
+    }
