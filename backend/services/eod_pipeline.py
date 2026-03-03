@@ -39,7 +39,8 @@ from services.universe_builder import (
     get_latest_universe,
     is_etf,
     build_pmcc_universe,
-    get_pmcc_universe_symbols
+    get_pmcc_universe_symbols,
+    get_scan_universe
 )
 from utils.symbol_normalization import normalize_symbol
 from data.leaps_safe_universe import is_leaps_safe, get_leaps_safe_universe
@@ -757,16 +758,26 @@ async def run_eod_pipeline(db, force_build_universe: bool = False) -> EODPipelin
     logger.info(f"[EOD_PIPELINE] Starting run_id={run_id}")
 
     # Step 1: Get universe from pmcc_universe collection (Nasdaq CSV-based)
+    universe_source = "pmcc_universe"
     if force_build_universe:
         universe = await build_pmcc_universe(db)
     else:
         universe = await get_pmcc_universe_symbols(db)
         if not universe:
-            # First-run fallback: build from nasdaq_optionable_symbols if pmcc_universe is empty
+            # Try building from nasdaq_optionable_symbols if pmcc_universe is empty
             universe = await build_pmcc_universe(db)
 
+    # Final fallback: use static S&P500/Nasdaq100 universe if CSV has not been imported yet
+    if not universe:
+        logger.warning(
+            "[EOD_PIPELINE] pmcc_universe is empty (Nasdaq CSV not yet imported). "
+            "Falling back to static universe. Import CSV via Admin → Import Nasdaq Symbols."
+        )
+        universe = get_scan_universe()
+        universe_source = "static_fallback"
+
     universe_version = f"PMCC_U{datetime.now(timezone.utc).strftime('%Y-%m-%d')}_{len(universe)}"
-    tier_counts = {"total": len(universe), "source": "pmcc_universe"}
+    tier_counts = {"total": len(universe), "source": universe_source}
 
     result.symbols_total = len(universe)
     as_of = datetime.now(timezone.utc)
