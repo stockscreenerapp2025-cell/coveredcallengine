@@ -2,7 +2,7 @@
 Admin Routes - Administrative endpoints for managing users, settings, and email automation
 Designed for scalability with proper async patterns, pagination, and efficient queries
 """
-from fastapi import APIRouter, Depends, Query, HTTPException
+from fastapi import APIRouter, Depends, Query, HTTPException, Request
 from pydantic import BaseModel
 from typing import Optional
 from datetime import datetime, timezone, timedelta
@@ -2186,7 +2186,7 @@ async def run_universe_audit(
 
 @admin_router.post("/import-nasdaq-symbols/csv")
 async def import_nasdaq_symbols_csv(
-    request,
+    request: Request,
     admin: dict = Depends(get_admin_user)
 ):
     """
