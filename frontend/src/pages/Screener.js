@@ -327,7 +327,8 @@ const Screener = () => {
       if (technicalFilters.overallSignal !== 'all') params.overall_signal = technicalFilters.overallSignal;
 
       // Fundamental filters
-      if (fundamentalFilters.analystRating !== 'all') params.analyst_rating = fundamentalFilters.analystRating;
+      const analystRating = overrides.analystRating ?? fundamentalFilters.analystRating;
+      if (analystRating !== 'all') params.analyst_rating = analystRating;
       if (fundamentalFilters.minAnalystCount !== '' && fundamentalFilters.minAnalystCount !== undefined) params.min_analyst_count = fundamentalFilters.minAnalystCount;
       if (fundamentalFilters.peRatio !== 'all') params.pe_ratio = fundamentalFilters.peRatio;
       if (fundamentalFilters.minRoe !== '' && fundamentalFilters.minRoe !== undefined) params.min_roe = fundamentalFilters.minRoe;
@@ -1145,7 +1146,10 @@ const Screener = () => {
                       <Label className="text-xs text-zinc-400">Analyst Rating</Label>
                       <Select
                         value={fundamentalFilters.analystRating}
-                        onValueChange={(value) => setFundamentalFilters(f => ({ ...f, analystRating: value }))}
+                        onValueChange={(value) => {
+                          setFundamentalFilters(f => ({ ...f, analystRating: value }));
+                          fetchOpportunities(true, { analystRating: value });
+                        }}
                       >
                         <SelectTrigger className="input-dark mt-2" data-testid="analyst-rating-select">
                           <SelectValue placeholder="Select analyst rating" />

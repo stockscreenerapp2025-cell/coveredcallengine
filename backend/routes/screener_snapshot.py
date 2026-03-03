@@ -1419,11 +1419,12 @@ async def screen_covered_calls(
 
         # Filter by analyst rating after enrichment (enrichment adds the label)
         if analyst_rating and analyst_rating != 'all':
-            _rating_map = {"strong_buy": "Strong Buy", "buy": "Buy", "hold": "Hold", "sell": "Sell"}
-            target_label = _rating_map.get(analyst_rating, analyst_rating)
+            def _norm_rating(s):
+                return (s or "").lower().replace("_", " ").replace("-", " ").strip()
+            target = _norm_rating(analyst_rating)
             opportunities = [
                 o for o in opportunities
-                if (o.get("analyst_rating_label") or o.get("analyst_rating")) == target_label
+                if _norm_rating(o.get("analyst_rating_label") or o.get("analyst_rating")) == target
             ]
 
         elapsed_ms = (time.time() - start_time) * 1000

@@ -40,16 +40,20 @@ def fetch_analyst_data_sync(symbol: str) -> Dict:
         target_low = info.get("targetLowPrice")
         target_mean = info.get("targetMeanPrice")
         
-        # Map recommendationKey to label
+        # Map recommendationKey to label (Yahoo returns camelCase or snake_case)
         label_map = {
             "strongBuy": "Strong Buy",
+            "strong_buy": "Strong Buy",
             "buy": "Buy",
             "hold": "Hold",
             "sell": "Sell",
-            "strongSell": "Strong Sell"
+            "strongSell": "Strong Sell",
+            "strong_sell": "Strong Sell",
+            "underperform": "Sell",
+            "underweight": "Sell",
         }
-        
-        rec_label = label_map.get(rec_key, rec_key.title() if rec_key else None)
+
+        rec_label = label_map.get(rec_key, rec_key.replace("_", " ").title() if rec_key else None)
         
         return {
             "symbol": symbol,
