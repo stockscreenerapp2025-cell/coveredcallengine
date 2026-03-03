@@ -746,53 +746,46 @@ The Covered Call Engine Team"""
         try:
             from services.email_service import EmailService
             email_service = EmailService(self.db)
-            
-            if await email_service.initialize():
-                # Convert line breaks to HTML paragraphs for proper spacing
-                paragraphs = message.split('\n\n')
-                html_paragraphs = []
-                for p in paragraphs:
-                    if p.strip():
-                        # Convert single line breaks within paragraphs
-                        p_html = p.replace('\n', '<br>')
-                        html_paragraphs.append(f'<p style="margin: 0 0 16px 0; line-height: 1.6;">{p_html}</p>')
-                html_message = ''.join(html_paragraphs)
-                
-                # Logo URL
-                logo_url = "https://customer-assets.emergentagent.com/job_optiontrader-9/artifacts/cg2ri3n1_Logo%20CCE.JPG"
-                
-                html_content = f"""
-                <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #09090b; color: #ffffff;">
-                    <div style="padding: 30px 20px;">
-                        <p style="color: #71717a; font-size: 12px; margin-bottom: 20px;">
-                            Reference: {ticket_number}
+
+            # Convert line breaks to HTML paragraphs for proper spacing
+            paragraphs = message.split('\n\n')
+            html_paragraphs = []
+            for p in paragraphs:
+                if p.strip():
+                    p_html = p.replace('\n', '<br>')
+                    html_paragraphs.append(f'<p style="margin: 0 0 16px 0; line-height: 1.6;">{p_html}</p>')
+            html_message = ''.join(html_paragraphs)
+
+            logo_url = "https://customer-assets.emergentagent.com/job_optiontrader-9/artifacts/cg2ri3n1_Logo%20CCE.JPG"
+
+            html_content = f"""
+            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #09090b; color: #ffffff;">
+                <div style="padding: 30px 20px;">
+                    <p style="color: #71717a; font-size: 12px; margin-bottom: 20px;">
+                        Reference: {ticket_number}
+                    </p>
+                    <div style="color: #e4e4e7;">
+                        {html_message}
+                    </div>
+                    <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #27272a;">
+                        <img src="{logo_url}" alt="Covered Call Engine" style="height: 40px; margin-bottom: 10px;" />
+                        <p style="color: #71717a; font-size: 12px; margin: 0;">
+                            <a href="https://coveredcallengine.com" style="color: #10b981; text-decoration: none;">coveredcallengine.com</a>
                         </p>
-                        <div style="color: #e4e4e7;">
-                            {html_message}
-                        </div>
-                        <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #27272a;">
-                            <img src="{logo_url}" alt="Covered Call Engine" style="height: 40px; margin-bottom: 10px;" />
-                            <p style="color: #71717a; font-size: 12px; margin: 0;">
-                                <a href="https://coveredcallengine.com" style="color: #10b981; text-decoration: none;">coveredcallengine.com</a>
-                            </p>
-                        </div>
                     </div>
                 </div>
-                """
-                
-                # Send from support subdomain so replies route back to Resend webhook
-                result = await email_service.send_raw_email(
-                    to_email=to_email,
-                    subject=f"Re: [{ticket_number}] {subject}",
-                    html_content=html_content,
-                    from_email=self.get_support_from_address(),
-                    reply_to=self.SUPPORT_EMAIL
-                )
-                logger.info(f"Reply email sent to {to_email} from {self.SUPPORT_EMAIL}: {result}")
-                return result
-            else:
-                logger.warning("Email service not initialized - email not sent")
-                return None
+            </div>
+            """
+
+            result = await email_service.send_raw_email(
+                to_email=to_email,
+                subject=f"Re: [{ticket_number}] {subject}",
+                html_content=html_content,
+                from_email=self.get_support_from_address(),
+                reply_to=self.SUPPORT_EMAIL
+            )
+            logger.info(f"Reply email sent to {to_email}: {result}")
+            return result
         except Exception as e:
             logger.error(f"Failed to send reply email: {e}")
             raise  # Re-raise to surface the error
