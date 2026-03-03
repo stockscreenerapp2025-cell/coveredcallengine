@@ -49,7 +49,8 @@ import {
   Trash2,
   Download,
   ExternalLink,
-  X
+  X,
+  Upload
 } from 'lucide-react';
 import { toast } from 'sonner';
 import AdminSupport from '../components/AdminSupport';
@@ -152,6 +153,12 @@ const Admin = () => {
   // Pre-computed Scans Trigger
   const [triggeringScan, setTriggeringScan] = useState(false);
   const [lastScanResult, setLastScanResult] = useState(null);
+  // Nasdaq Universe Import
+  const [nasdaqFile, setNasdaqFile] = useState(null);
+  const [nasdaqImporting, setNasdaqImporting] = useState(false);
+  const [nasdaqImportResult, setNasdaqImportResult] = useState(null);
+  const [buildingUniverse, setBuildingUniverse] = useState(false);
+  const [buildUniverseResult, setBuildUniverseResult] = useState(null);
   // Universe Exclusions Drilldown (Data Quality Tab)
   const [exclusionDrilldown, setExclusionDrilldown] = useState({
     open: false,
@@ -744,8 +751,37 @@ const Admin = () => {
   const excludedCountsByStage = screenerStatus?.excluded_counts_by_stage || screenerStatus?.universe?.excluded_counts_by_stage || null;
   const currentRunId = screenerStatus?.run_id || null;
 
+  // Nasdaq CSV Import handlers
+  const handleNasdaqImport = async () => {
+    if (!nasdaqFile) return;
+    setNasdaqImporting(true);
+    setNasdaqImportResult(null);
+    try {
+      const text = await nasdaqFile.text();
+      const res = await api.post('/admin/import-nasdaq-symbols/csv', text, {
+        headers: { 'Content-Type': 'text/csv' }
+      });
+      setNasdaqImportResult({ success: true, message: `Imported ${res.data.imported} symbols successfully.` });
+      setNasdaqFile(null);
+    } catch (e) {
+      setNasdaqImportResult({ success: false, message: e.response?.data?.detail || 'Import failed.' });
+    } finally {
+      setNasdaqImporting(false);
+    }
+  };
 
-
+  const handleBuildUniverse = async () => {
+    setBuildingUniverse(true);
+    setBuildUniverseResult(null);
+    try {
+      const res = await api.post('/admin/build-pmcc-universe');
+      setBuildUniverseResult({ success: true, message: `Universe built with ${res.data.symbol_count} symbols.` });
+    } catch (e) {
+      setBuildUniverseResult({ success: false, message: e.response?.data?.detail || 'Build failed.' });
+    } finally {
+      setBuildingUniverse(false);
+    }
+  };
 
   return (
     <div className="space-y-6" data-testid="admin-page">
@@ -1339,6 +1375,87 @@ const Admin = () => {
               </Button>
             </Card>
           )}
+
+          {/* Nasdaq Universe Management */}
+          <Card className="glass-card">
+            <CardHeader>
+              <CardTitle className="text-lg flex items-center gap-2">
+                <Upload className="w-5 h-5 text-violet-400" />
+                Nasdaq Universe Management
+              </CardTitle>
+              <CardDescription>
+                Import the Nasdaq optionable CSV to build the scan universe (~1000 symbols after filtering).
+                Run Step 1 first, then Step 2.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              {/* Step 1: Import CSV */}
+              <div className="p-4 rounded-lg bg-zinc-800/50 space-y-3">
+                <h4 className="font-medium text-white flex items-center gap-2">
+                  <span className="w-5 h-5 rounded-full bg-violet-500 text-white text-xs flex items-center justify-center font-bold">1</span>
+                  Import Nasdaq CSV
+                </h4>
+                <p className="text-xs text-zinc-400">
+                  Upload the Nasdaq screener CSV (e.g. nasdaq_screener_030326.csv). Required columns: Symbol, Name, Last Sale, Market Cap, Volume.
+                </p>
+                <div className="flex items-center gap-3">
+                  <label className="flex-1">
+                    <input
+                      type="file"
+                      accept=".csv"
+                      className="hidden"
+                      onChange={(e) => { setNasdaqFile(e.target.files[0]); setNasdaqImportResult(null); }}
+                    />
+                    <div className="flex items-center gap-2 px-3 py-2 rounded-lg border border-zinc-600 bg-zinc-900 cursor-pointer hover:border-violet-500 transition-colors text-sm">
+                      <Upload className="w-4 h-4 text-zinc-400" />
+                      <span className={nasdaqFile ? 'text-white' : 'text-zinc-400'}>
+                        {nasdaqFile ? nasdaqFile.name : 'Choose CSV file...'}
+                      </span>
+                    </div>
+                  </label>
+                  <Button
+                    onClick={handleNasdaqImport}
+                    disabled={!nasdaqFile || nasdaqImporting}
+                    className="bg-violet-600 hover:bg-violet-700 whitespace-nowrap"
+                  >
+                    {nasdaqImporting ? <RefreshCw className="w-4 h-4 mr-2 animate-spin" /> : <Upload className="w-4 h-4 mr-2" />}
+                    {nasdaqImporting ? 'Importing...' : 'Import CSV'}
+                  </Button>
+                </div>
+                {nasdaqImportResult && (
+                  <div className={`flex items-center gap-2 text-sm p-2 rounded-lg ${nasdaqImportResult.success ? 'bg-emerald-500/10 text-emerald-400' : 'bg-red-500/10 text-red-400'}`}>
+                    {nasdaqImportResult.success ? <CheckCircle className="w-4 h-4" /> : <XCircle className="w-4 h-4" />}
+                    {nasdaqImportResult.message}
+                  </div>
+                )}
+              </div>
+
+              {/* Step 2: Build Universe */}
+              <div className="p-4 rounded-lg bg-zinc-800/50 space-y-3">
+                <h4 className="font-medium text-white flex items-center gap-2">
+                  <span className="w-5 h-5 rounded-full bg-emerald-500 text-white text-xs flex items-center justify-center font-bold">2</span>
+                  Build PMCC Universe
+                </h4>
+                <p className="text-xs text-zinc-400">
+                  Filters the imported symbols (Market Cap ≥ $500M, Volume ≥ 100K, Price $10–$600) and saves the result as the active scan universe.
+                </p>
+                <Button
+                  onClick={handleBuildUniverse}
+                  disabled={buildingUniverse}
+                  className="bg-emerald-600 hover:bg-emerald-700"
+                >
+                  {buildingUniverse ? <RefreshCw className="w-4 h-4 mr-2 animate-spin" /> : <Database className="w-4 h-4 mr-2" />}
+                  {buildingUniverse ? 'Building...' : 'Build Universe'}
+                </Button>
+                {buildUniverseResult && (
+                  <div className={`flex items-center gap-2 text-sm p-2 rounded-lg ${buildUniverseResult.success ? 'bg-emerald-500/10 text-emerald-400' : 'bg-red-500/10 text-red-400'}`}>
+                    {buildUniverseResult.success ? <CheckCircle className="w-4 h-4" /> : <XCircle className="w-4 h-4" />}
+                    {buildUniverseResult.message}
+                  </div>
+                )}
+              </div>
+            </CardContent>
+          </Card>
         </TabsContent>
         {/* Users Tab */}
         <TabsContent value="users" className="space-y-6 mt-6">
