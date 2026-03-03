@@ -741,6 +741,9 @@ def fetch_option_chain_sync(symbol: str, retry_count: int = 0) -> Dict:
         }
 
 
+_pipeline_running = False  # Module-level lock to prevent concurrent runs
+
+
 async def run_eod_pipeline(db, force_build_universe: bool = False) -> EODPipelineResult:
     """
     Run the full EOD pipeline.
@@ -752,6 +755,21 @@ async def run_eod_pipeline(db, force_build_universe: bool = False) -> EODPipelin
     Returns:
         EODPipelineResult with all statistics
     """
+    global _pipeline_running
+    if _pipeline_running:
+        logger.warning("[EOD_PIPELINE] Already running — skipping duplicate trigger.")
+        result = EODPipelineResult("skipped")
+        result.finalize(status="SKIPPED")
+        return result
+    _pipeline_running = True
+    try:
+        return await _run_eod_pipeline_inner(db, force_build_universe)
+    finally:
+        _pipeline_running = False
+
+
+async def _run_eod_pipeline_inner(db, force_build_universe: bool = False) -> EODPipelineResult:
+    """Inner pipeline logic — called by run_eod_pipeline after lock is acquired."""
     run_id = f"eod_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:8]}"
     result = EODPipelineResult(run_id)
 
