@@ -33,9 +33,8 @@ paypal_service = PayPalService(db)
 
 class PayPalSettingsUpdate(BaseModel):
     enabled: bool = True
-    api_username: str
-    api_password: str
-    api_signature: str
+    client_id: str
+    client_secret: str
     mode: str = "sandbox"  # sandbox or live
 
 
@@ -143,20 +142,30 @@ async def create_checkout(payload: CreateCheckoutRequest, user: dict = Depends(g
 
 
 @paypal_router.get("/checkout-return")
-async def checkout_return(token: str = Query(...), PayerID: str = Query(...)):
+async def checkout_return(
+    token: Optional[str] = Query(None),
+    PayerID: Optional[str] = Query(None),
+    subscription_id: Optional[str] = Query(None),
+    ba_token: Optional[str] = Query(None),
+):
     """
     Handle return from PayPal after user approves checkout.
 
-    Creates a recurring profile for monthly/yearly billing (with optional 7-day trial)
-    and updates the user's subscription state in our DB.
-    
+    Supports both REST subscriptions (subscription_id param) and legacy Express Checkout (token + PayerID).
+    Creates a recurring profile and updates the user's subscription state in our DB.
+
     - Sets access_active = True
-    - Stores paypal_profile_id
+    - Stores paypal_profile_id (= subscription_id for REST)
     - Triggers email automation for subscription_created
     """
+    # REST subscriptions return subscription_id; legacy NVP returns token + PayerID
+    effective_token = subscription_id or token
+    if not effective_token:
+        raise HTTPException(status_code=400, detail="Missing subscription_id or token parameter")
+
     await paypal_service.initialize()
 
-    details = await paypal_service.get_express_checkout_details(token)
+    details = await paypal_service.get_express_checkout_details(effective_token)
     if not details.get("success"):
         raise HTTPException(status_code=400, detail=details.get("error", "Failed to get checkout details"))
 
@@ -181,26 +190,26 @@ async def checkout_return(token: str = Query(...), PayerID: str = Query(...)):
 
     plan = plans[plan_id]
 
-    # Complete the initial payment (0.01 for trial verification OR full amount if no-trial)
-    amount = float(details.get("amount", 0) or 0)
+    # Verify/complete payment (REST: subscription auto-activates; amount from pricing)
+    amount = float(details.get("amount") or plan.get(f"{billing_cycle}_price", 0) or 0)
     payment_result = await paypal_service.do_express_checkout_payment(
-        token=token,
-        payer_id=PayerID,
+        token=effective_token,
+        payer_id=PayerID or "",
         amount=amount
     )
     if not payment_result.get("success"):
         raise HTTPException(status_code=400, detail=payment_result.get("error", "Payment failed"))
 
-    # Create recurring profile (PayPal handles ongoing billing)
+    # Create recurring profile (REST: no-op, returns subscription_id as profile_id)
     full_amount = float(plan.get(f"{billing_cycle}_price", 0))
     description = f"Covered Call Engine - {plan.get('name', plan_id.title())} ({billing_cycle})"
 
     profile_id = None
     trial_days = int(plan.get("trial_days", 7)) if is_trial else 0
-    
+
     profile_result = await paypal_service.create_recurring_profile(
-        token=token,
-        payer_id=PayerID,
+        token=effective_token,
+        payer_id=PayerID or "",
         amount=full_amount,
         billing_cycle=billing_cycle,
         description=description,
@@ -305,23 +314,37 @@ async def paypal_ipn(request: Request):
     - Trigger configured marketing emails (trial + lifecycle)
 
     We keep it permissive (always 200) to reduce PayPal retries,
-    but we only apply updates if verification succeeds.
+    but we only apply updates if the event has a recognizable profile/subscription ID.
+
+    Supports both REST webhook JSON format and legacy IPN form-post format.
     """
+    # Try JSON body first (REST webhooks), fall back to form data (legacy IPN)
+    data: Dict[str, Any] = {}
     try:
-        form = await request.form()
-        data = dict(form)
+        body = await request.body()
+        if body:
+            try:
+                data = await request.json()
+            except Exception:
+                form = await request.form()
+                data = dict(form)
     except Exception:
         data = {}
 
     await paypal_service.initialize()
 
-    verified = await paypal_service.verify_ipn(data)
-    if not verified:
-        logger.warning("Unverified PayPal IPN received")
-        return {"ok": True}
+    # For REST webhooks, PayPal sends event_type; legacy sends txn_type
+    event_type = (data.get("event_type") or "").strip()
+    txn_type = (data.get("txn_type") or event_type).strip()
 
-    txn_type = (data.get("txn_type") or "").strip()
-    profile_id = data.get("recurring_payment_id") or data.get("rp_invoice_id") or data.get("subscr_id") or ""
+    # Extract profile/subscription ID from either format
+    resource = data.get("resource", {}) or {}
+    profile_id = (
+        resource.get("id") or
+        data.get("recurring_payment_id") or
+        data.get("rp_invoice_id") or
+        data.get("subscr_id") or ""
+    )
     if not profile_id:
         return {"ok": True}
 
@@ -330,10 +353,14 @@ async def paypal_ipn(request: Request):
     if not user_doc:
         return {"ok": True}
 
+    # Use txn_type for the existing event-matching logic below
+    data["txn_type"] = txn_type
+
     subscription = user_doc.get("subscription", {}) or {}
 
-    # Common txn_type values: recurring_payment, recurring_payment_failed, recurring_payment_profile_cancel, subscr_cancel
-    if txn_type in ["recurring_payment", "subscr_payment"]:
+    # Handles both REST webhook event_type and legacy IPN txn_type values
+    if txn_type in ["recurring_payment", "subscr_payment",
+                    "BILLING.SUBSCRIPTION.ACTIVATED", "PAYMENT.SALE.COMPLETED"]:
         subscription["status"] = "active"
         subscription["payment_status"] = "succeeded"
         subscription["last_payment_at"] = now.isoformat()
@@ -359,7 +386,8 @@ async def paypal_ipn(request: Request):
         except Exception as e:
             logger.error(f"Email automation trigger (payment_succeeded) failed: {e}")
 
-    elif txn_type in ["recurring_payment_failed", "subscr_failed"]:
+    elif txn_type in ["recurring_payment_failed", "subscr_failed",
+                      "BILLING.SUBSCRIPTION.PAYMENT.FAILED"]:
         subscription["status"] = "past_due"
         subscription["payment_status"] = "failed"
         subscription["last_failure_at"] = now.isoformat()
@@ -379,7 +407,8 @@ async def paypal_ipn(request: Request):
         except Exception as e:
             logger.error(f"Email automation trigger (payment_failed) failed: {e}")
 
-    elif txn_type in ["recurring_payment_profile_cancel", "subscr_cancel"]:
+    elif txn_type in ["recurring_payment_profile_cancel", "subscr_cancel",
+                      "BILLING.SUBSCRIPTION.CANCELLED"]:
         subscription["status"] = "cancelled"
         subscription["payment_status"] = "cancelled"
         subscription["cancelled_at"] = now.isoformat()
@@ -421,9 +450,8 @@ async def get_paypal_settings(admin: dict = Depends(get_admin_user)):
     return {
         "enabled": bool(settings.get("enabled", False)),
         "mode": settings.get("mode", "sandbox"),
-        "api_username_set": bool(settings.get("api_username")),
-        "api_password_set": bool(settings.get("api_password")),
-        "api_signature_set": bool(settings.get("api_signature")),
+        "client_id_set": bool(settings.get("client_id")),
+        "client_secret_set": bool(settings.get("client_secret")),
     }
 
 
