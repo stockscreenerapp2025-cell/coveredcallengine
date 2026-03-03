@@ -127,7 +127,7 @@ class PayPalService:
         if product_id:
             return product_id
 
-        result = await self._api("POST", "/v1/catalog/products", {
+        result = await self._api("POST", "/v1/catalogs/products", {
             "name": "Covered Call Engine Subscription",
             "type": "SERVICE",
             "category": "SOFTWARE",
