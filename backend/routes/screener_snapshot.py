@@ -2620,3 +2620,48 @@ async def get_snapshot_health():
         "scan_will_succeed": snapshots_valid == symbols_total,
         "timestamp": datetime.now(timezone.utc).isoformat()
     }
+
+
+# ---------------------------------------------------------------------------
+# Screener Filter Presets
+# ---------------------------------------------------------------------------
+
+class ScreenerFilterCreate(BaseModel):
+    name: str
+    filters: Dict[str, Any]
+
+
+@screener_router.get("/filters")
+async def get_filters(user: dict = Depends(get_current_user)):
+    """Get all saved filter presets for the current user."""
+    cursor = db.screener_filters.find(
+        {"user_id": user["id"]},
+        {"_id": 0}
+    ).sort("created_at", -1)
+    docs = await cursor.to_list(length=200)
+    return docs
+
+
+@screener_router.post("/filters")
+async def save_filter(filter_data: ScreenerFilterCreate, user: dict = Depends(get_current_user)):
+    """Save a new filter preset for the current user."""
+    filter_doc = {
+        "id": str(uuid.uuid4()),
+        "user_id": user["id"],
+        "name": filter_data.name,
+        "filters": filter_data.filters,
+        "created_at": datetime.now(timezone.utc).isoformat()
+    }
+    await db.screener_filters.insert_one(filter_doc)
+    return {"id": filter_doc["id"], "message": "Filter saved successfully"}
+
+
+@screener_router.delete("/filters/{filter_id}")
+async def delete_filter(filter_id: str, user: dict = Depends(get_current_user)):
+    """Delete a saved filter preset."""
+    result = await db.screener_filters.delete_one(
+        {"id": filter_id, "user_id": user["id"]}
+    )
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Filter not found")
+    return {"message": "Filter deleted successfully"}
