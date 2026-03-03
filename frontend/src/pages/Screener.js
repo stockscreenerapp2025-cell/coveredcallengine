@@ -1329,6 +1329,7 @@ const Screener = () => {
                       <th>Prob OTM</th>
                       <SortHeader field="iv" label="IV" />
                       <SortHeader field="iv_rank" label="IV Rank" />
+                      <SortHeader field="volume" label="OV" />
                       <SortHeader field="open_interest" label="OI" />
                       {activeScan && <th>Sector</th>}
                       <SortHeader field="score" label="Score" />
@@ -1392,6 +1393,7 @@ const Screener = () => {
                             </Tooltip>
                           </TooltipProvider>
                         </td>
+                        <td className="text-zinc-400">{opp.volume ? opp.volume.toLocaleString() : '-'}</td>
                         <td className="text-zinc-400">{opp.open_interest ? opp.open_interest.toLocaleString() : '-'}</td>
                         {activeScan && (
                           <td>
