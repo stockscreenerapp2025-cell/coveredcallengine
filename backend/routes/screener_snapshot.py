@@ -1072,6 +1072,13 @@ async def _merge_analyst_enrichment(opportunities: List[Dict], debug_enrichment:
                 "target_price_mean": 1,
                 "target_price_high": 1,
                 "target_price_low": 1,
+                "fifty_day_avg": 1,
+                "two_hundred_day_avg": 1,
+                "rsi": 1,
+                "macd_signal": 1,
+                "adx": 1,
+                "trend_strength": 1,
+                "trend": 1,
             },
         )
         enrichments = await enrichment_cursor.to_list(length=len(symbols))
@@ -1109,6 +1116,18 @@ async def _merge_analyst_enrichment(opportunities: List[Dict], debug_enrichment:
                 if two_hundred_day_avg:
                     opp["above_sma200"] = stock_price > two_hundred_day_avg
                     opp["sma200"] = round(two_hundred_day_avg, 2)
+
+                # Technical indicator fields
+                if enrichment.get("rsi") is not None:
+                    opp["rsi"] = enrichment["rsi"]
+                if enrichment.get("macd_signal"):
+                    opp["macd_signal"] = enrichment["macd_signal"]
+                if enrichment.get("adx") is not None:
+                    opp["adx"] = enrichment["adx"]
+                if enrichment.get("trend_strength"):
+                    opp["trend_strength"] = enrichment["trend_strength"]
+                if enrichment.get("trend"):
+                    opp["trend"] = enrichment["trend"]
 
                 if debug_enrichment:
                     opp["enrichment_applied"] = True
@@ -1328,6 +1347,10 @@ async def screen_covered_calls(
     min_annualized_roi: float = Query(None, ge=0, description="Min annualized ROI %"),
     analyst_rating: str = Query(None, description="Filter by analyst rating: strong_buy|buy|hold|sell"),
     sma_filter: str = Query(None, description="SMA filter: above_sma50|above_sma200|above_both"),
+    rsi_filter: str = Query(None, description="RSI filter: oversold|neutral|overbought"),
+    macd_signal: str = Query(None, description="MACD signal filter: bullish|bearish"),
+    overall_signal: str = Query(None, description="Overall trend filter: bullish|neutral|bearish"),
+    trend_strength: str = Query(None, description="Trend strength filter: strong|moderate|weak"),
     use_eod_contract: bool = Query(True, description="Deprecated - always uses EOD data"),
     debug_enrichment: bool = Query(False, description="Include enrichment debug info"),
     user: dict = Depends(get_current_user)
@@ -1447,6 +1470,27 @@ async def screen_covered_calls(
                 opportunities = [o for o in opportunities if o.get("above_sma200") is True]
             elif sma_filter == 'above_both':
                 opportunities = [o for o in opportunities if o.get("above_sma50") is True and o.get("above_sma200") is True]
+
+        # Filter by RSI after enrichment
+        if rsi_filter and rsi_filter != 'all':
+            if rsi_filter == 'oversold':
+                opportunities = [o for o in opportunities if o.get("rsi") is not None and o["rsi"] < 30]
+            elif rsi_filter == 'neutral':
+                opportunities = [o for o in opportunities if o.get("rsi") is not None and 30 <= o["rsi"] <= 70]
+            elif rsi_filter == 'overbought':
+                opportunities = [o for o in opportunities if o.get("rsi") is not None and o["rsi"] > 70]
+
+        # Filter by MACD signal after enrichment
+        if macd_signal and macd_signal != 'all':
+            opportunities = [o for o in opportunities if o.get("macd_signal") == macd_signal]
+
+        # Filter by overall trend signal after enrichment
+        if overall_signal and overall_signal != 'all':
+            opportunities = [o for o in opportunities if o.get("trend") == overall_signal]
+
+        # Filter by trend strength (ADX) after enrichment
+        if trend_strength and trend_strength != 'all':
+            opportunities = [o for o in opportunities if o.get("trend_strength") == trend_strength]
 
         elapsed_ms = (time.time() - start_time) * 1000
         logging.info(f"CC Screener: {len(opportunities)} results, {dropped_rows} dropped in {elapsed_ms:.1f}ms from {data_source} trace_id={trace_id}")

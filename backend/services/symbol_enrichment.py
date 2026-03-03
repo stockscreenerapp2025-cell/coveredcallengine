@@ -22,16 +22,101 @@ import yfinance as yf
 logger = logging.getLogger(__name__)
 
 
+def _calc_rsi(closes: list, period: int = 14):
+    """Calculate RSI from a list of closing prices (oldest first)."""
+    if len(closes) < period + 1:
+        return None
+    changes = [closes[i] - closes[i - 1] for i in range(1, len(closes))]
+    recent = changes[-period:]
+    gains = [c for c in recent if c > 0]
+    losses = [abs(c) for c in recent if c < 0]
+    avg_gain = sum(gains) / period
+    avg_loss = sum(losses) / period or 0.001
+    rs = avg_gain / avg_loss
+    return round(100 - (100 / (1 + rs)), 1)
+
+
+def _calc_ema(prices: list, period: int) -> float:
+    """Calculate EMA from a list of prices (oldest first)."""
+    k = 2 / (period + 1)
+    ema = prices[0]
+    for p in prices[1:]:
+        ema = p * k + ema * (1 - k)
+    return ema
+
+
+def _calc_macd_signal(closes: list):
+    """
+    Calculate MACD signal direction (bullish/bearish) from closing prices (oldest first).
+    Uses 12/26 EMA for MACD line, 9-period EMA for signal line.
+    """
+    if len(closes) < 35:
+        return None
+    # Build MACD line values for last 9 bars to compute signal EMA
+    macd_values = []
+    start = max(26, len(closes) - 9)
+    for i in range(start, len(closes)):
+        subset = closes[:i + 1]
+        if len(subset) >= 26:
+            macd_values.append(_calc_ema(subset, 12) - _calc_ema(subset, 26))
+    if len(macd_values) < 2:
+        return None
+    signal_ema = macd_values[0]
+    k = 2 / 10  # 9-period EMA
+    for m in macd_values[1:]:
+        signal_ema = m * k + signal_ema * (1 - k)
+    return "bullish" if macd_values[-1] > signal_ema else "bearish"
+
+
+def _calc_adx(highs: list, lows: list, closes: list, period: int = 14):
+    """
+    Calculate ADX using Wilder's smoothing method.
+    Returns (adx_value, trend_strength_label).
+    """
+    if len(closes) < period * 2 + 1:
+        return None, None
+    tr_values, plus_dm, minus_dm = [], [], []
+    for i in range(1, len(closes)):
+        tr = max(highs[i] - lows[i], abs(highs[i] - closes[i - 1]), abs(lows[i] - closes[i - 1]))
+        tr_values.append(tr)
+        up = highs[i] - highs[i - 1]
+        down = lows[i - 1] - lows[i]
+        plus_dm.append(up if up > down and up > 0 else 0)
+        minus_dm.append(down if down > up and down > 0 else 0)
+    if len(tr_values) < period:
+        return None, None
+    atr = sum(tr_values[:period])
+    spdm = sum(plus_dm[:period])
+    smdm = sum(minus_dm[:period])
+    dx_values = []
+    for i in range(period, len(tr_values)):
+        atr = atr - atr / period + tr_values[i]
+        spdm = spdm - spdm / period + plus_dm[i]
+        smdm = smdm - smdm / period + minus_dm[i]
+        pdi = 100 * spdm / atr if atr > 0 else 0
+        mdi = 100 * smdm / atr if atr > 0 else 0
+        di_sum = pdi + mdi
+        dx_values.append(100 * abs(pdi - mdi) / di_sum if di_sum > 0 else 0)
+    if not dx_values:
+        return None, None
+    adx = sum(dx_values[:period]) / period if len(dx_values) >= period else sum(dx_values) / len(dx_values)
+    for i in range(period, len(dx_values)):
+        adx = (adx * (period - 1) + dx_values[i]) / period
+    adx = round(adx, 1)
+    label = "strong" if adx > 25 else "moderate" if adx >= 15 else "weak"
+    return adx, label
+
+
 def fetch_analyst_data_sync(symbol: str) -> Dict:
     """
-    Fetch analyst recommendation data from Yahoo Finance (blocking call).
-    
-    Returns analyst rating value (1-5 scale), label, and count.
+    Fetch analyst + technical indicator data from Yahoo Finance (blocking call).
+
+    Returns analyst rating, SMA, RSI, MACD signal, ADX, and overall trend.
     """
     try:
         ticker = yf.Ticker(symbol)
         info = ticker.info
-        
+
         # Yahoo provides recommendationMean (1=Strong Buy, 5=Strong Sell)
         rec_mean = info.get("recommendationMean")
         rec_key = info.get("recommendationKey")  # e.g., "buy", "hold", "sell"
@@ -39,7 +124,7 @@ def fetch_analyst_data_sync(symbol: str) -> Dict:
         target_high = info.get("targetHighPrice")
         target_low = info.get("targetLowPrice")
         target_mean = info.get("targetMeanPrice")
-        
+
         # Map recommendationKey to label (Yahoo returns camelCase or snake_case)
         label_map = {
             "strongBuy": "Strong Buy",
@@ -60,6 +145,34 @@ def fetch_analyst_data_sync(symbol: str) -> Dict:
         two_hundred_day_avg = info.get("twoHundredDayAverage")
         current_price = info.get("currentPrice") or info.get("regularMarketPrice")
 
+        # --- Technical indicators from price history ---
+        rsi = None
+        macd_signal = None
+        adx = None
+        trend_strength = None
+        trend = None
+        try:
+            hist = ticker.history(period="2mo")
+            if not hist.empty and len(hist) >= 15:
+                closes = hist["Close"].tolist()
+                rsi = _calc_rsi(closes)
+                macd_signal = _calc_macd_signal(closes)
+                if len(hist) >= 29:
+                    adx, trend_strength = _calc_adx(
+                        hist["High"].tolist(), hist["Low"].tolist(), closes
+                    )
+                # Overall trend from SMA crossover
+                cp = current_price or (closes[-1] if closes else None)
+                if cp and fifty_day_avg and two_hundred_day_avg:
+                    if cp > fifty_day_avg and fifty_day_avg > two_hundred_day_avg:
+                        trend = "bullish"
+                    elif cp < fifty_day_avg and fifty_day_avg < two_hundred_day_avg:
+                        trend = "bearish"
+                    else:
+                        trend = "neutral"
+        except Exception:
+            pass  # Technical data is non-critical; skip on error
+
         return {
             "symbol": symbol,
             "success": True,
@@ -72,9 +185,14 @@ def fetch_analyst_data_sync(symbol: str) -> Dict:
             "fifty_day_avg": fifty_day_avg,
             "two_hundred_day_avg": two_hundred_day_avg,
             "current_price": current_price,
+            "rsi": rsi,
+            "macd_signal": macd_signal,
+            "adx": adx,
+            "trend_strength": trend_strength,
+            "trend": trend,
             "source": "yahoo"
         }
-        
+
     except Exception as e:
         return {
             "symbol": symbol,
@@ -130,6 +248,11 @@ async def enrich_symbols(
                         "target_price_mean": result.get("target_price_mean"),
                         "fifty_day_avg": result.get("fifty_day_avg"),
                         "two_hundred_day_avg": result.get("two_hundred_day_avg"),
+                        "rsi": result.get("rsi"),
+                        "macd_signal": result.get("macd_signal"),
+                        "adx": result.get("adx"),
+                        "trend_strength": result.get("trend_strength"),
+                        "trend": result.get("trend"),
                         "source": "yahoo",
                         "as_of": datetime.now(timezone.utc),
                         "updated_at": datetime.now(timezone.utc)

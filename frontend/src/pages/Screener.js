@@ -319,12 +319,17 @@ const Screener = () => {
       // ROI - annualized
       if (roiFilters.minAnnualizedRoi !== '' && roiFilters.minAnnualizedRoi !== undefined) params.min_annualized_roi = roiFilters.minAnnualizedRoi;
 
-      // Technical filters
-      if (technicalFilters.smaFilter !== 'none') params.sma_filter = technicalFilters.smaFilter;
-      if (technicalFilters.rsiFilter !== 'all') params.rsi_filter = technicalFilters.rsiFilter;
-      if (technicalFilters.macdSignal !== 'all') params.macd_signal = technicalFilters.macdSignal;
-      if (technicalFilters.trendStrength !== 'all') params.trend_strength = technicalFilters.trendStrength;
-      if (technicalFilters.overallSignal !== 'all') params.overall_signal = technicalFilters.overallSignal;
+      // Technical filters (support overrides for immediate fetch on dropdown change)
+      const smaFilter = overrides.smaFilter ?? technicalFilters.smaFilter;
+      const rsiFilter = overrides.rsiFilter ?? technicalFilters.rsiFilter;
+      const macdSignalFilter = overrides.macdSignal ?? technicalFilters.macdSignal;
+      const trendStrengthFilter = overrides.trendStrength ?? technicalFilters.trendStrength;
+      const overallSignalFilter = overrides.overallSignal ?? technicalFilters.overallSignal;
+      if (smaFilter !== 'none') params.sma_filter = smaFilter;
+      if (rsiFilter !== 'all') params.rsi_filter = rsiFilter;
+      if (macdSignalFilter !== 'all') params.macd_signal = macdSignalFilter;
+      if (trendStrengthFilter !== 'all') params.trend_strength = trendStrengthFilter;
+      if (overallSignalFilter !== 'all') params.overall_signal = overallSignalFilter;
 
       // Fundamental filters
       const analystRating = overrides.analystRating ?? fundamentalFilters.analystRating;
@@ -1060,7 +1065,7 @@ const Screener = () => {
                       <Label className="text-xs text-zinc-400">RSI Condition</Label>
                       <Select
                         value={technicalFilters.rsiFilter}
-                        onValueChange={(value) => setTechnicalFilters(f => ({ ...f, rsiFilter: value }))}
+                        onValueChange={(value) => { setTechnicalFilters(f => ({ ...f, rsiFilter: value })); fetchOpportunities(true, { rsiFilter: value }); }}
                       >
                         <SelectTrigger className="input-dark mt-2" data-testid="rsi-filter-select">
                           <SelectValue placeholder="Select RSI condition" />
@@ -1079,7 +1084,7 @@ const Screener = () => {
                       <Label className="text-xs text-zinc-400">MACD Signal</Label>
                       <Select
                         value={technicalFilters.macdSignal}
-                        onValueChange={(value) => setTechnicalFilters(f => ({ ...f, macdSignal: value }))}
+                        onValueChange={(value) => { setTechnicalFilters(f => ({ ...f, macdSignal: value })); fetchOpportunities(true, { macdSignal: value }); }}
                       >
                         <SelectTrigger className="input-dark mt-2" data-testid="macd-signal-select">
                           <SelectValue placeholder="Select MACD signal" />
@@ -1097,7 +1102,7 @@ const Screener = () => {
                       <Label className="text-xs text-zinc-400">Trend Strength (ADX)</Label>
                       <Select
                         value={technicalFilters.trendStrength}
-                        onValueChange={(value) => setTechnicalFilters(f => ({ ...f, trendStrength: value }))}
+                        onValueChange={(value) => { setTechnicalFilters(f => ({ ...f, trendStrength: value })); fetchOpportunities(true, { trendStrength: value }); }}
                       >
                         <SelectTrigger className="input-dark mt-2" data-testid="trend-strength-select">
                           <SelectValue placeholder="Select trend strength" />
@@ -1116,7 +1121,7 @@ const Screener = () => {
                       <Label className="text-xs text-zinc-400">Overall Technical Signal</Label>
                       <Select
                         value={technicalFilters.overallSignal}
-                        onValueChange={(value) => setTechnicalFilters(f => ({ ...f, overallSignal: value }))}
+                        onValueChange={(value) => { setTechnicalFilters(f => ({ ...f, overallSignal: value })); fetchOpportunities(true, { overallSignal: value }); }}
                       >
                         <SelectTrigger className="input-dark mt-2" data-testid="overall-signal-select">
                           <SelectValue placeholder="Select overall signal" />
