@@ -198,147 +198,6 @@ async def _get_best_opportunity_live(symbol: str, stock_price: float = None) -> 
         return None
 
 
-async def _get_best_opportunity_eod(symbol: str, trade_date: str = None) -> dict:
-    """
-    LEGACY: Get best covered call opportunity from EOD contract.
-    
-    NOTE: This is deprecated in favor of _get_best_opportunity_live
-    Kept for backward compatibility only.
-    
-    CCE VOLATILITY & GREEKS CORRECTNESS:
-    - Delta computed via Black-Scholes (not moneyness fallback)
-    - IV Rank computed using industry-standard formula
-    """
-    eod_contract = _get_eod_contract()
-    
-    try:
-        # Get canonical EOD stock price
-        stock_price, stock_doc = await eod_contract.get_market_close_price(symbol, trade_date)
-        
-        # Get valid calls from EOD contract
-        calls = await eod_contract.get_valid_calls_for_scan(
-            symbol=symbol,
-            trade_date=trade_date,
-            min_dte=1,
-            max_dte=45,
-            min_strike_pct=0.98,
-            max_strike_pct=1.10,
-            min_bid=0.05
-        )
-        
-        if not calls:
-            return None
-        
-        # Compute IV metrics for the symbol
-        try:
-            iv_metrics = await get_iv_metrics_for_symbol(
-                db=db,
-                symbol=symbol,
-                options=calls,
-                stock_price=stock_price,
-                store_history=True
-            )
-        except Exception as e:
-            logging.warning(f"Could not compute IV metrics for {symbol}: {e}")
-            iv_metrics = None
-        
-        best_opp = None
-        best_score = 0
-        
-        for call in calls:
-            strike = call.get("strike", 0)
-            expiry = call.get("expiry", "")
-            dte = call.get("dte", 0)
-            premium = call.get("bid", 0) or call.get("premium", 0)
-            ask = call.get("ask", 0)
-            open_interest = call.get("open_interest", 0)
-            iv_raw = call.get("implied_volatility", 0)
-            
-            if premium <= 0 or strike <= 0 or dte < 1:
-                continue
-            
-            # Normalize IV
-            iv_data = normalize_iv_fields(iv_raw)
-            
-            # Calculate delta using Black-Scholes (not moneyness fallback)
-            T = max(dte, 1) / 365.0
-            greeks_result = calculate_greeks(
-                S=stock_price,
-                K=strike,
-                T=T,
-                sigma=iv_data["iv"] if iv_data["iv"] > 0 else None,
-                option_type="call"
-            )
-            
-            # Calculate ROI
-            roi_pct = (premium / stock_price) * 100 if stock_price > 0 else 0
-            annualized_roi = roi_pct * (365 / dte) if dte > 0 else 0
-            
-            if roi_pct < 0.3:
-                continue
-            
-            option_type = "Weekly" if dte <= 14 else "Monthly"
-            
-            # Calculate AI Score
-            roi_score = min(roi_pct * 15, 40)
-            iv_score = min(iv_data["iv_pct"] / 5, 20) if iv_data["iv_pct"] > 0 else 10
-            delta_score = max(0, 20 - abs(greeks_result.delta - 0.35) * 50)
-            liquidity_score = 10 if open_interest >= 500 else 5 if open_interest >= 100 else 2
-            
-            ai_score = round(roi_score + iv_score + delta_score + liquidity_score, 1)
-            
-            if ai_score > best_score:
-                best_score = ai_score
-                
-                # Calculate spread percentage
-                spread_pct = ((ask - premium) / premium * 100) if premium > 0 and ask else 0
-                
-                best_opp = {
-                    "strike": strike,
-                    "expiry": expiry,
-                    "dte": dte,
-                    "premium": round(premium, 2),
-                    "bid": round(premium, 2),
-                    "ask": round(ask, 2) if ask else None,
-                    "spread_pct": round(spread_pct, 2),
-                    # Greeks (Black-Scholes) - ALWAYS POPULATED
-                    "delta": greeks_result.delta,
-                    "delta_source": greeks_result.delta_source,
-                    "gamma": greeks_result.gamma,
-                    "theta": greeks_result.theta,
-                    "vega": greeks_result.vega,
-                    # IV fields (standardized) - ALWAYS POPULATED
-                    "iv": iv_data["iv"],
-                    "iv_pct": iv_data["iv_pct"],
-                    "implied_volatility": iv_data["iv_pct"],  # Legacy alias
-                    # IV Rank (industry standard) - ALWAYS POPULATED
-                    "iv_rank": iv_metrics.iv_rank if iv_metrics else 50.0,
-                    "iv_percentile": iv_metrics.iv_percentile if iv_metrics else 50.0,
-                    "iv_rank_source": iv_metrics.iv_rank_source if iv_metrics else "DEFAULT_NEUTRAL",
-                    "iv_samples": iv_metrics.iv_samples if iv_metrics else 0,
-                    # Liquidity
-                    "volume": call.get("volume", 0),
-                    "open_interest": open_interest,
-                    # ECONOMICS fields
-                    "roi_pct": round(roi_pct, 2),
-                    "annualized_roi_pct": round(annualized_roi, 1),
-                    # METADATA fields
-                    "type": option_type,
-                    "ai_score": ai_score,
-                    "source": "eod_contract",
-                    "data_source": "eod_contract",
-                    "market_close_timestamp": stock_doc.get("market_close_timestamp")
-                }
-        
-        return best_opp
-        
-    except (EODPriceNotFoundError, EODOptionsNotFoundError) as e:
-        logging.warning(f"[ADR-001] No EOD data for {symbol}: {e}")
-        return None
-    except Exception as e:
-        logging.error(f"[ADR-001] Error getting EOD opportunity for {symbol}: {e}")
-        return None
-
 
 async def _get_best_opportunity(symbol: str, api_key: str, underlying_price: float) -> dict:
     """
@@ -671,6 +530,34 @@ async def _get_eod_prices_for_symbols(symbols: List[str]) -> tuple:
                 "change_pct": 0
             }
         
+        # Fallback: symbols not in scan_results_cc → try symbol_snapshot for price
+        missing_symbols = [s for s in symbols if s not in stock_data]
+        if missing_symbols:
+            snap_pipeline = [
+                {"$match": {"symbol": {"$in": missing_symbols}, "run_id": run_id}},
+                {"$sort": {"as_of": -1}},
+                {"$group": {
+                    "_id": "$symbol",
+                    "underlying_price": {"$first": "$underlying_price"},
+                    "as_of": {"$first": "$as_of"},
+                    "market_status": {"$first": "$market_status"}
+                }}
+            ]
+            snap_results = await db.symbol_snapshot.aggregate(snap_pipeline).to_list(len(missing_symbols))
+            for doc in snap_results:
+                symbol = doc.get("_id")
+                if doc.get("underlying_price"):
+                    stock_data[symbol] = {
+                        "price": doc.get("underlying_price"),
+                        "stock_price_source": "SNAPSHOT_FALLBACK",
+                        "session_close_price": doc.get("underlying_price"),
+                        "prior_close_price": None,
+                        "market_status": doc.get("market_status", "CLOSED"),
+                        "as_of": doc.get("as_of"),
+                        "change": 0,
+                        "change_pct": 0
+                    }
+
         # Enrich with analyst data
         enrichments = await db.symbol_enrichment.find(
             {"symbol": {"$in": symbols}},
@@ -723,9 +610,10 @@ async def _get_best_opportunity_eod(symbol: str) -> dict:
             "strike": cc_opp.get("strike"),
             "expiry": cc_opp.get("expiry"),
             "dte": cc_opp.get("dte"),
-            "premium": cc_opp.get("premium_bid"),
+            "premium": cc_opp.get("premium_bid") or cc_opp.get("premium"),
             "premium_display": cc_opp.get("premium_display"),
             "premium_display_source": cc_opp.get("premium_display_source"),
+            "roi_pct": cc_opp.get("roi_pct"),
             "roi": cc_opp.get("roi_annualized"),
             "delta": cc_opp.get("delta"),
             "iv": cc_opp.get("iv_pct"),
@@ -843,15 +731,14 @@ async def get_watchlist(
         }
         
         # Get opportunity from EOD precomputed or live
-        if current_price > 0:
-            if use_live_prices:
-                opp = await _get_best_opportunity_live(symbol, current_price)
-                enriched["opportunity"] = opp
-                enriched["opportunity_source"] = "yahoo_live" if opp else None
-            else:
-                opp = await _get_best_opportunity_eod(symbol)
-                enriched["opportunity"] = opp
-                enriched["opportunity_source"] = "eod_precomputed" if opp else None
+        if use_live_prices and current_price > 0:
+            opp = await _get_best_opportunity_live(symbol, current_price)
+            enriched["opportunity"] = opp
+            enriched["opportunity_source"] = "yahoo_live" if opp else None
+        else:
+            opp = await _get_best_opportunity_eod(symbol)
+            enriched["opportunity"] = opp
+            enriched["opportunity_source"] = "eod_precomputed" if opp else None
         
         # ========== ENRICHMENT: IV Rank + Analyst Data (LAST STEP) ==========
         enriched = enrich_row(
