@@ -745,10 +745,10 @@ async def _acquire_pipeline_lock(db) -> bool:
     """
     Acquire a distributed MongoDB lock for the EOD pipeline.
     Returns True if lock acquired, False if already running.
-    Locks older than 3 hours are considered stale and overwritten.
+    Locks older than 30 minutes are considered stale and overwritten.
     """
     now = datetime.now(timezone.utc)
-    stale_cutoff = now - timedelta(hours=3)
+    stale_cutoff = now - timedelta(minutes=30)
     try:
         result = await db.eod_pipeline_lock.find_one_and_update(
             {
