@@ -25,6 +25,7 @@ import logging
 import uuid
 import time
 import random
+from math import log1p
 from datetime import datetime, timezone, timedelta
 from typing import List, Dict, Optional, Tuple, Any
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -629,41 +630,50 @@ def fetch_option_chain_sync(symbol: str, retry_count: int = 0) -> Dict:
                 "error_detail": "No expiration dates available"
             }
 
-        # Categorize expirations by DTE
+        # Build (exp_str, dte) list for all expirations
         today = datetime.now()
+        leaps = []  # 365+ DTE (kept for audit field)
 
-        near_term = []  # 0-60 DTE
-        mid_term = []   # 61-364 DTE
-        leaps = []      # 365+ DTE
-
+        all_exps_with_dte = []
         for exp_str in expirations:
             try:
                 exp_date = datetime.strptime(exp_str, "%Y-%m-%d")
                 dte = (exp_date - today).days
-
-                if dte <= 60:
-                    near_term.append(exp_str)
-                elif dte <= 364:
-                    mid_term.append(exp_str)
-                else:
+                if dte >= 365:
                     leaps.append(exp_str)
+                all_exps_with_dte.append((exp_str, dte))
             except ValueError:
                 continue
 
-        # Select which expirations to fetch
-        # Near-term: all (for CC/short leg)
-        # Mid-term: every 2nd (reduce API calls)
-        # LEAPS: all (critical for PMCC)
-        selected_exps = near_term + mid_term[::2] + leaps
+        def _pick_nearest_exps(candidates, target_dtes):
+            """Return one expiration per target DTE (closest match)."""
+            selected = {}
+            for exp_str, dte in candidates:
+                for target in target_dtes:
+                    diff = abs(dte - target)
+                    if target not in selected or diff < selected[target][1]:
+                        selected[target] = (exp_str, diff)
+            return sorted({v[0] for v in selected.values()})
 
-        # Limit total to prevent excessive API calls
-        # But ALWAYS include all LEAPS
+        # Short leg targets: nearest to 21, 30, 45, 60 DTE
+        short_selected = _pick_nearest_exps(
+            [(e, d) for e, d in all_exps_with_dte if 7 <= d <= 90],
+            [21, 30, 45, 60]
+        )
+        # Long leg targets: nearest to 180, 270, 365, 540, 730 DTE
+        long_selected = _pick_nearest_exps(
+            [(e, d) for e, d in all_exps_with_dte if d >= 120],
+            [180, 270, 365, 540, 730]
+        )
+
+        selected_exps = sorted(set(short_selected + long_selected))
+        # Hard cap at 12 expirations, always preserving long leg candidates
         if len(selected_exps) > 12:
-            # Keep first 8 near-term + all LEAPS
-            selected_exps = near_term[:8] + leaps
+            selected_exps = sorted(set(short_selected[:4] + long_selected))
 
         chains = []
         leaps_found = 0
+        long_dated_found = 0
 
         for exp_date in selected_exps:
             try:
@@ -692,6 +702,8 @@ def fetch_option_chain_sync(symbol: str, retry_count: int = 0) -> Dict:
 
                 if dte >= 365:
                     leaps_found += 1
+                if dte >= 180:
+                    long_dated_found += 1
 
             except Exception:
                 continue
@@ -713,6 +725,8 @@ def fetch_option_chain_sync(symbol: str, retry_count: int = 0) -> Dict:
             "total_puts": sum(len(c["puts"]) for c in chains),
             "leaps_found": leaps_found,
             "has_leaps": leaps_found > 0,
+            "long_dated_found": long_dated_found,
+            "has_long_dated_calls": long_dated_found > 0,
             "available_leaps_expirations": leaps  # For audit
         }
 
@@ -951,6 +965,7 @@ async def _run_eod_pipeline_inner(db, force_build_universe: bool = False, run_id
 
                 has_leaps = chain_result.get("has_leaps", False)
                 leaps_count = chain_result.get("leaps_found", 0)
+                has_long_dated_calls = chain_result.get("has_long_dated_calls", has_leaps)
 
                 # Create snapshot
                 snapshot = {
@@ -971,6 +986,7 @@ async def _run_eod_pipeline_inner(db, force_build_universe: bool = False, run_id
                     "is_etf": is_etf(symbol),
                     "has_leaps": has_leaps,
                     "leaps_count": leaps_count,
+                    "has_long_dated_calls": has_long_dated_calls,
                     "included": True
                 }
                 batch_snapshots.append(snapshot)
@@ -1280,8 +1296,8 @@ def is_manual_run_allowed() -> bool:
 # CC Eligibility Constants (MATCHING PRODUCTION)
 CC_MIN_PRICE = 20.0
 CC_MAX_PRICE = 500.0
-CC_MIN_VOLUME = 1_000_000
-CC_MIN_MARKET_CAP = 5_000_000_000
+CC_MIN_VOLUME = 300_000            # was 1_000_000
+CC_MIN_MARKET_CAP = 500_000_000    # was 5_000_000_000
 CC_MIN_DTE = 7
 CC_MAX_DTE = 45
 CC_MIN_PREMIUM_YIELD = 0.5  # 0.5%
@@ -1298,25 +1314,27 @@ CC_MAX_IV = 2.0             # Max 200% IV
 # These rules reduce opportunities but ensure institutional-grade trades
 
 # LEAP (Long leg) constraints
-PMCC_MIN_LEAP_DTE = 180          # Minimum 6 months (was 365)
-PMCC_MAX_LEAP_DTE = 1095         # Maximum 3 years (was 730)
-PMCC_MIN_LEAP_DELTA = 0.60       # ITM (was 0.75 — too restrictive, yfinance often missing delta)
-PMCC_MIN_LEAP_OI = 10            # Minimum open interest (was 100)
-PMCC_MAX_LEAP_SPREAD_PCT = 15.0  # Maximum bid-ask spread % (was 5.0)
+PMCC_MIN_LEAP_DTE = 180          # Minimum 6 months
+PMCC_MAX_LEAP_DTE = 1095         # Maximum 3 years
+PMCC_MIN_LEAP_DELTA = 0.65       # ITM (was 0.60)
+PMCC_MIN_LEAP_OI = 50            # Minimum open interest (was 10)
+PMCC_MAX_LEAP_SPREAD_PCT = 25.0  # Max mid-based spread % (was 15.0 bid-based)
 
 # SHORT (Short leg) constraints
-PMCC_MIN_SHORT_DTE = 14          # Minimum 2 weeks (was 30)
-PMCC_MAX_SHORT_DTE = 60          # Maximum 60 days (was 45)
-PMCC_MIN_SHORT_DELTA = 0.15      # Minimum delta (was 0.25)
-PMCC_MAX_SHORT_DELTA = 0.45      # Maximum delta (was 0.35)
-PMCC_MIN_SHORT_OI = 10           # Minimum open interest (was 100)
-PMCC_MAX_SHORT_SPREAD_PCT = 15.0 # Maximum bid-ask spread % (was 5.0)
-PMCC_MIN_SHORT_OTM_PCT = 0.01    # Short strike must be >= 1% OTM from stock_price
+PMCC_MIN_SHORT_DTE = 21          # Minimum 3 weeks (was 14)
+PMCC_MAX_SHORT_DTE = 60          # Maximum 60 days
+PMCC_MIN_SHORT_DELTA = 0.15      # Minimum delta
+PMCC_MAX_SHORT_DELTA = 0.30      # Maximum delta (was 0.45)
+PMCC_MIN_SHORT_OI = 50           # Minimum open interest (was 10)
+PMCC_MAX_SHORT_SPREAD_PCT = 15.0 # Max mid-based spread %
+PMCC_MIN_SHORT_OTM_PCT = 0.01    # Short strike must be >= 1% OTM
+PMCC_MIN_SHORT_BID = 0.20        # Minimum short bid (prevents penny trades)
 
 # Structure constraints
 PMCC_MIN_IV = 0.05               # Min 5% IV
 PMCC_MAX_IV = 3.0                # Max 300% IV
 PMCC_MIN_WIDTH = 1.0             # Minimum spread width
+PMCC_MIN_CYCLE_YIELD = 0.004     # Min short_bid/net_debit ratio (0.4%)
 
 
 def check_cc_eligibility(
@@ -1531,6 +1549,12 @@ def validate_pmcc_structure(
         flags.append("FAIL_NEGATIVE_NET_DEBIT")
         return False, flags
 
+    # HARD RULE: minimum cycle yield (short_bid / net_debit >= 0.4%)
+    cycle_yield = short_bid / net_debit if net_debit > 0 else 0
+    if cycle_yield < PMCC_MIN_CYCLE_YIELD:
+        flags.append(f"FAIL_CYCLE_YIELD_{cycle_yield:.4f}")
+        return False, flags
+
     # HARD RULE: SOLVENCY with 20% tolerance
     # This ensures the trade has reasonable profit potential while allowing
     # for ASK/BID spread realities. Pass if net_debit <= width * 1.20
@@ -1683,6 +1707,7 @@ async def compute_scan_results(
         option_chains = snapshot.get("option_chain", [])
         symbol_is_etf = snapshot.get("is_etf", False)
         has_leaps = snapshot.get("has_leaps", False)
+        has_long_dated_calls = snapshot.get("has_long_dated_calls", has_leaps)
 
         if not symbol or stock_price <= 0:
             continue
@@ -1939,9 +1964,8 @@ async def compute_scan_results(
                 logger.error(f"[EOD] CC insert error for {symbol}: {_cc_err}")
             symbol_cc_opps = []  # free memory
 
-        # PMCC opportunities - ONLY evaluate if symbol has LEAPS
-        # Skip symbols without LEAPS to prevent false-zero results
-        if not has_leaps:
+        # PMCC opportunities - only evaluate if symbol has 180+ DTE options
+        if not has_long_dated_calls:
             symbols_without_leaps.append(symbol)
             continue  # Skip PMCC evaluation for this symbol
 
@@ -1997,26 +2021,22 @@ async def compute_scan_results(
                 if not last_price or last_price <= 0:
                     option_quality_flags.append("NO_LAST")
 
-                # LEAPS candidate (365-730 DTE, ITM) - STRICT INSTITUTIONAL RULES
+                # LEAP candidate (180-1095 DTE, ITM)
                 if PMCC_MIN_LEAP_DTE <= dte <= PMCC_MAX_LEAP_DTE and strike < stock_price:
                     if ask and ask > 0:
                         greeks = calculate_greeks_simple(
                             stock_price, strike, dte, iv if iv > 0 else 0.30)
 
-                        # INSTITUTIONAL FILTERS
-                        # 1. Delta >= 0.80 (stricter than 0.70)
                         if greeks["delta"] < PMCC_MIN_LEAP_DELTA:
                             continue
-
-                        # 2. Minimum open interest >= 100
                         if oi < PMCC_MIN_LEAP_OI:
                             continue
 
-                        # 3. Bid-ask spread <= 5%
-                        if bid and bid > 0:
-                            spread_pct = ((ask - bid) / bid) * 100
-                            if spread_pct > PMCC_MAX_LEAP_SPREAD_PCT:
-                                continue
+                        # Mid-based spread check
+                        leap_mid = (ask + bid) / 2 if bid > 0 else ask
+                        leap_spread_pct = ((ask - bid) / leap_mid * 100) if leap_mid > 0 else 100.0
+                        if leap_spread_pct > PMCC_MAX_LEAP_SPREAD_PCT:
+                            continue
 
                         leaps_candidates.append({
                             "strike": strike,
@@ -2032,31 +2052,27 @@ async def compute_scan_results(
                             "delta": greeks["delta"],
                             "iv": iv,
                             "oi": oi,
+                            "spread_pct": round(leap_spread_pct, 2),
                             "quality_flags": option_quality_flags
                         })
 
-                # Short call candidate (30-45 DTE) - STRICT INSTITUTIONAL RULES
+                # Short call candidate (21-60 DTE, OTM)
                 if PMCC_MIN_SHORT_DTE <= dte <= PMCC_MAX_SHORT_DTE:
-                    if bid and bid > 0:
-                        # Calculate delta for institutional filtering
+                    if bid and bid >= PMCC_MIN_SHORT_BID:
                         short_greeks = calculate_greeks_simple(
                             stock_price, strike, dte, iv if iv > 0 else 0.30)
                         short_delta = short_greeks["delta"]
 
-                        # INSTITUTIONAL FILTERS
-                        # 1. Delta range 0.20-0.30
                         if short_delta < PMCC_MIN_SHORT_DELTA or short_delta > PMCC_MAX_SHORT_DELTA:
                             continue
-
-                        # 2. Minimum open interest >= 100
                         if oi < PMCC_MIN_SHORT_OI:
                             continue
 
-                        # 3. Bid-ask spread <= 5%
-                        if ask and ask > 0:
-                            spread_pct = ((ask - bid) / bid) * 100
-                            if spread_pct > PMCC_MAX_SHORT_SPREAD_PCT:
-                                continue
+                        # Mid-based spread check
+                        short_mid_val = (ask + bid) / 2 if ask and ask > 0 else bid
+                        short_spread_pct = ((ask - bid) / short_mid_val * 100) if ask and short_mid_val > 0 else 100.0
+                        if short_spread_pct > PMCC_MAX_SHORT_SPREAD_PCT:
+                            continue
 
                         short_candidates.append({
                             "strike": strike,
@@ -2071,8 +2087,9 @@ async def compute_scan_results(
                             "display_source": display_source,
                             "iv": iv,
                             "oi": oi,
+                            "spread_pct": round(short_spread_pct, 2),
                             "quality_flags": option_quality_flags,
-                            "delta": short_delta  # Store calculated delta
+                            "delta": short_delta
                         })
 
         # Match LEAPS with short calls
@@ -2114,11 +2131,11 @@ async def compute_scan_results(
                 width = short["strike"] - leap["strike"]
                 max_profit = width - net_debit
 
-                # ROI must use actual prices (leap_ask, short_bid) - safe division
-                roi_per_cycle = safe_divide(short_bid, leap_ask, 0)
-                roi_per_cycle = roi_per_cycle * 100 if roi_per_cycle else None
-                roi_annualized = safe_multiply(roi_per_cycle, safe_divide(
-                    365, max(short["dte"], 1), 0)) if roi_per_cycle else None
+                # ROI basis = net_debit (capital at risk), not leap_ask
+                roi_per_cycle = (short_bid / net_debit * 100) if net_debit > 0 else 0
+                roi_annualized = min(
+                    roi_per_cycle * (365 / max(short["dte"], 1)), 150.0
+                ) if roi_per_cycle else 0
 
                 # Build contract symbols
                 try:
@@ -2239,8 +2256,14 @@ async def compute_scan_results(
                     "analyst_rating": analyst_rating,
                     "sector": symbol_sector,
 
-                    # Scoring
-                    "score": round(50 + roi_per_cycle * 5, 1)
+                    # Risk-aware score: rewards ROI + liquidity, penalises high delta + wide spreads
+                    "score": round(max(0.0, min(100.0,
+                        50
+                        + (roi_per_cycle * 2)
+                        + min(20, 5 * log1p(min(leap.get("oi", 0), short.get("oi", 0))))
+                        - max(0, short["delta"] - 0.30) * 100
+                        - (short.get("spread_pct", 50.0) + leap.get("spread_pct", 50.0)) * 0.5
+                    )), 1)
                 }
 
                 pmcc_opportunities.append(pmcc_opp)
@@ -2248,14 +2271,30 @@ async def compute_scan_results(
     # CC results were already stream-written per symbol above (cc_written_count tracks total)
     logger.info(f"[EOD_PIPELINE] Persisted {cc_written_count} CC opportunities (1 per symbol)")
 
-    # Select best PMCC per symbol (de-duplicate: keep highest score per symbol)
+    # Group all PMCC candidates per symbol, keep top 3, attach alternatives to best
+    from collections import defaultdict as _defaultdict
+    _by_symbol = _defaultdict(list)
     for opp in pmcc_opportunities:
-        sym_key = opp["symbol"]
-        if sym_key not in pmcc_by_symbol or opp["score"] > pmcc_by_symbol[sym_key]["score"]:
-            pmcc_by_symbol[sym_key] = opp
+        _by_symbol[opp["symbol"]].append(opp)
 
-    pmcc_opportunities = sorted(
-        pmcc_by_symbol.values(), key=lambda x: x["score"], reverse=True)
+    final_pmcc = []
+    for sym, opps in _by_symbol.items():
+        opps_sorted = sorted(opps, key=lambda x: x["score"], reverse=True)
+        best = opps_sorted[0]
+        if len(opps_sorted) > 1:
+            best["alternatives"] = [
+                {
+                    "short_strike": o.get("short_strike"),
+                    "short_expiry": o.get("short_expiry"),
+                    "short_dte": o.get("short_dte"),
+                    "score": o.get("score"),
+                    "roi_cycle": o.get("roi_cycle")
+                }
+                for o in opps_sorted[1:3]
+            ]
+        final_pmcc.append(best)
+
+    pmcc_opportunities = sorted(final_pmcc, key=lambda x: x["score"], reverse=True)
 
     # Persist PMCC results
     if pmcc_opportunities:
