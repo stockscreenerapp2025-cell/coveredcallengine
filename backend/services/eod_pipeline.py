@@ -741,7 +741,43 @@ def fetch_option_chain_sync(symbol: str, retry_count: int = 0) -> Dict:
         }
 
 
-_pipeline_running = False  # Module-level lock to prevent concurrent runs
+async def _acquire_pipeline_lock(db) -> bool:
+    """
+    Acquire a distributed MongoDB lock for the EOD pipeline.
+    Returns True if lock acquired, False if already running.
+    Locks older than 3 hours are considered stale and overwritten.
+    """
+    now = datetime.now(timezone.utc)
+    stale_cutoff = now - timedelta(hours=3)
+    try:
+        result = await db.eod_pipeline_lock.find_one_and_update(
+            {
+                "_id": "eod_pipeline",
+                "$or": [
+                    {"locked": False},
+                    {"locked_at": {"$lt": stale_cutoff}}  # stale lock
+                ]
+            },
+            {"$set": {"locked": True, "locked_at": now}},
+            upsert=True,
+            return_document=True
+        )
+        return result is not None
+    except Exception:
+        # If upsert fails due to duplicate key (another worker just acquired),
+        # that means the lock is already held
+        return False
+
+
+async def _release_pipeline_lock(db) -> None:
+    """Release the distributed EOD pipeline lock."""
+    try:
+        await db.eod_pipeline_lock.update_one(
+            {"_id": "eod_pipeline"},
+            {"$set": {"locked": False}}
+        )
+    except Exception as e:
+        logger.error(f"[EOD_PIPELINE] Failed to release lock: {e}")
 
 
 async def run_eod_pipeline(db, force_build_universe: bool = False) -> EODPipelineResult:
@@ -755,17 +791,16 @@ async def run_eod_pipeline(db, force_build_universe: bool = False) -> EODPipelin
     Returns:
         EODPipelineResult with all statistics
     """
-    global _pipeline_running
-    if _pipeline_running:
-        logger.warning("[EOD_PIPELINE] Already running — skipping duplicate trigger.")
+    acquired = await _acquire_pipeline_lock(db)
+    if not acquired:
+        logger.warning("[EOD_PIPELINE] Already running (distributed lock held) — skipping duplicate trigger.")
         result = EODPipelineResult("skipped")
         result.finalize(status="SKIPPED")
         return result
-    _pipeline_running = True
     try:
         return await _run_eod_pipeline_inner(db, force_build_universe)
     finally:
-        _pipeline_running = False
+        await _release_pipeline_lock(db)
 
 
 async def _run_eod_pipeline_inner(db, force_build_universe: bool = False) -> EODPipelineResult:
