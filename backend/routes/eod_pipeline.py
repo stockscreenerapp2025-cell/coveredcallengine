@@ -157,14 +157,17 @@ def _launch_pipeline_subprocess(run_id: str, force_build_universe: bool = False)
     # Inherit environment so MONGO_URL, DB_NAME, etc. are available
     env = {**os.environ}
 
+    log_path = f"/tmp/eod_job_{run_id}.log"
+    log_file = open(log_path, "w")
     subprocess.Popen(
         cmd,
         cwd="/app",          # WORKDIR in Docker (PYTHONPATH=/app/backend)
         env=env,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
+        stdout=log_file,
+        stderr=log_file,
     )
-    logger.info(f"[EOD_PIPELINE] Subprocess launched run_id={run_id}")
+    log_file.close()  # subprocess inherits the fd; safe to close our reference
+    logger.info(f"[EOD_PIPELINE] Subprocess launched run_id={run_id}, log={log_path}")
 
 
 @eod_pipeline_router.post("/run")

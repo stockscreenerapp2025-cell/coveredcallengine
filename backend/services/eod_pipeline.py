@@ -395,8 +395,9 @@ class EODPipelineResult:
         self.bad_chain_data_count = 0
         self.missing_chain_count = 0
 
-        # Results
-        self.cc_opportunities = []
+        # Results (cc_opportunities stream-written to DB per symbol — count only stored here)
+        self.cc_opportunities = []   # kept for backward compat (len() used in logs)
+        self.cc_count = 0            # authoritative count when streaming
         self.pmcc_opportunities = []
 
         # Failures detail
@@ -1134,17 +1135,17 @@ async def _run_eod_pipeline_inner(db, force_build_universe: bool = False, run_id
     logger.info(
         f"[EOD_PIPELINE] Computing CC/PMCC from {snapshots_written} snapshots in DB...")
 
-    cc_opportunities, pmcc_opportunities = await compute_scan_results(
+    cc_count, pmcc_opportunities = await compute_scan_results(
         db=db,
         run_id=run_id,
         as_of=as_of
     )
 
-    result.cc_opportunities = cc_opportunities
+    result.cc_count = cc_count
     result.pmcc_opportunities = pmcc_opportunities
 
     logger.info(
-        f"[EOD_PIPELINE] Computed {len(cc_opportunities)} CC, {len(pmcc_opportunities)} PMCC opportunities")
+        f"[EOD_PIPELINE] Computed {cc_count} CC, {len(pmcc_opportunities)} PMCC opportunities")
 
     # ==========================================================================
     # STAGE 5: FINALIZE AND PERSIST RUN SUMMARY (with status=COMPLETED)
@@ -1198,7 +1199,7 @@ async def _run_eod_pipeline_inner(db, force_build_universe: bool = False, run_id
         "throttle_ratio": round(throttle_ratio, 4),
 
         # Opportunity counts
-        "cc_count": len(result.cc_opportunities),
+        "cc_count": result.cc_count,
         "pmcc_count": len(result.pmcc_opportunities),
 
         # Breakdown maps
@@ -1240,7 +1241,7 @@ async def _run_eod_pipeline_inner(db, force_build_universe: bool = False, run_id
         "rate_limited_chain_count": result.rate_limited_chain_count,
         "coverage_ratio": round(coverage_ratio, 4),
         "throttle_ratio": round(throttle_ratio, 4),
-        "cc_count": len(result.cc_opportunities),
+        "cc_count": result.cc_count,
         "pmcc_count": len(result.pmcc_opportunities)
     }
 
@@ -1663,12 +1664,16 @@ async def compute_scan_results(
     - Only evaluates symbols with has_leaps=True in snapshot
     - Tracks symbols_without_leaps for audit
     """
-    cc_opportunities = []
-    pmcc_opportunities = []
+    cc_written_count = 0       # CC results streamed to DB per symbol — never held in full
+    pmcc_opportunities = []    # PMCC: best-per-symbol dict, then sorted — small (~991 items)
+    pmcc_by_symbol = {}
     symbols_without_leaps = []
     total_snapshots_count = 0
 
-    snapshot_cursor = db.symbol_snapshot.find({"run_id": run_id})
+    # batch_size(5): each fetch from MongoDB is only 5 docs at a time.
+    # Default batch is 101 docs × ~2-5MB option chains = 200-500MB spike.
+    # 5 docs × ~5MB = ~25MB per batch — safe for low-memory servers.
+    snapshot_cursor = db.symbol_snapshot.find({"run_id": run_id}).batch_size(5)
     async for snapshot in snapshot_cursor:
         total_snapshots_count += 1
         symbol = snapshot.get("symbol")
@@ -1689,6 +1694,8 @@ async def compute_scan_results(
 
         if not is_eligible:
             continue
+
+        symbol_cc_opps = []  # collect CC opps for this symbol, write to DB then discard
 
         # Fetch analyst enrichment and sector from symbol_enrichment collection
         analyst_data = None
@@ -1919,7 +1926,18 @@ async def compute_scan_results(
                     "score": round(score, 1)
                 }
 
-                cc_opportunities.append(cc_opp)
+                symbol_cc_opps.append(cc_opp)
+
+        # Pick best CC for this symbol (highest score) and stream-write it immediately
+        # This maintains the original 1-per-symbol behavior without accumulating a huge list
+        if symbol_cc_opps:
+            best_cc = max(symbol_cc_opps, key=lambda x: x["score"])
+            try:
+                await db.scan_results_cc.insert_one(best_cc)
+                cc_written_count += 1
+            except Exception as _cc_err:
+                logger.error(f"[EOD] CC insert error for {symbol}: {_cc_err}")
+            symbol_cc_opps = []  # free memory
 
         # PMCC opportunities - ONLY evaluate if symbol has LEAPS
         # Skip symbols without LEAPS to prevent false-zero results
@@ -2227,34 +2245,17 @@ async def compute_scan_results(
 
                 pmcc_opportunities.append(pmcc_opp)
 
-    # Select best option per symbol (one CC per symbol)
-    cc_by_symbol = {}
-    for opp in cc_opportunities:
-        symbol = opp["symbol"]
-        if symbol not in cc_by_symbol or opp["score"] > cc_by_symbol[symbol]["score"]:
-            cc_by_symbol[symbol] = opp
+    # CC results were already stream-written per symbol above (cc_written_count tracks total)
+    logger.info(f"[EOD_PIPELINE] Persisted {cc_written_count} CC opportunities (1 per symbol)")
 
-    cc_opportunities = sorted(cc_by_symbol.values(),
-                              key=lambda x: x["score"], reverse=True)
-
-    # Select best PMCC per symbol
-    pmcc_by_symbol = {}
+    # Select best PMCC per symbol (de-duplicate: keep highest score per symbol)
     for opp in pmcc_opportunities:
-        symbol = opp["symbol"]
-        if symbol not in pmcc_by_symbol or opp["score"] > pmcc_by_symbol[symbol]["score"]:
-            pmcc_by_symbol[symbol] = opp
+        sym_key = opp["symbol"]
+        if sym_key not in pmcc_by_symbol or opp["score"] > pmcc_by_symbol[sym_key]["score"]:
+            pmcc_by_symbol[sym_key] = opp
 
     pmcc_opportunities = sorted(
         pmcc_by_symbol.values(), key=lambda x: x["score"], reverse=True)
-
-    # Persist CC results
-    if cc_opportunities:
-        try:
-            await db.scan_results_cc.insert_many(cc_opportunities)
-            logger.info(
-                f"[EOD_PIPELINE] Persisted {len(cc_opportunities)} CC opportunities")
-        except Exception as e:
-            logger.error(f"[EOD_PIPELINE] Failed to persist CC results: {e}")
 
     # Persist PMCC results
     if pmcc_opportunities:
@@ -2274,7 +2275,7 @@ async def compute_scan_results(
         logger.debug(
             f"[EOD_PIPELINE] Symbols without LEAPS: {symbols_without_leaps[:20]}...")
 
-    return cc_opportunities, pmcc_opportunities
+    return cc_written_count, pmcc_opportunities
 
 
 async def get_latest_scan_run(db) -> Optional[Dict]:

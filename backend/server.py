@@ -1561,7 +1561,7 @@ async def startup():
                 logger.info("Starting scheduled EOD pipeline (5:00 PM snapshot)...")
                 result = loop.run_until_complete(run_eod_pipeline(_db, force_build_universe=False))
                 logger.info(f"EOD Pipeline completed: {result.run_id}, "
-                            f"CC={len(result.cc_opportunities)}, PMCC={len(result.pmcc_opportunities)}")
+                            f"CC={result.cc_count}, PMCC={len(result.pmcc_opportunities)}")
             except Exception as e:
                 logger.error(f"Scheduled EOD pipeline failed: {e}")
             finally:
