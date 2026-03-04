@@ -1452,6 +1452,14 @@ async def startup():
         raise RuntimeError(
             f"Cannot start application - database connection failed: {db_error}")
 
+    # Release EOD pipeline lock on startup (handles crash/restart mid-run)
+    await db.eod_pipeline_lock.update_one(
+        {"_id": "eod_pipeline"},
+        {"$set": {"locked": False}},
+        upsert=True
+    )
+    logger.info("[EOD_PIPELINE] Pipeline lock released on startup")
+
     # Create indexes
     await db.users.create_index("email", unique=True)
     await db.users.create_index("id", unique=True)
