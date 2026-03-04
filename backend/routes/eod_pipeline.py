@@ -8,10 +8,10 @@ from fastapi import APIRouter, Depends, Query, HTTPException
 from typing import Optional
 from datetime import datetime, timezone
 import logging
-import threading
-import asyncio as _asyncio
-
+import subprocess
 import sys
+import os
+import uuid
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
@@ -142,40 +142,29 @@ async def get_latest_run_info(
 # ADMIN ENDPOINTS (Pipeline Management)
 # ============================================================
 
-def _run_pipeline_in_thread(force_build_universe: bool) -> None:
+def _launch_pipeline_subprocess(run_id: str, force_build_universe: bool = False) -> None:
     """
-    Run the EOD pipeline in an isolated thread with its own event loop
-    and its own Motor client.
+    Launch the EOD pipeline as an isolated subprocess.
 
-    Motor's AsyncIOMotorClient is bound to the event loop it is first used
-    in. Reusing the shared `db` from uvicorn's loop in a new thread causes
-    silent failures. A fresh client per thread avoids this completely.
+    The subprocess creates its own Motor client and event loop so it never
+    competes with the uvicorn API process for memory or the event loop.
+    Non-blocking: returns immediately after spawning.
     """
-    import os
-    from motor.motor_asyncio import AsyncIOMotorClient
+    cmd = [sys.executable, "-m", "scripts.run_eod_pipeline_job", run_id]
+    if force_build_universe:
+        cmd.append("--force-build-universe")
 
-    loop = _asyncio.new_event_loop()
-    _asyncio.set_event_loop(loop)
-    thread_client = None
-    try:
-        thread_client = AsyncIOMotorClient(
-            os.environ["MONGO_URL"],
-            maxPoolSize=10,
-            minPoolSize=1,
-            connectTimeoutMS=5000,
-            serverSelectionTimeoutMS=5000,
-        )
-        thread_db = thread_client[os.environ["DB_NAME"]]
-        result = loop.run_until_complete(
-            run_eod_pipeline(thread_db, force_build_universe=force_build_universe)
-        )
-        logger.info(f"[EOD_PIPELINE] Thread complete: {getattr(result, 'run_id', result)}")
-    except Exception as exc:
-        logger.error(f"[EOD_PIPELINE] Thread failed: {exc}", exc_info=True)
-    finally:
-        if thread_client:
-            thread_client.close()
-        loop.close()
+    # Inherit environment so MONGO_URL, DB_NAME, etc. are available
+    env = {**os.environ}
+
+    subprocess.Popen(
+        cmd,
+        cwd="/app",          # WORKDIR in Docker (PYTHONPATH=/app/backend)
+        env=env,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    logger.info(f"[EOD_PIPELINE] Subprocess launched run_id={run_id}")
 
 
 @eod_pipeline_router.post("/run")
@@ -185,7 +174,8 @@ async def trigger_eod_pipeline(
 ):
     """
     Manually trigger the EOD pipeline.
-    Runs in a separate thread so the web server stays responsive.
+    Spawns an isolated subprocess — the API process stays responsive.
+    Returns a run_id for tracking progress via GET /eod-pipeline/status/{run_id}.
     """
     if not is_manual_run_allowed():
         raise HTTPException(
@@ -193,21 +183,50 @@ async def trigger_eod_pipeline(
             detail="Manual EOD pipeline runs are disabled in production. Use scheduled jobs."
         )
 
-    t = threading.Thread(
-        target=_run_pipeline_in_thread,
-        args=(force_build_universe,),
-        daemon=True,
-        name="eod-pipeline-manual"
-    )
-    t.start()
+    # Soft check: avoid double-triggering if lock is held
+    lock_doc = await db.eod_pipeline_lock.find_one({"_id": "eod_pipeline"})
+    if lock_doc and lock_doc.get("locked"):
+        raise HTTPException(
+            status_code=409,
+            detail="Pipeline already running — check /eod-pipeline/runs for status"
+        )
+
+    run_id = f"eod_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:8]}"
+
+    # Create tracking record before spawning (subprocess may take a moment to start)
+    await db.eod_runs.insert_one({
+        "run_id": run_id,
+        "status": "PENDING",
+        "triggered_by": admin.get("email", "admin"),
+        "force_build_universe": force_build_universe,
+        "created_at": datetime.now(timezone.utc),
+    })
+
+    _launch_pipeline_subprocess(run_id, force_build_universe)
 
     return {
-        "status": "started",
-        "message": "EOD pipeline started in background thread",
+        "status": "accepted",
+        "run_id": run_id,
+        "message": "EOD pipeline launched as subprocess — use /eod-pipeline/status/{run_id} to track",
         "force_build_universe": force_build_universe,
         "triggered_by": admin.get("email"),
-        "triggered_at": datetime.now(timezone.utc).isoformat()
+        "triggered_at": datetime.now(timezone.utc).isoformat(),
     }
+
+
+@eod_pipeline_router.get("/status/{run_id}")
+async def get_pipeline_run_status(
+    run_id: str,
+    admin: dict = Depends(get_admin_user)
+):
+    """
+    Live progress for a specific EOD pipeline run.
+    Poll this endpoint after triggering /run to track batch progress.
+    """
+    doc = await db.eod_runs.find_one({"run_id": run_id}, {"_id": 0})
+    if not doc:
+        raise HTTPException(status_code=404, detail=f"Run '{run_id}' not found")
+    return doc
 
 
 @eod_pipeline_router.post("/create-indexes")

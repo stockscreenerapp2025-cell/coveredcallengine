@@ -93,6 +93,16 @@ async def create_all_indexes(db) -> Dict[str, Any]:
         results["scan_run_summary"] = f"ERROR: {e}"
         logger.error(f"Index creation failed for scan_run_summary: {e}")
     
+    # eod_runs (subprocess pipeline progress tracking)
+    try:
+        await db.eod_runs.create_index([("run_id", 1)], unique=True, background=True)
+        await db.eod_runs.create_index([("created_at", -1)], background=True)
+        await db.eod_runs.create_index([("status", 1)], background=True)
+        results["eod_runs"] = "OK"
+    except Exception as e:
+        results["eod_runs"] = f"ERROR: {e}"
+        logger.error(f"Index creation failed for eod_runs: {e}")
+
     # us_symbol_master (for liquidity expansion queries)
     try:
         await db.us_symbol_master.create_index([
