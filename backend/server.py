@@ -1151,6 +1151,75 @@ async def scheduled_email_automation():
         logging.error(f"scheduled_email_automation failed: {e}")
 
 
+async def scheduled_trial_lifecycle():
+    """
+    Check trialing users and fire subscription_expiring / subscription_expired events.
+
+    Runs every 30 minutes.
+    - 2 days before trial_end  → trigger subscription_expiring (once, guarded by flag)
+    - After trial_end          → set status=expired, access_active=False, trigger subscription_expired
+    """
+    try:
+        from services.email_automation import EmailAutomationService
+        from datetime import datetime, timezone, timedelta
+
+        now = datetime.now(timezone.utc)
+        automation = EmailAutomationService(db)
+
+        # Find all currently-trialing users that have a trial_end set
+        cursor = db.users.find(
+            {"subscription.status": "trialing", "subscription.trial_end": {"$exists": True}},
+            {"email": 1, "first_name": 1, "name": 1, "subscription": 1,
+             "trial_expiry_reminder_sent": 1, "_id": 0}
+        )
+        async for user in cursor:
+            try:
+                sub = user.get("subscription", {})
+                trial_end_str = sub.get("trial_end")
+                if not trial_end_str:
+                    continue
+
+                trial_end = datetime.fromisoformat(trial_end_str.replace("Z", "+00:00"))
+                days_remaining = (trial_end - now).total_seconds() / 86400
+
+                if days_remaining <= 0:
+                    # Trial has expired — revoke access and fire subscription_expired
+                    await db.users.update_one(
+                        {"email": user["email"]},
+                        {"$set": {
+                            "subscription.status": "expired",
+                            "access_active": False,
+                            "updated_at": now.isoformat()
+                        }}
+                    )
+                    sub["status"] = "expired"
+                    await automation.trigger_event(
+                        trigger_type="subscription_expired",
+                        user=user,
+                        subscription=sub
+                    )
+                    logging.info(f"[TrialLifecycle] Expired trial for {user['email']}")
+
+                elif days_remaining <= 2 and not user.get("trial_expiry_reminder_sent"):
+                    # Within 2 days of expiry — send reminder once
+                    await automation.trigger_event(
+                        trigger_type="subscription_expiring",
+                        user=user,
+                        subscription={**sub, "days_before": 2}
+                    )
+                    await db.users.update_one(
+                        {"email": user["email"]},
+                        {"$set": {"trial_expiry_reminder_sent": True}}
+                    )
+                    logging.info(f"[TrialLifecycle] Expiry reminder sent for {user['email']}")
+
+            except Exception as e:
+                logging.error(f"[TrialLifecycle] Error processing user {user.get('email')}: {e}")
+
+    except Exception as e:
+        logging.error(f"scheduled_trial_lifecycle failed: {e}")
+
+
 async def scheduled_price_update():
     """
     Automated daily price update for all active simulator trades.
@@ -1810,6 +1879,15 @@ async def startup():
         "interval",
         minutes=2,
         id="email_automation_queue",
+        replace_existing=True
+    )
+
+    # Check trial expiry every 30 minutes
+    scheduler.add_job(
+        scheduled_trial_lifecycle,
+        "interval",
+        minutes=30,
+        id="trial_lifecycle_checker",
         replace_existing=True
     )
 
