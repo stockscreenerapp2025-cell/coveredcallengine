@@ -142,22 +142,39 @@ async def get_latest_run_info(
 # ADMIN ENDPOINTS (Pipeline Management)
 # ============================================================
 
-def _run_pipeline_in_thread(db_ref, force_build_universe: bool) -> None:
+def _run_pipeline_in_thread(force_build_universe: bool) -> None:
     """
-    Run the EOD pipeline in an isolated thread with its own event loop.
-    This prevents the pipeline from blocking uvicorn's event loop and
-    keeps the web server responsive during long-running pipeline runs.
+    Run the EOD pipeline in an isolated thread with its own event loop
+    and its own Motor client.
+
+    Motor's AsyncIOMotorClient is bound to the event loop it is first used
+    in. Reusing the shared `db` from uvicorn's loop in a new thread causes
+    silent failures. A fresh client per thread avoids this completely.
     """
+    import os
+    from motor.motor_asyncio import AsyncIOMotorClient
+
     loop = _asyncio.new_event_loop()
     _asyncio.set_event_loop(loop)
+    thread_client = None
     try:
+        thread_client = AsyncIOMotorClient(
+            os.environ["MONGO_URL"],
+            maxPoolSize=10,
+            minPoolSize=1,
+            connectTimeoutMS=5000,
+            serverSelectionTimeoutMS=5000,
+        )
+        thread_db = thread_client[os.environ["DB_NAME"]]
         result = loop.run_until_complete(
-            run_eod_pipeline(db_ref, force_build_universe=force_build_universe)
+            run_eod_pipeline(thread_db, force_build_universe=force_build_universe)
         )
         logger.info(f"[EOD_PIPELINE] Thread complete: {getattr(result, 'run_id', result)}")
     except Exception as exc:
         logger.error(f"[EOD_PIPELINE] Thread failed: {exc}", exc_info=True)
     finally:
+        if thread_client:
+            thread_client.close()
         loop.close()
 
 
@@ -178,7 +195,7 @@ async def trigger_eod_pipeline(
 
     t = threading.Thread(
         target=_run_pipeline_in_thread,
-        args=(db, force_build_universe),
+        args=(force_build_universe,),
         daemon=True,
         name="eod-pipeline-manual"
     )

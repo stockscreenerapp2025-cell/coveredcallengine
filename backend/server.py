@@ -1547,20 +1547,25 @@ async def startup():
     # EOD Pipeline Scheduler - runs at 5:00 PM ET (single snapshot per trading day)
     # Per Sanjoy's instruction: no Yahoo fetch at 4:05 PM - one snapshot at 5:00 PM only
     def scheduled_eod_pipeline():
-        """Run EOD pipeline in a separate thread to avoid blocking the event loop."""
-        import threading as _threading, asyncio as _asyncio
+        """Run EOD pipeline in a separate thread with its own Motor client."""
+        import threading as _threading, asyncio as _asyncio, os as _os
+        from motor.motor_asyncio import AsyncIOMotorClient as _Client
         def _run():
             loop = _asyncio.new_event_loop()
             _asyncio.set_event_loop(loop)
+            _client = None
             try:
+                _client = _Client(_os.environ["MONGO_URL"], maxPoolSize=10, minPoolSize=1)
+                _db = _client[_os.environ["DB_NAME"]]
                 from services.eod_pipeline import run_eod_pipeline
                 logger.info("Starting scheduled EOD pipeline (5:00 PM snapshot)...")
-                result = loop.run_until_complete(run_eod_pipeline(db, force_build_universe=False))
+                result = loop.run_until_complete(run_eod_pipeline(_db, force_build_universe=False))
                 logger.info(f"EOD Pipeline completed: {result.run_id}, "
                             f"CC={len(result.cc_opportunities)}, PMCC={len(result.pmcc_opportunities)}")
             except Exception as e:
                 logger.error(f"Scheduled EOD pipeline failed: {e}")
             finally:
+                if _client: _client.close()
                 loop.close()
         _threading.Thread(target=_run, daemon=True, name="eod-pipeline-scheduled").start()
 
