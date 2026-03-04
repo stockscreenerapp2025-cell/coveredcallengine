@@ -4,10 +4,12 @@ EOD Pipeline Routes
 Admin endpoints for running and monitoring the EOD pipeline.
 Also provides read-only endpoints for pre-computed scan results.
 """
-from fastapi import APIRouter, Depends, Query, HTTPException, BackgroundTasks
+from fastapi import APIRouter, Depends, Query, HTTPException
 from typing import Optional
 from datetime import datetime, timezone
 import logging
+import threading
+import asyncio as _asyncio
 
 import sys
 from pathlib import Path
@@ -140,39 +142,51 @@ async def get_latest_run_info(
 # ADMIN ENDPOINTS (Pipeline Management)
 # ============================================================
 
+def _run_pipeline_in_thread(db_ref, force_build_universe: bool) -> None:
+    """
+    Run the EOD pipeline in an isolated thread with its own event loop.
+    This prevents the pipeline from blocking uvicorn's event loop and
+    keeps the web server responsive during long-running pipeline runs.
+    """
+    loop = _asyncio.new_event_loop()
+    _asyncio.set_event_loop(loop)
+    try:
+        result = loop.run_until_complete(
+            run_eod_pipeline(db_ref, force_build_universe=force_build_universe)
+        )
+        logger.info(f"[EOD_PIPELINE] Thread complete: {getattr(result, 'run_id', result)}")
+    except Exception as exc:
+        logger.error(f"[EOD_PIPELINE] Thread failed: {exc}", exc_info=True)
+    finally:
+        loop.close()
+
+
 @eod_pipeline_router.post("/run")
 async def trigger_eod_pipeline(
-    background_tasks: BackgroundTasks,
     force_build_universe: bool = Query(False, description="Build fresh universe or use latest"),
     admin: dict = Depends(get_admin_user)
 ):
     """
     Manually trigger the EOD pipeline.
-    
-    This is an admin-only endpoint.
-    In production, manual runs are disabled - use scheduled jobs only.
-    
-    The pipeline runs in the background and returns immediately.
+    Runs in a separate thread so the web server stays responsive.
     """
     if not is_manual_run_allowed():
         raise HTTPException(
             status_code=403,
             detail="Manual EOD pipeline runs are disabled in production. Use scheduled jobs."
         )
-    
-    # Run in background
-    async def run_pipeline():
-        try:
-            result = await run_eod_pipeline(db, force_build_universe=force_build_universe)
-            logger.info(f"EOD Pipeline completed: {result.run_id}")
-        except Exception as e:
-            logger.error(f"EOD Pipeline failed: {e}")
-    
-    background_tasks.add_task(run_pipeline)
-    
+
+    t = threading.Thread(
+        target=_run_pipeline_in_thread,
+        args=(db, force_build_universe),
+        daemon=True,
+        name="eod-pipeline-manual"
+    )
+    t.start()
+
     return {
         "status": "started",
-        "message": "EOD pipeline started in background",
+        "message": "EOD pipeline started in background thread",
         "force_build_universe": force_build_universe,
         "triggered_by": admin.get("email"),
         "triggered_at": datetime.now(timezone.utc).isoformat()

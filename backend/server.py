@@ -1546,17 +1546,23 @@ async def startup():
 
     # EOD Pipeline Scheduler - runs at 5:00 PM ET (single snapshot per trading day)
     # Per Sanjoy's instruction: no Yahoo fetch at 4:05 PM - one snapshot at 5:00 PM only
-    async def scheduled_eod_pipeline():
-        """Run the EOD pipeline to pre-compute CC/PMCC scan results."""
-        try:
-            from services.eod_pipeline import run_eod_pipeline
-            logger.info(
-                "Starting scheduled EOD pipeline (5:00 PM snapshot)...")
-            result = await run_eod_pipeline(db, force_build_universe=False)
-            logger.info(f"EOD Pipeline completed: {result.run_id}, "
-                        f"CC={len(result.cc_opportunities)}, PMCC={len(result.pmcc_opportunities)}")
-        except Exception as e:
-            logger.error(f"Scheduled EOD pipeline failed: {e}")
+    def scheduled_eod_pipeline():
+        """Run EOD pipeline in a separate thread to avoid blocking the event loop."""
+        import threading as _threading, asyncio as _asyncio
+        def _run():
+            loop = _asyncio.new_event_loop()
+            _asyncio.set_event_loop(loop)
+            try:
+                from services.eod_pipeline import run_eod_pipeline
+                logger.info("Starting scheduled EOD pipeline (5:00 PM snapshot)...")
+                result = loop.run_until_complete(run_eod_pipeline(db, force_build_universe=False))
+                logger.info(f"EOD Pipeline completed: {result.run_id}, "
+                            f"CC={len(result.cc_opportunities)}, PMCC={len(result.pmcc_opportunities)}")
+            except Exception as e:
+                logger.error(f"Scheduled EOD pipeline failed: {e}")
+            finally:
+                loop.close()
+        _threading.Thread(target=_run, daemon=True, name="eod-pipeline-scheduled").start()
 
     scheduler.add_job(
         scheduled_eod_pipeline,
