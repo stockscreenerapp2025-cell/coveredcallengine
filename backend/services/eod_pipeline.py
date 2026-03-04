@@ -746,26 +746,41 @@ async def _acquire_pipeline_lock(db) -> bool:
     Acquire a distributed MongoDB lock for the EOD pipeline.
     Returns True if lock acquired, False if already running.
     Locks older than 30 minutes are considered stale and overwritten.
+
+    Uses a 3-step approach to avoid the MongoDB limitation where
+    find_one_and_update with $or + upsert=True throws a WriteError
+    (cannot infer upsert document from $or conditions).
     """
     now = datetime.now(timezone.utc)
     stale_cutoff = now - timedelta(minutes=30)
     try:
-        result = await db.eod_pipeline_lock.find_one_and_update(
-            {
-                "_id": "eod_pipeline",
-                "$or": [
-                    {"locked": False},
-                    {"locked_at": {"$lt": stale_cutoff}}  # stale lock
-                ]
-            },
-            {"$set": {"locked": True, "locked_at": now}},
-            upsert=True,
-            return_document=True
+        # Step 1: Release any stale lock so it can be reacquired
+        await db.eod_pipeline_lock.update_one(
+            {"_id": "eod_pipeline", "locked_at": {"$lt": stale_cutoff}},
+            {"$set": {"locked": False}}
         )
-        return result is not None
-    except Exception:
-        # If upsert fails due to duplicate key (another worker just acquired),
-        # that means the lock is already held
+
+        # Step 2: Try to update an existing unlocked document
+        result = await db.eod_pipeline_lock.update_one(
+            {"_id": "eod_pipeline", "locked": False},
+            {"$set": {"locked": True, "locked_at": now}}
+        )
+        if result.modified_count == 1:
+            return True
+
+        # Step 3: No unlocked document found — try to insert a new one.
+        # Fails with DuplicateKeyError if another worker just inserted (= locked).
+        try:
+            await db.eod_pipeline_lock.insert_one(
+                {"_id": "eod_pipeline", "locked": True, "locked_at": now}
+            )
+            return True
+        except Exception:
+            # Document already exists and is locked
+            return False
+
+    except Exception as e:
+        logger.error(f"[EOD_PIPELINE] Lock acquisition error: {e}")
         return False
 
 
