@@ -1374,38 +1374,58 @@ def validate_cc_option(
     bid: float,
     iv: float,
     oi: int,
-    dte: int
+    dte: int,
+    ask: float = 0
 ) -> Tuple[bool, List[str]]:
     """
     Validate a CC option against hard rules.
+    Weekly (7-14 DTE) and monthly (21-45 DTE) have separate thresholds.
     Returns (is_valid, list_of_quality_flags)
     """
     flags = []
 
-    # HARD RULE: Strike must be OTM (strike > stock_price)
-    if strike <= stock_price:
+    # HARD RULE: DTE — must be weekly (7-14) or monthly (21-45)
+    is_weekly = 7 <= dte <= 14
+    is_monthly = 21 <= dte <= 45
+    if not is_weekly and not is_monthly:
+        flags.append(f"DTE_OUT_OF_RANGE_{dte}")
+        return False, flags
+
+    # HARD RULE: Strike must be >= 1% OTM
+    min_strike = stock_price * 1.01
+    if strike < min_strike:
         flags.append("STRIKE_NOT_OTM")
         return False, flags
 
-    # HARD RULE: Bid > 0
-    if not bid or bid <= 0:
-        flags.append("BID_ZERO_OR_NEGATIVE")
+    # HARD RULE: Strike distance <= 15%
+    strike_distance = (strike - stock_price) / stock_price * 100
+    if strike_distance > 15.0:
+        flags.append(f"STRIKE_TOO_FAR_{strike_distance:.1f}%")
         return False, flags
 
-    # HARD RULE: DTE within range
-    if dte < CC_MIN_DTE or dte > CC_MAX_DTE:
-        flags.append(f"DTE_OUT_OF_RANGE_{dte}")
+    # HARD RULE: Bid thresholds per category
+    min_bid = 0.20 if is_weekly else 0.25
+    if not bid or bid < min_bid:
+        flags.append(f"BID_TOO_LOW_{bid:.2f}")
         return False, flags
+
+    # HARD RULE: OI thresholds per category
+    min_oi = 50 if is_weekly else 75
+    if oi is not None and oi < min_oi:
+        flags.append(f"LOW_OI_{oi}")
+        return False, flags
+
+    # HARD RULE: Spread check (mid-based)
+    if ask and ask > 0 and bid > 0:
+        mid = (bid + ask) / 2
+        spread_pct = (ask - bid) / mid if mid > 0 else 1.0
+        if spread_pct > 0.15:
+            flags.append(f"WIDE_SPREAD_{spread_pct:.2f}")
+            return False, flags
 
     # SOFT RULE: IV sanity check
     if iv and (iv < CC_MIN_IV or iv > CC_MAX_IV):
         flags.append(f"IV_EXTREME_{iv:.2f}")
-        # Allow but flag
-
-    # SOFT RULE: OI check
-    if oi is not None and oi < CC_MIN_OPEN_INTEREST:
-        flags.append(f"LOW_OI_{oi}")
-        # Allow but flag
 
     return True, flags
 
@@ -1627,42 +1647,23 @@ def calculate_greeks_simple(stock_price: float, strike: float, dte: int, iv: flo
 
 
 def calculate_cc_score(trade_data: Dict[str, Any]) -> float:
-    """Calculate simplified CC quality score (0-100)."""
-    score = 30.0  # Base score
+    """
+    Risk-aware CC quality score (0-100).
+    Formula: 50 + (cycle_yield*200) + (log1p(OI)*5) - (spread_pct*30) - (delta*40)
+    """
+    cycle_yield = trade_data.get("cycle_yield", trade_data.get("roi_pct", 0) / 100)
+    oi          = trade_data.get("open_interest", 0)
+    spread_pct  = trade_data.get("spread_pct", 0)   # already as ratio 0-1
+    delta       = trade_data.get("delta", 0.3)
 
-    # ROI scoring (max +20)
-    roi_pct = trade_data.get("roi_pct", 0)
-    if 1.0 <= roi_pct <= 3.0:
-        score += 20
-    elif roi_pct > 3.0:
-        score += 15
-    elif roi_pct > 0.5:
-        score += roi_pct * 10
-
-    # Delta scoring (max +15) - prefer 0.25-0.35
-    delta = trade_data.get("delta", 0.3)
-    if 0.25 <= delta <= 0.35:
-        score += 15
-    elif 0.20 <= delta <= 0.40:
-        score += 10
-    elif 0.15 <= delta <= 0.50:
-        score += 5
-
-    # OTM% scoring (max +10) - prefer 3-8%
-    otm_pct = trade_data.get("otm_pct", 0)
-    if 3.0 <= otm_pct <= 8.0:
-        score += 10
-    elif 1.0 <= otm_pct <= 12.0:
-        score += 5
-
-    # Liquidity scoring (max +5)
-    oi = trade_data.get("open_interest", 0)
-    if oi >= 500:
-        score += 5
-    elif oi >= 100:
-        score += 2
-
-    return min(100, max(0, score))
+    score = (
+        50
+        + (cycle_yield * 200)
+        + (log1p(oi) * 5)
+        - (spread_pct * 30)
+        - (delta * 40)
+    )
+    return round(min(100.0, max(0.0, score)), 1)
 
 
 async def compute_scan_results(
@@ -1800,15 +1801,21 @@ async def compute_scan_results(
                     bid=bid,
                     iv=iv,
                     oi=oi,
-                    dte=dte
+                    dte=dte,
+                    ask=ask
                 )
 
                 if not is_valid:
                     continue
 
                 # SOFT FLAGS (for transparency, don't reject)
-                spread_pct = ((ask - bid) / bid * 100) if bid > 0 else 0
-                if spread_pct > 10:
+                # Mid-based spread as ratio (0-1) for score formula
+                if ask and ask > 0 and bid > 0:
+                    _mid = (bid + ask) / 2
+                    spread_pct = ((ask - bid) / _mid) if _mid > 0 else 1.0
+                else:
+                    spread_pct = 1.0
+                if spread_pct > 0.15:
                     quality_flags.append("WIDE_SPREAD")
                 if oi < 50:
                     quality_flags.append("LOW_OI")
@@ -1838,22 +1845,23 @@ async def compute_scan_results(
                 greeks = calculate_greeks_simple(
                     stock_price, strike, dte, iv if iv > 0 else 0.30)
 
-                # Calculate ROI (must use premium_bid per SELL rule)
-                roi_pct = safe_divide(
-                    premium_bid, stock_price, 0) * 100 if stock_price else None
-                roi_annualized = safe_multiply(roi_pct, safe_divide(
-                    365, max(dte, 1), 0)) if roi_pct else None
+                # Yield calculation: basis = stock_price (cost of owning shares)
+                cycle_yield = (premium_bid / stock_price) if stock_price > 0 else 0
+                annual_yield = min(cycle_yield * (365 / max(dte, 1)), 1.5)
 
-                # ASSERTION: ROI > 0 requires premium_bid > 0
-                if roi_pct and roi_pct > 0 and premium_bid <= 0:
-                    continue  # Invalid state
+                # Legacy roi fields (keep for backward compat)
+                roi_pct = cycle_yield * 100
+                roi_annualized = annual_yield * 100
+
+                if cycle_yield <= 0:
+                    continue
 
                 # Calculate score
                 trade_data = {
-                    "roi_pct": roi_pct,
+                    "cycle_yield": cycle_yield,
                     "delta": greeks["delta"],
-                    "otm_pct": otm_pct,
-                    "open_interest": oi
+                    "open_interest": oi,
+                    "spread_pct": spread_pct  # mid-based ratio 0-1
                 }
                 score = calculate_cc_score(trade_data)
 
@@ -1922,6 +1930,8 @@ async def compute_scan_results(
 
                     "premium_yield": round(premium_yield, 2),
                     "otm_pct": round(otm_pct, 2),
+                    "cycle_yield": round(cycle_yield, 6),
+                    "annual_yield": round(annual_yield, 4),
                     "roi_pct": round(roi_pct, 2),
                     "roi_annualized": round(roi_annualized, 1) if roi_annualized else None,
                     "max_profit": round(premium_bid * 100, 2),
@@ -1943,6 +1953,7 @@ async def compute_scan_results(
 
                     "open_interest": oi,
                     "volume": volume,
+                    "spread_pct": round(spread_pct * 100, 2),  # stored as % for readability
 
                     "quality_flags": quality_flags,
                     "analyst_rating": analyst_rating,
