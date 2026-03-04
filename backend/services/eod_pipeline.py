@@ -1114,7 +1114,7 @@ async def _run_eod_pipeline_inner(db, force_build_universe: bool = False, run_id
     if snapshots_written > 0:
         # Backfill IV history from today's snapshots (idempotent - safe to run every day)
         try:
-            iv_stats = await backfill_iv_history_from_snapshots(db)
+            iv_stats = await backfill_iv_history_from_snapshots(db, run_id=run_id)
             logger.info(f"[EOD_PIPELINE] IV history updated: {iv_stats}")
         except Exception as e:
             logger.error(

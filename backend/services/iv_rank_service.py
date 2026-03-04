@@ -594,12 +594,16 @@ async def get_iv_collection_stats(db) -> Dict[str, Any]:
 # =============================================================================
 
 
-async def backfill_iv_history_from_snapshots(db) -> Dict[str, int]:
+async def backfill_iv_history_from_snapshots(db, run_id: str = None) -> Dict[str, int]:
     """
     One-time backfill: extract ATM IV from existing symbol_snapshot documents
     and populate iv_history. Safe to run multiple times (idempotent).
 
     Called automatically after first snapshot run if iv_history is empty.
+
+    Args:
+        db: MongoDB database instance
+        run_id: Filter snapshots to a specific run (avoids loading all historical docs)
 
     Returns:
         Dict with written, skipped, failed counts
@@ -608,14 +612,18 @@ async def backfill_iv_history_from_snapshots(db) -> Dict[str, int]:
     seen = set()
 
     try:
-        snapshots = await db.symbol_snapshot.find(
-            {},
+        query = {"run_id": run_id} if run_id else {}
+        # batch_size(5): stream one Motor batch at a time — avoids loading all
+        # option chain docs into memory (default batch=101 × ~5MB = ~500MB spike)
+        snapshot_cursor = db.symbol_snapshot.find(
+            query,
             {"symbol": 1, "underlying_price": 1, "as_of": 1, "option_chain": 1}
-        ).to_list(length=10000)
+        ).batch_size(5)
 
-        logger.info(f"IV backfill: processing {len(snapshots)} snapshots")
-
-        for snap in snapshots:
+        processed = 0
+        logger.info(f"IV backfill: streaming snapshots (run_id={run_id})")
+        async for snap in snapshot_cursor:
+            processed += 1
             symbol = snap.get("symbol")
             stock_price = snap.get("underlying_price", 0)
             as_of = snap.get("as_of")
