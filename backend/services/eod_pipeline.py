@@ -655,10 +655,10 @@ def fetch_option_chain_sync(symbol: str, retry_count: int = 0) -> Dict:
                         selected[target] = (exp_str, diff)
             return sorted({v[0] for v in selected.values()})
 
-        # Short leg targets: nearest to 21, 30, 45, 60 DTE
+        # Short leg targets: nearest to 7, 14 (weekly), 21, 30, 45, 60 DTE
         short_selected = _pick_nearest_exps(
             [(e, d) for e, d in all_exps_with_dte if 7 <= d <= 90],
-            [21, 30, 45, 60]
+            [7, 14, 21, 30, 45, 60]
         )
         # Long leg targets: nearest to 180, 270, 365, 540, 730 DTE
         long_selected = _pick_nearest_exps(

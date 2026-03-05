@@ -2047,7 +2047,36 @@ async def get_dashboard_opportunities(
     
     # Combine
     combined = top_weekly + top_monthly
-    
+
+    # Overlay fresh prices from market_snapshot_cache (same source as CC screener)
+    if combined:
+        from datetime import datetime, timezone
+        from services.data_provider import is_market_closed
+        _ttl = 3 * 3600 if is_market_closed() else 12 * 60
+        _now = datetime.now(timezone.utc)
+        _syms = [o["symbol"] for o in combined if o.get("symbol")]
+        _cached: dict = {}
+        async for _snap in db.market_snapshot_cache.find(
+            {"symbol": {"$in": _syms}},
+            {"symbol": 1, "price": 1, "cached_at": 1, "_id": 0}
+        ):
+            _sym = _snap.get("symbol")
+            _price = _snap.get("price", 0)
+            _cat = _snap.get("cached_at")
+            if not (_sym and _price and _cat):
+                continue
+            if isinstance(_cat, str):
+                _cat = datetime.fromisoformat(_cat.replace("Z", "+00:00"))
+            if _cat.tzinfo is None:
+                _cat = _cat.replace(tzinfo=timezone.utc)
+            if (_now - _cat).total_seconds() <= _ttl:
+                _cached[_sym] = _price
+        for opp in combined:
+            _s = opp.get("symbol")
+            if _s in _cached:
+                opp["stock_price"] = round(_cached[_s], 2)
+                opp["stock_price_source"] = "CACHED_SNAPSHOT"
+
     # ANALYST ENRICHMENT MERGE (READ-TIME)
     combined = await _merge_analyst_enrichment(combined, debug_enrichment=debug_enrichment)
     
