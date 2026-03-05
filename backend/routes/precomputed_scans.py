@@ -144,10 +144,47 @@ async def _get_eod_pmcc_opportunities(
         45 if risk_profile == "balanced" else 30
     )
 
+    # Profile-specific strategy filters — each profile targets a distinct
+    # region of the LEAP/short parameter space so results differ meaningfully.
+    # IV Rank >= 20 ensures premium is worth selling (applied where available).
+    if risk_profile == "conservative":
+        # Capital Efficient: deep ITM LEAP (0.70-0.85δ), 300+ DTE, conservative short
+        profile_filter = {
+            "leap_delta": {"$gte": 0.70, "$lte": 0.85},
+            "leap_dte":   {"$gte": 300},
+            "short_delta": {"$gte": 0.15, "$lte": 0.25},
+            "short_dte":   {"$gte": 30, "$lte": 45},
+            "roi_cycle":   {"$gte": 0.05},
+        }
+    elif risk_profile == "balanced":
+        # Leveraged Income: moderate ITM LEAP (0.65-0.75δ), 180+ DTE, balanced short
+        profile_filter = {
+            "leap_delta": {"$gte": 0.65, "$lte": 0.75},
+            "leap_dte":   {"$gte": 180},
+            "short_delta": {"$gte": 0.20, "$lte": 0.30},
+            "short_dte":   {"$gte": 21, "$lte": 45},
+            "roi_cycle":   {"$gte": 0.08},
+        }
+    else:
+        # Max Yield Diagonal: lower delta LEAP (0.55-0.70δ), 180+ DTE, aggressive short
+        profile_filter = {
+            "leap_delta": {"$gte": 0.55, "$lte": 0.70},
+            "leap_dte":   {"$gte": 180},
+            "short_delta": {"$gte": 0.20, "$lte": 0.30},
+            "short_dte":   {"$gte": 21, "$lte": 45},
+            "roi_cycle":   {"$gte": 0.12},
+        }
+
     async def _fetch_for_runs(run_ids):
         if not run_ids:
             return []
-        query = {"run_id": {"$in": run_ids}, "score": {"$gte": score_floor}}
+        query = {
+            "run_id": {"$in": run_ids},
+            "score": {"$gte": score_floor},
+            # IV Rank filter: skip if iv_rank field is absent (allow nulls)
+            "$or": [{"iv_rank": {"$gte": 20}}, {"iv_rank": None}, {"iv_rank": {"$exists": False}}],
+            **profile_filter,
+        }
         return await db.scan_results_pmcc.find(
             query, {"_id": 0}
         ).sort("score", -1).limit(limit * 3).to_list(limit * 3)
@@ -269,12 +306,19 @@ def _transform_pmcc_for_scans(row: Dict) -> Dict:
         "short_bid": sanitize_money(row.get("short_bid")),
         "short_ask": sanitize_money(row.get("short_ask")),
         "short_delta": sanitize_float(row.get("short_delta")),
+        # short_premium = alias of short_bid (frontend reads this field name)
+        "short_premium": sanitize_money(row.get("short_bid")),
         # Economics - MONETARY: 2-decimal
         "net_debit": sanitize_money(row.get("net_debit")),
         "width": sanitize_money(row.get("width")),
         "max_profit": sanitize_money(row.get("max_profit")),
         "breakeven": sanitize_money(row.get("breakeven")),
         "roi_annualized": sanitize_percentage(row.get("roi_annualized"), 1),
+        # roi_cycle / roi_per_cycle — frontend reads these field names
+        "roi_cycle": sanitize_float(row.get("roi_cycle") or row.get("roi_per_cycle")),
+        "roi_per_cycle": sanitize_float(row.get("roi_per_cycle") or row.get("roi_cycle")),
+        # annualized_roi — alias of roi_annualized (frontend reads this field name)
+        "annualized_roi": sanitize_percentage(row.get("roi_annualized"), 1),
         # Greeks & IV (non-monetary)
         "iv": sanitize_float(row.get("iv")),
         "iv_pct": sanitize_float(row.get("iv_pct")),
@@ -394,22 +438,33 @@ async def get_available_scans(user: dict = Depends(get_current_user)):
         })
     
     # Compute PMCC counts using SAME filtering logic as detail endpoint
+    # (profile-specific delta/DTE/roi_cycle filters must match _get_eod_pmcc_opportunities)
+    _iv_filter = {"$or": [{"iv_rank": {"$gte": 20}}, {"iv_rank": None}, {"iv_rank": {"$exists": False}}]}
     pmcc_counts = {}
     if run_id:
-        # Conservative: score >= 60
         pmcc_counts["conservative"] = await db.scan_results_pmcc.count_documents({
-            "run_id": run_id,
-            "score": {"$gte": 60}
+            "run_id": run_id, "score": {"$gte": 60},
+            "leap_delta": {"$gte": 0.70, "$lte": 0.85},
+            "leap_dte": {"$gte": 300},
+            "short_delta": {"$gte": 0.15, "$lte": 0.25},
+            "short_dte": {"$gte": 30, "$lte": 45},
+            "roi_cycle": {"$gte": 0.05}, **_iv_filter
         })
-        # Balanced: score >= 45
         pmcc_counts["balanced"] = await db.scan_results_pmcc.count_documents({
-            "run_id": run_id,
-            "score": {"$gte": 45}
+            "run_id": run_id, "score": {"$gte": 45},
+            "leap_delta": {"$gte": 0.65, "$lte": 0.75},
+            "leap_dte": {"$gte": 180},
+            "short_delta": {"$gte": 0.20, "$lte": 0.30},
+            "short_dte": {"$gte": 21, "$lte": 45},
+            "roi_cycle": {"$gte": 0.08}, **_iv_filter
         })
-        # Aggressive: score >= 30
         pmcc_counts["aggressive"] = await db.scan_results_pmcc.count_documents({
-            "run_id": run_id,
-            "score": {"$gte": 30}
+            "run_id": run_id, "score": {"$gte": 30},
+            "leap_delta": {"$gte": 0.55, "$lte": 0.70},
+            "leap_dte": {"$gte": 180},
+            "short_delta": {"$gte": 0.20, "$lte": 0.30},
+            "short_dte": {"$gte": 21, "$lte": 45},
+            "roi_cycle": {"$gte": 0.12}, **_iv_filter
         })
     
     computed_at = run_info.get("completed_at") if run_info else None
