@@ -115,19 +115,19 @@ async def get_stock_quote(symbol: str, user: dict = Depends(get_current_user)):
 
 
 def _fetch_analyst_ratings(symbol: str) -> dict:
-    """Fetch analyst ratings from Yahoo Finance (blocking call)"""
+    """Fetch analyst ratings AND key fundamentals from Yahoo Finance (blocking call)"""
     try:
         yf = get_yfinance()
         ticker = yf.Ticker(symbol)
         info = ticker.info
-        
+
         recommendation = info.get("recommendationKey", "")
         num_analysts = info.get("numberOfAnalystOpinions", 0)
         target_mean = info.get("targetMeanPrice")
         target_high = info.get("targetHighPrice")
         target_low = info.get("targetLowPrice")
         current_price = info.get("currentPrice") or info.get("regularMarketPrice")
-        
+
         # Map Yahoo's recommendation keys to display values
         rating_map = {
             "strong_buy": "Strong Buy",
@@ -136,14 +136,27 @@ def _fetch_analyst_ratings(symbol: str) -> dict:
             "underperform": "Sell",
             "sell": "Sell"
         }
-        
+
         display_rating = rating_map.get(recommendation, recommendation.replace("_", " ").title() if recommendation else "")
-        
+
         # Calculate upside potential
         upside_pct = None
         if target_mean and current_price and current_price > 0:
             upside_pct = round((target_mean - current_price) / current_price * 100, 1)
-        
+
+        # Extract key fundamentals available in ticker.info
+        raw_roe = info.get("returnOnEquity")  # decimal e.g. 0.35 = 35%
+        raw_pe  = info.get("trailingPE")
+        raw_eps = info.get("trailingEps")
+        raw_de  = info.get("debtToEquity")    # already ratio form
+
+        fundamentals_patch = {
+            "pe_ratio": round(raw_pe, 2) if raw_pe and raw_pe > 0 else None,
+            "roe": round(raw_roe * 100, 2) if raw_roe is not None else None,
+            "eps_ttm": round(raw_eps, 2) if raw_eps is not None else None,
+            "debt_to_equity": round(raw_de / 100, 2) if raw_de is not None else None,
+        }
+
         return {
             "rating": display_rating,
             "num_analysts": num_analysts,
@@ -151,7 +164,8 @@ def _fetch_analyst_ratings(symbol: str) -> dict:
             "target_high": round(target_high, 2) if target_high else None,
             "target_low": round(target_low, 2) if target_low else None,
             "upside_pct": upside_pct,
-            "has_sufficient_coverage": num_analysts >= 5
+            "has_sufficient_coverage": num_analysts >= 5,
+            "_fundamentals_patch": fundamentals_patch,
         }
     except Exception as e:
         logging.error(f"yfinance analyst ratings error for {symbol}: {e}")
@@ -396,10 +410,15 @@ async def get_stock_details(symbol: str, user: dict = Depends(get_current_user))
         except Exception as e:
             logging.error(f"MarketAux news error: {e}")
     
-    # Wait for analyst ratings from yfinance
+    # Wait for analyst ratings from yfinance (also carries fundamentals patch)
     try:
         analyst_data = await analyst_task
+        # Strip internal patch key before storing analyst ratings
+        fundamentals_patch = analyst_data.pop("_fundamentals_patch", {})
         result["analyst_ratings"] = analyst_data
+        # Merge pe_ratio / roe / eps_ttm / debt_to_equity into fundamentals
+        if fundamentals_patch:
+            result["fundamentals"].update({k: v for k, v in fundamentals_patch.items() if v is not None})
     except Exception as e:
         logging.error(f"Analyst ratings error: {e}")
     

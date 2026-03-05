@@ -194,9 +194,10 @@ const StockDetailModal = ({ symbol, isOpen, onClose, scanData = null }) => {
       return {
         ...apiFundamentals,
         market_cap: scanData.market_cap || apiFundamentals.market_cap,
-        eps_ttm: scanData.eps_ttm,
-        roe: scanData.roe,
-        debt_to_equity: scanData.debt_to_equity,
+        eps_ttm: scanData.eps_ttm ?? apiFundamentals.eps_ttm,
+        roe: scanData.roe ?? apiFundamentals.roe,
+        pe_ratio: scanData.pe_ratio ?? apiFundamentals.pe_ratio,
+        debt_to_equity: scanData.debt_to_equity ?? apiFundamentals.debt_to_equity,
         days_to_earnings: scanData.days_to_earnings,
         sector: scanData.sector || apiFundamentals.sector
       };
@@ -480,6 +481,27 @@ const StockDetailModal = ({ symbol, isOpen, onClose, scanData = null }) => {
                       </CardTitle>
                     </CardHeader>
                     <CardContent>
+                      {/* ROE% and P/E Ratio — always shown side by side */}
+                      <div className="grid grid-cols-2 gap-3 mb-3">
+                        <div className="p-3 rounded bg-zinc-900/50">
+                          <div className="text-xs text-zinc-500">ROE %</div>
+                          <div className={`text-lg font-mono ${fundamentals?.roe > 15 ? 'text-emerald-400' : fundamentals?.roe > 0 ? 'text-yellow-400' : 'text-zinc-400'}`}>
+                            {fundamentals?.roe != null ? `${fundamentals.roe.toFixed(1)}%` : 'N/A'}
+                          </div>
+                          <div className="text-xs text-zinc-500">
+                            {fundamentals?.roe > 15 ? 'Strong' : fundamentals?.roe > 10 ? 'Good' : fundamentals?.roe != null ? 'Below Avg' : 'No Data'}
+                          </div>
+                        </div>
+                        <div className="p-3 rounded bg-zinc-900/50">
+                          <div className="text-xs text-zinc-500">P/E Ratio</div>
+                          <div className={`text-lg font-mono ${fundamentals?.pe_ratio != null ? (fundamentals.pe_ratio < 20 ? 'text-emerald-400' : fundamentals.pe_ratio < 35 ? 'text-yellow-400' : 'text-orange-400') : 'text-zinc-400'}`}>
+                            {fundamentals?.pe_ratio != null ? fundamentals.pe_ratio.toFixed(1) : 'N/A'}
+                          </div>
+                          <div className="text-xs text-zinc-500">
+                            {fundamentals?.pe_ratio != null ? (fundamentals.pe_ratio < 20 ? 'Value' : fundamentals.pe_ratio < 35 ? 'Fair' : 'Premium') : 'No Data'}
+                          </div>
+                        </div>
+                      </div>
                       <div className="grid grid-cols-2 gap-3">
                         {fundamentals?.eps_ttm !== undefined && (
                           <div className="p-3 rounded bg-zinc-900/50">
@@ -489,17 +511,6 @@ const StockDetailModal = ({ symbol, isOpen, onClose, scanData = null }) => {
                             </div>
                             <div className="text-xs text-zinc-500">
                               {fundamentals.eps_ttm > 0 ? 'Profitable' : 'Loss Making'}
-                            </div>
-                          </div>
-                        )}
-                        {fundamentals?.roe !== undefined && fundamentals?.roe !== null && (
-                          <div className="p-3 rounded bg-zinc-900/50">
-                            <div className="text-xs text-zinc-500">ROE</div>
-                            <div className={`text-lg font-mono ${fundamentals.roe > 15 ? 'text-emerald-400' : 'text-yellow-400'}`}>
-                              {fundamentals.roe?.toFixed(1)}%
-                            </div>
-                            <div className="text-xs text-zinc-500">
-                              {fundamentals.roe > 15 ? 'Strong' : fundamentals.roe > 10 ? 'Good' : 'Below Avg'}
                             </div>
                           </div>
                         )}

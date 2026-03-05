@@ -1998,15 +1998,24 @@ async def get_dashboard_opportunities(
     run_id = await _get_latest_eod_run_id()
     
     if run_id:
-        # Query directly from scan_results_cc - sorted by score
-        cursor = db.scan_results_cc.find(
-            {"run_id": run_id},
+        # Query weekly and monthly SEPARATELY so each bucket is always populated
+        # regardless of relative score ranking across DTE groups
+        weekly_cursor = db.scan_results_cc.find(
+            {"run_id": run_id, "dte": {"$gte": WEEKLY_MIN_DTE, "$lte": WEEKLY_MAX_DTE}},
             {"_id": 0}
-        ).sort("score", -1).limit(100)
-        
-        results = await cursor.to_list(length=100)
+        ).sort("score", -1).limit(20)
+        monthly_cursor = db.scan_results_cc.find(
+            {"run_id": run_id, "dte": {"$gte": MONTHLY_MIN_DTE, "$lte": MONTHLY_MAX_DTE}},
+            {"_id": 0}
+        ).sort("score", -1).limit(20)
+
+        weekly_raw, monthly_raw = await asyncio.gather(
+            weekly_cursor.to_list(length=20),
+            monthly_cursor.to_list(length=20)
+        )
+        results = weekly_raw + monthly_raw
         data_source = "eod_pipeline"
-        
+
         # Get run info
         run_doc = await db.scan_runs.find_one({"run_id": run_id}, {"_id": 0})
         run_info = {
@@ -2019,22 +2028,23 @@ async def get_dashboard_opportunities(
         results = await _get_cc_from_legacy({}, 100)
         data_source = "precomputed_scans_legacy"
         run_info = None
-    
+
     # Transform results - properly unpack tuple (result, error_info)
-    opportunities = []
+    weekly_opps = []
+    monthly_opps = []
     for r in results:
         transformed, error_info = _transform_cc_result(r)
         if transformed is not None:
-            opportunities.append(transformed)
-    
-    # Separate into weekly (DTE <= 14) and monthly (DTE > 14)
-    weekly_opps = [opp for opp in opportunities if opp.get("dte", 0) <= WEEKLY_MAX_DTE]
-    monthly_opps = [opp for opp in opportunities if opp.get("dte", 0) > WEEKLY_MAX_DTE]
-    
+            dte = transformed.get("dte", 0)
+            if dte <= WEEKLY_MAX_DTE:
+                weekly_opps.append(transformed)
+            else:
+                monthly_opps.append(transformed)
+
     # Sort each by score descending
     weekly_opps.sort(key=lambda x: x.get("score", 0), reverse=True)
     monthly_opps.sort(key=lambda x: x.get("score", 0), reverse=True)
-    
+
     # Take top 5 from each
     top_weekly = weekly_opps[:5]
     top_monthly = monthly_opps[:5]

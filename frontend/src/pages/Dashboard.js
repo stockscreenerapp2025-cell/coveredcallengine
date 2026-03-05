@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { stocksApi, newsApi, screenerApi, portfolioApi, simulatorApi } from '../lib/api';
@@ -84,9 +84,10 @@ const Dashboard = () => {
       // LAYER 3 CONTRACT: IV is stored as percentage (39.5 = 39.5%)
       // short_call_iv should be stored as DECIMAL for calculation compatibility (0.395)
       // Get IV from short_call object or flat fields
-      let ivPct = simulateOpp.short_call?.implied_volatility ||
-        simulateOpp.implied_volatility ||
-        simulateOpp.iv || 0;
+      let ivPct = simulateOpp.short_call?.iv_pct ||
+        simulateOpp.iv_pct ||
+        (simulateOpp.short_call?.iv ? simulateOpp.short_call.iv * 100 : null) ||
+        (simulateOpp.iv ? simulateOpp.iv * 100 : 0);
 
       // If IV is already in percentage form (> 1), convert to decimal for storage
       const ivDecimal = ivPct > 1 ? ivPct / 100 : ivPct;
@@ -198,7 +199,7 @@ const Dashboard = () => {
         console.error('Dashboard opportunities error:', oppsError);
         const fallbackRes = await screenerApi.getCoveredCalls({ min_roi: 1.5, min_price: 30, max_price: 90 });
         setOpportunities(fallbackRes.data.opportunities?.slice(0, 10) || []);
-        setOpportunitiesInfo({ is_live: fallbackRes.data.is_live, fallback: true });
+        setOpportunitiesInfo({ is_live: fallbackRes.data.is_live ?? false, live_data_used: fallbackRes.data.live_data_used ?? false, fallback: true });
       }
       setOppsLoading(false);
 
@@ -797,7 +798,7 @@ const Dashboard = () => {
             </div>
           </div>
           <div className="flex items-center gap-2">
-            {opportunitiesInfo?.is_live && (
+            {(opportunitiesInfo?.is_live || opportunitiesInfo?.live_data_used) && (
               <Badge className="bg-emerald-500/20 text-emerald-400 border-emerald-500/30">
                 <CheckCircle className="w-3 h-3 mr-1" />
                 Live Data
@@ -849,16 +850,39 @@ const Dashboard = () => {
                   </tr>
                 </thead>
                 <tbody>
-                  {opportunities.map((opp, index) => {
-                    const isWeekly = opp.expiry_type === 'Weekly' || opp.dte <= 14;
-                    const rowBorderClass = isWeekly
-                      ? 'border-l-2 border-l-cyan-500/50'
-                      : 'border-l-2 border-l-violet-500/50';
+                  {(() => {
+                    const weeklyOpps = opportunities.filter(o => o.expiry_type === 'Weekly' || o.dte <= 14);
+                    const monthlyOpps = opportunities.filter(o => o.expiry_type !== 'Weekly' && o.dte > 14);
+                    const grouped = [
+                      ...weeklyOpps.map(o => ({ ...o, _group: 'weekly' })),
+                      ...monthlyOpps.map(o => ({ ...o, _group: 'monthly' })),
+                    ];
+                    return grouped.map((opp, index) => {
+                      const isWeekly = opp._group === 'weekly';
+                      const rowBorderClass = isWeekly
+                        ? 'border-l-2 border-l-cyan-500/50'
+                        : 'border-l-2 border-l-violet-500/50';
+                      const isFirstMonthly = !isWeekly && index > 0 && grouped[index - 1]._group === 'weekly';
+                      const isFirstWeekly = isWeekly && index === 0;
 
-                    return (
-                      <tr
-                        key={index}
-                        className={`cursor-pointer hover:bg-zinc-800/50 transition-colors ${rowBorderClass}`}
+                      return (
+                        <React.Fragment key={index}>
+                          {isFirstWeekly && (
+                            <tr className="bg-cyan-500/5">
+                              <td colSpan={15} className="py-1.5 px-3 text-xs font-semibold text-cyan-400 tracking-wider uppercase">
+                                Top 5 Weekly — DTE 7–14
+                              </td>
+                            </tr>
+                          )}
+                          {isFirstMonthly && (
+                            <tr className="bg-violet-500/5">
+                              <td colSpan={15} className="py-1.5 px-3 text-xs font-semibold text-violet-400 tracking-wider uppercase">
+                                Top 5 Monthly — DTE 21–45
+                              </td>
+                            </tr>
+                          )}
+                          <tr
+                            className={`cursor-pointer hover:bg-zinc-800/50 transition-colors ${rowBorderClass}`}
                         data-testid={`opportunity-${opp.symbol}`}
                         onClick={() => {
                           setSelectedStock(opp.symbol);
@@ -949,9 +973,11 @@ const Dashboard = () => {
                             Simulate
                           </Button>
                         </td>
-                      </tr>
-                    );
-                  })}
+                          </tr>
+                        </React.Fragment>
+                      );
+                    });
+                  })()}
                 </tbody>
               </table>
             </div>
