@@ -257,7 +257,7 @@ def evaluate_rule(trade: dict, rule: dict) -> bool:
     return True
 
 
-async def execute_rule_action(trade: dict, rule: dict, db_instance) -> dict:
+async def execute_rule_action(trade: dict, rule: dict, db) -> dict:
     """
     Execute the action defined by a rule
     Returns result of the action
@@ -303,13 +303,13 @@ async def execute_rule_action(trade: dict, rule: dict, db_instance) -> dict:
             "closed_by_rule": rule.get("id")
         }
         
-        await db_instance.simulator_trades.update_one(
+        await db.simulator_trades.update_one(
             {"id": trade["id"]},
             {"$set": update_doc}
         )
         
         # Log the action
-        await db_instance.simulator_trades.update_one(
+        await db.simulator_trades.update_one(
             {"id": trade["id"]},
             {"$push": {"action_log": {
                 "action": "closed_by_rule",
@@ -328,7 +328,7 @@ async def execute_rule_action(trade: dict, rule: dict, db_instance) -> dict:
         # Just log an alert (would send notification in production)
         alert_message = action_params.get("message", f"Rule '{rule.get('name')}' triggered")
         
-        await db_instance.simulator_trades.update_one(
+        await db.simulator_trades.update_one(
             {"id": trade["id"]},
             {"$push": {"action_log": {
                 "action": "alert",
@@ -376,12 +376,12 @@ async def execute_rule_action(trade: dict, rule: dict, db_instance) -> dict:
     # Ensure top-level fields for Logs tab rendering
     log_entry["symbol"] = log_entry.get("symbol") or trade.get("symbol", "UNKNOWN")
     log_entry["strategy_type"] = log_entry.get("strategy_type") or trade.get("strategy_type", "unknown")
-    await db_instance.simulator_action_logs.insert_one(log_entry)
+    await db.simulator_action_logs.insert_one(log_entry)
     
     return result
 
 
-async def evaluate_and_execute_rules(trade: dict, rules: list, db_instance) -> list:
+async def evaluate_and_execute_rules(trade: dict, rules: list, db) -> list:
     """
     Evaluate all rules against a trade and execute matching ones
     Rules are sorted by priority (higher = more important)
@@ -396,7 +396,7 @@ async def evaluate_and_execute_rules(trade: dict, rules: list, db_instance) -> l
             continue
             
         if evaluate_rule(trade, rule):
-            result = await execute_rule_action(trade, rule, db_instance)
+            result = await execute_rule_action(trade, rule, db)
             results.append(result)
             
             # If action was "close" and successful, stop processing more rules
@@ -2845,7 +2845,7 @@ async def get_wallet_balance(user: dict = Depends(get_current_user)):
     Frontend calls this to show "You have X credits" in the Manage modal.
     """
     from ai_wallet.wallet_service import WalletService as AIWalletService
-    wallet_svc = AIWalletService(db_instance)
+    wallet_svc = AIWalletService(db)
     wallet = await wallet_svc.get_or_create_wallet(user["id"])
     balance = wallet.get("free_tokens_remaining", 0) + wallet.get("paid_tokens_remaining", 0)
     return {"balance_credits": balance}
@@ -2890,7 +2890,7 @@ async def manage_trade(
     goals   = body.get("goals", {})
 
     # ── 1. Load trade ────────────────────────────────────────────────────────
-    trade = await db_instance.simulator_trades.find_one(
+    trade = await db.simulator_trades.find_one(
         {"id": trade_id, "user_id": user_id},
         {"_id": 0}
     )
@@ -2922,7 +2922,7 @@ async def manage_trade(
 
     # ── 4. Debit wallet ──────────────────────────────────────────────────────
     import uuid
-    wallet_svc = AIWalletService(db_instance)
+    wallet_svc = AIWalletService(db)
     debit_result = await wallet_svc.deduct_tokens(
         user_id=user_id,
         tokens_required=MANAGE_COST_CREDITS,
@@ -2978,10 +2978,10 @@ async def manage_trade(
             "unrealized_pnl":  trade.get("unrealized_pnl"),
         }
     }
-    await db_instance.simulator_action_logs.insert_one(action_log_entry)
+    await db.simulator_action_logs.insert_one(action_log_entry)
 
     # Also write to recommendations collection for history
-    await db_instance.simulator_ai_recommendations.insert_one({
+    await db.simulator_ai_recommendations.insert_one({
         **action_log_entry,
         "status": "pending_approval"
     })
@@ -3035,7 +3035,7 @@ async def apply_trade_recommendation(
     # ── Load trade ────────────────────────────────────────────────────────────
     try:
         from bson import ObjectId
-        trade = await db_instance.simulator_trades.find_one({
+        trade = await db.simulator_trades.find_one({
             "_id": ObjectId(trade_id),
             "user_id": user_id
         })
@@ -3065,14 +3065,14 @@ async def apply_trade_recommendation(
     # ── Build and apply updates ────────────────────────────────────────────────
     field_updates = apply_recommendation_to_trade(trade, recommendation, current_price)
 
-    await db_instance.simulator_trades.update_one(
+    await db.simulator_trades.update_one(
         {"_id": trade["_id"]},
         {"$set": field_updates}
     )
 
     # Log the apply action
     symbol = trade.get("symbol", "")
-    await db_instance.simulator_action_logs.insert_one({
+    await db.simulator_action_logs.insert_one({
         "user_id":        user_id,
         "trade_id":       trade_id,
         "symbol":         symbol,
@@ -3087,13 +3087,13 @@ async def apply_trade_recommendation(
     })
 
     # Mark recommendation as applied
-    await db_instance.simulator_ai_recommendations.update_many(
+    await db.simulator_ai_recommendations.update_many(
         {"trade_id": trade_id, "status": "pending_approval"},
         {"$set": {"status": "applied", "applied_at": datetime.utcnow()}}
     )
 
     # Return the updated trade
-    updated = await db_instance.simulator_trades.find_one({"_id": trade["_id"]})
+    updated = await db.simulator_trades.find_one({"_id": trade["_id"]})
     updated["id"] = str(updated.pop("_id"))
 
     return {
