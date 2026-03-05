@@ -180,9 +180,11 @@ const StockDetailModal = ({ symbol, isOpen, onClose, scanData = null }) => {
         above_sma_50: scanData.sma50 ? stockData?.price > scanData.sma50 : apiTechnicals.above_sma_50,
         above_sma_200: scanData.sma200 ? stockData?.price > scanData.sma200 : apiTechnicals.above_sma_200,
         sma_50_above_200: scanData.sma50 && scanData.sma200 ? scanData.sma50 > scanData.sma200 : apiTechnicals.sma_50_above_200,
-        trend: scanData.sma50 && scanData.sma200 
-          ? (scanData.sma50 > scanData.sma200 ? 'bullish' : 'bearish') 
-          : apiTechnicals.trend
+        trend: scanData.sma50 && scanData.sma200
+          ? (scanData.sma50 > scanData.sma200 ? 'bullish' : 'bearish')
+          : apiTechnicals.trend,
+        adx: scanData.adx ?? apiTechnicals.adx,
+        trend_strength: scanData.trend_strength || apiTechnicals.trend_strength
       };
     }
     return apiTechnicals;
@@ -352,6 +354,34 @@ const StockDetailModal = ({ symbol, isOpen, onClose, scanData = null }) => {
                               </div>
                             </div>
                           )}
+                        </div>
+                      )}
+
+                      {/* ADX / Trend Strength */}
+                      {(technicals?.adx != null || technicals?.trend_strength) && (
+                        <div className="p-3 rounded bg-zinc-900/50">
+                          <div className="text-xs text-zinc-500 mb-2">ADX (Trend Strength)</div>
+                          <div className="flex items-center justify-between">
+                            {technicals?.adx != null && (
+                              <div className="text-lg font-mono text-purple-400">
+                                {Number(technicals.adx).toFixed(1)}
+                              </div>
+                            )}
+                            {technicals?.trend_strength && (
+                              <Badge className={`text-xs ${
+                                technicals.trend_strength === 'strong'   ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' :
+                                technicals.trend_strength === 'moderate' ? 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30' :
+                                                                           'bg-zinc-500/20 text-zinc-400 border-zinc-500/30'
+                              }`}>
+                                {technicals.trend_strength.charAt(0).toUpperCase() + technicals.trend_strength.slice(1)} Trend
+                              </Badge>
+                            )}
+                          </div>
+                          <div className="text-xs text-zinc-500 mt-1">
+                            {technicals?.adx != null && (
+                              technicals.adx >= 25 ? 'ADX > 25 — trending market' : 'ADX < 25 — ranging/weak trend'
+                            )}
+                          </div>
                         </div>
                       )}
 

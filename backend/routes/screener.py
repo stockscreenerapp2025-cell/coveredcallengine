@@ -209,6 +209,12 @@ async def screen_covered_calls(
     include_etfs: bool = Query(True),
     include_index: bool = Query(False),
     moneyness: str = Query("all", description="Filter by moneyness: all, itm, atm, otm"),
+    overall_signal: str = Query("all", description="Overall trend: all, bullish, neutral, bearish"),
+    sma_filter: str = Query("none", description="SMA filter: none, above_sma50, above_sma200, above_both"),
+    rsi_filter: str = Query("all", description="RSI filter: all, oversold, neutral, overbought"),
+    trend_strength: str = Query("all", description="Trend strength: all, strong, moderate, weak"),
+    pe_ratio: str = Query("all", description="P/E filter: all, under_15, 15_to_25, 25_to_40, over_40"),
+    min_roe: float = Query(None, description="Minimum ROE %"),
     bypass_cache: bool = Query(False),
     enforce_phase4: bool = Query(True),  # PHASE 4: Enable system filters
     debug_enrichment: bool = Query(False, description="Include enrichment debug info"),
@@ -237,6 +243,9 @@ async def screen_covered_calls(
         "min_volume": min_volume, "min_open_interest": min_open_interest,
         "weekly_only": weekly_only, "monthly_only": monthly_only,
         "moneyness": moneyness,
+        "overall_signal": overall_signal, "sma_filter": sma_filter,
+        "rsi_filter": rsi_filter, "trend_strength": trend_strength,
+        "pe_ratio": pe_ratio, "min_roe": min_roe,
         "enforce_phase4": enforce_phase4  # PHASE 4
     }
     cache_key = funcs['generate_cache_key']("screener_covered_calls_v3_phase4", cache_params)
@@ -626,7 +635,104 @@ async def screen_covered_calls(
         
         # ========== ENRICHMENT: IV Rank + Analyst Data (LAST STEP) ==========
         opportunities = await enrich_rows_batch(opportunities)
-        
+
+        # ========== TECHNICAL ENRICHMENT + FILTERS ==========
+        if opportunities:
+            tech_symbols = list({o["symbol"] for o in opportunities})
+            tech_cursor = db.symbol_enrichment.find(
+                {"symbol": {"$in": tech_symbols}},
+                {"_id": 0, "symbol": 1, "fifty_day_avg": 1, "two_hundred_day_avg": 1,
+                 "rsi": 1, "adx": 1, "trend": 1, "trend_strength": 1,
+                 "pe_ratio": 1, "roe": 1}
+            )
+            tech_docs = await tech_cursor.to_list(length=len(tech_symbols))
+            tech_map = {d["symbol"]: d for d in tech_docs if d.get("symbol")}
+
+            # Attach tech fields then filter
+            filtered_opps = []
+            for opp in opportunities:
+                t = tech_map.get(opp["symbol"], {})
+                stock_price = opp.get("stock_price") or 0
+                fda = t.get("fifty_day_avg")
+                tda = t.get("two_hundred_day_avg")
+                above50 = (stock_price > fda) if fda else None
+                above200 = (stock_price > tda) if tda else None
+                rsi_val = t.get("rsi")
+                adx_val = t.get("adx")
+                trend_val = (t.get("trend") or "").lower()
+                ts_val = (t.get("trend_strength") or "").lower()
+                pe_val = t.get("pe_ratio")
+                roe_val = t.get("roe")
+
+                # Attach for UI display
+                if fda:
+                    opp["above_sma50"] = above50
+                    opp["sma50"] = round(fda, 2)
+                if tda:
+                    opp["above_sma200"] = above200
+                    opp["sma200"] = round(tda, 2)
+                if rsi_val is not None:
+                    opp["rsi"] = rsi_val
+                if adx_val is not None:
+                    opp["adx"] = round(adx_val, 1)
+                if trend_val:
+                    opp["trend"] = trend_val
+                if ts_val:
+                    opp["trend_strength"] = ts_val
+                if pe_val is not None:
+                    opp["pe_ratio"] = pe_val
+                if roe_val is not None:
+                    opp["roe"] = roe_val
+
+                # Apply overall_signal filter
+                if overall_signal != "all":
+                    if trend_val != overall_signal.lower():
+                        continue
+
+                # Apply sma_filter
+                if sma_filter not in ("none", "all"):
+                    if sma_filter == "above_sma50" and not above50:
+                        continue
+                    elif sma_filter == "above_sma200" and not above200:
+                        continue
+                    elif sma_filter == "above_both" and not (above50 and above200):
+                        continue
+
+                # Apply rsi_filter
+                if rsi_filter != "all" and rsi_val is not None:
+                    if rsi_filter == "oversold" and rsi_val >= 30:
+                        continue
+                    elif rsi_filter == "overbought" and rsi_val <= 70:
+                        continue
+                    elif rsi_filter == "neutral" and not (30 <= rsi_val <= 70):
+                        continue
+
+                # Apply trend_strength filter
+                if trend_strength != "all":
+                    if ts_val != trend_strength.lower():
+                        continue
+
+                # Apply P/E ratio filter — exclude stocks with no P/E when filter is active
+                if pe_ratio != "all":
+                    if pe_val is None:
+                        continue  # no P/E data — exclude
+                    if pe_ratio == "under_15" and pe_val >= 15:
+                        continue
+                    elif pe_ratio == "15_to_25" and not (15 <= pe_val < 25):
+                        continue
+                    elif pe_ratio == "25_to_40" and not (25 <= pe_val < 40):
+                        continue
+                    elif pe_ratio == "over_40" and pe_val < 40:
+                        continue
+
+                # Apply minimum ROE filter (only filter when we have data)
+                if min_roe is not None and roe_val is not None:
+                    if roe_val < min_roe:
+                        continue
+
+                filtered_opps.append(opp)
+            opportunities = filtered_opps
+
         # Handle debug flag
         for opp in opportunities:
             strip_enrichment_debug(opp, include_debug=debug_enrichment)

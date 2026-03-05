@@ -202,7 +202,6 @@ const Screener = () => {
   // Fundamental Filters
   const [fundamentalFilters, setFundamentalFilters] = useState({
     analystRating: 'all', // 'all', 'strong_buy', 'buy', 'hold', 'sell'
-    minAnalystCount: '',
     peRatio: 'all', // 'all', 'under_15', '15_to_25', '25_to_40', 'over_40'
     minRoe: '',
   });
@@ -234,15 +233,6 @@ const Screener = () => {
 
     initializeData();
   }, []);
-
-  const fetchAvailableScans = async () => {
-    try {
-      const res = await scansApi.getAvailable();
-      setAvailableScans(res.data.scans);
-    } catch (error) {
-      console.log('Could not fetch available scans:', error);
-    }
-  };
 
   const loadPrecomputedScan = async (riskProfile) => {
     setScanLoading(true);
@@ -331,7 +321,6 @@ const Screener = () => {
       // Fundamental filters
       const analystRating = overrides.analystRating ?? fundamentalFilters.analystRating;
       if (analystRating !== 'all') params.analyst_rating = analystRating;
-      if (fundamentalFilters.minAnalystCount !== '' && fundamentalFilters.minAnalystCount !== undefined) params.min_analyst_count = fundamentalFilters.minAnalystCount;
       if (fundamentalFilters.peRatio !== 'all') params.pe_ratio = fundamentalFilters.peRatio;
       if (fundamentalFilters.minRoe !== '' && fundamentalFilters.minRoe !== undefined) params.min_roe = fundamentalFilters.minRoe;
 
@@ -459,7 +448,7 @@ const Screener = () => {
     setGreeksFilters({ minDelta: '', maxDelta: '', minTheta: '', maxTheta: '' });
     setProbabilityFilters({ minProbOTM: '', maxProbOTM: '' });
     setTechnicalFilters({ smaFilter: 'none', rsiFilter: 'all', trendStrength: 'all', overallSignal: 'all' });
-    setFundamentalFilters({ analystRating: 'all', minAnalystCount: '', peRatio: 'all', minRoe: '' });
+    setFundamentalFilters({ analystRating: 'all', peRatio: 'all', minRoe: '' });
     setRoiFilters({ minRoi: '', minAnnualizedRoi: '' });
     toast.success('Filters reset');
   };
@@ -852,6 +841,7 @@ const Screener = () => {
                           type="number"
                           value={stockFilters.minPrice || ""}
                           onChange={(e) => setStockFilters(f => ({ ...f, minPrice: e.target.value }))}
+                          onBlur={() => fetchOpportunities(true)}
                           className="input-dark w-24 text-center"
                           placeholder="Min"
                           data-testid="min-price-input"
@@ -861,6 +851,7 @@ const Screener = () => {
                           type="number"
                           value={stockFilters.maxPrice || ""}
                           onChange={(e) => setStockFilters(f => ({ ...f, maxPrice: e.target.value }))}
+                          onBlur={() => fetchOpportunities(true)}
                           className="input-dark w-24 text-center"
                           placeholder="Max"
                           data-testid="max-price-input"
@@ -910,6 +901,7 @@ const Screener = () => {
                         type="number"
                         value={optionsFilters.minVolume || ""}
                         onChange={(e) => setOptionsFilters(f => ({ ...f, minVolume: e.target.value }))}
+                        onBlur={() => fetchOpportunities(true)}
                         className="input-dark mt-2"
                         placeholder="0"
                         data-testid="min-volume-input"
@@ -921,6 +913,7 @@ const Screener = () => {
                         type="number"
                         value={optionsFilters.minOpenInterest || ""}
                         onChange={(e) => setOptionsFilters(f => ({ ...f, minOpenInterest: e.target.value }))}
+                        onBlur={() => fetchOpportunities(true)}
                         className="input-dark mt-2"
                         placeholder="0"
                         data-testid="min-oi-input"
@@ -965,6 +958,7 @@ const Screener = () => {
                           step="0.05"
                           value={greeksFilters.minDelta || ""}
                           onChange={(e) => setGreeksFilters(f => ({ ...f, minDelta: e.target.value }))}
+                          onBlur={() => fetchOpportunities(true)}
                           className="input-dark w-20 text-center"
                           data-testid="min-delta-input"
                         />
@@ -974,6 +968,7 @@ const Screener = () => {
                           step="0.05"
                           value={greeksFilters.maxDelta || ""}
                           onChange={(e) => setGreeksFilters(f => ({ ...f, maxDelta: e.target.value }))}
+                          onBlur={() => fetchOpportunities(true)}
                           className="input-dark w-20 text-center"
                           data-testid="max-delta-input"
                         />
@@ -987,6 +982,7 @@ const Screener = () => {
                         step="0.01"
                         value={greeksFilters.maxTheta || ""}
                         onChange={(e) => setGreeksFilters(f => ({ ...f, maxTheta: e.target.value }))}
+                        onBlur={() => fetchOpportunities(true)}
                         className="input-dark mt-2"
                         placeholder="-0.05"
                         data-testid="max-theta-input"
@@ -1011,6 +1007,7 @@ const Screener = () => {
                           type="number"
                           value={probabilityFilters.minProbOTM || ""}
                           onChange={(e) => setProbabilityFilters(f => ({ ...f, minProbOTM: e.target.value }))}
+                          onBlur={() => fetchOpportunities(true)}
                           className="input-dark w-20 text-center"
                           data-testid="min-prob-otm-input"
                         />
@@ -1019,6 +1016,7 @@ const Screener = () => {
                           type="number"
                           value={probabilityFilters.maxProbOTM || ""}
                           onChange={(e) => setProbabilityFilters(f => ({ ...f, maxProbOTM: e.target.value }))}
+                          onBlur={() => fetchOpportunities(true)}
                           className="input-dark w-20 text-center"
                           data-testid="max-prob-otm-input"
                         />
@@ -1148,18 +1146,6 @@ const Screener = () => {
                       </Select>
                     </div>
 
-                    <div>
-                      <Label className="text-xs text-zinc-400">Minimum Analyst Coverage</Label>
-                      <Input
-                        type="number"
-                        value={fundamentalFilters.minAnalystCount}
-                        onChange={(e) => setFundamentalFilters(f => ({ ...f, minAnalystCount: e.target.value }))}
-                        className="input-dark mt-2"
-                        placeholder="Min"
-                        data-testid="min-analyst-input"
-                      />
-                    </div>
-
                     {/* P/E Ratio */}
                     <div>
                       <Label className="text-xs text-zinc-400">P/E Ratio</Label>
@@ -1186,6 +1172,7 @@ const Screener = () => {
                         type="number"
                         value={fundamentalFilters.minRoe}
                         onChange={(e) => setFundamentalFilters(f => ({ ...f, minRoe: e.target.value }))}
+                        onBlur={() => fetchOpportunities(true)}
                         className="input-dark mt-2"
                         placeholder="Min"
                         data-testid="min-roe-input"
@@ -1210,6 +1197,7 @@ const Screener = () => {
                         step="0.25"
                         value={roiFilters.minRoi}
                         onChange={(e) => setRoiFilters(f => ({ ...f, minRoi: e.target.value }))}
+                        onBlur={() => fetchOpportunities(true)}
                         className="input-dark mt-2"
                         placeholder="Min"
                         data-testid="min-roi-input"
@@ -1222,6 +1210,7 @@ const Screener = () => {
                         type="number"
                         value={roiFilters.minAnnualizedRoi}
                         onChange={(e) => setRoiFilters(f => ({ ...f, minAnnualizedRoi: e.target.value }))}
+                        onBlur={() => fetchOpportunities(true)}
                         className="input-dark mt-2"
                         placeholder="Min"
                         data-testid="min-annual-roi-input"

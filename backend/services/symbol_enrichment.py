@@ -121,6 +121,12 @@ def fetch_analyst_data_sync(symbol: str) -> Dict:
         rec_mean = info.get("recommendationMean")
         rec_key = info.get("recommendationKey")  # e.g., "buy", "hold", "sell"
         num_analysts = info.get("numberOfAnalystOpinions", 0)
+
+        # Fundamental metrics
+        raw_pe = info.get("trailingPE")
+        raw_roe = info.get("returnOnEquity")
+        pe_ratio = round(raw_pe, 2) if raw_pe and raw_pe > 0 else None
+        roe = round(raw_roe * 100, 2) if raw_roe is not None else None
         target_high = info.get("targetHighPrice")
         target_low = info.get("targetLowPrice")
         target_mean = info.get("targetMeanPrice")
@@ -190,6 +196,8 @@ def fetch_analyst_data_sync(symbol: str) -> Dict:
             "adx": adx,
             "trend_strength": trend_strength,
             "trend": trend,
+            "pe_ratio": pe_ratio,
+            "roe": roe,
             "source": "yahoo"
         }
 
@@ -253,6 +261,8 @@ async def enrich_symbols(
                         "adx": result.get("adx"),
                         "trend_strength": result.get("trend_strength"),
                         "trend": result.get("trend"),
+                        "pe_ratio": result.get("pe_ratio"),
+                        "roe": result.get("roe"),
                         "source": "yahoo",
                         "as_of": datetime.now(timezone.utc),
                         "updated_at": datetime.now(timezone.utc)
