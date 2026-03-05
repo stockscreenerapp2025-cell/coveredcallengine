@@ -195,7 +195,6 @@ const Screener = () => {
   const [technicalFilters, setTechnicalFilters] = useState({
     smaFilter: 'none', // 'none', 'above_sma50', 'above_sma200', 'above_both'
     rsiFilter: 'all', // 'all', 'oversold', 'neutral', 'overbought'
-    macdSignal: 'all', // 'all', 'bullish', 'bearish'
     trendStrength: 'all', // 'all', 'strong', 'moderate', 'weak'
     overallSignal: 'all', // 'all', 'bullish', 'bearish', 'neutral'
   });
@@ -298,10 +297,10 @@ const Screener = () => {
       if (stockFilters.maxPrice !== '' && stockFilters.maxPrice !== undefined) params.max_price = stockFilters.maxPrice;
       if (optionsFilters.minVolume !== '' && optionsFilters.minVolume !== undefined) params.min_volume = optionsFilters.minVolume;
       if (optionsFilters.minOpenInterest !== '' && optionsFilters.minOpenInterest !== undefined) params.min_open_interest = optionsFilters.minOpenInterest;
-      // Moneyness → map to OTM% range sent to backend
-      if (optionsFilters.moneyness === 'atm') { params.min_otm_pct = 0; params.max_otm_pct = 2; }
-      else if (optionsFilters.moneyness === 'otm') { params.min_otm_pct = 2; params.max_otm_pct = 10; }
-      else if (optionsFilters.moneyness === 'itm') { params.min_otm_pct = 10; params.max_otm_pct = 25; }
+      // Moneyness filter — send directly to backend
+      if (optionsFilters.moneyness && optionsFilters.moneyness !== 'all') {
+        params.moneyness = optionsFilters.moneyness;
+      }
       // Use override expirationType if provided (avoids stale state when called from onValueChange)
       const expirationType = overrides.expirationType ?? expirationFilters.expirationType;
       if (expirationType === 'weekly') params.dte_mode = 'weekly';
@@ -322,12 +321,10 @@ const Screener = () => {
       // Technical filters (support overrides for immediate fetch on dropdown change)
       const smaFilter = overrides.smaFilter ?? technicalFilters.smaFilter;
       const rsiFilter = overrides.rsiFilter ?? technicalFilters.rsiFilter;
-      const macdSignalFilter = overrides.macdSignal ?? technicalFilters.macdSignal;
       const trendStrengthFilter = overrides.trendStrength ?? technicalFilters.trendStrength;
       const overallSignalFilter = overrides.overallSignal ?? technicalFilters.overallSignal;
       if (smaFilter !== 'none') params.sma_filter = smaFilter;
       if (rsiFilter !== 'all') params.rsi_filter = rsiFilter;
-      if (macdSignalFilter !== 'all') params.macd_signal = macdSignalFilter;
       if (trendStrengthFilter !== 'all') params.trend_strength = trendStrengthFilter;
       if (overallSignalFilter !== 'all') params.overall_signal = overallSignalFilter;
 
@@ -461,7 +458,7 @@ const Screener = () => {
     setOptionsFilters({ minVolume: '', minOpenInterest: '', moneyness: 'all' });
     setGreeksFilters({ minDelta: '', maxDelta: '', minTheta: '', maxTheta: '' });
     setProbabilityFilters({ minProbOTM: '', maxProbOTM: '' });
-    setTechnicalFilters({ smaFilter: 'none', rsiFilter: 'all', macdSignal: 'all', trendStrength: 'all', overallSignal: 'all' });
+    setTechnicalFilters({ smaFilter: 'none', rsiFilter: 'all', trendStrength: 'all', overallSignal: 'all' });
     setFundamentalFilters({ analystRating: 'all', minAnalystCount: '', peRatio: 'all', minRoe: '' });
     setRoiFilters({ minRoi: '', minAnnualizedRoi: '' });
     toast.success('Filters reset');
@@ -1075,24 +1072,6 @@ const Screener = () => {
                           <SelectItem value="oversold">Oversold (RSI &lt; 30)</SelectItem>
                           <SelectItem value="neutral">Neutral (RSI 30-70)</SelectItem>
                           <SelectItem value="overbought">Overbought (RSI &gt; 70)</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-
-                    {/* MACD Signal */}
-                    <div>
-                      <Label className="text-xs text-zinc-400">MACD Signal</Label>
-                      <Select
-                        value={technicalFilters.macdSignal}
-                        onValueChange={(value) => { setTechnicalFilters(f => ({ ...f, macdSignal: value })); fetchOpportunities(true, { macdSignal: value }); }}
-                      >
-                        <SelectTrigger className="input-dark mt-2" data-testid="macd-signal-select">
-                          <SelectValue placeholder="Select MACD signal" />
-                        </SelectTrigger>
-                        <SelectContent className="bg-zinc-900 border-zinc-800">
-                          <SelectItem value="all">All Signals</SelectItem>
-                          <SelectItem value="bullish">Bullish (MACD Above Signal)</SelectItem>
-                          <SelectItem value="bearish">Bearish (MACD Below Signal)</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>

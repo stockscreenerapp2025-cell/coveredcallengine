@@ -208,6 +208,7 @@ async def screen_covered_calls(
     include_stocks: bool = Query(True),
     include_etfs: bool = Query(True),
     include_index: bool = Query(False),
+    moneyness: str = Query("all", description="Filter by moneyness: all, itm, atm, otm"),
     bypass_cache: bool = Query(False),
     enforce_phase4: bool = Query(True),  # PHASE 4: Enable system filters
     debug_enrichment: bool = Query(False, description="Include enrichment debug info"),
@@ -235,6 +236,7 @@ async def screen_covered_calls(
         "include_stocks": include_stocks, "include_etfs": include_etfs, "include_index": include_index,
         "min_volume": min_volume, "min_open_interest": min_open_interest,
         "weekly_only": weekly_only, "monthly_only": monthly_only,
+        "moneyness": moneyness,
         "enforce_phase4": enforce_phase4  # PHASE 4
     }
     cache_key = funcs['generate_cache_key']("screener_covered_calls_v3_phase4", cache_params)
@@ -448,6 +450,15 @@ async def screen_covered_calls(
                     
                     # Estimate delta based on moneyness
                     strike_pct_diff = ((strike - underlying_price) / underlying_price) * 100
+
+                    # Moneyness filter
+                    if moneyness == "itm" and strike >= underlying_price:
+                        continue
+                    elif moneyness == "atm" and abs(strike_pct_diff) > 2:
+                        continue
+                    elif moneyness == "otm" and strike <= underlying_price:
+                        continue
+
                     if strike_pct_diff <= 0:
                         estimated_delta = 0.55 - (abs(strike_pct_diff) * 0.02)
                     else:
