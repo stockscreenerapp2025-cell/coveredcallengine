@@ -562,7 +562,7 @@ def _fetch_options_chain_yahoo_sync(
             return []
 
         options: List[Dict[str, Any]] = []
-        max_expiries = 5 if min_dte > 90 else 3
+        max_expiries = 5 if min_dte > 90 else 8  # 8 covers all weekly+monthly within 45 DTE
 
         n_et = now_et()
         m_state = get_market_state(n_et)
