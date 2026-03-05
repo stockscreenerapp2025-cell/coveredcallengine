@@ -150,9 +150,9 @@ const RecommendationCard = ({ result, onApply, onDismiss, applyLoading }) => {
           <span style={{ background: color, color: 'white', borderRadius: '6px', padding: '4px 12px', fontWeight: '700', fontSize: '14px', textTransform: 'uppercase' }}>
             {rec.action || 'N/A'}
           </span>
-          <span style={{ fontSize: '13px', color: '#94a3b8' }}>Confidence: {rec.confidence ?? '—'}%</span>
+          <span style={{ fontSize: '13px', color: '#94a3b8' }}>Confidence: {rec.confidence ?? '—'}</span>
         </div>
-        <p style={{ margin: 0, fontSize: '14px', color: '#e2e8f0', lineHeight: 1.6 }}>{rec.reasoning || 'No reasoning provided.'}</p>
+        <p style={{ margin: 0, fontSize: '14px', color: '#e2e8f0', lineHeight: 1.6 }}>{rec.reason || rec.reasoning || 'No reasoning provided.'}</p>
         {rec.roll_to_strike && (
           <div style={{ marginTop: '10px', fontSize: '13px', color: '#a855f7' }}>
             Roll to strike: <strong>${rec.roll_to_strike}</strong>
