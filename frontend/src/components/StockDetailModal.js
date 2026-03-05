@@ -817,8 +817,29 @@ const StockDetailModal = ({ symbol, isOpen, onClose, scanData = null }) => {
                           )}
                         </div>
                       ) : (
-                        <div className="text-xs text-zinc-500 text-center py-2">
-                          Click &quot;Analyze News&quot; to get AI-powered sentiment analysis
+                        <div className="space-y-2">
+                          {stockData?.news?.slice(0, 2).map((article, idx) => (
+                            <div key={idx} className="flex items-start gap-2 p-2 rounded bg-zinc-900/50 border border-zinc-700/40">
+                              <div className="flex-1 min-w-0">
+                                <p className="text-xs text-zinc-300 font-medium leading-snug line-clamp-2">{article.title}</p>
+                                <span className="text-[10px] text-zinc-500 mt-0.5 block">{article.source}</span>
+                              </div>
+                              {article.sentiment !== undefined && (
+                                <Badge className={`text-[10px] shrink-0 mt-0.5 ${
+                                  article.sentiment > 0 ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' :
+                                  article.sentiment < 0 ? 'bg-red-500/20 text-red-400 border-red-500/30' :
+                                  'bg-zinc-500/20 text-zinc-400 border-zinc-500/30'
+                                }`}>
+                                  {article.sentiment > 0 ? 'Positive' : article.sentiment < 0 ? 'Negative' : 'Neutral'}
+                                </Badge>
+                              )}
+                            </div>
+                          ))}
+                          {(!stockData?.news?.length) && (
+                            <div className="text-xs text-zinc-500 text-center py-2">
+                              Click &quot;Analyze News&quot; to get AI-powered sentiment analysis
+                            </div>
+                          )}
                         </div>
                       )}
                     </CardContent>

@@ -241,11 +241,11 @@ async def analyze_news_sentiment(
     Returns: list of sentiment results (Positive/Neutral/Negative) and overall score
     """
     import os
-    from dotenv import load_dotenv
-    
-    load_dotenv()
-    api_key = os.environ.get("EMERGENT_LLM_KEY")
-    
+    import json
+    import re
+
+    api_key = os.environ.get("OPENAI_API_KEY")
+
     if not api_key:
         return {
             "sentiments": [],
@@ -253,36 +253,30 @@ async def analyze_news_sentiment(
             "overall_score": 50,
             "error": "AI analysis not configured"
         }
-    
+
     if not news_items:
         return {
             "sentiments": [],
             "overall_sentiment": "Neutral",
             "overall_score": 50
         }
-    
+
     try:
-        from emergentintegrations.llm.chat import LlmChat, UserMessage
-        
         # Prepare news text for analysis
         news_text = ""
         for i, item in enumerate(news_items[:5], 1):  # Limit to 5 articles
             title = item.title
             desc = item.description or ""
             news_text += f"{i}. {title}\n{desc[:200] if desc else ''}\n\n"
-        
-        # Create chat instance
-        chat = LlmChat(
-            api_key=api_key,
-            session_id=f"sentiment_{datetime.now().timestamp()}",
-            system_message="""You are a financial sentiment analyst. Analyze the sentiment of stock-related news articles.
+
+        system_message = """You are a financial sentiment analyst. Analyze the sentiment of stock-related news articles.
 For each article, provide:
 1. Sentiment: Positive, Neutral, or Negative
 2. Confidence: High, Medium, or Low
 
 Then provide an overall sentiment score from 0-100 where:
 - 0-30 = Very Bearish
-- 31-45 = Bearish  
+- 31-45 = Bearish
 - 46-55 = Neutral
 - 56-70 = Bullish
 - 71-100 = Very Bullish
@@ -297,17 +291,33 @@ Respond in JSON format ONLY:
   "overall_score": 65,
   "summary": "Brief 1-sentence summary of overall sentiment"
 }"""
-        ).with_model("openai", "gpt-5.2")
-        
-        user_message = UserMessage(text=f"Analyze the sentiment of these news articles:\n\n{news_text}")
-        response = await chat.send_message(user_message)
-        
-        # Parse JSON response
-        import json
-        import re
-        
+
+        async with httpx.AsyncClient(timeout=30) as client:
+            response = await client.post(
+                "https://api.openai.com/v1/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {api_key}",
+                    "Content-Type": "application/json"
+                },
+                json={
+                    "model": "gpt-4o-mini",
+                    "messages": [
+                        {"role": "system", "content": system_message},
+                        {"role": "user", "content": f"Analyze the sentiment of these news articles:\n\n{news_text}"}
+                    ],
+                    "temperature": 0.3,
+                    "max_tokens": 500
+                }
+            )
+
+        if response.status_code != 200:
+            logging.error(f"OpenAI API error: {response.text}")
+            return {"sentiments": [], "overall_sentiment": "Neutral", "overall_score": 50, "error": "AI call failed"}
+
+        content = response.json()["choices"][0]["message"]["content"]
+
         # Extract JSON from response
-        json_match = re.search(r'\{[\s\S]*\}', response)
+        json_match = re.search(r'\{[\s\S]*\}', content)
         if json_match:
             result = json.loads(json_match.group())
             return {
@@ -316,19 +326,19 @@ Respond in JSON format ONLY:
                 "overall_score": result.get("overall_score", 50),
                 "summary": result.get("summary", "")
             }
-        
+
         return {
             "sentiments": [],
             "overall_sentiment": "Neutral",
             "overall_score": 50,
             "error": "Could not parse AI response"
         }
-        
+
     except Exception as e:
         logging.error(f"Sentiment analysis error: {e}")
         return {
             "sentiments": [],
-            "overall_sentiment": "Neutral", 
+            "overall_sentiment": "Neutral",
             "overall_score": 50,
             "error": str(e)
         }
