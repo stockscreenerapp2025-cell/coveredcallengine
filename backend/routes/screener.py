@@ -395,14 +395,7 @@ async def screen_covered_calls(
                 
                 # PHASE 2: Get options from snapshot if available, otherwise fetch
                 # Always pass the SAME underlying_price to ensure stock/options alignment
-                # For weekly/monthly filter: bypass snapshot (may have limited expirations)
-                # and fetch fresh to get all expirations up to max_dte
-                if weekly_only or monthly_only:
-                    options_results = await fetch_options_chain(
-                        symbol, api_key, "call", max_dte, min_dte=1, current_price=underlying_price
-                    )
-                else:
-                    options_results = snapshot.get("options_data")
+                options_results = snapshot.get("options_data")
 
                 if not options_results:
                     # Fallback: fetch options directly if not in snapshot
