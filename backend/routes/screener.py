@@ -150,6 +150,22 @@ def _is_third_friday(date_str: str) -> bool:
         return False
 
 
+def _pick_best_candidate(candidates: list, min_dte: int, max_dte: int) -> dict:
+    """
+    From a list of opportunity dicts, pick the one whose DTE is closest to
+    the midpoint of the user's requested DTE range.  Falls back to highest
+    score if no candidate lands in-range.
+    """
+    if not candidates:
+        return None
+    target_dte = (min_dte + max_dte) / 2
+    in_range = [c for c in candidates if min_dte <= c.get("dte", 0) <= max_dte]
+    pool = in_range if in_range else candidates
+    # Primary sort: closeness to target DTE; secondary: higher score
+    pool.sort(key=lambda c: (abs(c.get("dte", 0) - target_dte), -c.get("score", 0)))
+    return pool[0]
+
+
 class ScreenerFilterCreate(BaseModel):
     name: str
     filters: Dict[str, Any]
@@ -577,16 +593,23 @@ async def screen_covered_calls(
         # IMPORTANT:
         # Scan candidates may include multiple options per symbol.
         # Final output must return ONE best option per symbol,
-        # selected by highest AI score.
+        # selected by the option whose DTE is closest to the midpoint of
+        # the user's requested DTE range (ties broken by highest score).
         # ============================================================
-        opportunities.sort(key=lambda x: x["score"], reverse=True)
-        best_by_symbol = {}
+        from collections import defaultdict
+        candidates_by_symbol = defaultdict(list)
         for opp in opportunities:
-            sym = opp["symbol"]
-            if sym not in best_by_symbol or opp["score"] > best_by_symbol[sym]["score"]:
-                best_by_symbol[sym] = opp
-        
-        opportunities = sorted(best_by_symbol.values(), key=lambda x: x["score"], reverse=True)
+            candidates_by_symbol[opp["symbol"]].append(opp)
+
+        best_by_symbol = {
+            sym: _pick_best_candidate(opps, min_dte, max_dte)
+            for sym, opps in candidates_by_symbol.items()
+        }
+
+        opportunities = sorted(
+            (v for v in best_by_symbol.values() if v),
+            key=lambda x: x["score"], reverse=True
+        )
         
         # ========== ENRICHMENT: IV Rank + Analyst Data (LAST STEP) ==========
         opportunities = await enrich_rows_batch(opportunities)
