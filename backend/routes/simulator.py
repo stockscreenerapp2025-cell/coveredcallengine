@@ -2890,14 +2890,10 @@ async def manage_trade(
     goals   = body.get("goals", {})
 
     # ── 1. Load trade ────────────────────────────────────────────────────────
-    try:
-        from bson import ObjectId
-        trade = await db_instance.simulator_trades.find_one({
-            "_id": ObjectId(trade_id),
-            "user_id": user_id
-        })
-    except Exception:
-        trade = None
+    trade = await db_instance.simulator_trades.find_one(
+        {"id": trade_id, "user_id": user_id},
+        {"_id": 0}
+    )
 
     if not trade:
         raise HTTPException(status_code=404, detail="Trade not found")
