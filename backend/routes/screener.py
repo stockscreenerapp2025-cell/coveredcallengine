@@ -501,8 +501,10 @@ async def screen_covered_calls(
                         continue
                     
                     roi_pct = (premium / underlying_price) * 100
-                    
-                    if roi_pct < min_roi:
+
+                    # ETFs have lower IV → lower premiums; use a reduced ROI floor
+                    effective_min_roi = 0.15 if is_etf else min_roi
+                    if roi_pct < effective_min_roi:
                         continue
                     
                     volume = opt.get("volume", 0) or 0
