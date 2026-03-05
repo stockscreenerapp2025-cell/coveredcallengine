@@ -162,6 +162,10 @@ const Simulator = () => {
   const [analyzerData, setAnalyzerData] = useState(null);
   const [analyzerLoading, setAnalyzerLoading] = useState(false);
   const [analyzerSymbol, setAnalyzerSymbol] = useState('');
+
+  // Trade Health state
+  const [healthData, setHealthData] = useState(null);
+  const [healthLoading, setHealthLoading] = useState(false);
   
   // Filters
   const [statusFilter, setStatusFilter] = useState('');
@@ -292,6 +296,7 @@ const Simulator = () => {
       fetchAnalyzerData();
       fetchOptimalSettings();
       fetchProfiles();
+      fetchTradesHealth();
     }
   }, [activeTab]);
 
@@ -411,6 +416,18 @@ const Simulator = () => {
       console.error('Failed to fetch analyzer data:', err);
     } finally {
       setAnalyzerLoading(false);
+    }
+  };
+
+  const fetchTradesHealth = async () => {
+    setHealthLoading(true);
+    try {
+      const res = await simulatorApi.getTradesHealth();
+      setHealthData(res.data);
+    } catch (err) {
+      console.error('Failed to fetch trade health:', err);
+    } finally {
+      setHealthLoading(false);
     }
   };
 
@@ -1891,6 +1908,86 @@ const Simulator = () => {
           </Card>
         </>
       )}
+
+      {/* ── Trade Health & AI Actions ─────────────────────────────────── */}
+      <Card className="bg-zinc-800/50 border-zinc-700">
+        <CardHeader className="pb-2 flex flex-row items-center justify-between">
+          <CardTitle className="text-sm flex items-center gap-2">
+            <ShieldCheck className="w-4 h-4 text-emerald-400" />
+            Trade Health &amp; AI Actions
+          </CardTitle>
+          <Button variant="ghost" size="sm" onClick={fetchTradesHealth} className="h-7 text-xs text-zinc-400">
+            <RefreshCw className={`w-3 h-3 mr-1 ${healthLoading ? 'animate-spin' : ''}`} />
+            Refresh
+          </Button>
+        </CardHeader>
+        <CardContent>
+          {healthLoading ? (
+            <div className="space-y-2">{[1,2,3].map(i => <div key={i} className="h-10 bg-zinc-700/30 rounded animate-pulse" />)}</div>
+          ) : !healthData || healthData.trades.length === 0 ? (
+            <div className="text-center py-6 text-zinc-500 text-sm">No open trades — add trades then click Update Prices to populate health data</div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-zinc-700 text-xs text-zinc-500 uppercase tracking-wider">
+                    <th className="py-2 text-left">Symbol</th>
+                    <th className="py-2 text-left">Strategy</th>
+                    <th className="py-2 text-right">DTE</th>
+                    <th className="py-2 text-right">Delta</th>
+                    <th className="py-2 text-right">Yield%</th>
+                    <th className="py-2 text-right">Capture%</th>
+                    <th className="py-2 text-right">P/L</th>
+                    <th className="py-2 text-right">ROI%</th>
+                    <th className="py-2 text-center">Quality</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {healthData.trades.map((row) => {
+                    const plColor = row.total_pl == null ? 'text-zinc-500' : row.total_pl >= 0 ? 'text-emerald-400' : 'text-red-400';
+                    const roiColor = row.roi_pct == null ? 'text-zinc-500' : row.roi_pct >= 0 ? 'text-emerald-400' : 'text-red-400';
+                    const capColor = row.capture_pct >= 75 ? 'text-emerald-400' : row.capture_pct >= 40 ? 'text-yellow-400' : 'text-red-400';
+                    const dteColor = row.dte <= 7 ? 'text-orange-400' : row.dte <= 14 ? 'text-yellow-400' : 'text-zinc-300';
+                    const deltaColor = row.delta >= 0.50 ? 'text-red-400' : row.delta >= 0.35 ? 'text-yellow-400' : 'text-emerald-400';
+                    return (
+                      <tr key={row.trade_id} className="border-b border-zinc-800/50 hover:bg-zinc-700/20">
+                        <td className="py-2.5 font-semibold text-white">{row.symbol}</td>
+                        <td className="py-2.5">
+                          <Badge className={row.strategy === 'pmcc' ? 'bg-violet-500/20 text-violet-400 border-violet-500/30 text-xs' : 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30 text-xs'}>
+                            {row.strategy === 'pmcc' ? 'PMCC' : 'CC'}
+                          </Badge>
+                        </td>
+                        <td className={`py-2.5 text-right font-mono ${dteColor}`}>{row.dte ?? '-'}d</td>
+                        <td className={`py-2.5 text-right font-mono ${deltaColor}`}>{row.delta != null ? row.delta.toFixed(2) : '-'}</td>
+                        <td className="py-2.5 text-right font-mono text-zinc-300">{row.yield_pct != null ? `${row.yield_pct.toFixed(2)}%` : '-'}</td>
+                        <td className={`py-2.5 text-right font-mono ${capColor}`}>{row.capture_pct != null ? `${row.capture_pct.toFixed(1)}%` : '-'}</td>
+                        <td className={`py-2.5 text-right font-mono font-medium ${plColor}`}>
+                          {row.total_pl != null ? `$${row.total_pl.toFixed(0)}` : '—'}
+                        </td>
+                        <td className={`py-2.5 text-right font-mono ${roiColor}`}>
+                          {row.roi_pct != null ? `${row.roi_pct.toFixed(2)}%` : '—'}
+                        </td>
+                        <td className="py-2.5 text-center">
+                          {row.data_quality === 'missing_option_mark' ? (
+                            <Badge className="bg-orange-500/20 text-orange-400 border-orange-500/30 text-xs">No Mark</Badge>
+                          ) : row.data_quality === 'bs_estimate' ? (
+                            <Badge className="bg-zinc-500/20 text-zinc-400 border-zinc-500/30 text-xs">Est.</Badge>
+                          ) : (
+                            <Badge className="bg-emerald-500/20 text-emerald-400 border-emerald-500/30 text-xs">Live</Badge>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+              <p className="text-xs text-zinc-600 mt-3">
+                Live = real bid/ask marks • Est. = Black-Scholes estimate • No Mark = option chain unavailable. Click <b>Update Prices</b> to refresh.
+              </p>
+            </div>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
   };

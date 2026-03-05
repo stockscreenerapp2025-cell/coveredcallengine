@@ -156,6 +156,7 @@ export const simulatorApi = {
   getRollSuggestions: (tradeId) => api.get(`/simulator/trades/${tradeId}/roll-suggestions`),
   
   updatePrices: () => api.post('/simulator/update-prices'),
+  getTradesHealth: () => api.get('/simulator/trades/health'),
   getSummary: () => api.get('/simulator/summary'),
   clearAll: () => api.delete('/simulator/clear'),
   

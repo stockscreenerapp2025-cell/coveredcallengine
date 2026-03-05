@@ -505,7 +505,11 @@ async def add_simulator_trade(trade: SimulatorTradeEntry, user: dict = Depends(g
         # Entry snapshot (immutable)
         "entry_date": entry_date,
         "entry_underlying_price": trade.underlying_price,
-        
+        # Canonical entry marks used for P/L calc
+        "entry_spot": trade.underlying_price,
+        "entry_short_bid": trade.short_call_premium,
+        "entry_long_ask": trade.leaps_premium if trade.strategy_type == "pmcc" else None,
+
         # Short call details
         "short_call_strike": trade.short_call_strike,
         "short_call_expiry": trade.short_call_expiry,
@@ -929,103 +933,160 @@ async def update_simulator_prices(user: dict = Depends(get_current_user)):
     price_cache = {}
     for symbol in symbols:
         try:
-            # Use LIVE stock quote (regularMarketPrice)
             quote = await fetch_live_stock_quote(symbol)
             if quote and quote.get("price"):
                 price_cache[symbol] = quote["price"]
         except Exception as e:
             logging.warning(f"Could not fetch live price for {symbol}: {e}")
-    
+
+    # Fetch option chain marks per symbol — one broad call covers all expiries
+    # option_marks[symbol][(expiry, strike)] = {"ask": float, "bid": float}
+    option_marks: dict = {}
+    for symbol in symbols:
+        option_marks[symbol] = {}
+        try:
+            chain = await fetch_options_chain(
+                symbol=symbol,
+                api_key=None,
+                option_type="call",
+                min_dte=0,
+                max_dte=730,
+                current_price=price_cache.get(symbol, 0)
+            )
+            for opt in chain:
+                key = (opt.get("expiry"), float(opt.get("strike", 0)))
+                option_marks[symbol][key] = {
+                    "ask": opt.get("ask") or 0,
+                    "bid": opt.get("bid") or 0,
+                }
+        except Exception as e:
+            logging.warning(f"Option chain fetch failed for {symbol}: {e}")
+
     now = datetime.now(timezone.utc)
-    risk_free_rate = 0.05  # 5% risk-free rate
-    
+    risk_free_rate = 0.05
+
     updated_count = 0
-    
+
     for trade in active_trades:
         symbol = trade["symbol"]
         if symbol not in price_cache:
             continue
-        
-        current_price = price_cache[symbol]
-        
-        # Calculate DTE remaining
+
+        spot_mark = price_cache[symbol]
+        contracts = trade.get("contracts", 1)
+        strategy = trade.get("strategy_type", "covered_call")
+
+        # DTE / days held
         try:
             expiry_dt = datetime.strptime(trade["short_call_expiry"], "%Y-%m-%d")
             dte_remaining = max((expiry_dt - datetime.now()).days, 0)
-            time_to_expiry = max(dte_remaining / 365, 0.001)  # In years
-        except:
+            time_to_expiry = max(dte_remaining / 365, 0.001)
+        except Exception:
             dte_remaining = max(trade.get("dte_remaining", 0), 0)
             time_to_expiry = max(dte_remaining / 365, 0.001)
-        
-        # Calculate days held
+
         try:
             entry_dt = datetime.strptime(trade["entry_date"], "%Y-%m-%d")
             days_held = (datetime.now() - entry_dt).days
-        except:
+        except Exception:
             days_held = trade.get("days_held", 0)
-        
-        # Calculate current Greeks and option value
+
+        # Greeks (Black-Scholes) — kept for rule evaluation and display
         iv_raw = trade.get("short_call_iv")
         try:
             iv = normalize_iv_fields(iv_raw)["iv"] if iv_raw else 0.30
         except Exception:
             iv = 0.30
         if not iv or iv <= 0:
-            iv = 0.30  # Default 30% IV
+            iv = 0.30
         greeks = calculate_greeks(
-            S=current_price,
+            S=spot_mark,
             K=trade["short_call_strike"],
             T=time_to_expiry,
             r=risk_free_rate,
             sigma=iv
         )
-        
-        # Calculate unrealized P&L
-        entry_premium = trade.get("short_call_premium", 0)
         current_option_value = greeks["option_value"]
-        
-        if trade["strategy_type"] == "covered_call":
-            stock_pnl = (current_price - trade["entry_underlying_price"]) * 100 * trade["contracts"]
-            option_pnl = (entry_premium - current_option_value) * 100 * trade["contracts"]
-            unrealized_pnl = stock_pnl + option_pnl
-        else:  # PMCC
-            leaps_strike_val = trade.get("leaps_strike")
-            leaps_premium_stored = trade.get("leaps_premium")
 
-            # Guard: validate LEAPS fields before pricing to prevent insane Unrealized P&L
-            if leaps_strike_val and leaps_strike_val > 0 and leaps_premium_stored and leaps_premium_stored > 0:
-                leaps_iv = trade.get("leaps_iv") or iv
-                leaps_dte = max(trade.get("leaps_dte_remaining") or 365, 0)
-                leaps_time_to_expiry = max(leaps_dte / 365, 0.001)
+        # Real option marks from chain
+        short_key = (trade.get("short_call_expiry"), float(trade.get("short_call_strike", 0)))
+        short_opt = option_marks.get(symbol, {}).get(short_key)
+        short_mark = short_opt["ask"] if short_opt and short_opt.get("ask", 0) > 0 else None
 
-                leaps_greeks = calculate_greeks(
-                    S=current_price,
-                    K=leaps_strike_val,
-                    T=leaps_time_to_expiry,
-                    r=risk_free_rate,
-                    sigma=leaps_iv
+        long_mark = None
+        if strategy == "pmcc":
+            long_key = (trade.get("leaps_expiry"), float(trade.get("leaps_strike", 0)))
+            long_opt = option_marks.get(symbol, {}).get(long_key)
+            long_mark = long_opt["bid"] if long_opt and long_opt.get("bid", 0) > 0 else None
+
+        # Entry anchors (fall back to legacy field names for old trades)
+        entry_spot      = trade.get("entry_spot") or trade.get("entry_underlying_price") or spot_mark
+        entry_short_bid = trade.get("entry_short_bid") or trade.get("short_call_premium") or 0
+        entry_long_ask  = trade.get("entry_long_ask") or trade.get("leaps_premium") or 0
+
+        # yield_pct — always computable from entry data
+        yield_pct = round(entry_short_bid / entry_spot * 100, 2) if entry_spot > 0 else 0
+
+        # P/L, capture_pct, ROI using real marks when available
+        marks_ok = short_mark is not None and (strategy == "covered_call" or long_mark is not None)
+        if marks_ok:
+            raw_capture = ((entry_short_bid - short_mark) / entry_short_bid * 100) if entry_short_bid > 0 else 0
+            capture_pct = round(max(0.0, min(100.0, raw_capture)), 1)
+            if strategy == "covered_call":
+                total_pl = round(
+                    ((spot_mark - entry_spot) * 100 + (entry_short_bid - short_mark) * 100) * contracts, 2
                 )
+                capital = entry_spot * 100 * contracts
+                roi_pct = round(total_pl / capital * 100, 2) if capital > 0 else None
+            else:
+                total_pl = round(
+                    ((long_mark - entry_long_ask) * 100 + (entry_short_bid - short_mark) * 100) * contracts, 2
+                )
+                net_debit = (entry_long_ask - entry_short_bid) * 100 * contracts
+                roi_pct = round(total_pl / net_debit * 100, 2) if net_debit > 0 else None
+            data_quality = None
+        else:
+            raw_bs_capture = ((entry_short_bid - current_option_value) / entry_short_bid * 100) if entry_short_bid > 0 else 0
+            capture_pct = round(max(0.0, min(100.0, raw_bs_capture)), 1)
+            total_pl = None
+            roi_pct = None
+            data_quality = "missing_option_mark"
 
-                leaps_value_change = (leaps_greeks["option_value"] - leaps_premium_stored) * 100 * trade["contracts"]
+        # Legacy unrealized_pnl (BS-based, preserved for backward compat)
+        if strategy == "covered_call":
+            stock_pnl = (spot_mark - entry_spot) * 100 * contracts
+            option_pnl = (entry_short_bid - current_option_value) * 100 * contracts
+            unrealized_pnl = round(stock_pnl + option_pnl, 2)
+        else:
+            leaps_strike_val = trade.get("leaps_strike")
+            if leaps_strike_val and leaps_strike_val > 0 and entry_long_ask > 0:
+                leaps_dte = max(trade.get("leaps_dte_remaining") or 365, 0)
+                leaps_greeks = calculate_greeks(
+                    S=spot_mark, K=leaps_strike_val,
+                    T=max(leaps_dte / 365, 0.001), r=risk_free_rate, sigma=iv
+                )
+                leaps_value_change = (leaps_greeks["option_value"] - entry_long_ask) * 100 * contracts
             else:
                 leaps_value_change = 0
+            short_call_pnl = (entry_short_bid - current_option_value) * 100 * contracts
+            unrealized_pnl = round(leaps_value_change + short_call_pnl, 2)
 
-            short_call_pnl = (entry_premium - current_option_value) * 100 * trade["contracts"]
-            unrealized_pnl = leaps_value_change + short_call_pnl
-        
-        # Calculate premium capture percentage
-        if entry_premium > 0 and current_option_value >= 0:
-            premium_capture_pct = ((entry_premium - current_option_value) / entry_premium) * 100
-        else:
-            premium_capture_pct = 0
-        
         update_doc = {
-            "current_underlying_price": current_price,
+            "current_underlying_price": spot_mark,
             "current_option_value": current_option_value,
-            "unrealized_pnl": round(unrealized_pnl, 2),
+            "unrealized_pnl": unrealized_pnl,
+            # Canonical P/L fields per spec
+            "total_pl": total_pl,
+            "roi_pct": roi_pct,
+            "yield_pct": yield_pct,
+            "capture_pct": capture_pct,
+            "short_mark": short_mark,
+            "long_mark": long_mark,
+            "data_quality": data_quality,
+            # Legacy aliases
+            "premium_capture_pct": capture_pct,
             "days_held": days_held,
             "dte_remaining": dte_remaining,
-            "premium_capture_pct": round(premium_capture_pct, 1),
             "last_updated": now.isoformat(),
             "updated_at": now.isoformat(),
             "current_delta": greeks["delta"],
@@ -1033,13 +1094,14 @@ async def update_simulator_prices(user: dict = Depends(get_current_user)):
             "current_theta": greeks["theta"],
             "current_vega": greeks["vega"],
         }
-        
+
         # Auto-expire or assign when DTE reaches 0
         if dte_remaining == 0 and trade.get("status") in ["open", "rolled"]:
-            is_itm = current_price >= trade["short_call_strike"]
+            is_itm = spot_mark >= trade["short_call_strike"]
+            final = total_pl if total_pl is not None else unrealized_pnl
             update_doc["status"] = "assigned" if is_itm else "expired"
-            update_doc["final_pnl"] = round(unrealized_pnl, 2)
-            update_doc["realized_pnl"] = round(unrealized_pnl, 2)
+            update_doc["final_pnl"] = round(final, 2)
+            update_doc["realized_pnl"] = round(final, 2)
             update_doc["close_date"] = now.strftime("%Y-%m-%d")
 
         await db.simulator_trades.update_one({"id": trade["id"]}, {"$set": update_doc})
@@ -1075,6 +1137,73 @@ async def update_simulator_prices(user: dict = Depends(get_current_user)):
         "rules_triggered": rules_triggered,
         "prices": price_cache
     }
+
+
+@simulator_router.get("/trades/health")
+async def get_trades_health(user: dict = Depends(get_current_user)):
+    """
+    Trade Health endpoint — returns computed P/L, capture%, yield%, ROI, DTE, delta
+    for all active (open/rolled) trades. Powers the Analyzer Trade Health table.
+    """
+    trades = await db.simulator_trades.find(
+        {"user_id": user["id"], "status": {"$in": ["open", "rolled"]}},
+        {"_id": 0}
+    ).to_list(1000)
+
+    rows = []
+    for t in trades:
+        entry_spot      = t.get("entry_spot") or t.get("entry_underlying_price") or 0
+        entry_short_bid = t.get("entry_short_bid") or t.get("short_call_premium") or 0
+        entry_long_ask  = t.get("entry_long_ask") or t.get("leaps_premium") or 0
+        strategy        = t.get("strategy_type", "covered_call")
+        contracts       = t.get("contracts", 1)
+
+        # yield_pct — entry premium / entry spot
+        yield_pct = round(entry_short_bid / entry_spot * 100, 2) if entry_spot > 0 else 0
+
+        # Prefer real-mark values stored by update-prices; fall back to BS-derived
+        capture_pct = t.get("capture_pct") or t.get("premium_capture_pct") or 0
+        total_pl    = t.get("total_pl")          # None if marks were missing
+        roi_pct     = t.get("roi_pct")           # None if marks were missing
+        data_quality = t.get("data_quality")
+
+        # If total_pl never computed (trade added before new code), fall back to unrealized_pnl
+        if total_pl is None and data_quality != "missing_option_mark":
+            total_pl = t.get("unrealized_pnl")
+            if total_pl is not None:
+                if strategy == "covered_call":
+                    capital = entry_spot * 100 * contracts
+                    roi_pct = round(total_pl / capital * 100, 2) if capital > 0 else None
+                else:
+                    net_debit = (entry_long_ask - entry_short_bid) * 100 * contracts
+                    roi_pct = round(total_pl / net_debit * 100, 2) if net_debit > 0 else None
+                data_quality = "bs_estimate"
+
+        rows.append({
+            "trade_id":     t.get("id"),
+            "symbol":       t.get("symbol"),
+            "strategy":     strategy,
+            "status":       t.get("status"),
+            "contracts":    contracts,
+            "dte":          t.get("dte_remaining"),
+            "delta":        t.get("current_delta"),
+            "iv_pct":       round((t.get("short_call_iv") or 0) * 100, 1),
+            "entry_spot":   entry_spot,
+            "entry_short_bid": entry_short_bid,
+            "short_mark":   t.get("short_mark"),
+            "long_mark":    t.get("long_mark"),
+            "yield_pct":    yield_pct,
+            "capture_pct":  round(capture_pct, 1),
+            "total_pl":     total_pl,
+            "roi_pct":      roi_pct,
+            "data_quality": data_quality,
+            "last_updated": t.get("last_updated"),
+        })
+
+    # Sort: by total_pl ascending (worst performers first)
+    rows.sort(key=lambda r: (r["total_pl"] is None, r["total_pl"] or 0))
+
+    return {"trades": rows, "total": len(rows)}
 
 
 @simulator_router.get("/summary")
