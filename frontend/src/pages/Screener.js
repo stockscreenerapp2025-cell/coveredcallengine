@@ -61,11 +61,13 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import StockDetailModal from '../components/StockDetailModal';
+import ScanProgressBar from '../components/ScanProgressBar';
 
 const Screener = () => {
   const [opportunities, setOpportunities] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [scanActive, setScanActive] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(true);
   const [sortField, setSortField] = useState('score');
   const [sortDirection, setSortDirection] = useState('desc');
@@ -363,12 +365,12 @@ const Screener = () => {
 
   const handleRefreshData = async () => {
     setRefreshing(true);
-    toast.info('Fetching fresh market data... This may take a minute.');
+    setScanActive(true);
     try {
       await fetchOpportunities(true);
-      toast.success('Fresh market data loaded successfully!');
     } catch (error) {
       toast.error('Failed to refresh market data');
+      setScanActive(false);
     } finally {
       setRefreshing(false);
     }
@@ -1542,6 +1544,15 @@ const Screener = () => {
           setSelectedScanData(null);
         }}
         scanData={selectedScanData}
+      />
+
+      {/* Live Scan Progress Bar */}
+      <ScanProgressBar
+        active={scanActive}
+        onComplete={(found) => {
+          setScanActive(false);
+          toast.success(`Scan complete — ${found} opportunities found`);
+        }}
       />
     </div>
   );

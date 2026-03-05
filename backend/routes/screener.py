@@ -77,6 +77,7 @@ from services.quality_score import (
 from utils.universe import is_etf, ETF_WHITELIST
 # Import enrichment service for IV Rank and Analyst data
 from services.enrichment_service import enrich_rows_batch, strip_enrichment_debug
+import services.scan_progress as scan_progress
 
 screener_router = APIRouter(tags=["Screener"])
 
@@ -189,6 +190,15 @@ def _get_server_functions():
         'clear_cache': clear_cache
     }
 
+
+
+@screener_router.get("/scan-progress")
+async def get_scan_progress(user: dict = Depends(get_current_user)):
+    """Returns the live progress of the current scan for this user."""
+    progress = scan_progress.get(user["id"])
+    if not progress:
+        return {"active": False, "pct": 0, "stage": "Idle", "stage_index": 0}
+    return progress
 
 
 @screener_router.get("/covered-calls")
@@ -337,8 +347,12 @@ async def screen_covered_calls(
 
         symbols_to_scan = symbols_to_scan[:200]
         logging.info(f"Scanning {len(symbols_to_scan)} symbols for covered calls")
-        logging.info(f"Scanning {len(symbols_to_scan)} symbols for covered calls")
-        
+
+        # ── Progress: start ──
+        user_id = user.get("id", "anon")
+        scan_progress.start(user_id, len(symbols_to_scan))
+        scan_progress.set_stage(user_id, 0, "Loading market snapshot", 5)
+
         # PHASE 2: Batch fetch snapshots with cache-first approach
         # This reduces Yahoo calls by ~70% for Custom Scans
         snapshots = await get_symbol_snapshots_batch(
@@ -353,7 +367,10 @@ async def screen_covered_calls(
         )
         
         cache_stats = {"hits": 0, "misses": 0, "symbols_processed": 0, "bid_rejected": 0}
-        
+
+        scan_progress.set_stage(user_id, 1, "Scanning symbols", 20)
+        _symbols_done = 0
+
         for symbol in symbols_to_scan:
             try:
                 # PHASE 2: Get data from snapshot cache
@@ -594,9 +611,12 @@ async def screen_covered_calls(
                     })
             except Exception as e:
                 logging.error(f"Error scanning {symbol}: {e}")
-                continue
-        
+            finally:
+                _symbols_done += 1
+                scan_progress.tick_symbol(user_id, symbol, _symbols_done, len(symbols_to_scan), len(opportunities))
+
         # ========== PHASE 6: APPLY MARKET BIAS AFTER FILTERING ==========
+        scan_progress.set_stage(user_id, 2, "Scoring & filtering results", 72)
         # Fetch market sentiment
         market_sentiment = await fetch_market_sentiment()
         bias_weight = market_sentiment.get("weight_cc", 1.0)
@@ -634,9 +654,11 @@ async def screen_covered_calls(
         )
         
         # ========== ENRICHMENT: IV Rank + Analyst Data (LAST STEP) ==========
+        scan_progress.set_stage(user_id, 3, "Enriching data (IV Rank + Analyst)", 82)
         opportunities = await enrich_rows_batch(opportunities)
 
         # ========== TECHNICAL ENRICHMENT + FILTERS ==========
+        scan_progress.set_stage(user_id, 4, "Running technical analysis", 92)
         if opportunities:
             tech_symbols = list({o["symbol"] for o in opportunities})
             tech_cursor = db.symbol_enrichment.find(
@@ -757,10 +779,12 @@ async def screen_covered_calls(
             "pricing_rule": "BID_ONLY"
         }
         await funcs['set_cached_data'](cache_key, result)
+        scan_progress.finish(user_id, len(opportunities))
         return result
-        
+
     except Exception as e:
         logging.error(f"Screener error: {e}")
+        scan_progress.finish(user.get("id", "anon"), 0, error=str(e))
         return {"opportunities": [], "total": 0, "error": str(e), "is_live": False}
 
 
