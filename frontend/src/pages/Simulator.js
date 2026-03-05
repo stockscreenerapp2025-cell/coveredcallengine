@@ -110,6 +110,75 @@ const OPERATORS = [
   { value: 'eq', label: '=' }
 ];
 
+const ManageGoalsForm = ({ onRun, loading, walletBalance }) => {
+  const [goals, setGoals] = useState({});
+  const canRun = walletBalance === null || walletBalance >= 5;
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+      <div style={{ background: '#0f172a', borderRadius: '8px', padding: '14px', fontSize: '13px', color: '#94a3b8' }}>
+        AI will analyze this trade and recommend an action: hold, roll, close, or let expire.
+        Cost: <span style={{ color: '#a855f7', fontWeight: 600 }}>5 credits</span>
+      </div>
+      {!canRun && (
+        <div style={{ background: '#7f1d1d', border: '1px solid #dc2626', borderRadius: '8px', padding: '10px', fontSize: '13px', color: '#fca5a5' }}>
+          Insufficient credits. You need at least 5 credits to run AI analysis.
+        </div>
+      )}
+      <button
+        onClick={() => onRun(goals)}
+        disabled={loading || !canRun}
+        style={{
+          background: canRun ? '#7c3aed' : '#374151', color: 'white', border: 'none',
+          borderRadius: '8px', padding: '12px', fontSize: '14px', fontWeight: '600',
+          cursor: canRun ? 'pointer' : 'not-allowed', opacity: loading ? 0.7 : 1
+        }}
+      >
+        {loading ? '⚙️ Analyzing...' : '🤖 Run AI Analysis (5 credits)'}
+      </button>
+    </div>
+  );
+};
+
+const RecommendationCard = ({ result, onApply, onDismiss, applyLoading }) => {
+  const rec = result?.recommendation || {};
+  const actionColors = { hold: '#16a34a', roll: '#7c3aed', close: '#dc2626', expire: '#0284c7' };
+  const color = actionColors[rec.action] || '#6b7280';
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+      <div style={{ background: '#0f172a', borderRadius: '8px', padding: '16px', border: `1px solid ${color}` }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '10px' }}>
+          <span style={{ background: color, color: 'white', borderRadius: '6px', padding: '4px 12px', fontWeight: '700', fontSize: '14px', textTransform: 'uppercase' }}>
+            {rec.action || 'N/A'}
+          </span>
+          <span style={{ fontSize: '13px', color: '#94a3b8' }}>Confidence: {rec.confidence ?? '—'}%</span>
+        </div>
+        <p style={{ margin: 0, fontSize: '14px', color: '#e2e8f0', lineHeight: 1.6 }}>{rec.reasoning || 'No reasoning provided.'}</p>
+        {rec.roll_to_strike && (
+          <div style={{ marginTop: '10px', fontSize: '13px', color: '#a855f7' }}>
+            Roll to strike: <strong>${rec.roll_to_strike}</strong>
+            {rec.roll_to_expiry && <> · Expiry: <strong>{rec.roll_to_expiry}</strong></>}
+          </div>
+        )}
+      </div>
+      <div style={{ display: 'flex', gap: '10px' }}>
+        <button
+          onClick={onApply}
+          disabled={applyLoading}
+          style={{ flex: 1, background: '#7c3aed', color: 'white', border: 'none', borderRadius: '8px', padding: '10px', fontWeight: '600', cursor: 'pointer', opacity: applyLoading ? 0.7 : 1 }}
+        >
+          {applyLoading ? 'Applying...' : '✅ Apply'}
+        </button>
+        <button
+          onClick={onDismiss}
+          style={{ flex: 1, background: '#1e293b', color: '#94a3b8', border: '1px solid #334155', borderRadius: '8px', padding: '10px', cursor: 'pointer' }}
+        >
+          Dismiss
+        </button>
+      </div>
+    </div>
+  );
+};
+
 const Simulator = () => {
   // Status helper: backend uses 'open'/'rolled'/'active' for live trades
   const isLive = (status) => ['open', 'rolled', 'active'].includes(status);
