@@ -141,6 +141,15 @@ async def fetch_analyst_ratings_batch(symbols: List[str]) -> Dict[str, str]:
     return ratings
 
 
+def _is_third_friday(date_str: str) -> bool:
+    """Return True if date_str (YYYY-MM-DD) is the 3rd Friday of its month (standard monthly expiry)."""
+    try:
+        d = datetime.strptime(date_str, "%Y-%m-%d")
+        return d.weekday() == 4 and (d.day - 1) // 7 == 2
+    except Exception:
+        return False
+
+
 class ScreenerFilterCreate(BaseModel):
     name: str
     filters: Dict[str, Any]
@@ -413,10 +422,13 @@ async def screen_covered_calls(
                     
                     if dte > max_dte or dte < 1:
                         continue
-                    if weekly_only and dte > 7:
-                        continue
-                    if monthly_only and dte <= 7:
-                        continue
+                    # Weekly = any non-3rd-Friday expiry; Monthly = 3rd Friday of month
+                    if weekly_only or monthly_only:
+                        exp_is_monthly = _is_third_friday(expiry)
+                        if weekly_only and exp_is_monthly:
+                            continue
+                        if monthly_only and not exp_is_monthly:
+                            continue
                     
                     # Estimate delta based on moneyness
                     strike_pct_diff = ((strike - underlying_price) / underlying_price) * 100
