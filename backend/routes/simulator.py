@@ -2844,8 +2844,10 @@ async def get_wallet_balance(user: dict = Depends(get_current_user)):
     Return the user's current AI credit balance.
     Frontend calls this to show "You have X credits" in the Manage modal.
     """
-    from services.wallet_service import get_balance
-    balance = await get_balance(db, user["id"])
+    from ai_wallet.wallet_service import WalletService as AIWalletService
+    wallet_svc = AIWalletService(db_instance)
+    wallet = await wallet_svc.get_or_create_wallet(user["id"])
+    balance = wallet.get("free_tokens_remaining", 0) + wallet.get("paid_tokens_remaining", 0)
     return {"balance_credits": balance}
 
 
@@ -2879,8 +2881,9 @@ async def manage_trade(
     Returns:
         { "recommendation": {...}, "balance_after": int }
     """
-    from services.wallet_service import debit_wallet, get_balance, MANAGE_COST_CREDITS
+    from ai_wallet.wallet_service import WalletService as AIWalletService
     from services.ai_trade_manager import generate_recommendation
+    MANAGE_COST_CREDITS = 5
 
     user_id = user["id"]
     mode    = body.get("mode", "recommend_only")
@@ -2922,24 +2925,28 @@ async def manage_trade(
         chain = []
 
     # ── 4. Debit wallet ──────────────────────────────────────────────────────
-    debit_result = await debit_wallet(
-        db, user_id,
-        amount=MANAGE_COST_CREDITS,
-        reason=f"AI manage: {symbol} trade",
-        ref_id=trade_id
+    import uuid
+    wallet_svc = AIWalletService(db_instance)
+    debit_result = await wallet_svc.deduct_tokens(
+        user_id=user_id,
+        tokens_required=MANAGE_COST_CREDITS,
+        action="trade_management",
+        request_id=str(uuid.uuid4())
     )
-    if not debit_result["success"]:
+    if not debit_result.success:
+        wallet = await wallet_svc.get_or_create_wallet(user_id)
+        current_bal = wallet.get("free_tokens_remaining", 0) + wallet.get("paid_tokens_remaining", 0)
         raise HTTPException(
             status_code=402,
             detail={
                 "error": "insufficient_credits",
-                "message": f"You need {MANAGE_COST_CREDITS} credits to run AI management. "
-                           f"Current balance: {debit_result['balance']}.",
-                "balance": debit_result["balance"]
+                "message": f"You need {MANAGE_COST_CREDITS} tokens to run AI management. "
+                           f"Current balance: {current_bal}.",
+                "balance": current_bal
             }
         )
 
-    balance_after = debit_result["balance_after"]
+    balance_after = debit_result.remaining_balance
 
     # ── 5. Generate recommendation ───────────────────────────────────────────
     try:
@@ -2951,8 +2958,7 @@ async def manage_trade(
         )
     except Exception as e:
         # Refund on failure
-        from services.wallet_service import credit_wallet
-        await credit_wallet(db, user_id, MANAGE_COST_CREDITS, reason="Refund: manage failed", ref_id=trade_id)
+        await wallet_svc.credit_tokens(user_id=user_id, tokens=MANAGE_COST_CREDITS, source="refund", request_id=trade_id)
         raise HTTPException(status_code=500, detail=f"Recommendation engine error: {e}")
 
     # ── 6. Log to simulator_action_logs ──────────────────────────────────────
