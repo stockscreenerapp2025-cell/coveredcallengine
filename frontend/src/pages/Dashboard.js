@@ -160,52 +160,40 @@ const Dashboard = () => {
   };
 
   const fetchDashboardData = async () => {
-    setLoading(true);
     setOppsLoading(true);
+
+    // Fast calls: indices + news — render page immediately when these return
+    stocksApi.getIndices().then(r => { setIndices(r.data); setLoading(false); }).catch(() => setLoading(false));
+    newsApi.getNews({ limit: 6 }).then(r => setNews(r.data)).catch(() => {});
+    portfolioApi.getSummary().then(r => setPortfolio(r.data)).catch(() => {});
+
+    // IBKR (non-critical, silent fail)
+    Promise.allSettled([
+      portfolioApi.getIBKRSummary(),
+      portfolioApi.getIBKRTrades({ status: 'Closed', limit: 15 }),
+      portfolioApi.getIBKRTrades({ status: 'Open', limit: 15 })
+    ]).then(([summaryRes, closedRes, openRes]) => {
+      setIbkrSummary(summaryRes.status === 'fulfilled' ? summaryRes.value.data : null);
+      setIbkrTrades(closedRes.status === 'fulfilled' ? (closedRes.value.data.trades || []) : []);
+      setOpenTrades(openRes.status === 'fulfilled' ? (openRes.value.data.trades || []) : []);
+    });
+
+    // Opportunities (main content — may be slowest)
     try {
-      // Run all independent fetches in parallel
-      const [
-        indicesRes, newsRes, portfolioRes,
-        ibkrSummaryRes, ibkrClosedRes, ibkrOpenRes,
-        oppsRes
-      ] = await Promise.allSettled([
-        stocksApi.getIndices(),
-        newsApi.getNews({ limit: 6 }),
-        portfolioApi.getSummary(),
-        portfolioApi.getIBKRSummary(),
-        portfolioApi.getIBKRTrades({ status: 'Closed', limit: 15 }),
-        portfolioApi.getIBKRTrades({ status: 'Open', limit: 15 }),
-        screenerApi.getDashboardOpportunities()
-      ]);
-
-      if (indicesRes.status === 'fulfilled') setIndices(indicesRes.value.data);
-      if (newsRes.status === 'fulfilled') setNews(newsRes.value.data);
-      if (portfolioRes.status === 'fulfilled') setPortfolio(portfolioRes.value.data);
-
-      setIbkrSummary(ibkrSummaryRes.status === 'fulfilled' ? ibkrSummaryRes.value.data : null);
-      setIbkrTrades(ibkrClosedRes.status === 'fulfilled' ? (ibkrClosedRes.value.data.trades || []) : []);
-      setOpenTrades(ibkrOpenRes.status === 'fulfilled' ? (ibkrOpenRes.value.data.trades || []) : []);
-
-      if (oppsRes.status === 'fulfilled') {
-        setOpportunities(oppsRes.value.data.opportunities || []);
-        setOpportunitiesInfo(oppsRes.value.data);
-      } else {
-        // Fallback if opportunities endpoint failed
-        try {
-          const fallbackRes = await screenerApi.getCoveredCalls({ min_roi: 1.5, min_price: 30, max_price: 90 });
-          setOpportunities(fallbackRes.data.opportunities?.slice(0, 10) || []);
-          setOpportunitiesInfo({ is_live: fallbackRes.data.is_live ?? false, live_data_used: fallbackRes.data.live_data_used ?? false, fallback: true });
-        } catch (e) {
-          console.error('Dashboard opportunities fallback error:', e);
-        }
+      const oppsRes = await screenerApi.getDashboardOpportunities();
+      setOpportunities(oppsRes.data.opportunities || []);
+      setOpportunitiesInfo(oppsRes.data);
+    } catch (oppsError) {
+      try {
+        const fallbackRes = await screenerApi.getCoveredCalls({ min_roi: 1.5, min_price: 30, max_price: 90 });
+        setOpportunities(fallbackRes.data.opportunities?.slice(0, 10) || []);
+        setOpportunitiesInfo({ is_live: fallbackRes.data.is_live ?? false, live_data_used: fallbackRes.data.live_data_used ?? false, fallback: true });
+      } catch (e) {
+        console.error('Dashboard opportunities fallback error:', e);
       }
-
-    } catch (error) {
-      console.error('Dashboard fetch error:', error);
-      toast.error('Failed to load dashboard data');
     } finally {
-      setLoading(false);
       setOppsLoading(false);
+      setLoading(false);
     }
   };
 
