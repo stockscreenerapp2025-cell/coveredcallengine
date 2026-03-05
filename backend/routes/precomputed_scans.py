@@ -298,6 +298,53 @@ async def get_scan_service():
     return PrecomputedScanService(db)
 
 
+async def _overlay_cached_prices(opportunities: List[Dict]) -> List[Dict]:
+    """
+    Overlay stock_price from market_snapshot_cache for any symbol that has a
+    fresh cache entry.  This keeps precomputed results in sync with the CC
+    screener, which writes to the same cache on every custom scan.
+
+    TTL mirrors data_provider.py:
+      - market closed : 3 hours
+      - market open   : 12 minutes
+    """
+    if not opportunities:
+        return opportunities
+
+    symbols = [o["symbol"] for o in opportunities if o.get("symbol")]
+    if not symbols:
+        return opportunities
+
+    from services.data_provider import is_market_closed
+    ttl_seconds = 3 * 3600 if is_market_closed() else 12 * 60
+    now = datetime.now(timezone.utc)
+
+    cached_prices: Dict[str, float] = {}
+    async for snap in db.market_snapshot_cache.find(
+        {"symbol": {"$in": symbols}},
+        {"symbol": 1, "price": 1, "cached_at": 1, "_id": 0}
+    ):
+        sym = snap.get("symbol")
+        price = snap.get("price", 0)
+        cached_at = snap.get("cached_at")
+        if not (sym and price and cached_at):
+            continue
+        if isinstance(cached_at, str):
+            cached_at = datetime.fromisoformat(cached_at.replace("Z", "+00:00"))
+        if cached_at.tzinfo is None:
+            cached_at = cached_at.replace(tzinfo=timezone.utc)
+        if (now - cached_at).total_seconds() <= ttl_seconds:
+            cached_prices[sym] = price
+
+    for opp in opportunities:
+        sym = opp.get("symbol")
+        if sym in cached_prices:
+            opp["stock_price"] = round(cached_prices[sym], 2)
+            opp["stock_price_source"] = "CACHED_SNAPSHOT"
+
+    return opportunities
+
+
 # ==================== PUBLIC ENDPOINTS ====================
 
 @scans_router.get("/available")
@@ -486,7 +533,10 @@ async def get_covered_call_scan(
     
     # Transform to API response format
     opportunities = [_transform_cc_for_scans(r) for r in results]
-    
+
+    # Overlay fresh prices from cache so CC scans match the CC screener
+    opportunities = await _overlay_cached_prices(opportunities)
+
     elapsed_ms = (time.time() - start_time) * 1000
     logger.info(f"CC Scans: {len(opportunities)} results for {risk_profile} in {elapsed_ms:.1f}ms trace_id={trace_id}")
     
@@ -565,7 +615,10 @@ async def get_pmcc_scan(
     
     # Transform to API response format
     opportunities = [_transform_pmcc_for_scans(r) for r in results]
-    
+
+    # Overlay fresh prices from cache so PMCC page matches the CC screener
+    opportunities = await _overlay_cached_prices(opportunities)
+
     elapsed_ms = (time.time() - start_time) * 1000
     logger.info(f"PMCC Scans: {len(opportunities)} results for {risk_profile} in {elapsed_ms:.1f}ms trace_id={trace_id}")
     
