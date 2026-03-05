@@ -2929,7 +2929,7 @@ async def manage_trade(
         action="trade_management",
         request_id=str(uuid.uuid4())
     )
-    if not debit_result.success:
+    if not debit_result.allowed:
         wallet = await wallet_svc.get_or_create_wallet(user_id)
         current_bal = wallet.get("free_tokens_remaining", 0) + wallet.get("paid_tokens_remaining", 0)
         raise HTTPException(
