@@ -122,6 +122,9 @@ def fetch_analyst_data_sync(symbol: str) -> Dict:
         rec_key = info.get("recommendationKey")  # e.g., "buy", "hold", "sell"
         num_analysts = info.get("numberOfAnalystOpinions", 0)
 
+        # Instrument type — used for ETF detection (do NOT rely on hardcoded ticker list)
+        quote_type = info.get("quoteType", "").upper()  # e.g., "ETF", "EQUITY"
+
         # Fundamental metrics
         raw_pe = info.get("trailingPE")
         raw_roe = info.get("returnOnEquity")
@@ -198,6 +201,7 @@ def fetch_analyst_data_sync(symbol: str) -> Dict:
             "trend": trend,
             "pe_ratio": pe_ratio,
             "roe": roe,
+            "quote_type": quote_type or None,
             "source": "yahoo"
         }
 
@@ -263,6 +267,7 @@ async def enrich_symbols(
                         "trend": result.get("trend"),
                         "pe_ratio": result.get("pe_ratio"),
                         "roe": result.get("roe"),
+                        "quote_type": result.get("quote_type"),
                         "source": "yahoo",
                         "as_of": datetime.now(timezone.utc),
                         "updated_at": datetime.now(timezone.utc)

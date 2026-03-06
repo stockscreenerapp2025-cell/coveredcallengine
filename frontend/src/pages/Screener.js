@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { screenerApi, simulatorApi, scansApi } from '../lib/api';
 import api from '../lib/api';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
@@ -69,6 +69,7 @@ const Screener = () => {
   const [refreshing, setRefreshing] = useState(false);
   const [scanActive, setScanActive] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(true);
+  const blurDebounceRef = useRef(null);
   const [sortField, setSortField] = useState('score');
   const [sortDirection, setSortDirection] = useState('desc');
   const [savedFilters, setSavedFilters] = useState([]);
@@ -843,7 +844,7 @@ const Screener = () => {
                           type="number"
                           value={stockFilters.minPrice || ""}
                           onChange={(e) => setStockFilters(f => ({ ...f, minPrice: e.target.value }))}
-                          onBlur={() => fetchOpportunities(true)}
+                          onBlur={() => { clearTimeout(blurDebounceRef.current); blurDebounceRef.current = setTimeout(() => fetchOpportunities(true), 300); }}
                           className="input-dark w-24 text-center"
                           placeholder="Min"
                           data-testid="min-price-input"
@@ -853,7 +854,7 @@ const Screener = () => {
                           type="number"
                           value={stockFilters.maxPrice || ""}
                           onChange={(e) => setStockFilters(f => ({ ...f, maxPrice: e.target.value }))}
-                          onBlur={() => fetchOpportunities(true)}
+                          onBlur={() => { clearTimeout(blurDebounceRef.current); blurDebounceRef.current = setTimeout(() => fetchOpportunities(true), 300); }}
                           className="input-dark w-24 text-center"
                           placeholder="Max"
                           data-testid="max-price-input"
@@ -903,7 +904,7 @@ const Screener = () => {
                         type="number"
                         value={optionsFilters.minVolume || ""}
                         onChange={(e) => setOptionsFilters(f => ({ ...f, minVolume: e.target.value }))}
-                        onBlur={() => fetchOpportunities(true)}
+                        onBlur={() => { clearTimeout(blurDebounceRef.current); blurDebounceRef.current = setTimeout(() => fetchOpportunities(true), 300); }}
                         className="input-dark mt-2"
                         placeholder="0"
                         data-testid="min-volume-input"
@@ -915,7 +916,7 @@ const Screener = () => {
                         type="number"
                         value={optionsFilters.minOpenInterest || ""}
                         onChange={(e) => setOptionsFilters(f => ({ ...f, minOpenInterest: e.target.value }))}
-                        onBlur={() => fetchOpportunities(true)}
+                        onBlur={() => { clearTimeout(blurDebounceRef.current); blurDebounceRef.current = setTimeout(() => fetchOpportunities(true), 300); }}
                         className="input-dark mt-2"
                         placeholder="0"
                         data-testid="min-oi-input"
@@ -960,7 +961,7 @@ const Screener = () => {
                           step="0.05"
                           value={greeksFilters.minDelta || ""}
                           onChange={(e) => setGreeksFilters(f => ({ ...f, minDelta: e.target.value }))}
-                          onBlur={() => fetchOpportunities(true)}
+                          onBlur={() => { clearTimeout(blurDebounceRef.current); blurDebounceRef.current = setTimeout(() => fetchOpportunities(true), 300); }}
                           className="input-dark w-20 text-center"
                           data-testid="min-delta-input"
                         />
@@ -970,7 +971,7 @@ const Screener = () => {
                           step="0.05"
                           value={greeksFilters.maxDelta || ""}
                           onChange={(e) => setGreeksFilters(f => ({ ...f, maxDelta: e.target.value }))}
-                          onBlur={() => fetchOpportunities(true)}
+                          onBlur={() => { clearTimeout(blurDebounceRef.current); blurDebounceRef.current = setTimeout(() => fetchOpportunities(true), 300); }}
                           className="input-dark w-20 text-center"
                           data-testid="max-delta-input"
                         />
@@ -978,17 +979,18 @@ const Screener = () => {
                       <p className="text-xs text-zinc-500 mt-1">Typical range: 0.20 - 0.35 for covered calls</p>
                     </div>
                     <div className="pt-2 border-t border-zinc-800">
-                      <Label className="text-xs text-zinc-400">Maximum Theta (daily decay)</Label>
+                      <Label className="text-xs text-zinc-400">Maximum Theta ($/day per share)</Label>
                       <Input
                         type="number"
                         step="0.01"
                         value={greeksFilters.maxTheta || ""}
                         onChange={(e) => setGreeksFilters(f => ({ ...f, maxTheta: e.target.value }))}
-                        onBlur={() => fetchOpportunities(true)}
+                        onBlur={() => { clearTimeout(blurDebounceRef.current); blurDebounceRef.current = setTimeout(() => fetchOpportunities(true), 300); }}
                         className="input-dark mt-2"
                         placeholder="-0.05"
                         data-testid="max-theta-input"
                       />
+                      <p className="text-xs text-zinc-500 mt-1">More negative = faster decay. -0.05 keeps options losing ≤ $0.05/day</p>
                     </div>
                   </AccordionContent>
                 </AccordionItem>
@@ -1009,7 +1011,7 @@ const Screener = () => {
                           type="number"
                           value={probabilityFilters.minProbOTM || ""}
                           onChange={(e) => setProbabilityFilters(f => ({ ...f, minProbOTM: e.target.value }))}
-                          onBlur={() => fetchOpportunities(true)}
+                          onBlur={() => { clearTimeout(blurDebounceRef.current); blurDebounceRef.current = setTimeout(() => fetchOpportunities(true), 300); }}
                           className="input-dark w-20 text-center"
                           data-testid="min-prob-otm-input"
                         />
@@ -1018,7 +1020,7 @@ const Screener = () => {
                           type="number"
                           value={probabilityFilters.maxProbOTM || ""}
                           onChange={(e) => setProbabilityFilters(f => ({ ...f, maxProbOTM: e.target.value }))}
-                          onBlur={() => fetchOpportunities(true)}
+                          onBlur={() => { clearTimeout(blurDebounceRef.current); blurDebounceRef.current = setTimeout(() => fetchOpportunities(true), 300); }}
                           className="input-dark w-20 text-center"
                           data-testid="max-prob-otm-input"
                         />
@@ -1174,7 +1176,7 @@ const Screener = () => {
                         type="number"
                         value={fundamentalFilters.minRoe}
                         onChange={(e) => setFundamentalFilters(f => ({ ...f, minRoe: e.target.value }))}
-                        onBlur={() => fetchOpportunities(true)}
+                        onBlur={() => { clearTimeout(blurDebounceRef.current); blurDebounceRef.current = setTimeout(() => fetchOpportunities(true), 300); }}
                         className="input-dark mt-2"
                         placeholder="Min"
                         data-testid="min-roe-input"
@@ -1199,7 +1201,7 @@ const Screener = () => {
                         step="0.25"
                         value={roiFilters.minRoi}
                         onChange={(e) => setRoiFilters(f => ({ ...f, minRoi: e.target.value }))}
-                        onBlur={() => fetchOpportunities(true)}
+                        onBlur={() => { clearTimeout(blurDebounceRef.current); blurDebounceRef.current = setTimeout(() => fetchOpportunities(true), 300); }}
                         className="input-dark mt-2"
                         placeholder="Min"
                         data-testid="min-roi-input"
@@ -1212,7 +1214,7 @@ const Screener = () => {
                         type="number"
                         value={roiFilters.minAnnualizedRoi}
                         onChange={(e) => setRoiFilters(f => ({ ...f, minAnnualizedRoi: e.target.value }))}
-                        onBlur={() => fetchOpportunities(true)}
+                        onBlur={() => { clearTimeout(blurDebounceRef.current); blurDebounceRef.current = setTimeout(() => fetchOpportunities(true), 300); }}
                         className="input-dark mt-2"
                         placeholder="Min"
                         data-testid="min-annual-roi-input"

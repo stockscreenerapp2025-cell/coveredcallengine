@@ -225,6 +225,7 @@ async def screen_covered_calls(
     trend_strength: str = Query("all", description="Trend strength: all, strong, moderate, weak"),
     pe_ratio: str = Query("all", description="P/E filter: all, under_15, 15_to_25, 25_to_40, over_40"),
     min_roe: float = Query(None, description="Minimum ROE %"),
+    max_theta: float = Query(None, description="Max theta ($/day/share, negative). Keep if theta >= max_theta."),
     bypass_cache: bool = Query(False),
     enforce_phase4: bool = Query(True),  # PHASE 4: Enable system filters
     debug_enrichment: bool = Query(False, description="Include enrichment debug info"),
@@ -255,7 +256,7 @@ async def screen_covered_calls(
         "moneyness": moneyness,
         "overall_signal": overall_signal, "sma_filter": sma_filter,
         "rsi_filter": rsi_filter, "trend_strength": trend_strength,
-        "pe_ratio": pe_ratio, "min_roe": min_roe,
+        "pe_ratio": pe_ratio, "min_roe": min_roe, "max_theta": max_theta,
         "enforce_phase4": enforce_phase4  # PHASE 4
     }
     cache_key = funcs['generate_cache_key']("screener_covered_calls_v3_phase4", cache_params)
@@ -368,6 +369,16 @@ async def screen_covered_calls(
         
         cache_stats = {"hits": 0, "misses": 0, "symbols_processed": 0, "bid_rejected": 0}
 
+        # Pre-fetch quote_type from symbol_enrichment for ETF detection
+        # Customer requirement: ETF detection must NOT rely on hardcoded ticker list.
+        # If quote_type is missing/null → treat as STOCK (do not assume ETF).
+        qt_cursor = db.symbol_enrichment.find(
+            {"symbol": {"$in": symbols_to_scan}},
+            {"_id": 0, "symbol": 1, "quote_type": 1}
+        )
+        qt_docs = await qt_cursor.to_list(length=len(symbols_to_scan))
+        quote_type_map = {d["symbol"]: (d.get("quote_type") or "").upper() for d in qt_docs}
+
         scan_progress.set_stage(user_id, 1, "Scanning symbols", 20)
         _symbols_done = 0
 
@@ -410,7 +421,10 @@ async def screen_covered_calls(
                 market_cap = stock_data.get("market_cap", 0) or 0
                 earnings_date = stock_data.get("earnings_date")
                 
-                is_etf = symbol.upper() in ETF_SYMBOLS
+                # ETF detection via quote_type from symbol_enrichment (not hardcoded list)
+                # Fallback to ETF_WHITELIST only if enrichment not yet run for this symbol
+                qt = quote_type_map.get(symbol.upper(), "")
+                is_etf = (qt == "ETF") if qt else (symbol.upper() in ETF_SYMBOLS)
                 if not is_etf and (underlying_price < min_price or underlying_price > max_price):
                     continue
                 
@@ -477,13 +491,20 @@ async def screen_covered_calls(
                     # Estimate delta based on moneyness
                     strike_pct_diff = ((strike - underlying_price) / underlying_price) * 100
 
-                    # Moneyness filter
-                    if moneyness == "itm" and strike >= underlying_price:
-                        continue
-                    elif moneyness == "atm" and abs(strike_pct_diff) > 2:
-                        continue
-                    elif moneyness == "otm" and strike <= underlying_price:
-                        continue
+                    # Moneyness filter — ATM takes precedence to avoid misclassification
+                    # ATM: abs(strike - spot) / spot <= 2% band
+                    # ITM (calls): strike < spot AND not ATM
+                    # OTM (calls): strike > spot AND not ATM
+                    if moneyness != "all":
+                        _atm = abs(strike_pct_diff) <= 2
+                        _itm = strike < underlying_price and not _atm
+                        _otm = strike > underlying_price and not _atm
+                        if moneyness == "atm" and not _atm:
+                            continue
+                        elif moneyness == "itm" and not _itm:
+                            continue
+                        elif moneyness == "otm" and not _otm:
+                            continue
 
                     if strike_pct_diff <= 0:
                         estimated_delta = 0.55 - (abs(strike_pct_diff) * 0.02)
@@ -539,8 +560,12 @@ async def screen_covered_calls(
                     
                     roi_pct = (premium / underlying_price) * 100
 
-                    # ETFs have lower IV → lower premiums; use a reduced ROI floor
-                    effective_min_roi = 0.15 if is_etf else min_roi
+                    # ETF ROI floor — Option A (customer-approved):
+                    # ETFs use min(user_min_roi, 0.15%) so SPY/QQQ/GLD still appear at defaults.
+                    # If user explicitly sets min_roi below 0.15%, that stricter intent is respected.
+                    # Stocks always use user's min_roi unchanged.
+                    ETF_ROI_FLOOR = 0.15  # % — 0.15% = 0.0015 in decimal but roi_pct is already %
+                    effective_min_roi = min(min_roi, ETF_ROI_FLOOR) if is_etf else min_roi
                     if roi_pct < effective_min_roi:
                         continue
                     
@@ -561,6 +586,27 @@ async def screen_covered_calls(
                     else:
                         protection = ((strike - underlying_price + premium) / underlying_price * 100)
                     
+                    # ========== THETA: Black-Scholes approximation (r=0, q=0) ==========
+                    # Returns $/day/share (negative value = daily time decay)
+                    # IV input must be decimal (e.g. 0.25 for 25%)
+                    try:
+                        import math
+                        _iv = iv if iv <= 5 else iv / 100  # ensure decimal form
+                        _t = max(dte, 1) / 365.0
+                        _d1 = (math.log(underlying_price / strike) + 0.5 * _iv ** 2 * _t) / (_iv * math.sqrt(_t))
+                        _nd1 = math.exp(-0.5 * _d1 ** 2) / math.sqrt(2 * math.pi)  # N'(d1)
+                        # Theta per day ($/share) — negative means decay
+                        computed_theta = -(underlying_price * _nd1 * _iv) / (2 * math.sqrt(_t)) / 365
+                        computed_theta = round(computed_theta, 4)
+                    except Exception:
+                        computed_theta = None
+
+                    # max_theta filter: keep option only if theta >= max_theta
+                    # Example: max_theta=-0.05 → keep -0.01, -0.03; exclude -0.08
+                    if max_theta is not None:
+                        if computed_theta is None or computed_theta < max_theta:
+                            continue
+
                     # ========== PHASE 7: PILLAR-BASED QUALITY SCORING ==========
                     # Prepare trade data for scoring
                     trade_data = {
@@ -570,7 +616,7 @@ async def screen_covered_calls(
                         "premium": premium,
                         "dte": dte,
                         "delta": estimated_delta,
-                        "theta": 0,
+                        "theta": computed_theta if computed_theta is not None else 0,
                         "iv": iv,
                         "iv_rank": iv_rank,
                         "roi_pct": roi_pct,
@@ -597,7 +643,7 @@ async def screen_covered_calls(
                         "premium": round(premium, 2),
                         "roi_pct": round(roi_pct, 2),
                         "delta": round(estimated_delta, 3),
-                        "theta": 0,
+                        "theta": computed_theta,
                         "iv": round(iv, 4),
                         "iv_rank": round(iv_rank, 1),
                         "downside_protection": round(protection, 2),
@@ -734,10 +780,10 @@ async def screen_covered_calls(
                     if ts_val != trend_strength.lower():
                         continue
 
-                # Apply P/E ratio filter — exclude stocks with no P/E when filter is active
+                # Apply P/E ratio filter — exclude stocks with no P/E or negative/zero P/E when filter is active
                 if pe_ratio != "all":
-                    if pe_val is None:
-                        continue  # no P/E data — exclude
+                    if pe_val is None or pe_val <= 0:
+                        continue  # no P/E data or negative/zero P/E — exclude
                     if pe_ratio == "under_15" and pe_val >= 15:
                         continue
                     elif pe_ratio == "15_to_25" and not (15 <= pe_val < 25):

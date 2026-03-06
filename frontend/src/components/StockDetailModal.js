@@ -367,19 +367,22 @@ const StockDetailModal = ({ symbol, isOpen, onClose, scanData = null }) => {
                                 {Number(technicals.adx).toFixed(1)}
                               </div>
                             )}
-                            {technicals?.trend_strength && (
-                              <Badge className={`text-xs ${
-                                technicals.trend_strength === 'strong'   ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' :
-                                technicals.trend_strength === 'moderate' ? 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30' :
-                                                                           'bg-zinc-500/20 text-zinc-400 border-zinc-500/30'
-                              }`}>
-                                {technicals.trend_strength.charAt(0).toUpperCase() + technicals.trend_strength.slice(1)} Trend
-                              </Badge>
-                            )}
+                            {technicals?.adx != null && (() => {
+                              const adx = Number(technicals.adx);
+                              const label = adx > 25 ? 'Strong' : adx >= 20 ? 'Moderate' : 'Weak';
+                              const cls = adx > 25
+                                ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30'
+                                : adx >= 20
+                                ? 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30'
+                                : 'bg-zinc-500/20 text-zinc-400 border-zinc-500/30';
+                              return <Badge className={`text-xs ${cls}`}>{label} Trend</Badge>;
+                            })()}
                           </div>
                           <div className="text-xs text-zinc-500 mt-1">
                             {technicals?.adx != null && (
-                              technicals.adx >= 25 ? 'ADX > 25 — trending market' : 'ADX < 25 — ranging/weak trend'
+                              Number(technicals.adx) > 25 ? 'ADX > 25 — strong trend' :
+                              Number(technicals.adx) >= 20 ? 'ADX 20–25 — moderate trend' :
+                              'ADX < 20 — weak/ranging market'
                             )}
                           </div>
                         </div>
