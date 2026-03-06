@@ -68,7 +68,7 @@ const Screener = () => {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [scanActive, setScanActive] = useState(false);
-  const [filtersOpen, setFiltersOpen] = useState(true);
+  const [filtersOpen, setFiltersOpen] = useState(typeof window !== 'undefined' ? window.innerWidth >= 1024 : true);
   const blurDebounceRef = useRef(null);
   const [sortField, setSortField] = useState('score');
   const [sortDirection, setSortDirection] = useState('desc');
@@ -754,7 +754,7 @@ const Screener = () => {
       <div className="grid lg:grid-cols-8 gap-4">
         {/* Filters Panel */}
         {filtersOpen && (
-          <Card className="glass-card lg:col-span-2 max-h-[calc(100vh-200px)] overflow-y-auto" data-testid="filters-panel">
+          <Card className="glass-card lg:col-span-2 max-h-[60vh] lg:max-h-[calc(100vh-200px)] overflow-y-auto" data-testid="filters-panel">
             <CardHeader className="pb-2">
               <CardTitle className="text-lg flex items-center gap-2">
                 <Filter className="w-5 h-5 text-emerald-400" />

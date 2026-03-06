@@ -69,7 +69,7 @@ const PMCC = () => {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [apiInfo, setApiInfo] = useState(null);
-  const [filtersOpen, setFiltersOpen] = useState(true);
+  const [filtersOpen, setFiltersOpen] = useState(typeof window !== 'undefined' ? window.innerWidth >= 1024 : true);
   const [selectedStock, setSelectedStock] = useState(null);
   const [selectedScanData, setSelectedScanData] = useState(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -626,7 +626,7 @@ const PMCC = () => {
       <div className="grid lg:grid-cols-8 gap-4">
         {/* Filters Panel */}
         {filtersOpen && (
-          <Card className="glass-card lg:col-span-2 h-fit" data-testid="pmcc-filters-panel">
+          <Card className="glass-card lg:col-span-2 h-fit max-h-[60vh] lg:max-h-none overflow-y-auto" data-testid="pmcc-filters-panel">
             <CardHeader className="pb-2">
               <div className="flex items-center justify-between">
                 <CardTitle className="text-lg flex items-center gap-2">

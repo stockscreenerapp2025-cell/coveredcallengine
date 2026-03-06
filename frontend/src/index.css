@@ -229,3 +229,98 @@
 [data-debug-wrapper="true"] {
     display: contents !important;
 }
+
+/* =============================================
+   MOBILE RESPONSIVE OVERRIDES
+   ============================================= */
+
+/* Sticky first column on data tables for mobile horizontal scroll */
+.data-table th:first-child,
+.data-table td:first-child {
+    position: sticky;
+    left: 0;
+    z-index: 1;
+    background: #09090b;
+}
+.data-table tr:hover td:first-child {
+    background: #27272a;
+}
+
+/* Prevent horizontal overflow on all pages */
+@media (max-width: 768px) {
+    /* Page padding reduction */
+    .p-4.md\:p-6.lg\:p-8 {
+        padding: 0.75rem;
+    }
+
+    /* Tables — always scrollable on mobile */
+    .data-table {
+        min-width: 700px;
+    }
+
+    /* Filter panel — full width, collapsible */
+    [data-testid="filters-panel"] {
+        max-height: 60vh;
+        overflow-y: auto;
+    }
+
+    /* Results table card fills width */
+    [data-testid="results-table"] {
+        width: 100%;
+    }
+
+    /* Screener header buttons wrap nicely */
+    .flex.flex-wrap.gap-3 {
+        justify-content: flex-start;
+    }
+
+    /* Inputs full width on mobile */
+    .input-dark {
+        width: 100%;
+        min-height: 2.5rem;
+        font-size: 1rem; /* prevents iOS zoom on focus */
+    }
+
+    /* Buttons minimum tap target */
+    .btn-outline,
+    .btn-primary,
+    .btn-secondary {
+        min-height: 2.5rem;
+        padding-left: 0.75rem;
+        padding-right: 0.75rem;
+    }
+
+    /* Modal full width on mobile */
+    [role="dialog"] {
+        margin: 0.5rem;
+    }
+
+    /* Stat cards stack on mobile */
+    .grid.grid-cols-2 {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    /* Admin tab overflow */
+    [role="tablist"] {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        scrollbar-width: none;
+    }
+    [role="tablist"]::-webkit-scrollbar {
+        display: none;
+    }
+}
+
+@media (max-width: 480px) {
+    /* Single column on very small phones */
+    .grid.grid-cols-2:not(.force-2col) {
+        grid-template-columns: repeat(1, minmax(0, 1fr));
+    }
+
+    /* Smaller font for table on tiny screens */
+    .data-table th,
+    .data-table td {
+        padding-left: 0.375rem;
+        padding-right: 0.375rem;
+    }
+}

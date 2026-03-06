@@ -212,7 +212,7 @@ const StockDetailModal = ({ symbol, isOpen, onClose, scanData = null }) => {
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-7xl max-h-[90vh] overflow-hidden bg-zinc-900 border-zinc-700">
+      <DialogContent className="max-w-7xl w-[calc(100vw-1rem)] max-h-[95vh] overflow-y-auto bg-zinc-900 border-zinc-700">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-3 text-xl">
             <span className="text-white font-bold">{symbol}</span>
@@ -233,9 +233,9 @@ const StockDetailModal = ({ symbol, isOpen, onClose, scanData = null }) => {
           </DialogTitle>
         </DialogHeader>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 h-[calc(90vh-120px)] overflow-hidden">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 lg:h-[calc(90vh-120px)] lg:overflow-hidden">
           {/* TradingView Chart - 2/3 width */}
-          <div className="lg:col-span-2 h-[500px] lg:h-full rounded-lg overflow-hidden border border-zinc-700 bg-zinc-900">
+          <div className="lg:col-span-2 h-[260px] sm:h-[360px] lg:h-full rounded-lg overflow-hidden border border-zinc-700 bg-zinc-900">
             {isOpen && symbol && (
               <TradingViewChart symbol={symbol} />
             )}
