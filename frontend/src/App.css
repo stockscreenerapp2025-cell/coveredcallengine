@@ -22,6 +22,7 @@
 .ticker-content {
     display: inline-flex;
     animation: ticker 30s linear infinite;
+    will-change: transform;
 }
 
 @keyframes ticker {

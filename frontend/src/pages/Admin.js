@@ -1376,12 +1376,12 @@ const Admin = () => {
             </Card>
           )}
 
-          {/* Nasdaq Universe Management */}
+          {/* CCE Universe Management */}
           <Card className="glass-card">
             <CardHeader>
               <CardTitle className="text-lg flex items-center gap-2">
                 <Upload className="w-5 h-5 text-violet-400" />
-                Nasdaq Universe Management
+                CCE Universe Management
               </CardTitle>
               <CardDescription>
                 Import the Nasdaq optionable CSV to build the scan universe (~1000 symbols after filtering).

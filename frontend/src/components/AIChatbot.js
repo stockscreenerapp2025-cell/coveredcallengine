@@ -347,12 +347,12 @@ const AIChatbot = () => {
           100% { transform: translateY(0); opacity: 1; }
         }
         @keyframes pulse-slow {
-          0%, 100% { box-shadow: 0 0 0 0 rgba(139, 92, 246, 0.4); }
-          50% { box-shadow: 0 0 0 10px rgba(139, 92, 246, 0); }
+          0%, 100% { opacity: 1; }
+          50% { opacity: 0.7; }
         }
         .animate-bounce-in { animation: bounce-in 0.5s ease-out; }
         .animate-slide-up { animation: slide-up 0.3s ease-out; }
-        .animate-pulse-slow { animation: pulse-slow 2s infinite; }
+        .animate-pulse-slow { animation: pulse-slow 2s infinite; will-change: opacity; }
       `}</style>
     </>
   );

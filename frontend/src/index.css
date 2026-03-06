@@ -78,11 +78,11 @@
 
 /* Glassmorphism */
 .glass {
-    @apply bg-zinc-900/60 backdrop-blur-xl border border-white/10;
+    @apply bg-zinc-900/90 border border-white/10;
 }
 
 .glass-card {
-    @apply bg-zinc-900/50 backdrop-blur-sm border border-white/10 rounded-xl;
+    @apply bg-zinc-900/80 border border-white/10 rounded-xl;
 }
 
 .card-hover {
