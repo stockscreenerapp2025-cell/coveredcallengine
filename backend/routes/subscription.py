@@ -6,7 +6,7 @@ Plans/pricing are served from:
 1) admin_settings.type="pricing_config" (editable from Admin UI)
 2) fallback to hardcoded SUBSCRIPTION_PLANS
 """
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel
 from datetime import datetime, timezone
 from typing import Any, Dict, Optional
@@ -137,6 +137,66 @@ async def update_pricing_config(payload: PricingConfig, admin: dict = Depends(ge
     }
     await db.admin_settings.update_one({"type": "pricing_config"}, {"$set": doc}, upsert=True)
     return {"success": True, "updated_at": now}
+
+
+@subscription_router.get("/admin/settings")
+async def get_subscription_settings(admin: dict = Depends(get_admin_user)):
+    """Return current active_mode + test/live payment links for Admin Billing tab."""
+    doc = await db.admin_settings.find_one({"type": "stripe_settings"}, {"_id": 0})
+    if not doc:
+        return {
+            "active_mode": "test",
+            "test_links": {"trial": "", "monthly": "", "yearly": ""},
+            "live_links": {"trial": "", "monthly": "", "yearly": ""},
+        }
+    return {
+        "active_mode": doc.get("active_mode", "test"),
+        "test_links": doc.get("test_links", {"trial": "", "monthly": "", "yearly": ""}),
+        "live_links": doc.get("live_links", {"trial": "", "monthly": "", "yearly": ""}),
+    }
+
+
+@subscription_router.post("/admin/settings")
+async def save_subscription_settings(
+    active_mode: str = Query("test"),
+    test_trial: str = Query(""),
+    test_monthly: str = Query(""),
+    test_yearly: str = Query(""),
+    live_trial: str = Query(""),
+    live_monthly: str = Query(""),
+    live_yearly: str = Query(""),
+    admin: dict = Depends(get_admin_user),
+):
+    """Save active_mode + test/live payment links from Admin Billing tab."""
+    now = datetime.now(timezone.utc).isoformat()
+    doc = {
+        "type": "stripe_settings",
+        "active_mode": active_mode,
+        "test_links": {"trial": test_trial, "monthly": test_monthly, "yearly": test_yearly},
+        "live_links": {"trial": live_trial, "monthly": live_monthly, "yearly": live_yearly},
+        "updated_at": now,
+        "updated_by": admin.get("email"),
+    }
+    await db.admin_settings.update_one({"type": "stripe_settings"}, {"$set": doc}, upsert=True)
+    return {"success": True, "active_mode": active_mode}
+
+
+@subscription_router.post("/admin/switch-mode")
+async def switch_subscription_mode(
+    mode: str = Query(..., description="test or live"),
+    admin: dict = Depends(get_admin_user),
+):
+    """Quickly flip between test and live payment link mode."""
+    if mode not in ("test", "live"):
+        from fastapi import HTTPException
+        raise HTTPException(status_code=400, detail="mode must be 'test' or 'live'")
+    now = datetime.now(timezone.utc).isoformat()
+    await db.admin_settings.update_one(
+        {"type": "stripe_settings"},
+        {"$set": {"active_mode": mode, "updated_at": now, "updated_by": admin.get("email")}},
+        upsert=True,
+    )
+    return {"success": True, "active_mode": mode}
 
 
 @subscription_router.get("/links")
