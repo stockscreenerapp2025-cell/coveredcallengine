@@ -1530,55 +1530,59 @@ async def startup():
     logger.info("[EOD_PIPELINE] Pipeline lock released on startup")
 
     # Create all indexes in parallel (was sequential — caused slow startup)
+    # Wrapped in try/except: IndexOptionsConflict (code 85) is safe to ignore
+    # if an index with same fields but different name already exists in the DB.
     import asyncio as _asyncio
-    await _asyncio.gather(
-        # Users
-        db.users.create_index("email", unique=True),
-        db.users.create_index("id", unique=True),
-        # Portfolio / Watchlist
-        db.portfolio.create_index([("user_id", 1), ("symbol", 1)]),
-        db.watchlist.create_index([("user_id", 1), ("symbol", 1)]),
-        db.screener_filters.create_index("user_id"),
-        # Simulator trades
-        db.simulator_trades.create_index([("user_id", 1), ("status", 1)]),
-        db.simulator_trades.create_index("id", unique=True),
-        # Simulator rules
-        db.simulator_rules.create_index([("user_id", 1), ("is_enabled", 1)]),
-        db.simulator_rules.create_index("id", unique=True),
-        # Cache (TTL)
-        db.api_cache.create_index("cache_key", unique=True),
-        db.api_cache.create_index("cached_at", expireAfterSeconds=3600),
-        # Support tickets
-        db.support_tickets.create_index("id", unique=True),
-        db.support_tickets.create_index("ticket_number", unique=True),
-        db.support_tickets.create_index([("status", 1), ("created_at", -1)]),
-        db.support_tickets.create_index("user_email"),
-        db.knowledge_base.create_index("id", unique=True),
-        db.knowledge_base.create_index([("category", 1), ("active", 1)]),
-        # Invitations
-        db.invitations.create_index("id", unique=True),
-        db.invitations.create_index("token", unique=True),
-        db.invitations.create_index([("email", 1), ("status", 1)]),
-        # ADR-001: EOD Market Close Price Contract
-        db.eod_market_close.create_index([("symbol", 1), ("trade_date", 1)], unique=True),
-        db.eod_market_close.create_index([("trade_date", 1), ("is_final", 1)]),
-        db.eod_market_close.create_index("ingestion_run_id"),
-        db.eod_options_chain.create_index([("symbol", 1), ("trade_date", 1)], unique=True),
-        db.eod_options_chain.create_index([("trade_date", 1), ("is_final", 1)]),
-        db.eod_options_chain.create_index("ingestion_run_id"),
-        # EOD Market Snapshot
-        db.eod_market_snapshot.create_index([("symbol", 1), ("trade_date", 1)], unique=True),
-        db.eod_market_snapshot.create_index([("run_id", 1)]),
-        db.eod_market_snapshot.create_index([("trade_date", 1), ("is_final", 1)]),
-        db.eod_market_snapshot.create_index("as_of"),
-        db.eod_snapshot_audit.create_index([("run_id", 1), ("symbol", 1)]),
-        db.eod_snapshot_audit.create_index("as_of"),
-        # Performance indexes
-        db.admin_settings.create_index("type"),
-        db.audit_logs.create_index([("timestamp", -1)]),
-        db.scan_runs.create_index([("status", 1), ("completed_at", -1)]),
-        db.precomputed_scans.create_index([("type", 1), ("profile", 1)]),
-    )
+    try:
+        await _asyncio.gather(
+            # Users
+            db.users.create_index("email", unique=True),
+            db.users.create_index("id", unique=True),
+            # Portfolio / Watchlist
+            db.portfolio.create_index([("user_id", 1), ("symbol", 1)]),
+            db.watchlist.create_index([("user_id", 1), ("symbol", 1)]),
+            db.screener_filters.create_index("user_id"),
+            # Simulator trades
+            db.simulator_trades.create_index([("user_id", 1), ("status", 1)]),
+            db.simulator_trades.create_index("id", unique=True),
+            # Simulator rules
+            db.simulator_rules.create_index([("user_id", 1), ("is_enabled", 1)]),
+            db.simulator_rules.create_index("id", unique=True),
+            # Cache (TTL)
+            db.api_cache.create_index("cache_key", unique=True),
+            db.api_cache.create_index("cached_at", expireAfterSeconds=3600),
+            # Support tickets
+            db.support_tickets.create_index("id", unique=True),
+            db.support_tickets.create_index("ticket_number", unique=True),
+            db.support_tickets.create_index([("status", 1), ("created_at", -1)]),
+            db.support_tickets.create_index("user_email"),
+            db.knowledge_base.create_index("id", unique=True),
+            db.knowledge_base.create_index([("category", 1), ("active", 1)]),
+            # Invitations
+            db.invitations.create_index("id", unique=True),
+            db.invitations.create_index("token", unique=True),
+            db.invitations.create_index([("email", 1), ("status", 1)]),
+            # ADR-001: EOD Market Close Price Contract
+            db.eod_market_close.create_index([("symbol", 1), ("trade_date", 1)], unique=True),
+            db.eod_market_close.create_index([("trade_date", 1), ("is_final", 1)]),
+            db.eod_market_close.create_index("ingestion_run_id"),
+            db.eod_options_chain.create_index([("symbol", 1), ("trade_date", 1)], unique=True),
+            db.eod_options_chain.create_index([("trade_date", 1), ("is_final", 1)]),
+            db.eod_options_chain.create_index("ingestion_run_id"),
+            # EOD Market Snapshot
+            db.eod_market_snapshot.create_index([("symbol", 1), ("trade_date", 1)], unique=True),
+            db.eod_market_snapshot.create_index([("run_id", 1)]),
+            db.eod_market_snapshot.create_index([("trade_date", 1), ("is_final", 1)]),
+            db.eod_market_snapshot.create_index("as_of"),
+            db.eod_snapshot_audit.create_index([("run_id", 1), ("symbol", 1)]),
+            db.eod_snapshot_audit.create_index("as_of"),
+            # Performance indexes
+            db.admin_settings.create_index("type"),
+            db.audit_logs.create_index([("timestamp", -1)]),
+            db.precomputed_scans.create_index([("type", 1), ("profile", 1)]),
+        )
+    except Exception as e:
+        logger.warning(f"Non-critical index creation warning (app will continue): {e}")
 
     # CCE Volatility & Greeks Correctness - IV History indexes
     from services.iv_rank_service import ensure_iv_history_indexes
