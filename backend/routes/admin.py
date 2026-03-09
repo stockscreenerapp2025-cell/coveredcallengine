@@ -9,6 +9,7 @@ from datetime import datetime, timezone, timedelta
 import os
 import logging
 import json
+import asyncio
 
 import sys
 from pathlib import Path
@@ -452,9 +453,11 @@ async def set_user_subscription(
 @admin_router.get("/integration-settings")
 async def get_integration_settings(admin: dict = Depends(get_admin_user)):
     """Get all integration settings (Stripe, Resend, PayPal, etc.)"""
-    stripe_settings = await db.admin_settings.find_one({"type": "stripe_settings"}, {"_id": 0})
-    email_settings = await db.admin_settings.find_one({"type": "email_settings"}, {"_id": 0})
-    paypal_settings = await db.admin_settings.find_one({"type": "paypal_settings"}, {"_id": 0})
+    stripe_settings, email_settings, paypal_settings = await asyncio.gather(
+        db.admin_settings.find_one({"type": "stripe_settings"}, {"_id": 0}),
+        db.admin_settings.find_one({"type": "email_settings"}, {"_id": 0}),
+        db.admin_settings.find_one({"type": "paypal_settings"}, {"_id": 0}),
+    )
     
     env_resend_key = os.environ.get("RESEND_API_KEY")
     env_stripe_webhook = os.environ.get("STRIPE_WEBHOOK_SECRET")

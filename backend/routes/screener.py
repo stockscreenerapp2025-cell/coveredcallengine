@@ -1984,15 +1984,21 @@ async def get_screener_admin_status(user: dict = Depends(get_current_user)):
     # Get pre-computed scan stats from DB
     scan_stats = {}
     try:
-        for strategy in ["cc", "pmcc"]:
-            for profile in ["conservative", "balanced", "aggressive"]:
-                doc = await db.precomputed_scans.find_one({"type": strategy, "profile": profile})
-                if doc:
-                    scan_stats[f"{strategy}_{profile}"] = {
-                        "count": len(doc.get("opportunities", [])),
-                        "last_updated": doc.get("last_updated"),
-                        "symbols_scanned": doc.get("symbols_scanned", 0)
-                    }
+        _combos = [
+            ("cc", "conservative"), ("cc", "balanced"), ("cc", "aggressive"),
+            ("pmcc", "conservative"), ("pmcc", "balanced"), ("pmcc", "aggressive"),
+        ]
+        _docs = await asyncio.gather(*[
+            db.precomputed_scans.find_one({"type": s, "profile": p})
+            for s, p in _combos
+        ])
+        for (strategy, profile), doc in zip(_combos, _docs):
+            if doc:
+                scan_stats[f"{strategy}_{profile}"] = {
+                    "count": len(doc.get("opportunities", [])),
+                    "last_updated": doc.get("last_updated"),
+                    "symbols_scanned": doc.get("symbols_scanned", 0)
+                }
     except Exception as e:
         logging.error(f"Error fetching scan stats: {e}")
     

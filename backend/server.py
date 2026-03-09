@@ -1578,6 +1578,12 @@ async def startup():
     await db.eod_snapshot_audit.create_index([("run_id", 1), ("symbol", 1)])
     await db.eod_snapshot_audit.create_index("as_of")
 
+    # Performance indexes — frequently queried fields without indexes
+    await db.admin_settings.create_index("type")
+    await db.audit_logs.create_index([("timestamp", -1)])
+    await db.scan_runs.create_index([("status", 1), ("completed_at", -1)])
+    await db.precomputed_scans.create_index([("type", 1), ("profile", 1)])
+
     # CCE Volatility & Greeks Correctness - IV History indexes
     from services.iv_rank_service import ensure_iv_history_indexes
     await ensure_iv_history_indexes(db)

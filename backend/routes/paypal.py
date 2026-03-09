@@ -12,6 +12,7 @@ from pydantic import BaseModel, Field
 from typing import Optional, Dict, Any
 from datetime import datetime, timezone, timedelta
 import logging
+import asyncio
 
 import sys
 from pathlib import Path
@@ -93,16 +94,19 @@ async def create_checkout(payload: CreateCheckoutRequest, user: dict = Depends(g
     
     Pricing is DB-driven (admin_settings.type="pricing_config") with fallback to hardcoded.
     """
-    # Check if PayPal is enabled
-    paypal_settings = await db.admin_settings.find_one({"type": "paypal_settings"}, {"_id": 0})
+    # Fetch PayPal settings and pricing config in parallel
+    paypal_settings, pricing_config = await asyncio.gather(
+        db.admin_settings.find_one({"type": "paypal_settings"}, {"_id": 0}),
+        db.admin_settings.find_one({"type": "pricing_config"}, {"_id": 0}),
+    )
+
     if not paypal_settings or not paypal_settings.get("enabled", False):
         raise HTTPException(status_code=400, detail="PayPal payments are not enabled")
-    
+
     plan_id = payload.plan_id.lower().strip()
     billing_cycle = payload.billing_cycle.lower().strip()
 
     # Load pricing from DB first, fallback to hardcoded SUBSCRIPTION_PLANS
-    pricing_config = await db.admin_settings.find_one({"type": "pricing_config"}, {"_id": 0})
     if pricing_config and pricing_config.get("plans"):
         plans = pricing_config["plans"]
     else:

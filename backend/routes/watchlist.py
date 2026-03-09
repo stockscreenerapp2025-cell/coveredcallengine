@@ -576,41 +576,43 @@ async def _get_eod_prices_for_symbols(symbols: List[str]) -> tuple:
         return {}, None
 
 
-async def _get_best_opportunity_eod(symbol: str) -> dict:
+async def _get_best_opportunity_eod(symbol: str, run_id: str = None) -> dict:
     """
     Get best covered call opportunity from pre-computed EOD scan results.
-    
+
     NO LIVE YAHOO CALLS - reads from scan_results_cc collection.
+    Accepts run_id to avoid redundant DB lookups when called in bulk.
     """
     try:
-        # Get latest completed run
-        latest_run = await db.scan_runs.find_one(
-            {"status": "COMPLETED"},
-            sort=[("completed_at", -1)]
-        )
-        
-        if not latest_run:
-            return None
-        
-        run_id = latest_run.get("run_id")
-        
-        # Get best CC opportunity for this symbol (highest score)
-        cc_opp = await db.scan_results_cc.find_one(
-            {"run_id": run_id, "symbol": symbol},
-            {"_id": 0},
-            sort=[("score", -1)]
-        )
-        
-        if not cc_opp:
-            return None
-        
-        # Get earnings_date from symbol_snapshot to compute days_to_earnings
-        days_to_earnings = None
-        try:
-            snap = await db.symbol_snapshot.find_one(
+        # Only fetch run_id if not provided (avoid N redundant lookups in bulk calls)
+        if not run_id:
+            latest_run = await db.scan_runs.find_one(
+                {"status": "COMPLETED"},
+                sort=[("completed_at", -1)]
+            )
+            if not latest_run:
+                return None
+            run_id = latest_run.get("run_id")
+
+        # Fetch cc opportunity and earnings snapshot in parallel
+        cc_opp, snap = await asyncio.gather(
+            db.scan_results_cc.find_one(
+                {"run_id": run_id, "symbol": symbol},
+                {"_id": 0},
+                sort=[("score", -1)]
+            ),
+            db.symbol_snapshot.find_one(
                 {"symbol": symbol, "run_id": run_id},
                 {"earnings_date": 1}
             )
+        )
+
+        if not cc_opp:
+            return None
+
+        # Compute days_to_earnings
+        days_to_earnings = None
+        try:
             if snap and snap.get("earnings_date"):
                 from datetime import date
                 earnings_dt = date.fromisoformat(snap["earnings_date"][:10])
@@ -716,8 +718,10 @@ async def get_watchlist(
             for item in items
         ])
     else:
+        # Pass shared run_id so each coroutine skips its own scan_runs lookup
+        shared_run_id = run_info.get("run_id") if run_info else None
         opp_results = await asyncio.gather(*[
-            _get_best_opportunity_eod(item.get("symbol", ""))
+            _get_best_opportunity_eod(item.get("symbol", ""), shared_run_id)
             for item in items
         ])
 
