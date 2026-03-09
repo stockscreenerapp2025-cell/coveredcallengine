@@ -412,20 +412,22 @@ class EmailAutomationService:
         try:
             # Get email settings
             settings = await self.db.admin_settings.find_one({"type": "email_settings"}, {"_id": 0})
-            self.resend_key = (settings.get("resend_api_key") if settings else None) or os.environ.get("RESEND_API_KEY") or ""
             self.sender_email = (settings.get("sender_email") if settings else None) or os.environ.get("SMTP_USERNAME", "contact@coveredcallengine.com")
 
-            if self.resend_key:
-                resend.api_key = self.resend_key
-                self.use_smtp_fallback = False
-                return True
-
-            # Fall back to SMTP if configured
+            # SMTP takes priority — already verified and configured via Hostinger
             smtp_password = os.environ.get("SMTP_PASSWORD", "")
             smtp_host = os.environ.get("SMTP_HOST", "")
             if smtp_host and smtp_password:
                 self.use_smtp_fallback = True
-                logger.info("Resend API key not set — using SMTP fallback for email automation")
+                self.resend_key = ""
+                logger.info("Using SMTP (Hostinger) for email automation")
+                return True
+
+            # Only use Resend if SMTP is not available
+            self.resend_key = (settings.get("resend_api_key") if settings else None) or os.environ.get("RESEND_API_KEY") or ""
+            if self.resend_key:
+                resend.api_key = self.resend_key
+                self.use_smtp_fallback = False
                 return True
 
             return False
