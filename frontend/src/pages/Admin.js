@@ -1774,6 +1774,18 @@ const Admin = () => {
                   <CardDescription>Manage automated email templates</CardDescription>
                 </CardHeader>
                 <CardContent>
+                  <div className="mb-4 flex items-center gap-2">
+                    <input
+                      type="email"
+                      placeholder="Enter email to test send..."
+                      value={testEmailAddress}
+                      onChange={e => setTestEmailAddress(e.target.value)}
+                      className="flex-1 px-3 py-2 rounded-md bg-zinc-800 border border-zinc-700 text-white text-sm placeholder-zinc-500 focus:outline-none focus:border-violet-500"
+                    />
+                    {!testEmailAddress && (
+                      <span className="text-xs text-amber-400">Enter email before testing</span>
+                    )}
+                  </div>
                   {emailLoading ? (
                     <div className="space-y-2">
                       {[...Array(3)].map((_, i) => <Skeleton key={i} className="h-16" />)}
@@ -1792,7 +1804,13 @@ const Admin = () => {
                             <Button size="sm" variant="outline" onClick={() => setEditingTemplate(template)}>
                               Edit
                             </Button>
-                            <Button size="sm" variant="outline" onClick={() => handleTestEmail(template.key || template.id, testEmailAddress || 'test@example.com')}>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              disabled={!testEmailAddress}
+                              title={!testEmailAddress ? 'Enter an email address above first' : `Send test to ${testEmailAddress}`}
+                              onClick={() => handleTestEmail(template.key || template.id, testEmailAddress)}
+                            >
                               Test
                             </Button>
                           </div>
