@@ -1529,60 +1529,56 @@ async def startup():
     )
     logger.info("[EOD_PIPELINE] Pipeline lock released on startup")
 
-    # Create indexes
-    await db.users.create_index("email", unique=True)
-    await db.users.create_index("id", unique=True)
-    await db.portfolio.create_index([("user_id", 1), ("symbol", 1)])
-    await db.watchlist.create_index([("user_id", 1), ("symbol", 1)])
-    await db.screener_filters.create_index("user_id")
-
-    # Create simulator trades index
-    await db.simulator_trades.create_index([("user_id", 1), ("status", 1)])
-    await db.simulator_trades.create_index("id", unique=True)
-
-    # Create simulator rules index
-    await db.simulator_rules.create_index([("user_id", 1), ("is_enabled", 1)])
-    await db.simulator_rules.create_index("id", unique=True)
-
-    # Create cache index with TTL (auto-expire after 1 hour)
-    await db.api_cache.create_index("cache_key", unique=True)
-    # Auto-delete after 1 hour
-    await db.api_cache.create_index("cached_at", expireAfterSeconds=3600)
-
-    # Create support ticket indexes
-    await db.support_tickets.create_index("id", unique=True)
-    await db.support_tickets.create_index("ticket_number", unique=True)
-    await db.support_tickets.create_index([("status", 1), ("created_at", -1)])
-    await db.support_tickets.create_index("user_email")
-    await db.knowledge_base.create_index("id", unique=True)
-    await db.knowledge_base.create_index([("category", 1), ("active", 1)])
-
-    # Create invitations indexes
-    await db.invitations.create_index("id", unique=True)
-    await db.invitations.create_index("token", unique=True)
-    await db.invitations.create_index([("email", 1), ("status", 1)])
-
-    # ADR-001: EOD Market Close Price Contract - Create indexes for canonical EOD collections
-    await db.eod_market_close.create_index([("symbol", 1), ("trade_date", 1)], unique=True)
-    await db.eod_market_close.create_index([("trade_date", 1), ("is_final", 1)])
-    await db.eod_market_close.create_index("ingestion_run_id")
-    await db.eod_options_chain.create_index([("symbol", 1), ("trade_date", 1)], unique=True)
-    await db.eod_options_chain.create_index([("trade_date", 1), ("is_final", 1)])
-    await db.eod_options_chain.create_index("ingestion_run_id")
-
-    # EOD Market Snapshot: Deterministic 4:05 PM ET snapshot collection
-    await db.eod_market_snapshot.create_index([("symbol", 1), ("trade_date", 1)], unique=True)
-    await db.eod_market_snapshot.create_index([("run_id", 1)])
-    await db.eod_market_snapshot.create_index([("trade_date", 1), ("is_final", 1)])
-    await db.eod_market_snapshot.create_index("as_of")
-    await db.eod_snapshot_audit.create_index([("run_id", 1), ("symbol", 1)])
-    await db.eod_snapshot_audit.create_index("as_of")
-
-    # Performance indexes — frequently queried fields without indexes
-    await db.admin_settings.create_index("type")
-    await db.audit_logs.create_index([("timestamp", -1)])
-    await db.scan_runs.create_index([("status", 1), ("completed_at", -1)])
-    await db.precomputed_scans.create_index([("type", 1), ("profile", 1)])
+    # Create all indexes in parallel (was sequential — caused slow startup)
+    import asyncio as _asyncio
+    await _asyncio.gather(
+        # Users
+        db.users.create_index("email", unique=True),
+        db.users.create_index("id", unique=True),
+        # Portfolio / Watchlist
+        db.portfolio.create_index([("user_id", 1), ("symbol", 1)]),
+        db.watchlist.create_index([("user_id", 1), ("symbol", 1)]),
+        db.screener_filters.create_index("user_id"),
+        # Simulator trades
+        db.simulator_trades.create_index([("user_id", 1), ("status", 1)]),
+        db.simulator_trades.create_index("id", unique=True),
+        # Simulator rules
+        db.simulator_rules.create_index([("user_id", 1), ("is_enabled", 1)]),
+        db.simulator_rules.create_index("id", unique=True),
+        # Cache (TTL)
+        db.api_cache.create_index("cache_key", unique=True),
+        db.api_cache.create_index("cached_at", expireAfterSeconds=3600),
+        # Support tickets
+        db.support_tickets.create_index("id", unique=True),
+        db.support_tickets.create_index("ticket_number", unique=True),
+        db.support_tickets.create_index([("status", 1), ("created_at", -1)]),
+        db.support_tickets.create_index("user_email"),
+        db.knowledge_base.create_index("id", unique=True),
+        db.knowledge_base.create_index([("category", 1), ("active", 1)]),
+        # Invitations
+        db.invitations.create_index("id", unique=True),
+        db.invitations.create_index("token", unique=True),
+        db.invitations.create_index([("email", 1), ("status", 1)]),
+        # ADR-001: EOD Market Close Price Contract
+        db.eod_market_close.create_index([("symbol", 1), ("trade_date", 1)], unique=True),
+        db.eod_market_close.create_index([("trade_date", 1), ("is_final", 1)]),
+        db.eod_market_close.create_index("ingestion_run_id"),
+        db.eod_options_chain.create_index([("symbol", 1), ("trade_date", 1)], unique=True),
+        db.eod_options_chain.create_index([("trade_date", 1), ("is_final", 1)]),
+        db.eod_options_chain.create_index("ingestion_run_id"),
+        # EOD Market Snapshot
+        db.eod_market_snapshot.create_index([("symbol", 1), ("trade_date", 1)], unique=True),
+        db.eod_market_snapshot.create_index([("run_id", 1)]),
+        db.eod_market_snapshot.create_index([("trade_date", 1), ("is_final", 1)]),
+        db.eod_market_snapshot.create_index("as_of"),
+        db.eod_snapshot_audit.create_index([("run_id", 1), ("symbol", 1)]),
+        db.eod_snapshot_audit.create_index("as_of"),
+        # Performance indexes
+        db.admin_settings.create_index("type"),
+        db.audit_logs.create_index([("timestamp", -1)]),
+        db.scan_runs.create_index([("status", 1), ("completed_at", -1)]),
+        db.precomputed_scans.create_index([("type", 1), ("profile", 1)]),
+    )
 
     # CCE Volatility & Greeks Correctness - IV History indexes
     from services.iv_rank_service import ensure_iv_history_indexes
