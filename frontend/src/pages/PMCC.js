@@ -904,6 +904,7 @@ const PMCC = () => {
                         <th>Width</th>
                         <th>ROI/Cycle</th>
                         <th>Ann. ROI</th>
+                        <th>Max Return</th>
                         <SortHeader field="score" label="AI Score" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
                         <th>Analyst</th>
                         <th className="text-center w-px whitespace-nowrap">Action</th>
@@ -951,6 +952,9 @@ const PMCC = () => {
                             <td className="font-mono">${norm.strike_width?.toFixed(0)}</td>
                             <td className="text-yellow-400 font-semibold">{norm.roi_per_cycle?.toFixed(1)}%</td>
                             <td className="text-emerald-400 font-semibold">{norm.annualized_roi?.toFixed(0)}%</td>
+                            <td className="text-purple-400 font-semibold">
+                              {opp.stock_price > 0 ? `${(((opp.short_premium || norm.short_premium_total || 0) + Math.max(0, (opp.short_strike || 0) - opp.stock_price)) / opp.stock_price * 100).toFixed(2)}%` : '-'}
+                            </td>
                             <td>
                               <TooltipProvider>
                                 <Tooltip>

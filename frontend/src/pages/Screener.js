@@ -1302,6 +1302,7 @@ const Screener = () => {
                       <SortHeader field="dte" label="DTE" />
                       <SortHeader field="premium" label="Premium" />
                       <SortHeader field="roi_pct" label="ROI %" />
+                      <th>Max Return</th>
                       <SortHeader field="delta" label="Delta" />
                       <th>Prob OTM</th>
                       <SortHeader field="iv" label="IV" />
@@ -1351,6 +1352,9 @@ const Screener = () => {
                         <td>{opp.dte}d</td>
                         <td className="text-emerald-400">${opp.premium?.toFixed(2)}</td>
                         <td className="text-cyan-400 font-medium">{opp.roi_pct?.toFixed(2) || opp.premium_yield?.toFixed(2)}%</td>
+                        <td className="text-purple-400 font-medium">
+                          {opp.stock_price > 0 ? `${(((opp.premium || 0) + Math.max(0, (opp.strike || 0) - opp.stock_price)) / opp.stock_price * 100).toFixed(2)}%` : '-'}
+                        </td>
                         <td>{opp.delta?.toFixed(2)}</td>
                         <td className="text-yellow-400">{Math.round((1 - opp.delta) * 100)}%</td>
                         <td>{opp.iv_pct ? `${opp.iv_pct.toFixed(1)}%` : (opp.iv ? `${(opp.iv * 100).toFixed(1)}%` : '-')}</td>

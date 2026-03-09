@@ -842,6 +842,7 @@ const Dashboard = () => {
                     <th>Premium</th>
                     <th>ROI</th>
                     <th>ROI Ann.</th>
+                    <th>Max Return</th>
                     <th>Delta</th>
                     <th>IV</th>
                     <th>IV Rank</th>
@@ -871,14 +872,14 @@ const Dashboard = () => {
                         <React.Fragment key={index}>
                           {isFirstWeekly && (
                             <tr className="bg-cyan-500/5">
-                              <td colSpan={15} className="py-1.5 px-3 text-xs font-semibold text-cyan-400 tracking-wider uppercase">
+                              <td colSpan={16} className="py-1.5 px-3 text-xs font-semibold text-cyan-400 tracking-wider uppercase">
                                 Top 5 Weekly — DTE 7–14
                               </td>
                             </tr>
                           )}
                           {isFirstMonthly && (
                             <tr className="bg-violet-500/5">
-                              <td colSpan={15} className="py-1.5 px-3 text-xs font-semibold text-violet-400 tracking-wider uppercase">
+                              <td colSpan={16} className="py-1.5 px-3 text-xs font-semibold text-violet-400 tracking-wider uppercase">
                                 Top 5 Monthly — DTE 21–45
                               </td>
                             </tr>
@@ -919,6 +920,9 @@ const Dashboard = () => {
                         <td className="text-emerald-400">${opp.premium?.toFixed(2)}</td>
                         <td className="text-cyan-400 font-medium">{opp.roi_pct?.toFixed(2) || opp.premium_yield?.toFixed(2)}%</td>
                         <td className="text-amber-400 text-sm">{opp.roi_annualized ? `${opp.roi_annualized.toFixed(0)}%` : '-'}</td>
+                        <td className="text-purple-400 text-sm font-medium">
+                          {opp.stock_price > 0 ? `${(((opp.premium || 0) + Math.max(0, (opp.strike || 0) - opp.stock_price)) / opp.stock_price * 100).toFixed(2)}%` : '-'}
+                        </td>
                         <td>{opp.delta?.toFixed(2)}</td>
                         <td>{opp.iv_pct ? `${opp.iv_pct.toFixed(1)}%` : (opp.iv ? `${(opp.iv * 100).toFixed(1)}%` : '-')}</td>
                         <td>

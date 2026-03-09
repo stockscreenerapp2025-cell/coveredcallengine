@@ -705,30 +705,39 @@ async def get_watchlist(
         as_of = run_info.get("as_of") if run_info else None
         market_status = run_info.get("market_status", "CLOSED") if run_info else "UNKNOWN"
     
+    # Fetch all opportunities in parallel (was sequential — one DB query per symbol)
+    if use_live_prices:
+        prices_for_live = {
+            item.get("symbol", ""): stock_data.get(item.get("symbol", ""), {}).get("price", 0)
+            for item in items
+        }
+        opp_results = await asyncio.gather(*[
+            _get_best_opportunity_live(item.get("symbol", ""), prices_for_live.get(item.get("symbol", ""), 0))
+            for item in items
+        ])
+    else:
+        opp_results = await asyncio.gather(*[
+            _get_best_opportunity_eod(item.get("symbol", ""))
+            for item in items
+        ])
+
     # Enrich items with prices and opportunities
     enriched_items = []
-    for item in items:
+    for item, opp in zip(items, opp_results):
         symbol = item.get("symbol", "")
         price_data = stock_data.get(symbol, {})
-        
-        # Get current price
-        if price_data.get("price"):
-            current_price = price_data.get("price", 0)
-            is_live = use_live_prices
-        else:
-            current_price = 0
-            is_live = False
-        
+
+        current_price = price_data.get("price", 0) or 0
+        is_live = use_live_prices if current_price else False
+
         price_when_added = item.get("price_when_added", 0)
-        
-        # Calculate price movement since added
         if price_when_added and current_price:
             movement = current_price - price_when_added
             movement_pct = (movement / price_when_added) * 100
         else:
             movement = 0
             movement_pct = 0
-        
+
         enriched = {
             **item,
             "current_price": current_price,
@@ -743,27 +752,16 @@ async def get_watchlist(
             "movement": round(movement, 2),
             "movement_pct": round(movement_pct, 2),
             "analyst_rating": price_data.get("analyst_rating"),
-            "opportunity": None
+            "opportunity": opp,
+            "opportunity_source": ("yahoo_live" if use_live_prices else "eod_precomputed") if opp else None,
         }
-        
-        # Get opportunity from EOD precomputed or live
-        if use_live_prices and current_price > 0:
-            opp = await _get_best_opportunity_live(symbol, current_price)
-            enriched["opportunity"] = opp
-            enriched["opportunity_source"] = "yahoo_live" if opp else None
-        else:
-            opp = await _get_best_opportunity_eod(symbol)
-            enriched["opportunity"] = opp
-            enriched["opportunity_source"] = "eod_precomputed" if opp else None
-        
-        # ========== ENRICHMENT: IV Rank + Analyst Data (LAST STEP) ==========
+
         enriched = enrich_row(
             symbol, enriched,
             stock_price=current_price,
-            skip_iv_rank=True  # Watchlist items don't have options IV
+            skip_iv_rank=True
         )
         strip_enrichment_debug(enriched, include_debug=debug_enrichment)
-        
         enriched_items.append(enriched)
     
     return {
