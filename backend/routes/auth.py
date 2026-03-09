@@ -173,7 +173,7 @@ async def _send_activation_email(user: dict):
         "expires_at": expires, "used": False,
         "created_at": datetime.now(timezone.utc).isoformat()
     })
-    base_url = os.environ.get("FRONTEND_URL", "https://coveredcallengine.com")
+    base_url = os.environ.get("FRONTEND_URL") or "https://coveredcallengine.com"
     activate_url = f"{base_url}/api/auth/activate?token={token}"
     try:
         await _send_smtp_email(
@@ -209,7 +209,7 @@ async def forgot_password(request: ForgotPasswordRequest):
         "expires_at": expires, "used": False,
         "created_at": datetime.now(timezone.utc).isoformat()
     })
-    base_url = os.environ.get("FRONTEND_URL", "https://coveredcallengine.com")
+    base_url = os.environ.get("FRONTEND_URL") or "https://coveredcallengine.com"
     reset_url = f"{base_url}/reset-password?token={token}"
     try:
         await _send_smtp_email(
@@ -265,7 +265,7 @@ async def activate_account(token: str):
     import os
     from fastapi.responses import RedirectResponse
     from database import db as _db
-    base_url = os.environ.get("FRONTEND_URL", "https://coveredcallengine.com")
+    base_url = os.environ.get("FRONTEND_URL") or "https://coveredcallengine.com"
     token_doc = await _db.activation_tokens.find_one({"token": token, "used": False})
     if not token_doc:
         return RedirectResponse(url=f"{base_url}/login?error=invalid_token")
