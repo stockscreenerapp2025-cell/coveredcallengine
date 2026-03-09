@@ -313,10 +313,18 @@ async def analyze_news_sentiment(
             label, score = _keyword_sentiment(item.title, item.description or "")
             sentiments.append({"index": i, "sentiment": label, "confidence": "Medium"})
             scores.append(score)
-        avg_score = int(sum(scores) / len(scores)) if scores else 50
-        if avg_score >= 56:
+        if scores:
+            # Weight the most extreme score 3x so one strong headline moves the needle
+            most_bullish = max(scores)
+            most_bearish = min(scores)
+            extreme = most_bullish if abs(most_bullish - 50) >= abs(most_bearish - 50) else most_bearish
+            weighted_scores = scores + [extreme, extreme]  # add extreme twice for extra weight
+            avg_score = int(sum(weighted_scores) / len(weighted_scores))
+        else:
+            avg_score = 50
+        if avg_score >= 54:
             overall = "Bullish"
-        elif avg_score <= 44:
+        elif avg_score <= 46:
             overall = "Bearish"
         else:
             overall = "Neutral"
