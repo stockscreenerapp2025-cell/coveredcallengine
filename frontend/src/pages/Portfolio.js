@@ -164,7 +164,7 @@ const Portfolio = () => {
   useEffect(() => {
     fetchTrades();
     fetchSummary();
-  }, [filters, pagination.page]);
+  }, [filters, pagination.page, viewMode]);
 
   const fetchAccounts = async () => {
     try {
@@ -180,8 +180,8 @@ const Portfolio = () => {
     try {
       const res = await portfolioApi.getIBKRTrades({
         ...filters,
-        page: pagination.page,
-        limit: 20
+        page: viewMode === 'lifecycle' ? 1 : pagination.page,
+        limit: viewMode === 'lifecycle' ? 100 : 20
       });
       setTrades(res.data.trades || []);
       setPagination(prev => ({
@@ -985,42 +985,68 @@ const Portfolio = () => {
           ) : viewMode === 'lifecycle' ? (
             // ── LIFECYCLE GROUPED VIEW ─────────────────────────────────────
             (() => {
-              // Helper: extract key lifecycle events from raw transactions
-              const getLifecycleEvents = (txs) => {
-                if (!txs || txs.length === 0) return [];
+              // Helper: derive lifecycle events from trade-level fields
+              // (transactions are not included in list endpoint — only in detail endpoint)
+              const getLifecycleEvents = (trade) => {
                 const events = [];
-                const sorted = [...txs].sort((a, b) =>
-                  (a.date || a.datetime || '').localeCompare(b.date || b.datetime || '')
-                );
-                sorted.forEach(tx => {
-                  const type = (tx.transaction_type || '').toLowerCase();
-                  const isOption = !!tx.is_option || !!tx.option_details;
-                  const optDetails = tx.option_details || {};
-                  const optType = (optDetails.option_type || '').toLowerCase();
-                  let label = null, color = 'zinc', amount = tx.net_amount;
+                const st = trade.strategy_type || '';
+                const closeReason = (trade.close_reason || '').toLowerCase();
 
-                  if (!isOption && type === 'buy') { label = 'Stock Buy'; color = 'emerald'; }
-                  else if (!isOption && type === 'sell') { label = 'Stock Sold'; color = 'blue'; }
-                  else if (!isOption && type === 'assignment' && (tx.quantity || 0) > 0) { label = 'Put Assigned'; color = 'amber'; }
-                  else if (!isOption && type === 'assignment' && (tx.quantity || 0) < 0) { label = 'Call Assigned'; color = 'red'; }
-                  else if (isOption && type === 'sell' && optType === 'put') { label = 'CSP Sold'; color = 'violet'; }
-                  else if (isOption && type === 'sell' && optType === 'call') { label = 'CC Sold'; color = 'violet'; }
-                  else if (isOption && type === 'buy' && optType === 'call') { label = 'LEAPS Bought'; color = 'blue'; }
-                  else if (isOption && type === 'buy' && optType === 'put') { label = 'Put Bought'; color = 'amber'; }
-                  else if (type === 'expire' || type === 'expiration') { label = 'Expired'; color = 'zinc'; }
-                  else if (type === 'exercise') { label = 'Exercised'; color = 'amber'; }
-                  if (!label) return;
+                // Entry event
+                if (st === 'NAKED_PUT') {
+                  events.push({ label: 'CSP Sold', color: 'violet', date: trade.date_opened,
+                    strike: trade.csp_put_strike || trade.option_strike,
+                    amount: trade.premium_received > 0 ? trade.premium_received : null });
+                } else if (st === 'PMCC') {
+                  events.push({ label: 'LEAPS Bought', color: 'blue', date: trade.date_opened,
+                    amount: trade.entry_price ? -trade.entry_price : null });
+                  if (trade.option_strike) {
+                    events.push({ label: 'Short Call', color: 'violet', date: trade.date_opened,
+                      strike: trade.option_strike,
+                      amount: trade.premium_received > 0 ? trade.premium_received : null });
+                  }
+                } else if (st === 'COVERED_CALL') {
+                  events.push({ label: 'Stock Bought', color: 'emerald', date: trade.date_opened,
+                    amount: trade.entry_price ? -(trade.entry_price * (trade.shares || 100)) : null });
+                  if (trade.option_strike) {
+                    events.push({ label: 'CC Sold', color: 'violet', date: trade.date_opened,
+                      strike: trade.option_strike, expiry: trade.option_expiry,
+                      amount: trade.premium_received > 0 ? trade.premium_received : null });
+                  }
+                } else if (st === 'STOCK' || st === 'ETF') {
+                  events.push({ label: st === 'ETF' ? 'ETF Bought' : 'Stock Bought', color: 'emerald',
+                    date: trade.date_opened, amount: null });
+                } else if (st === 'COLLAR') {
+                  events.push({ label: 'Stock Bought', color: 'emerald', date: trade.date_opened, amount: null });
+                  if (trade.option_strike)
+                    events.push({ label: 'CC Sold', color: 'violet', date: trade.date_opened,
+                      strike: trade.option_strike, amount: trade.premium_received > 0 ? trade.premium_received : null });
+                } else {
+                  events.push({ label: 'Opened', color: 'emerald', date: trade.date_opened, amount: null });
+                }
 
-                  events.push({
-                    label,
-                    color,
-                    date: tx.date || (tx.datetime || '').slice(0, 10),
-                    strike: optDetails.strike,
-                    expiry: optDetails.expiry,
-                    amount,
-                    qty: tx.quantity,
-                  });
-                });
+                // Close event
+                if (trade.status !== 'Open') {
+                  if (closeReason === 'assigned' || trade.status === 'Assigned') {
+                    const isCallAssigned = st === 'COVERED_CALL' || st === 'PMCC';
+                    events.push({ label: isCallAssigned ? 'Call Assigned' : 'Put Assigned',
+                      color: isCallAssigned ? 'red' : 'amber', date: trade.date_closed,
+                      amount: trade.realized_pnl });
+                  } else if (closeReason === 'expired' || trade.status === 'Expired') {
+                    events.push({ label: 'Expired Worthless', color: 'zinc', date: trade.date_closed,
+                      amount: trade.realized_pnl });
+                  } else if (closeReason === 'sold' || closeReason === 'closed') {
+                    events.push({ label: 'Closed', color: trade.realized_pnl >= 0 ? 'emerald' : 'red',
+                      date: trade.date_closed, amount: trade.realized_pnl });
+                  } else {
+                    events.push({ label: trade.close_reason || trade.status || 'Closed',
+                      color: 'zinc', date: trade.date_closed, amount: trade.realized_pnl });
+                  }
+                } else {
+                  events.push({ label: 'Active', color: 'violet', date: null,
+                    amount: trade.unrealized_pnl, current: true });
+                }
+
                 return events;
               };
 
@@ -1081,7 +1107,7 @@ const Portfolio = () => {
                             {cycles.map((trade, cycleIdx) => {
                               const cycleKey = `${symbol}-${cycleIdx}`;
                               const isCycleExpanded = expandedCycles[cycleKey];
-                              const events = getLifecycleEvents(trade.transactions);
+                              const events = getLifecycleEvents(trade);
                               const cycleStatusColor = trade.status === 'Open' ? 'emerald' :
                                 (trade.close_reason || '').toLowerCase() === 'assigned' ? 'amber' :
                                 (trade.close_reason || '').toLowerCase() === 'expired' ? 'zinc' : 'blue';
