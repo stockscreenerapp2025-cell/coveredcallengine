@@ -191,15 +191,6 @@ const Admin = () => {
 
 
 
-    const handleRunEngine = async (userId) => {
-      try {
-        await api.post("/admin/run-engine/" + userId);
-        alert("Engine started for user");
-      } catch (err) {
-        alert("Failed to start engine");
-      }
-    };
-
     return () => clearInterval(interval);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab]);
@@ -1554,7 +1545,6 @@ const Admin = () => {
                           <td className="py-3">
                             {getStatusBadge(user.subscription?.status)}
                           </td>
-                          <td className="py-3 text-right"><button onClick={() => handleRunEngine(user.id)} className="px-2 py-1 text-xs bg-green-600 text-white rounded mr-2">Run Engine</button></td>
                           <td className="py-3">
                             <span className="text-zinc-400">{user.subscription?.plan || '-'}</span>
                           </td>

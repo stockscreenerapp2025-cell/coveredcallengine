@@ -202,6 +202,8 @@ const Simulator = () => {
   const [rules, setRules] = useState([]);
   const [templates, setTemplates] = useState([]);
   const [rulesLoading, setRulesLoading] = useState(false);
+  const [ruleConfig, setRuleConfig] = useState(null);
+  const [ruleSaving, setRuleSaving] = useState(false);
   const [ruleDialogOpen, setRuleDialogOpen] = useState(false);
   const [editingRule, setEditingRule] = useState(null);
   const [evaluating, setEvaluating] = useState(false);
@@ -354,8 +356,7 @@ const Simulator = () => {
 
   useEffect(() => {
     if (activeTab === 'rules') {
-      fetchRules();
-      fetchTemplates();
+      fetchRuleConfig();
     } else if (activeTab === 'logs') {
       fetchActionLogs();
     } else if (activeTab === 'pmcc') {
@@ -401,25 +402,17 @@ const Simulator = () => {
     }
   };
 
-  const fetchRules = async () => {
+  const fetchRuleConfig = async () => {
     setRulesLoading(true);
     try {
-      const res = await simulatorApi.getRules();
-      setRules(res.data.rules || []);
+      const res = await simulatorApi.getRuleConfig();
+      setRuleConfig(res.data || null);
+      setRules(res.data.materialized_rules || []);
     } catch (error) {
-      console.error('Error fetching rules:', error);
+      console.error('Error fetching rule config:', error);
       toast.error('Failed to load rules');
     } finally {
       setRulesLoading(false);
-    }
-  };
-
-  const fetchTemplates = async () => {
-    try {
-      const res = await simulatorApi.getRuleTemplates();
-      setTemplates(res.data.templates || []);
-    } catch (error) {
-      console.error('Error fetching templates:', error);
     }
   };
 
@@ -588,51 +581,50 @@ const Simulator = () => {
     }
   };
 
-  const handleCreateFromTemplate = async (templateId) => {
+  const persistRuleConfig = async (nextConfig) => {
+    setRuleSaving(true);
     try {
-      await simulatorApi.createFromTemplate(templateId);
-      toast.success('Rule created from template');
-      fetchRules();
+      const res = await simulatorApi.updateRuleConfig(nextConfig);
+      setRuleConfig(res.data.config || nextConfig);
+      setRules(res.data.config?.materialized_rules || []);
+      toast.success('Rules saved');
     } catch (error) {
-      toast.error('Failed to create rule');
+      console.error('Error saving rule config:', error);
+      toast.error(error?.response?.data?.detail || 'Failed to save rules');
+    } finally {
+      setRuleSaving(false);
     }
   };
 
-  const handleToggleRule = async (rule) => {
-    try {
-      await simulatorApi.updateRule(rule.id, { is_enabled: !rule.is_enabled });
-      toast.success(`Rule ${!rule.is_enabled ? 'enabled' : 'disabled'}`);
-      fetchRules();
-    } catch (error) {
-      toast.error('Failed to update rule');
-    }
+  const handleStrategyModeChange = async (strategyMode) => {
+    const baseConfig = ruleConfig || { strategy_mode: strategyMode, controls: {}, alerts: { assignment_risk_alert: true, assignment_imminent_alert: true } };
+    await persistRuleConfig({ ...baseConfig, strategy_mode: strategyMode });
   };
 
-  const handleDeleteRule = async (ruleId) => {
-    if (!window.confirm('Delete this rule?')) return;
-    try {
-      await simulatorApi.deleteRule(ruleId);
-      toast.success('Rule deleted');
-      fetchRules();
-    } catch (error) {
-      toast.error('Failed to delete rule');
-    }
+  const handleToggleAlert = async (key) => {
+    if (!ruleConfig) return;
+    await persistRuleConfig({ ...ruleConfig, alerts: { ...(ruleConfig.alerts || {}), [key]: !ruleConfig?.alerts?.[key] } });
   };
 
-  const handleEvaluateRules = async (dryRun = true) => {
+  const handleToggleOptionalControl = async (key) => {
+    if (!ruleConfig) return;
+    const mode = ruleConfig.strategy_mode;
+    if ((mode === 'income' || mode === 'wheel') && ['roll_itm_near_expiry', 'roll_delta_based', 'market_aware_roll_suggestion', 'manage_short_call_only', 'roll_before_assignment'].includes(key)) {
+      toast.error('Rolling controls require Defensive or PMCC mode');
+      return;
+    }
+    await persistRuleConfig({ ...ruleConfig, controls: { ...(ruleConfig.controls || {}), [key]: !ruleConfig?.controls?.[key] } });
+  };
+
+  const handleEvaluateRules = async () => {
     setEvaluating(true);
     try {
-      const res = await simulatorApi.evaluateRules(dryRun);
+      const tradeId = selectedTrade?.id || null;
+      const res = await simulatorApi.previewRuleConfig(tradeId);
       setEvaluationResults(res.data);
       setEvalResultsOpen(true);
-      if (!dryRun && res.data.results.length > 0) {
-        toast.success(`Executed rules on ${res.data.results.length} trades`);
-        fetchTrades();
-        fetchSummary();
-        fetchActionLogs();
-      }
     } catch (error) {
-      toast.error('Failed to evaluate rules');
+      toast.error('Failed to preview rules');
     } finally {
       setEvaluating(false);
     }
@@ -1091,190 +1083,174 @@ const Simulator = () => {
   );
 
   const renderRulesTab = () => {
-    // Group templates by category
-    const categoryOrder = [
-      'premium_harvesting',
-      'expiry_management', 
-      'assignment_awareness',
-      'rolling',
-      'pmcc_specific',
-      'brokerage_aware',
-      'informational',
-      'optional_advanced'
+    const mode = ruleConfig?.strategy_mode || 'income';
+    const controls = ruleConfig?.controls || {};
+    const alerts = ruleConfig?.alerts || {};
+    const ruleSummary = ruleConfig?.summary || {};
+
+    const modes = [
+      { id: 'income', title: 'Income Mode', desc: 'Hold to expiry and allow assignment if ITM' },
+      { id: 'wheel', title: 'Wheel Mode', desc: 'Assignment is acceptable as part of the wheel strategy' },
+      { id: 'defensive', title: 'Defensive Mode', desc: 'Roll to avoid assignment and protect shares' },
+      { id: 'pmcc', title: 'PMCC Mode', desc: 'Manage short call only and prevent assignment' },
     ];
-    
-    const categoryLabels = {
-      'premium_harvesting': { label: 'Premium Harvesting', icon: '💰', description: 'No Early Close', color: 'emerald' },
-      'expiry_management': { label: 'Expiry Decisions', icon: '📅', description: 'Primary Controls', color: 'blue' },
-      'assignment_awareness': { label: 'Assignment Awareness', icon: '⚠️', description: 'Alerts Only', color: 'amber' },
-      'rolling': { label: 'Rolling Rules', icon: '🔄', description: 'Core Income Logic', color: 'violet' },
-      'pmcc_specific': { label: 'PMCC-Specific', icon: '📊', description: 'Short Leg Focused', color: 'cyan' },
-      'brokerage_aware': { label: 'Brokerage-Aware', icon: '💸', description: 'Cost Controls', color: 'zinc' },
-      'informational': { label: 'Informational', icon: 'ℹ️', description: 'Non-Action', color: 'zinc' },
-      'optional_advanced': { label: 'Optional/Advanced', icon: '⚙️', description: 'Not Recommended', color: 'red' }
-    };
-    
-    const groupedTemplates = {};
-    templates.forEach(t => {
-      const cat = t.category || 'other';
-      if (!groupedTemplates[cat]) groupedTemplates[cat] = [];
-      groupedTemplates[cat].push(t);
-    });
-    
-    const getActionColor = (action) => {
-      const actionType = action?.action_type || action;
-      switch(actionType) {
-        case 'roll': return 'bg-violet-500/20 text-violet-400 border-violet-500/30';
-        case 'alert': return 'bg-amber-500/20 text-amber-400 border-amber-500/30';
-        case 'hold': return 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30';
-        case 'expire': return 'bg-blue-500/20 text-blue-400 border-blue-500/30';
-        case 'assignment': return 'bg-cyan-500/20 text-cyan-400 border-cyan-500/30';
-        case 'close': return 'bg-red-500/20 text-red-400 border-red-500/30';
-        case 'suggest': return 'bg-indigo-500/20 text-indigo-400 border-indigo-500/30';
-        case 'prompt': return 'bg-pink-500/20 text-pink-400 border-pink-500/30';
-        default: return 'bg-zinc-500/20 text-zinc-400 border-zinc-500/30';
-      }
-    };
+
+    const optionalControls = mode === 'income' || mode === 'wheel'
+      ? [
+          { key: 'avoid_early_close', label: 'Avoid Early Close' },
+          { key: 'brokerage_aware_hold', label: 'Brokerage-Aware Hold' },
+        ]
+      : [
+          { key: 'roll_itm_near_expiry', label: 'Roll ITM Near Expiry' },
+          { key: 'roll_delta_based', label: 'Roll Based on Delta' },
+          { key: 'market_aware_roll_suggestion', label: 'Market-Aware Roll Suggestion' },
+          ...(mode === 'pmcc' ? [{ key: 'manage_short_call_only', label: 'Manage Short Call Only' }, { key: 'roll_before_assignment', label: 'Roll Before Assignment' }] : []),
+        ];
 
     return (
     <div className="space-y-6">
-      {/* Rules Header - Updated Philosophy */}
+      {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h2 className="text-xl font-semibold text-white flex items-center gap-2">
             <Settings className="w-5 h-5 text-violet-400" />
-            Income Strategy Trade Management
+            Trade Strategy Rules
           </h2>
           <p className="text-zinc-400 text-sm mt-1">
-            Trades are managed, not closed. Rolling and assignment logic drive decisions—not stop-losses.
+            Select a strategy mode — the system sets consistent, non-contradictory rules automatically.
           </p>
         </div>
-        <div className="flex gap-2">
-          <Button
-            variant="outline"
-            onClick={() => handleEvaluateRules(true)}
-            disabled={evaluating}
-            className="btn-outline"
-            data-testid="dry-run-rules-btn"
-          >
-            <PlayCircle className={`w-4 h-4 mr-2 ${evaluating ? 'animate-spin' : ''}`} />
-            Dry Run
-          </Button>
-          <Button
-            onClick={() => handleEvaluateRules(false)}
-            disabled={evaluating}
-            className="bg-violet-600 hover:bg-violet-700 text-white"
-            data-testid="execute-rules-btn"
-          >
-            <Zap className="w-4 h-4 mr-2" />
-            Execute Rules
-          </Button>
-        </div>
+        <Button
+          onClick={() => handleEvaluateRules(false)}
+          disabled={evaluating || !ruleConfig}
+          className="bg-violet-600 hover:bg-violet-700 text-white"
+          data-testid="execute-rules-btn"
+        >
+          <Zap className={`w-4 h-4 mr-2 ${evaluating ? 'animate-spin' : ''}`} />
+          Execute Preview
+        </Button>
       </div>
 
-      {/* Income Strategy Philosophy Banner */}
-      <Card className="glass-card border-violet-500/30 bg-violet-950/20">
-        <CardContent className="py-4">
-          <div className="flex items-start gap-3">
-            <div className="p-2 bg-violet-500/20 rounded-lg">
-              <TrendingUp className="w-5 h-5 text-violet-400" />
+      {/* Section 1: Strategy Mode Cards */}
+      <Card className="glass-card">
+        <CardHeader className="pb-3">
+          <CardTitle className="text-sm flex items-center gap-2">
+            <Target className="w-4 h-4 text-violet-400" />
+            Strategy Mode
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
+            {modes.map(m => {
+              const isSelected = mode === m.id;
+              return (
+                <button
+                  key={m.id}
+                  onClick={() => handleStrategyModeChange(m.id)}
+                  disabled={ruleSaving}
+                  className={`text-left p-4 rounded-lg border-2 transition-all ${
+                    isSelected
+                      ? 'border-violet-500/50 bg-violet-500/10'
+                      : 'border-zinc-700/50 bg-zinc-800/30 hover:border-zinc-600'
+                  }`}
+                >
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="font-semibold text-white text-sm">{m.title}</span>
+                    {isSelected && <Badge className="bg-violet-500/20 text-violet-400 text-xs">Active</Badge>}
+                  </div>
+                  <p className="text-xs text-zinc-400 leading-relaxed">{m.desc}</p>
+                </button>
+              );
+            })}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Section 2: Active Rule Summary */}
+      {ruleConfig && Object.keys(ruleSummary).length > 0 && (
+        <Card className="glass-card border-violet-500/20">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+              Active Rule Summary
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              {Object.entries(ruleSummary).map(([key, val]) => (
+                <div key={key} className={`p-3 rounded-lg border ${val ? 'bg-emerald-500/5 border-emerald-500/20' : 'bg-zinc-800/30 border-zinc-700/30'}`}>
+                  <div className="text-xs text-zinc-500 mb-1 capitalize">{key.replace(/_/g, ' ')}</div>
+                  <div className={`text-sm font-bold ${val ? 'text-emerald-400' : 'text-zinc-500'}`}>
+                    {val ? 'ON' : 'OFF'}
+                  </div>
+                </div>
+              ))}
             </div>
-            <div>
-              <h3 className="font-medium text-violet-300 mb-1">Income Strategy Philosophy</h3>
-              <p className="text-sm text-zinc-400">
-                For CC and PMCC, loss is managed via <span className="text-emerald-400">time</span>, <span className="text-blue-400">premium decay</span>, <span className="text-violet-400">rolling</span>, and <span className="text-cyan-400">assignment logic</span>—not stop-losses. 
-                Unrealised losses do not imply trade failure.
-              </p>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Section 3: Optional Controls */}
+      <Card className="glass-card">
+        <CardHeader className="pb-3">
+          <CardTitle className="text-sm flex items-center gap-2">
+            <Settings className="w-4 h-4 text-zinc-400" />
+            Optional Controls
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-3">
+            {optionalControls.map(ctrl => (
+              <div key={ctrl.key} className="flex items-center justify-between p-3 rounded-lg bg-zinc-800/30 border border-zinc-700/30">
+                <span className="text-sm text-zinc-300">{ctrl.label}</span>
+                <Switch
+                  checked={!!controls[ctrl.key]}
+                  onCheckedChange={() => handleToggleOptionalControl(ctrl.key)}
+                  disabled={ruleSaving}
+                />
+              </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Section 4: Alerts */}
+      <Card className="glass-card border-amber-500/20">
+        <CardHeader className="pb-3">
+          <CardTitle className="text-sm flex items-center gap-2">
+            <AlertTriangle className="w-4 h-4 text-amber-400" />
+            Alerts
+            <span className="text-zinc-500 text-xs font-normal">(independent of strategy — no trade actions)</span>
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-3">
+            <div className="flex items-center justify-between p-3 rounded-lg bg-amber-500/5 border border-amber-500/20">
+              <span className="text-sm text-zinc-300">Assignment Risk Alert</span>
+              <Switch
+                checked={!!alerts.assignment_risk_alert}
+                onCheckedChange={() => handleToggleAlert('assignment_risk_alert')}
+                disabled={ruleSaving}
+              />
+            </div>
+            <div className="flex items-center justify-between p-3 rounded-lg bg-amber-500/5 border border-amber-500/20">
+              <span className="text-sm text-zinc-300">Assignment Imminent Alert</span>
+              <Switch
+                checked={!!alerts.assignment_imminent_alert}
+                onCheckedChange={() => handleToggleAlert('assignment_imminent_alert')}
+                disabled={ruleSaving}
+              />
             </div>
           </div>
         </CardContent>
       </Card>
 
-      {/* Templates by Category */}
-      <div className="space-y-4">
-        {categoryOrder.map(category => {
-          const categoryTemplates = groupedTemplates[category] || [];
-          if (categoryTemplates.length === 0) return null;
-          
-          const catInfo = categoryLabels[category] || { label: category, icon: '📋', description: '', color: 'zinc' };
-          const isAdvanced = category === 'optional_advanced';
-          
-          return (
-            <Card key={category} className={`glass-card ${isAdvanced ? 'opacity-60 border-red-500/20' : ''}`}>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <span className="text-lg">{catInfo.icon}</span>
-                    <span className="text-white">{catInfo.label}</span>
-                    <span className="text-xs text-zinc-500">({catInfo.description})</span>
-                  </div>
-                  {isAdvanced && (
-                    <Badge className="bg-red-500/20 text-red-400 text-xs">
-                      Not Recommended for Income Strategy
-                    </Badge>
-                  )}
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-3">
-                  {categoryTemplates.map(template => (
-                    <div 
-                      key={template.id}
-                      className={`p-3 bg-zinc-800/50 rounded-lg border transition-colors ${
-                        template.is_default 
-                          ? 'border-emerald-500/30 hover:border-emerald-500/50' 
-                          : template.is_advanced 
-                          ? 'border-red-500/20 hover:border-red-500/40'
-                          : 'border-zinc-700/50 hover:border-violet-500/50'
-                      }`}
-                    >
-                      <div className="flex items-start justify-between">
-                        <div className="flex-1">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <h4 className="font-medium text-white text-sm">{template.name}</h4>
-                            {template.is_default && (
-                              <Badge className="bg-emerald-500/20 text-emerald-400 text-xs">Default</Badge>
-                            )}
-                          </div>
-                          <p className="text-xs text-zinc-400 mt-1 line-clamp-2">{template.description}</p>
-                          <div className="flex items-center gap-2 mt-2 flex-wrap">
-                            <Badge className={getActionColor(template.action)}>
-                              {template.action?.action_type || template.action || 'rule'}
-                            </Badge>
-                            {template.strategy_type && (
-                              <Badge className={STRATEGY_COLORS[template.strategy_type]}>
-                                {template.strategy_type === 'covered_call' ? 'CC' : 'PMCC'}
-                              </Badge>
-                            )}
-                            {template.ui_hint && (
-                              <span className="text-xs text-zinc-500">{template.ui_hint}</span>
-                            )}
-                          </div>
-                        </div>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleCreateFromTemplate(template.id)}
-                          className="text-cyan-400 hover:text-cyan-300 ml-2"
-                        >
-                          <Plus className="w-4 h-4" />
-                        </Button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-          );
-        })}
-      </div>
-
-      {/* Active Rules */}
+      {/* Active Materialized Rules */}
       <Card className="glass-card" data-testid="rules-list-card">
         <CardHeader className="pb-2">
           <CardTitle className="text-sm flex items-center gap-2">
             <ShieldCheck className="w-4 h-4 text-emerald-400" />
-            Your Active Rules ({rules.length})
+            Active Rules ({rules.length})
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -1288,62 +1264,38 @@ const Simulator = () => {
             <div className="text-center py-8">
               <Settings className="w-10 h-10 text-zinc-600 mx-auto mb-3" />
               <p className="text-zinc-400 text-sm">No rules configured yet</p>
-              <p className="text-zinc-500 text-xs mt-1">Add income strategy rules above to automate trade management</p>
+              <p className="text-zinc-500 text-xs mt-1">Select a strategy mode to generate rules automatically</p>
             </div>
           ) : (
             <div className="space-y-3">
               {rules.map(rule => (
-                <div 
+                <div
                   key={rule.id}
-                  className={`p-4 rounded-lg border transition-colors ${
-                    rule.is_enabled 
-                      ? 'bg-zinc-800/50 border-zinc-700/50' 
-                      : 'bg-zinc-900/50 border-zinc-800/50 opacity-60'
-                  }`}
+                  className="p-4 rounded-lg border bg-zinc-800/50 border-zinc-700/50"
                   data-testid={`rule-${rule.id}`}
                 >
-                  <div className="flex items-start justify-between">
+                  <div className="flex items-start gap-3">
                     <div className="flex-1">
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 flex-wrap">
                         <h4 className="font-medium text-white">{rule.name}</h4>
-                        <Badge className={rule.action.action_type === 'roll' ? 'bg-violet-500/20 text-violet-400' : rule.action.action_type === 'close' ? 'bg-amber-500/20 text-amber-400' : 'bg-blue-500/20 text-blue-400'}>
-                          {rule.action.action_type}
+                        <Badge className={
+                          (rule.action?.action_type || rule.action) === 'roll'
+                            ? 'bg-violet-500/20 text-violet-400'
+                            : (rule.action?.action_type || rule.action) === 'alert'
+                            ? 'bg-amber-500/20 text-amber-400'
+                            : 'bg-blue-500/20 text-blue-400'
+                        }>
+                          {rule.action?.action_type || rule.action}
                         </Badge>
                         {rule.strategy_type && (
                           <Badge className={STRATEGY_COLORS[rule.strategy_type]}>
                             {rule.strategy_type === 'covered_call' ? 'CC Only' : 'PMCC Only'}
                           </Badge>
                         )}
-                        {rule.times_triggered > 0 && (
-                          <span className="text-xs text-zinc-500">
-                            Triggered {rule.times_triggered}x
-                          </span>
-                        )}
                       </div>
                       {rule.description && (
                         <p className="text-xs text-zinc-400 mt-1">{rule.description}</p>
                       )}
-                      <div className="flex flex-wrap gap-2 mt-2">
-                        {rule.conditions.map((cond, idx) => (
-                          <span key={idx} className="text-xs bg-zinc-700/50 px-2 py-1 rounded text-zinc-300">
-                            {CONDITION_FIELDS.find(f => f.value === cond.field)?.label || cond.field} {OPERATORS.find(o => o.value === cond.operator)?.label} {cond.value}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Switch
-                        checked={rule.is_enabled}
-                        onCheckedChange={() => handleToggleRule(rule)}
-                      />
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => handleDeleteRule(rule.id)}
-                        className="text-red-400 hover:text-red-300"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </Button>
                     </div>
                   </div>
                 </div>
@@ -1355,6 +1307,7 @@ const Simulator = () => {
     </div>
   );
   };
+
 
   const renderLogsTab = () => (
     <div className="space-y-6">
@@ -2369,14 +2322,14 @@ const Simulator = () => {
           {evaluationResults && (
             <div className="space-y-4 pt-4">
               <div className="text-sm text-zinc-400">
-                Evaluated {evaluationResults.trades_evaluated} trades against {evaluationResults.rules_count} rules
+                Previewed {evaluationResults.results?.length ?? 0} trades
               </div>
-              
-              {evaluationResults.results.length === 0 ? (
+
+              {!evaluationResults.results?.length ? (
                 <div className="text-center py-8">
                   <CheckCircle2 className="w-10 h-10 text-emerald-500 mx-auto mb-3" />
-                  <p className="text-zinc-300">No rules triggered</p>
-                  <p className="text-zinc-500 text-sm">All trades are within defined thresholds</p>
+                  <p className="text-zinc-300">No active trades to preview</p>
+                  <p className="text-zinc-500 text-sm">Add trades to the simulator to see decisions</p>
                 </div>
               ) : (
                 <div className="space-y-3 max-h-96 overflow-y-auto">
@@ -2387,42 +2340,36 @@ const Simulator = () => {
                         <Badge className={STRATEGY_COLORS[result.strategy]}>
                           {result.strategy === 'covered_call' ? 'CC' : 'PMCC'}
                         </Badge>
+                        {result.decision && (
+                          <Badge className={
+                            result.decision === 'roll' ? 'bg-violet-500/20 text-violet-400' :
+                            result.decision === 'close' ? 'bg-red-500/20 text-red-400' :
+                            result.decision === 'hold' ? 'bg-emerald-500/20 text-emerald-400' :
+                            'bg-zinc-500/20 text-zinc-400'
+                          }>
+                            {result.decision}
+                          </Badge>
+                        )}
                       </div>
-                      <div className="space-y-1">
-                        {result.matched_rules.map((rule, ruleIdx) => (
-                          <div key={ruleIdx} className="text-sm flex items-center gap-2">
-                            <Badge className={rule.action_type === 'roll' ? 'bg-violet-500/20 text-violet-400' : rule.action_type === 'close' ? 'bg-amber-500/20 text-amber-400' : 'bg-blue-500/20 text-blue-400'}>
-                              {rule.action_type}
-                            </Badge>
-                            <span className="text-zinc-300">{rule.rule_name}</span>
-                            {rule.dry_run ? (
-                              <span className="text-amber-400 text-xs">(would execute)</span>
-                            ) : rule.success ? (
-                              <span className="text-emerald-400 text-xs">✓ {rule.message}</span>
-                            ) : (
-                              <span className="text-red-400 text-xs">✗ Failed</span>
-                            )}
-                          </div>
-                        ))}
-                      </div>
+                      {result.reason && (
+                        <p className="text-xs text-zinc-400 mb-2">{result.reason}</p>
+                      )}
+                      {result.matched_rules?.length > 0 && (
+                        <div className="space-y-1">
+                          {result.matched_rules.map((ruleName, ruleIdx) => (
+                            <div key={ruleIdx} className="text-xs text-zinc-500 flex items-center gap-1">
+                              <span className="w-1 h-1 rounded-full bg-zinc-600 inline-block" />
+                              {typeof ruleName === 'string' ? ruleName : (ruleName.rule_name || ruleName.name || JSON.stringify(ruleName))}
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>
               )}
-              
+
               <DialogFooter>
-                {evaluationResults.dry_run && evaluationResults.results.length > 0 && (
-                  <Button
-                    onClick={() => {
-                      setEvalResultsOpen(false);
-                      handleEvaluateRules(false);
-                    }}
-                    className="bg-violet-600 hover:bg-violet-700 text-white"
-                  >
-                    <Zap className="w-4 h-4 mr-2" />
-                    Execute Now
-                  </Button>
-                )}
                 <Button variant="outline" onClick={() => setEvalResultsOpen(false)} className="btn-outline">
                   Close
                 </Button>

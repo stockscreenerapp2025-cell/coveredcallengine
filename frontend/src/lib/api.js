@@ -169,7 +169,12 @@ export const simulatorApi = {
   getSettings: () => api.get('/simulator/settings'),
   updateIncomeSettings: (settings) => api.post('/simulator/settings/income', settings),
   updateFeeSettings: (settings) => api.post('/simulator/settings/fees', settings),
-  
+
+  // Rules Strategy Configuration
+  getRuleConfig: () => api.get('/simulator/rules/config'),
+  updateRuleConfig: (data) => api.put('/simulator/rules/config', data),
+  previewRuleConfig: (tradeId = null) => api.post('/simulator/rules/preview', { trade_id: tradeId }),
+
   // Legacy Rules Management (preserved for future use)
   getRules: (params = {}) => {
     const queryParams = new URLSearchParams();

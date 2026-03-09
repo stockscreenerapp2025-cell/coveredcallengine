@@ -54,6 +54,7 @@ const Dashboard = () => {
   const [opportunitiesInfo, setOpportunitiesInfo] = useState(null);
   const [portfolio, setPortfolio] = useState(null);
   const [ibkrSummary, setIbkrSummary] = useState(null);
+  const [ibkrLoading, setIbkrLoading] = useState(true);
   const [ibkrTrades, setIbkrTrades] = useState([]);
   const [openTrades, setOpenTrades] = useState([]);
 
@@ -167,7 +168,7 @@ const Dashboard = () => {
     newsApi.getNews({ limit: 6 }).then(r => setNews(r.data)).catch(() => {});
     portfolioApi.getSummary().then(r => setPortfolio(r.data)).catch(() => {});
 
-    // IBKR (non-critical, silent fail)
+    // IBKR (non-critical, silent fail) — keep ibkrLoading true until settled to prevent sample flash
     Promise.allSettled([
       portfolioApi.getIBKRSummary(),
       portfolioApi.getIBKRTrades({ status: 'Closed', limit: 15 }),
@@ -176,6 +177,7 @@ const Dashboard = () => {
       setIbkrSummary(summaryRes.status === 'fulfilled' ? summaryRes.value.data : null);
       setIbkrTrades(closedRes.status === 'fulfilled' ? (closedRes.value.data.trades || []) : []);
       setOpenTrades(openRes.status === 'fulfilled' ? (openRes.value.data.trades || []) : []);
+      setIbkrLoading(false);
     });
 
     // Opportunities (main content — may be slowest)
@@ -377,7 +379,7 @@ const Dashboard = () => {
             </Button>
           </CardHeader>
           <CardContent>
-            {loading ? (
+            {(loading || ibkrLoading) ? (
               <div className="space-y-4">
                 <Skeleton className="h-32" />
                 <div className="grid grid-cols-2 gap-4">

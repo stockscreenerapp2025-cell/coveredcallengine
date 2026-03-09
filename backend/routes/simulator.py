@@ -177,6 +177,33 @@ class TradeRuleCreate(BaseModel):
     is_enabled: bool = True
 
 
+class StrategyControls(BaseModel):
+    avoid_early_close: bool = True
+    brokerage_aware_hold: bool = True
+    roll_itm_near_expiry: bool = False
+    roll_delta_based: bool = False
+    market_aware_roll_suggestion: bool = False
+    target_delta_min: float = 0.25
+    target_delta_max: float = 0.35
+    manage_short_call_only: bool = False
+    roll_before_assignment: bool = False
+
+
+class StrategyAlerts(BaseModel):
+    assignment_risk_alert: bool = True
+    assignment_imminent_alert: bool = True
+
+
+class StrategyRuleConfigUpdate(BaseModel):
+    strategy_mode: str
+    controls: StrategyControls = StrategyControls()
+    alerts: StrategyAlerts = StrategyAlerts()
+
+
+class RulesPreviewRequest(BaseModel):
+    trade_id: Optional[str] = None
+
+
 # ==================== HELPER FUNCTIONS ====================
 
 def _get_server_functions():
@@ -1337,7 +1364,207 @@ async def trigger_manual_update(user: dict = Depends(get_current_user)):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+STRATEGY_MODE_DEFAULTS = {
+    "income": {
+        "summary": {"hold_to_expiry": True, "allow_assignment": True, "rolling_enabled": False, "manage_short_call_only": False},
+        "controls": {"avoid_early_close": True, "brokerage_aware_hold": True, "roll_itm_near_expiry": False, "roll_delta_based": False, "market_aware_roll_suggestion": False, "target_delta_min": 0.25, "target_delta_max": 0.35, "manage_short_call_only": False, "roll_before_assignment": False},
+    },
+    "wheel": {
+        "summary": {"hold_to_expiry": True, "allow_assignment": True, "rolling_enabled": False, "manage_short_call_only": False},
+        "controls": {"avoid_early_close": True, "brokerage_aware_hold": True, "roll_itm_near_expiry": False, "roll_delta_based": False, "market_aware_roll_suggestion": False, "target_delta_min": 0.25, "target_delta_max": 0.35, "manage_short_call_only": False, "roll_before_assignment": False},
+    },
+    "defensive": {
+        "summary": {"hold_to_expiry": False, "allow_assignment": False, "rolling_enabled": True, "manage_short_call_only": False},
+        "controls": {"avoid_early_close": True, "brokerage_aware_hold": True, "roll_itm_near_expiry": True, "roll_delta_based": True, "market_aware_roll_suggestion": True, "target_delta_min": 0.25, "target_delta_max": 0.35, "manage_short_call_only": False, "roll_before_assignment": False},
+    },
+    "pmcc": {
+        "summary": {"hold_to_expiry": False, "allow_assignment": False, "rolling_enabled": True, "manage_short_call_only": True},
+        "controls": {"avoid_early_close": True, "brokerage_aware_hold": True, "roll_itm_near_expiry": True, "roll_delta_based": True, "market_aware_roll_suggestion": True, "target_delta_min": 0.25, "target_delta_max": 0.35, "manage_short_call_only": True, "roll_before_assignment": True},
+    },
+}
+
+
+def _normalize_strategy_config(payload: Dict[str, Any]) -> Dict[str, Any]:
+    strategy_mode = (payload.get("strategy_mode") or "income").lower()
+    if strategy_mode not in STRATEGY_MODE_DEFAULTS:
+        raise HTTPException(status_code=400, detail=f"Invalid strategy_mode: {strategy_mode}")
+    import copy
+    defaults = copy.deepcopy(STRATEGY_MODE_DEFAULTS[strategy_mode])
+    controls = defaults["controls"]
+    alerts = {"assignment_risk_alert": True, "assignment_imminent_alert": True}
+    controls.update(payload.get("controls") or {})
+    alerts.update(payload.get("alerts") or {})
+    # Enforce contradictions: income/wheel cannot have rolling
+    if strategy_mode in {"income", "wheel"}:
+        controls["roll_itm_near_expiry"] = False
+        controls["roll_delta_based"] = False
+        controls["market_aware_roll_suggestion"] = False
+        controls["manage_short_call_only"] = False
+        controls["roll_before_assignment"] = False
+    if strategy_mode == "pmcc":
+        controls["manage_short_call_only"] = True
+        controls["roll_before_assignment"] = True
+    summary = {
+        "hold_to_expiry": strategy_mode in {"income", "wheel"},
+        "allow_assignment": strategy_mode in {"income", "wheel"},
+        "rolling_enabled": strategy_mode in {"defensive", "pmcc"},
+        "manage_short_call_only": strategy_mode == "pmcc",
+    }
+    return {"strategy_mode": strategy_mode, "controls": controls, "alerts": alerts, "summary": summary}
+
+
+def _materialize_strategy_rules(user_id: str, config: Dict[str, Any]) -> List[Dict[str, Any]]:
+    now = datetime.now(timezone.utc).isoformat()
+    mode = config["strategy_mode"]
+    controls = config["controls"]
+    alerts = config["alerts"]
+    rules = []
+
+    def add_rule(name, description, action_type, conditions, priority, action_params=None):
+        rules.append({"id": str(uuid.uuid4()), "user_id": user_id, "name": name, "description": description,
+                       "conditions": conditions, "action": action_type, "action_params": action_params or {},
+                       "priority": priority, "is_enabled": True, "times_triggered": 0,
+                       "created_at": now, "updated_at": now, "source": "strategy_config", "strategy_mode": mode})
+
+    add_rule(f"{mode.title()} — OTM expiry", "Allow option to expire worthless when OTM at expiry.",
+             "alert", [{"field": "dte_remaining", "operator": "==", "value": 0}], 100,
+             {"action_type": "expire", "message": "Allow option to expire worthless"})
+
+    if mode in {"income", "wheel"}:
+        add_rule(f"{mode.title()} — Accept assignment", "Assignment is acceptable for this strategy mode.",
+                 "alert", [{"field": "dte_remaining", "operator": "<=", "value": 0}], 95,
+                 {"action_type": "assignment", "message": "Allow assignment"})
+    else:
+        if controls.get("roll_itm_near_expiry"):
+            add_rule(f"{mode.title()} — Roll ITM near expiry", "Roll the short call to avoid assignment.",
+                     "roll_out", [{"field": "dte_remaining", "operator": "<=", "value": 7},
+                                  {"field": "current_delta", "operator": ">=", "value": 0.65}], 90,
+                     {"action_type": "roll", "message": "Roll short call to avoid assignment"})
+        if controls.get("roll_delta_based"):
+            add_rule(f"{mode.title()} — Delta-based roll", "Roll when delta indicates rising assignment risk.",
+                     "roll_out", [{"field": "current_delta", "operator": ">=", "value": 0.75}], 85,
+                     {"action_type": "roll", "message": "Roll based on delta threshold",
+                      "target_delta_min": controls.get("target_delta_min", 0.25),
+                      "target_delta_max": controls.get("target_delta_max", 0.35)})
+
+    if alerts.get("assignment_risk_alert"):
+        add_rule("Assignment Risk Alert", "Alert when assignment risk is elevated.", "alert",
+                 [{"field": "current_delta", "operator": ">=", "value": 0.70},
+                  {"field": "dte_remaining", "operator": "<=", "value": 7}], 70,
+                 {"action_type": "alert", "message": "High assignment risk detected"})
+    if alerts.get("assignment_imminent_alert"):
+        add_rule("Assignment Imminent Alert", "Critical alert when assignment is very likely.", "alert",
+                 [{"field": "current_delta", "operator": ">=", "value": 0.85},
+                  {"field": "dte_remaining", "operator": "<=", "value": 3}], 75,
+                 {"action_type": "alert", "message": "Assignment is imminent"})
+    if controls.get("manage_short_call_only"):
+        add_rule("PMCC — Manage Short Call Only", "Keep LEAPS intact and manage only the short call.",
+                 "alert", [], 80, {"action_type": "manage_short", "message": "Manage short call only"})
+    return rules
+
+
+def _preview_trade_action(trade: Dict[str, Any], config: Dict[str, Any]) -> Dict[str, Any]:
+    mode = config["strategy_mode"]
+    delta = float(trade.get("current_delta") or 0)
+    dte = int(trade.get("dte_remaining") or 0)
+    triggers = []
+    decision = "hold"
+    reason = "No action required under current thresholds"
+
+    if dte <= 0:
+        if mode in {"income", "wheel"}:
+            decision = "allow_assignment"
+            reason = f"{mode.title()} mode accepts assignment at expiry"
+        else:
+            decision = "roll_short_call"
+            reason = f"{'PMCC' if mode == 'pmcc' else 'Defensive'} mode avoids assignment and prefers rolling"
+        triggers.append("expiry")
+    elif mode in {"defensive", "pmcc"} and dte <= 7 and delta >= 0.65:
+        decision = "roll_short_call"
+        reason = f"{mode.title()} mode avoids assignment — ITM/near expiry"
+        triggers.append("roll_itm_near_expiry")
+    elif mode in {"defensive", "pmcc"} and delta >= 0.75:
+        decision = "roll_short_call"
+        reason = f"{mode.title()} mode roll trigger — delta exceeded threshold"
+        triggers.append("roll_delta_based")
+    elif mode == "pmcc":
+        decision = "manage_short_call_only"
+        reason = "PMCC mode manages only the short leg and avoids assignment"
+        triggers.append("manage_short_call_only")
+    else:
+        decision = "hold_to_expiry"
+        reason = f"{mode.title()} mode prefers holding to expiry"
+        triggers.append("hold_to_expiry")
+
+    if delta >= 0.85 and dte <= 3:
+        triggers.append("assignment_imminent_alert")
+    elif delta >= 0.70 and dte <= 7:
+        triggers.append("assignment_risk_alert")
+
+    return {"trade_id": trade.get("id"), "symbol": trade.get("symbol", "SAMPLE"),
+            "strategy": trade.get("strategy_type", "covered_call"), "status": trade.get("status", "open"),
+            "dte": dte, "delta": delta, "decision": decision, "reason": reason, "matched_rules": triggers}
+
+
 # ==================== RULES ENDPOINTS ====================
+
+@simulator_router.get("/rules/config")
+async def get_rules_config(user: dict = Depends(get_current_user)):
+    existing = await db.simulator_rule_configs.find_one({"user_id": user["id"]}, {"_id": 0})
+    if not existing:
+        existing = _normalize_strategy_config({"strategy_mode": "income"})
+        existing["user_id"] = user["id"]
+        existing["updated_at"] = datetime.now(timezone.utc).isoformat()
+    existing["materialized_rules"] = _materialize_strategy_rules(user["id"], existing)
+    return existing
+
+
+@simulator_router.put("/rules/config")
+async def update_rules_config(config: StrategyRuleConfigUpdate, user: dict = Depends(get_current_user)):
+    normalized = _normalize_strategy_config(config.dict())
+    now = datetime.now(timezone.utc).isoformat()
+    doc = {**normalized, "user_id": user["id"], "updated_at": now}
+    await db.simulator_rule_configs.update_one({"user_id": user["id"]}, {"$set": doc}, upsert=True)
+    await db.simulator_rules.delete_many({"user_id": user["id"], "source": "strategy_config"})
+    materialized_rules = _materialize_strategy_rules(user["id"], normalized)
+    if materialized_rules:
+        await db.simulator_rules.insert_many(materialized_rules)
+    doc["materialized_rules"] = materialized_rules
+    return {"message": "Rules config saved", "config": doc}
+
+
+@simulator_router.post("/rules/preview")
+async def preview_rules_config(payload: RulesPreviewRequest, user: dict = Depends(get_current_user)):
+    existing = await db.simulator_rule_configs.find_one({"user_id": user["id"]}, {"_id": 0})
+    if not existing:
+        existing = _normalize_strategy_config({"strategy_mode": "income"})
+    trades = []
+    if payload.trade_id:
+        trade = await db.simulator_trades.find_one({"id": payload.trade_id, "user_id": user["id"]}, {"_id": 0})
+        if not trade:
+            raise HTTPException(status_code=404, detail="Trade not found")
+        trades = [trade]
+    else:
+        live_trades = await db.simulator_trades.find(
+            {"user_id": user["id"], "status": {"$in": ["open", "rolled", "active"]}}, {"_id": 0}
+        ).to_list(50)
+        if live_trades:
+            trades = live_trades
+        else:
+            strat = "pmcc" if existing["strategy_mode"] == "pmcc" else "covered_call"
+            trades = [
+                {"id": "sample-otm", "symbol": "SAMPLE", "strategy_type": strat, "status": "open", "dte_remaining": 2, "current_delta": 0.22},
+                {"id": "sample-itm", "symbol": "SAMPLE", "strategy_type": strat, "status": "open", "dte_remaining": 3, "current_delta": 0.78},
+                {"id": "sample-high-delta", "symbol": "SAMPLE", "strategy_type": strat, "status": "open", "dte_remaining": 12, "current_delta": 0.81},
+            ]
+    previews = [_preview_trade_action(trade, existing) for trade in trades]
+    return {
+        "dry_run": True, "strategy_mode": existing["strategy_mode"], "summary": existing["summary"],
+        "controls": existing["controls"], "alerts": existing["alerts"],
+        "trades_evaluated": len(previews), "rules_count": len(_materialize_strategy_rules(user["id"], existing)),
+        "results": previews,
+    }
+
 
 @simulator_router.post("/rules")
 async def create_trade_rule(rule: TradeRuleCreate, user: dict = Depends(get_current_user)):
