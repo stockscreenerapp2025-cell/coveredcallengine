@@ -182,42 +182,40 @@ async def get_market_indices(user: dict = Depends(get_current_user)):
     """
     yf = get_yfinance()
     
-    # Index ETFs to track (these trade and have historical data)
+    # Actual market indices (not ETFs — these return real index values)
     index_symbols = {
-        "^GSPC": {"name": "S&P 500", "etf": "SPY"},
-        "^IXIC": {"name": "NASDAQ Composite", "etf": "QQQ"},
-        "^DJI": {"name": "Dow Jones", "etf": "DIA"},
-        "^RUT": {"name": "Russell 2000", "etf": "IWM"},
-        "^VIX": {"name": "Volatility Index", "etf": None}
+        "^GSPC": {"name": "S&P 500", "key": "GSPC"},
+        "^IXIC": {"name": "NASDAQ", "key": "IXIC"},
+        "^DJI":  {"name": "Dow Jones", "key": "DJI"},
+        "^RUT":  {"name": "Russell 2000", "key": "RUT"},
+        "^VIX":  {"name": "VIX", "key": "VIX"}
     }
-    
+
     results = {}
-    
+
     for symbol, info in index_symbols.items():
         try:
-            # Use ETF if available (more reliable data), otherwise use index directly
-            ticker_symbol = info.get("etf") or symbol
-            ticker = yf.Ticker(ticker_symbol)
-            
+            ticker = yf.Ticker(symbol)
+
             # Get last 5 days of history
             hist = ticker.history(period='5d')
-            
+
             if hist.empty:
                 continue
-            
+
             # Get latest close and previous close
             latest_close = hist['Close'].iloc[-1]
             previous_close = hist['Close'].iloc[-2] if len(hist) > 1 else latest_close
             close_date = hist.index[-1].strftime('%Y-%m-%d')
-            
+
             change = latest_close - previous_close
             change_pct = (change / previous_close * 100) if previous_close else 0
-            
-            display_symbol = info.get("etf") or symbol.replace("^", "")
-            
-            results[display_symbol] = {
+
+            key = info["key"]
+
+            results[key] = {
                 "name": info["name"],
-                "symbol": display_symbol,
+                "symbol": key,
                 "price": round(float(latest_close), 2),
                 "change": round(float(change), 2),
                 "change_pct": round(float(change_pct), 2),

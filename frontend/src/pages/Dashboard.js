@@ -331,34 +331,54 @@ const Dashboard = () => {
       </div>
 
       {/* Market Indices */}
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-        {loading ? (
-          Array(5).fill(0).map((_, i) => (
-            <Skeleton key={i} className="h-24 rounded-xl" />
-          ))
-        ) : (
-          Object.entries(indices).map(([symbol, data]) => (
-            <Card key={symbol} className="glass-card card-hover" data-testid={`index-${symbol}`}>
-              <CardContent className="p-4">
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-xs text-zinc-500">{data.name}</span>
-                  {data.change >= 0 ? (
-                    <TrendingUp className="w-4 h-4 text-emerald-400" />
-                  ) : (
-                    <TrendingDown className="w-4 h-4 text-red-400" />
-                  )}
-                </div>
-                <div className="text-xl font-bold font-mono text-white">
-                  ${data.price?.toFixed(2)}
-                </div>
-                <div className={`text-sm font-mono ${data.change >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                  {formatPercent(data.change_pct)}
-                </div>
-              </CardContent>
-            </Card>
-          ))
-        )}
-      </div>
+      {(() => {
+        const TV_LINKS = {
+          GSPC: 'https://www.tradingview.com/chart/ZFJaIgJ3/?symbol=SP%3ASPX',
+          IXIC: 'https://www.tradingview.com/chart/ZFJaIgJ3/?symbol=NASDAQ%3ANDX',
+          DJI:  'https://www.tradingview.com/chart/ZFJaIgJ3/?symbol=TVC%3ADJI',
+          RUT:  'https://www.tradingview.com/chart/ZFJaIgJ3/?symbol=TVC%3ARUT',
+          VIX:  'https://www.tradingview.com/chart/ZFJaIgJ3/?symbol=TVC%3AVIX',
+        };
+        return (
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+            {loading ? (
+              Array(5).fill(0).map((_, i) => (
+                <Skeleton key={i} className="h-24 rounded-xl" />
+              ))
+            ) : (
+              Object.entries(indices).map(([symbol, data]) => (
+                <a
+                  key={symbol}
+                  href={TV_LINKS[symbol] || '#'}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="block"
+                  data-testid={`index-${symbol}`}
+                >
+                  <Card className="glass-card card-hover cursor-pointer h-full">
+                    <CardContent className="p-4">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-xs text-zinc-500">{data.name}</span>
+                        {data.change >= 0 ? (
+                          <TrendingUp className="w-4 h-4 text-emerald-400" />
+                        ) : (
+                          <TrendingDown className="w-4 h-4 text-red-400" />
+                        )}
+                      </div>
+                      <div className="text-xl font-bold font-mono text-white">
+                        {data.price?.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </div>
+                      <div className={`text-sm font-mono ${data.change >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                        {formatPercent(data.change_pct)}
+                      </div>
+                    </CardContent>
+                  </Card>
+                </a>
+              ))
+            )}
+          </div>
+        );
+      })()}
 
       {/* Main Grid */}
       <div className="grid lg:grid-cols-3 gap-6">
