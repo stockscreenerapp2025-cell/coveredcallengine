@@ -405,18 +405,29 @@ class EmailAutomationService:
         self.db = db
         self.resend_key = None
         self.sender_email = None
-    
+        self.use_smtp_fallback = False
+
     async def initialize(self) -> bool:
         """Initialize the email automation service"""
         try:
             # Get email settings
             settings = await self.db.admin_settings.find_one({"type": "email_settings"}, {"_id": 0})
             self.resend_key = settings.get("resend_api_key") if settings else os.environ.get("RESEND_API_KEY")
-            self.sender_email = settings.get("sender_email") if settings else "noreply@coveredcallengine.com"
-            
+            self.sender_email = settings.get("sender_email") if settings else os.environ.get("SMTP_USERNAME", "contact@coveredcallengine.com")
+
             if self.resend_key:
                 resend.api_key = self.resend_key
+                self.use_smtp_fallback = False
                 return True
+
+            # Fall back to SMTP if configured
+            smtp_password = os.environ.get("SMTP_PASSWORD", "")
+            smtp_host = os.environ.get("SMTP_HOST", "")
+            if smtp_host and smtp_password:
+                self.use_smtp_fallback = True
+                logger.info("Resend API key not set — using SMTP fallback for email automation")
+                return True
+
             return False
         except Exception as e:
             logger.error(f"Failed to initialize email automation: {e}")
@@ -720,27 +731,38 @@ class EmailAutomationService:
             html = html.replace(f"{{{{{key}}}}}", str(value))
         
         try:
-            result = resend.Emails.send({
-                "from": self.sender_email,
-                "to": to_email,
-                "subject": subject,
-                "html": html
-            })
-            
-            # Log the email
+            if self.use_smtp_fallback:
+                from services.email_service import _smtp_send
+                result = await _smtp_send(to_email, subject, html)
+                send_ok = result.get("status") == "success"
+                message_id = None
+                error_msg = result.get("reason", "SMTP error")
+            else:
+                raw = resend.Emails.send({
+                    "from": self.sender_email,
+                    "to": to_email,
+                    "subject": subject,
+                    "html": html
+                })
+                send_ok = True
+                message_id = raw.get("id") if isinstance(raw, dict) else str(raw)
+                error_msg = None
+
             await self.log_email({
                 "template_key": template_key,
                 "recipient": to_email,
                 "subject": subject,
-                "status": "sent",
-                "resend_id": result.get("id") if isinstance(result, dict) else str(result)
+                "status": "sent" if send_ok else "failed",
+                "error": None if send_ok else error_msg,
             })
-            
-            return {"success": True, "message_id": result.get("id") if isinstance(result, dict) else str(result)}
+
+            if send_ok:
+                return {"success": True, "message_id": message_id}
+            else:
+                return {"success": False, "error": error_msg}
+
         except Exception as e:
             logger.error(f"Failed to send email: {e}")
-            
-            # Log the failure
             await self.log_email({
                 "template_key": template_key,
                 "recipient": to_email,
@@ -748,7 +770,6 @@ class EmailAutomationService:
                 "status": "failed",
                 "error": str(e)
             })
-            
             return {"success": False, "error": str(e)}
     
     async def send_broadcast(self, template_key: str, variables: Dict, recipient_filter: Dict = None) -> Dict:

@@ -450,10 +450,15 @@ const Admin = () => {
   };
   const handleTestEmail = async (templateKey, email) => {
     try {
-      await api.post('/admin/email-automation/test-send', null, {
+      const res = await api.post('/admin/email-automation/test-send', null, {
         params: { template_key: templateKey, recipient_email: email }
       });
-      toast.success(`Test email sent to ${email}`);
+      if (res.data?.success) {
+        toast.success(`Test email sent to ${email}`);
+      } else {
+        const reason = res.data?.message || 'Email service not configured';
+        toast.error(`Failed to send: ${reason}`);
+      }
     } catch (error) {
       toast.error('Failed to send test email');
     }
