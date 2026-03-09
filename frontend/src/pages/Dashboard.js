@@ -770,15 +770,11 @@ const Dashboard = () => {
                       <span>{item.source}</span>
                       <span>•</span>
                       <span>{item.time || item.published_at ? new Date(item.published_at).toLocaleDateString() : 'Recent'}</span>
-                      {item.sentiment && (
-                        <Badge className={`ml-2 ${
-                          item.sentiment === 'positive' ? 'badge-success' :
-                          item.sentiment === 'negative' ? 'badge-danger' :
-                          'badge-info'
-                        }`}>
-                          {item.sentiment}
-                        </Badge>
-                      )}
+                      {(() => {
+                        const s = item.sentiment || 'neutral';
+                        const cls = s === 'positive' ? 'badge-success' : s === 'negative' ? 'badge-danger' : 'badge-info';
+                        return <Badge className={`ml-2 ${cls}`}>{s}</Badge>;
+                      })()}
                     </div>
                   </div>
                 ))}

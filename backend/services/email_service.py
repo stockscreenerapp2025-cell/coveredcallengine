@@ -213,6 +213,79 @@ EMAIL_TEMPLATES = {
             </div>
         </div>
         """
+    },
+    "tokens_purchased": {
+        "subject": "✅ Your AI Tokens Have Been Credited!",
+        "enabled": True,
+        "html": """
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #09090b; color: #ffffff;">
+            <div style="text-align: center; padding: 20px 0; border-bottom: 1px solid #27272a;">
+                <h1 style="color: #10b981; margin: 0;">Covered Call Engine</h1>
+            </div>
+            <div style="padding: 30px 20px;">
+                <h2 style="color: #f59e0b; margin-bottom: 8px;">Payment Confirmed!</h2>
+                <p style="color: #a1a1aa; margin-top: 0;">Hi {{name}}, your AI tokens are ready to use.</p>
+
+                <!-- Receipt Card -->
+                <div style="background-color: #18181b; border: 1px solid #27272a; border-radius: 12px; padding: 24px; margin: 24px 0;">
+                    <div style="display: flex; align-items: center; margin-bottom: 16px;">
+                        <div style="width: 40px; height: 40px; background-color: #f59e0b22; border-radius: 8px; display: inline-block; text-align: center; line-height: 40px; font-size: 20px; margin-right: 12px;">🪙</div>
+                        <div style="display: inline-block; vertical-align: middle;">
+                            <div style="color: #ffffff; font-weight: bold; font-size: 16px;">{{pack_name}}</div>
+                            <div style="color: #71717a; font-size: 13px;">AI Token Pack</div>
+                        </div>
+                    </div>
+                    <table style="width: 100%; border-collapse: collapse;">
+                        <tr style="border-bottom: 1px solid #27272a;">
+                            <td style="padding: 10px 0; color: #a1a1aa; font-size: 14px;">Tokens Credited</td>
+                            <td style="padding: 10px 0; text-align: right; color: #f59e0b; font-weight: bold; font-size: 16px;">{{tokens_credited}}</td>
+                        </tr>
+                        <tr style="border-bottom: 1px solid #27272a;">
+                            <td style="padding: 10px 0; color: #a1a1aa; font-size: 14px;">Amount Paid</td>
+                            <td style="padding: 10px 0; text-align: right; color: #ffffff; font-weight: bold;">${{amount_paid}} USD</td>
+                        </tr>
+                        <tr style="border-bottom: 1px solid #27272a;">
+                            <td style="padding: 10px 0; color: #a1a1aa; font-size: 14px;">Payment Method</td>
+                            <td style="padding: 10px 0; text-align: right; color: #ffffff;">PayPal</td>
+                        </tr>
+                        <tr>
+                            <td style="padding: 10px 0; color: #a1a1aa; font-size: 14px;">Transaction ID</td>
+                            <td style="padding: 10px 0; text-align: right; color: #71717a; font-size: 12px; word-break: break-all;">{{transaction_id}}</td>
+                        </tr>
+                    </table>
+                </div>
+
+                <!-- Token expiry note -->
+                <div style="background-color: #10b98112; border: 1px solid #10b98133; border-radius: 8px; padding: 14px 18px; margin-bottom: 24px;">
+                    <p style="margin: 0; color: #10b981; font-size: 14px;">
+                        ✅ Paid tokens <strong>never expire</strong> — use them at any time across all AI features.
+                    </p>
+                </div>
+
+                <!-- What you can do -->
+                <p style="color: #a1a1aa; font-size: 14px; margin-bottom: 8px;"><strong style="color: #ffffff;">Use your tokens for:</strong></p>
+                <ul style="color: #a1a1aa; font-size: 14px; line-height: 2; padding-left: 20px; margin-top: 0;">
+                    <li>🤖 AI trade analysis &amp; suggestions</li>
+                    <li>📊 Covered call strategy recommendations</li>
+                    <li>📰 News sentiment analysis</li>
+                    <li>💬 AI-powered market chatbot</li>
+                </ul>
+
+                <div style="text-align: center; margin: 30px 0;">
+                    <a href="{{wallet_url}}" style="display: inline-block; padding: 14px 32px; background-color: #f59e0b; color: #000000; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 15px;">
+                        View My AI Wallet →
+                    </a>
+                </div>
+
+                <p style="color: #71717a; font-size: 12px; text-align: center;">
+                    Questions? Reply to this email and we'll help right away.
+                </p>
+            </div>
+            <div style="text-align: center; padding: 20px; border-top: 1px solid #27272a; color: #71717a; font-size: 12px;">
+                © 2025 Covered Call Engine. All rights reserved.
+            </div>
+        </div>
+        """
     }
 }
 
