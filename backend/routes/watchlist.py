@@ -604,6 +604,20 @@ async def _get_best_opportunity_eod(symbol: str) -> dict:
         if not cc_opp:
             return None
         
+        # Get earnings_date from symbol_snapshot to compute days_to_earnings
+        days_to_earnings = None
+        try:
+            snap = await db.symbol_snapshot.find_one(
+                {"symbol": symbol, "run_id": run_id},
+                {"earnings_date": 1}
+            )
+            if snap and snap.get("earnings_date"):
+                from datetime import date
+                earnings_dt = date.fromisoformat(snap["earnings_date"][:10])
+                days_to_earnings = (earnings_dt - date.today()).days
+        except Exception:
+            pass
+
         # Transform to watchlist opportunity format
         return {
             "symbol": symbol,
@@ -620,6 +634,8 @@ async def _get_best_opportunity_eod(symbol: str) -> dict:
             "iv_rank": cc_opp.get("iv_rank"),
             "open_interest": cc_opp.get("open_interest"),
             "score": cc_opp.get("score"),
+            "ai_score": cc_opp.get("score"),
+            "days_to_earnings": days_to_earnings,
             "type": "call",
             "source": "eod_precomputed",
             "data_source": "scan_results_cc",
