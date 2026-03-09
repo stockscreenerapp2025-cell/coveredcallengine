@@ -2173,8 +2173,8 @@ async def get_admin_status(user: dict = Depends(get_current_user)):
     # ================================================================
     
     now_utc = datetime.now(timezone.utc)
-    total_symbols = len(SCAN_SYMBOLS)
-    
+    total_symbols = len(get_scan_symbols())  # Use dynamic function — reflects current universe
+
     # Get tier counts from universe builder (cached)
     tier_counts = get_tier_counts()
     
@@ -2218,6 +2218,9 @@ async def get_admin_status(user: dict = Depends(get_current_user)):
         # New metrics for Data Quality scoring
         # Calculate coverage_ratio if not stored (backward compat)
         total_symbols_from_summary = latest_summary.get("total_symbols", total_symbols)
+        # Override total_symbols with actual run count so "Symbols Scanned" reflects the real run
+        if total_symbols_from_summary > 0:
+            total_symbols = total_symbols_from_summary
         if latest_summary.get("coverage_ratio") is not None:
             coverage_ratio = latest_summary.get("coverage_ratio", 0)
         else:
@@ -2282,6 +2285,9 @@ async def get_admin_status(user: dict = Depends(get_current_user)):
             structure_valid = await db.scan_universe_audit.count_documents({"run_id": run_id, "included": True})
             total_excluded = await db.scan_universe_audit.count_documents({"run_id": run_id, "included": False})
             valid_chains = structure_valid
+            # Update total_symbols from actual audit counts
+            if structure_valid + total_excluded > 0:
+                total_symbols = structure_valid + total_excluded
             
             # Minimal aggregation for breakdowns (uses indexes)
             stage_pipeline = [

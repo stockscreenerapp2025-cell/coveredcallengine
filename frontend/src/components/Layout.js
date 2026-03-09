@@ -65,7 +65,7 @@ const Layout = ({ children }) => {
   return (
     <div className="min-h-screen bg-[#09090b]">
       {/* Sidebar */}
-      <aside className={`sidebar transition-transform duration-300 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0`}>
+      <aside className={`sidebar transition-transform duration-300 ${sidebarOpen ? 'open' : ''}`}>
         <div className="flex flex-col h-full">
           {/* Logo */}
           <div className="flex items-center justify-between p-4 border-b border-white/5">
