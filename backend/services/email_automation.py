@@ -412,8 +412,8 @@ class EmailAutomationService:
         try:
             # Get email settings
             settings = await self.db.admin_settings.find_one({"type": "email_settings"}, {"_id": 0})
-            self.resend_key = settings.get("resend_api_key") if settings else os.environ.get("RESEND_API_KEY")
-            self.sender_email = settings.get("sender_email") if settings else os.environ.get("SMTP_USERNAME", "contact@coveredcallengine.com")
+            self.resend_key = (settings.get("resend_api_key") if settings else None) or os.environ.get("RESEND_API_KEY") or ""
+            self.sender_email = (settings.get("sender_email") if settings else None) or os.environ.get("SMTP_USERNAME", "contact@coveredcallengine.com")
 
             if self.resend_key:
                 resend.api_key = self.resend_key
