@@ -251,35 +251,79 @@ class NewsItem(BaseModel):
     description: Optional[str] = None
 
 
+POSITIVE_WORDS = [
+    'surge', 'soar', 'jump', 'rally', 'gain', 'rise', 'up', 'high', 'record', 'beat',
+    'exceed', 'strong', 'growth', 'profit', 'revenue', 'upgrade', 'buy', 'outperform',
+    'bullish', 'positive', 'boost', 'opportunity', 'success', 'increase', 'expand',
+    'target raised', 'price target', 'earnings beat', 'better than expected', 'breakout'
+]
+
+NEGATIVE_WORDS = [
+    'fall', 'drop', 'decline', 'plunge', 'crash', 'lose', 'loss', 'down', 'low',
+    'miss', 'weak', 'concern', 'risk', 'warning', 'cut', 'downgrade', 'sell',
+    'underperform', 'bearish', 'negative', 'lawsuit', 'investigation', 'fraud',
+    'layoff', 'miss', 'below', 'disappointing', 'worse than expected', 'debt'
+]
+
+
+def _keyword_sentiment(title: str, description: str) -> tuple:
+    """Simple keyword-based sentiment scoring. Returns (label, score 0-100)."""
+    text = (title + " " + (description or "")).lower()
+    pos = sum(1 for w in POSITIVE_WORDS if w in text)
+    neg = sum(1 for w in NEGATIVE_WORDS if w in text)
+    total = pos + neg
+    if total == 0:
+        return "Neutral", 50
+    ratio = pos / total
+    if ratio >= 0.6:
+        score = int(55 + ratio * 30)
+        return "Bullish", min(score, 85)
+    elif ratio <= 0.4:
+        score = int(45 - (1 - ratio) * 30)
+        return "Bearish", max(score, 15)
+    return "Neutral", 50
+
+
 @news_router.post("/analyze-sentiment")
 async def analyze_news_sentiment(
     news_items: List[NewsItem],
     user: dict = Depends(get_current_user)
 ):
-    """Analyze sentiment of news articles using AI
-    
-    Request body: list of objects with 'title' and optional 'description' fields
-    Returns: list of sentiment results (Positive/Neutral/Negative) and overall score
+    """Analyze sentiment of news articles.
+    Uses OpenAI when configured, falls back to keyword-based analysis.
     """
     import os
     import json
     import re
-
-    api_key = os.environ.get("OPENAI_API_KEY")
-
-    if not api_key:
-        return {
-            "sentiments": [],
-            "overall_sentiment": "Neutral",
-            "overall_score": 50,
-            "error": "AI analysis not configured"
-        }
 
     if not news_items:
         return {
             "sentiments": [],
             "overall_sentiment": "Neutral",
             "overall_score": 50
+        }
+
+    api_key = os.environ.get("OPENAI_API_KEY")
+
+    # --- Keyword-based fallback (no API key needed) ---
+    if not api_key:
+        sentiments = []
+        scores = []
+        for i, item in enumerate(news_items[:5], 1):
+            label, score = _keyword_sentiment(item.title, item.description or "")
+            sentiments.append({"index": i, "sentiment": label, "confidence": "Medium"})
+            scores.append(score)
+        avg_score = int(sum(scores) / len(scores)) if scores else 50
+        if avg_score >= 56:
+            overall = "Bullish"
+        elif avg_score <= 44:
+            overall = "Bearish"
+        else:
+            overall = "Neutral"
+        return {
+            "sentiments": sentiments,
+            "overall_sentiment": overall,
+            "overall_score": avg_score
         }
 
     try:
