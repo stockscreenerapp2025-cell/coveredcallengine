@@ -930,7 +930,9 @@ const PMCC = () => {
                             <td className="font-mono">${opp.stock_price?.toFixed(2)}</td>
                             <td>
                               <div className="flex flex-col">
-                                <span className="text-emerald-400 font-mono text-sm">{formatOptionContract(norm.leaps_expiry || norm.leaps_dte, norm.leaps_strike)}</span>
+                                <span className="text-emerald-400 font-mono text-sm">
+                                  {(() => { const s = formatOptionContract(norm.leaps_expiry || norm.leaps_dte, norm.leaps_strike); const i = s.indexOf(' '); return i > -1 ? <>{s.slice(0, i)}<br />{s.slice(i + 1)}</> : s; })()}
+                                </span>
                                 <span className="text-sm text-zinc-300 font-medium">δ{norm.leaps_delta?.toFixed(2) || '-'} <span className="text-zinc-500">|</span> {norm.leaps_dte}d</span>
                               </div>
                             </td>
@@ -938,7 +940,9 @@ const PMCC = () => {
                             <td className="text-red-400 font-mono">${norm.leaps_cost?.toLocaleString()}</td>
                             <td>
                               <div className="flex flex-col">
-                                <span className="text-cyan-400 font-mono text-sm">{formatOptionContract(opp.short_expiry || opp.short_dte, opp.short_strike)}</span>
+                                <span className="text-cyan-400 font-mono text-sm">
+                                  {(() => { const s = formatOptionContract(opp.short_expiry || opp.short_dte, opp.short_strike); const i = s.indexOf(' '); return i > -1 ? <>{s.slice(0, i)}<br />{s.slice(i + 1)}</> : s; })()}
+                                </span>
                                 <span className="text-sm text-zinc-300 font-medium">δ{(opp.short_delta || norm.short_delta)?.toFixed(2) || '-'} <span className="text-zinc-500">|</span> {opp.short_dte}d</span>
                               </div>
                             </td>

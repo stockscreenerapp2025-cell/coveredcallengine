@@ -1900,17 +1900,24 @@ const Admin = () => {
                     <p className="text-zinc-500 text-center py-4">No email logs yet</p>
                   ) : (
                     <div className="space-y-2 max-h-96 overflow-y-auto">
-                      {emailLogs.map((log, idx) => (
-                        <div key={idx} className="p-3 rounded-lg bg-zinc-800/50 flex items-center justify-between">
-                          <div>
-                            <p className="text-sm text-white">{log.recipient}</p>
-                            <p className="text-xs text-zinc-500">{log.template} • {new Date(log.sent_at).toLocaleString()}</p>
+                      {emailLogs.map((log, idx) => {
+                        const recipient = log.recipient || log.to || '—';
+                        const dateStr = log.created_at || log.sent_at;
+                        const dateDisplay = dateStr ? new Date(dateStr).toLocaleString() : '—';
+                        const isSuccess = log.status === 'delivered' || log.status === 'sent';
+                        const isFailed = log.status === 'failed';
+                        return (
+                          <div key={idx} className="p-3 rounded-lg bg-zinc-800/50 flex items-center justify-between">
+                            <div>
+                              <p className="text-sm text-white">{recipient}</p>
+                              <p className="text-xs text-zinc-500">{log.template_key || log.template} • {dateDisplay}</p>
+                            </div>
+                            <Badge className={isSuccess ? 'bg-emerald-500/20 text-emerald-400' : isFailed ? 'bg-red-500/20 text-red-400' : 'bg-yellow-500/20 text-yellow-400'}>
+                              {isSuccess ? 'sent' : log.status}
+                            </Badge>
                           </div>
-                          <Badge className={log.status === 'delivered' ? 'bg-emerald-500/20 text-emerald-400' : log.status === 'failed' ? 'bg-red-500/20 text-red-400' : 'bg-yellow-500/20 text-yellow-400'}>
-                            {log.status}
-                          </Badge>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   )}
                 </CardContent>
