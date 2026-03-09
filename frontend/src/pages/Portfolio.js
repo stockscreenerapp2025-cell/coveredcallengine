@@ -99,6 +99,8 @@ const Portfolio = () => {
   const [tradeDetailOpen, setTradeDetailOpen] = useState(false);
   const [loadingAI, setLoadingAI] = useState(false);
   const [generatingSuggestions, setGeneratingSuggestions] = useState(false);
+  const [closingTrade, setClosingTrade] = useState(false);
+  const [closePrice, setClosePrice] = useState('');
   const fileInputRef = useRef(null);
 
   // Manual Trade Entry State
@@ -259,7 +261,12 @@ const Portfolio = () => {
       // Refresh trades to show new suggestions
       fetchTrades();
     } catch (error) {
-      toast.error('Failed to generate AI suggestions');
+      const detail = error?.response?.data?.detail;
+      if (detail?.error_code === 'INSUFFICIENT_TOKENS') {
+        toast.error('Insufficient AI tokens. Please top up your AI Wallet.');
+      } else {
+        toast.error('Failed to generate AI suggestions');
+      }
     } finally {
       setGeneratingSuggestions(false);
     }
@@ -555,6 +562,25 @@ const Portfolio = () => {
       toast.error('Failed to get AI suggestion');
     } finally {
       setLoadingAI(false);
+    }
+  };
+
+  const handleCloseTrade = async () => {
+    if (!selectedTrade || !closePrice) return;
+    const price = parseFloat(closePrice);
+    if (isNaN(price) || price <= 0) { toast.error('Enter a valid close price'); return; }
+    setClosingTrade(true);
+    try {
+      await portfolioApi.closeTrade(selectedTrade.id, price);
+      toast.success('Trade closed successfully');
+      setTradeDetailOpen(false);
+      setClosePrice('');
+      fetchTrades();
+      fetchSummary();
+    } catch (error) {
+      toast.error('Failed to close trade');
+    } finally {
+      setClosingTrade(false);
     }
   };
 
@@ -1897,6 +1923,38 @@ const Portfolio = () => {
                   </div>
                 )}
               </div>
+
+              {/* Close Trade */}
+              {selectedTrade.status === 'Open' && (
+                <div className="pt-4 border-t border-zinc-800">
+                  <h4 className="text-sm font-medium text-zinc-400 mb-3 flex items-center gap-2">
+                    <XCircle className="w-4 h-4 text-red-400" />
+                    Close Trade
+                  </h4>
+                  <div className="flex items-center gap-3">
+                    <div className="flex-1">
+                      <Label className="text-zinc-400 text-xs mb-1 block">Close / Exit Price ($)</Label>
+                      <Input
+                        type="number"
+                        placeholder={selectedTrade.current_price ? String(selectedTrade.current_price) : 'Enter price'}
+                        value={closePrice}
+                        onChange={e => setClosePrice(e.target.value)}
+                        className="bg-zinc-800 border-zinc-700 text-white"
+                      />
+                    </div>
+                    <div className="pt-5">
+                      <Button
+                        onClick={handleCloseTrade}
+                        disabled={closingTrade || !closePrice}
+                        className="bg-red-600 hover:bg-red-700 text-white"
+                      >
+                        {closingTrade ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <XCircle className="w-4 h-4 mr-2" />}
+                        Close Trade
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {/* External Links */}
               <div className="flex items-center gap-4 pt-4 border-t border-zinc-800">

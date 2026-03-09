@@ -400,15 +400,22 @@ const StockDetailModal = ({ symbol, isOpen, onClose, scanData = null }) => {
                       {/* Trend */}
                       <div className="p-3 rounded bg-zinc-900/50">
                         <div className="text-xs text-zinc-500 mb-2">Overall Trend</div>
-                        <Badge className={`text-sm ${
-                          technicals?.trend === 'bullish' ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' :
-                          technicals?.trend === 'bearish' ? 'bg-red-500/20 text-red-400 border-red-500/30' :
-                          'bg-yellow-500/20 text-yellow-400 border-yellow-500/30'
-                        }`}>
-                          {technicals?.trend === 'bullish' && <TrendingUp className="w-3 h-3 mr-1" />}
-                          {technicals?.trend === 'bearish' && <TrendingDown className="w-3 h-3 mr-1" />}
-                          {technicals?.trend?.toUpperCase() || 'NEUTRAL'}
-                        </Badge>
+                        {(() => {
+                          const trend = technicals?.trend ||
+                            (technicals?.sma_50_above_200 === true ? 'bullish' :
+                             technicals?.sma_50_above_200 === false ? 'bearish' : null);
+                          return (
+                            <Badge className={`text-sm ${
+                              trend === 'bullish' ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' :
+                              trend === 'bearish' ? 'bg-red-500/20 text-red-400 border-red-500/30' :
+                              'bg-yellow-500/20 text-yellow-400 border-yellow-500/30'
+                            }`}>
+                              {trend === 'bullish' && <TrendingUp className="w-3 h-3 mr-1" />}
+                              {trend === 'bearish' && <TrendingDown className="w-3 h-3 mr-1" />}
+                              {(trend || 'neutral').toUpperCase()}
+                            </Badge>
+                          );
+                        })()}
                         {technicals?.sma_50_above_200 !== undefined && (
                           <div className={`text-xs mt-2 ${technicals.sma_50_above_200 ? 'text-emerald-400' : 'text-red-400'}`}>
                             {technicals.sma_50_above_200 ? '✓ Golden Cross (SMA50 > SMA200)' : '✗ Death Cross (SMA50 < SMA200)'}

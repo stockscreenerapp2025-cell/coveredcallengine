@@ -763,13 +763,12 @@ async def close_trade(trade_id: str, close_price: float = Query(...), user: dict
     if not trade:
         raise HTTPException(status_code=404, detail="Trade not found")
     
-    cost_basis = trade.get("cost_basis", 0)
-    premium_collected = trade.get("premium_collected", 0)
-    
-    realized_pnl = premium_collected
-    if trade.get("stock_quantity") and trade.get("stock_price"):
-        stock_pnl = (close_price - trade["stock_price"]) * trade["stock_quantity"] * 100
-        realized_pnl += stock_pnl
+    premium_collected = trade.get("premium_collected", 0) or trade.get("premium_received", 0) or 0
+    shares = trade.get("shares") or trade.get("stock_quantity") or 0
+    entry_price = trade.get("entry_price") or trade.get("stock_price") or 0
+
+    stock_pnl = (close_price - entry_price) * shares if shares and entry_price else 0
+    realized_pnl = stock_pnl + premium_collected - (trade.get("total_fees") or 0)
     
     await db.ibkr_trades.update_one(
         {"id": trade_id},
