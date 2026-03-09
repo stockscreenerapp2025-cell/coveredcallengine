@@ -172,15 +172,36 @@ async def get_market_news(
                         filtered_news = []
                         for n in data["data"]:
                             if is_relevant_news(n):
+                                # Compute sentiment from entity scores — MarketAux stores
+                                # sentiment_score per entity (-1 to 1), not at article level
+                                entities = n.get("entities", [])
+                                scores = [
+                                    e.get("sentiment_score")
+                                    for e in entities
+                                    if e.get("sentiment_score") is not None
+                                ]
+                                if scores:
+                                    avg = sum(scores) / len(scores)
+                                    if avg >= 0.15:
+                                        sentiment_label = "positive"
+                                    elif avg <= -0.15:
+                                        sentiment_label = "negative"
+                                    else:
+                                        sentiment_label = "neutral"
+                                    sentiment_score = round(avg, 4)
+                                else:
+                                    sentiment_label = None
+                                    sentiment_score = None
+
                                 filtered_news.append({
                                     "title": n.get("title"),
                                     "description": n.get("description"),
                                     "source": n.get("source"),
                                     "url": n.get("url"),
                                     "published_at": n.get("published_at"),
-                                    "sentiment": n.get("sentiment"),
-                                    "sentiment_score": n.get("sentiment_score"),
-                                    "tickers": [e.get("symbol") for e in n.get("entities", []) if e.get("symbol")],
+                                    "sentiment": sentiment_label,
+                                    "sentiment_score": sentiment_score,
+                                    "tickers": [e.get("symbol") for e in entities if e.get("symbol")],
                                     "is_live": True
                                 })
                                 if len(filtered_news) >= limit:

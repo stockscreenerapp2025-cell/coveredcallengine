@@ -771,14 +771,13 @@ const Dashboard = () => {
                       <span>•</span>
                       <span>{item.time || item.published_at ? new Date(item.published_at).toLocaleDateString() : 'Recent'}</span>
                       {item.sentiment && (
-                        <Badge className={`ml-2 ${item.sentiment === 'positive' ? 'badge-success' :
-                            item.sentiment === 'negative' ? 'badge-danger' : 'badge-info'
-                          }`}>
+                        <Badge className={`ml-2 ${
+                          item.sentiment === 'positive' ? 'badge-success' :
+                          item.sentiment === 'negative' ? 'badge-danger' :
+                          'badge-info'
+                        }`}>
                           {item.sentiment}
                         </Badge>
-                      )}
-                      {!item.sentiment && (
-                        <Badge className="ml-2 badge-info">neutral</Badge>
                       )}
                     </div>
                   </div>
