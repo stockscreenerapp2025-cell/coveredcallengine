@@ -1546,7 +1546,8 @@ async def update_rules_config(config: StrategyRuleConfigUpdate, user: dict = Dep
     materialized_rules = _materialize_strategy_rules(user["id"], normalized)
     if materialized_rules:
         await db.simulator_rules.insert_many(materialized_rules)
-    doc["materialized_rules"] = materialized_rules
+    # pymongo adds _id (ObjectId) to each dict in-place during insert_many — strip before returning
+    doc["materialized_rules"] = [{k: v for k, v in r.items() if k != "_id"} for r in materialized_rules]
     return {"message": "Rules config saved", "config": doc}
 
 
