@@ -179,22 +179,46 @@ class PayPalService:
         if not product_id:
             return {"success": False, "error": "Failed to create PayPal product"}
 
-        # Create a billing plan with the requested pricing
-        plan_body = {
-            "product_id": product_id,
-            "name": f"CCE {plan_id.title()} {billing_cycle.title()}",
-            "status": "ACTIVE",
-            "billing_cycles": [
+        # Create a billing plan with trial + regular cycles
+        if is_trial:
+            billing_cycles = [
+                {
+                    "frequency": {"interval_unit": "DAY", "interval_count": 7},
+                    "tenure_type": "TRIAL",
+                    "sequence": 1,
+                    "total_cycles": 1,
+                    "pricing_scheme": {
+                        "fixed_price": {"value": "0.00", "currency_code": currency}
+                    }
+                },
                 {
                     "frequency": {"interval_unit": interval_unit, "interval_count": 1},
                     "tenure_type": "REGULAR",
-                    "sequence": 1,
-                    "total_cycles": 0,  # 0 = infinite recurring
+                    "sequence": 2,
+                    "total_cycles": 0,
                     "pricing_scheme": {
                         "fixed_price": {"value": f"{amount:.2f}", "currency_code": currency}
                     }
                 }
-            ],
+            ]
+        else:
+            billing_cycles = [
+                {
+                    "frequency": {"interval_unit": interval_unit, "interval_count": 1},
+                    "tenure_type": "REGULAR",
+                    "sequence": 1,
+                    "total_cycles": 0,
+                    "pricing_scheme": {
+                        "fixed_price": {"value": f"{amount:.2f}", "currency_code": currency}
+                    }
+                }
+            ]
+
+        plan_body = {
+            "product_id": product_id,
+            "name": f"CCE {plan_id.title()} {billing_cycle.title()}",
+            "status": "ACTIVE",
+            "billing_cycles": billing_cycles,
             "payment_preferences": {
                 "auto_bill_outstanding": True,
                 "payment_failure_threshold": 3

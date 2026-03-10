@@ -139,13 +139,10 @@ async def create_checkout(payload: CreateCheckoutRequest, user: dict = Depends(g
         raise HTTPException(status_code=400, detail="Invalid billing_cycle")
 
     plan = plans[plan_id]
-    
-    # Amount we will charge as part of the initial checkout.
-    # If starting with trial, we use a minimal verification amount.
-    if payload.start_with_trial:
-        checkout_amount = 0.01
-    else:
-        checkout_amount = float(plan.get(f"{billing_cycle}_price", 0))
+
+    # Always use the real plan price — PayPal handles the free trial period
+    # via the TRIAL billing cycle (0.00 for 7 days) set in the billing plan.
+    checkout_amount = float(plan.get(f"{billing_cycle}_price", 0))
 
     await paypal_service.initialize()
 
