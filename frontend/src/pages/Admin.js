@@ -101,9 +101,8 @@ const Admin = () => {
     sender_email: '',
     paypal_enabled: true,
     paypal_mode: 'sandbox',
-    paypal_api_username: '',
-    paypal_api_password: '',
-    paypal_api_signature: ''
+    paypal_client_id: '',
+    paypal_client_secret: ''
   });
   const [integrationStatus, setIntegrationStatus] = useState(null);
   const [savingIntegration, setSavingIntegration] = useState(false);
@@ -569,9 +568,8 @@ const Admin = () => {
       // PayPal settings
       if (integrationSettings.paypal_enabled !== undefined) params.append('paypal_enabled', String(integrationSettings.paypal_enabled));
       if (integrationSettings.paypal_mode) params.append('paypal_mode', integrationSettings.paypal_mode);
-      if (integrationSettings.paypal_api_username) params.append('paypal_api_username', integrationSettings.paypal_api_username);
-      if (integrationSettings.paypal_api_password) params.append('paypal_api_password', integrationSettings.paypal_api_password);
-      if (integrationSettings.paypal_api_signature) params.append('paypal_api_signature', integrationSettings.paypal_api_signature);
+      if (integrationSettings.paypal_client_id) params.append('paypal_client_id', integrationSettings.paypal_client_id);
+      if (integrationSettings.paypal_client_secret) params.append('paypal_client_secret', integrationSettings.paypal_client_secret);
       await api.post(`/admin/integration-settings?${params.toString()}`);
       toast.success('Integration settings saved');
       fetchIntegrationSettings();
@@ -2195,28 +2193,28 @@ const Admin = () => {
                   </Button>
                 </div>
               </div>
-              {/* API Credentials */}
+              {/* REST API Credentials */}
               <div className="space-y-4">
                 <div className="space-y-2">
-                  <Label htmlFor="paypal_api_username">API Username</Label>
+                  <Label htmlFor="paypal_client_id">Client ID</Label>
                   <Input
-                    id="paypal_api_username"
+                    id="paypal_client_id"
                     type="text"
-                    value={integrationSettings.paypal_api_username}
-                    onChange={(e) => setIntegrationSettings(prev => ({ ...prev, paypal_api_username: e.target.value }))}
-                    placeholder={integrationStatus?.paypal?.api_username_masked || "sb-xxxxx_api1.business.example.com"}
+                    value={integrationSettings.paypal_client_id}
+                    onChange={(e) => setIntegrationSettings(prev => ({ ...prev, paypal_client_id: e.target.value }))}
+                    placeholder={integrationStatus?.paypal?.has_client_id ? '••••••••' : 'AZsFCrZe... (from developer.paypal.com)'}
                     className="bg-zinc-800 border-zinc-700"
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="paypal_api_password">API Password</Label>
+                  <Label htmlFor="paypal_client_secret">Client Secret</Label>
                   <div className="relative">
                     <Input
-                      id="paypal_api_password"
+                      id="paypal_client_secret"
                       type={showPayPalPassword ? 'text' : 'password'}
-                      value={integrationSettings.paypal_api_password}
-                      onChange={(e) => setIntegrationSettings(prev => ({ ...prev, paypal_api_password: e.target.value }))}
-                      placeholder={integrationStatus?.paypal?.has_api_password ? '••••••••' : 'Enter API password'}
+                      value={integrationSettings.paypal_client_secret}
+                      onChange={(e) => setIntegrationSettings(prev => ({ ...prev, paypal_client_secret: e.target.value }))}
+                      placeholder={integrationStatus?.paypal?.has_client_secret ? '••••••••' : 'EPbroVPM... (from developer.paypal.com)'}
                       className="bg-zinc-800 border-zinc-700 pr-10"
                     />
                     <button
@@ -2225,26 +2223,6 @@ const Admin = () => {
                       className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-white"
                     >
                       {showPayPalPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                    </button>
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="paypal_api_signature">API Signature</Label>
-                  <div className="relative">
-                    <Input
-                      id="paypal_api_signature"
-                      type={showPayPalSignature ? 'text' : 'password'}
-                      value={integrationSettings.paypal_api_signature}
-                      onChange={(e) => setIntegrationSettings(prev => ({ ...prev, paypal_api_signature: e.target.value }))}
-                      placeholder={integrationStatus?.paypal?.has_api_signature ? '••••••••' : 'Enter API signature'}
-                      className="bg-zinc-800 border-zinc-700 pr-10"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowPayPalSignature(!showPayPalSignature)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-white"
-                    >
-                      {showPayPalSignature ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                     </button>
                   </div>
                 </div>

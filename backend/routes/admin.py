@@ -467,12 +467,11 @@ async def get_integration_settings(admin: dict = Depends(get_admin_user)):
     paypal_mode = (paypal_settings.get("mode") if paypal_settings else None) or "sandbox"
     paypal_configured = bool(
         paypal_settings
-        and paypal_settings.get("api_username")
-        and paypal_settings.get("api_password")
-        and paypal_settings.get("api_signature")
+        and paypal_settings.get("client_id")
+        and paypal_settings.get("client_secret")
         and paypal_enabled
     )
-    
+
     return {
         "stripe": {
             "webhook_secret_configured": bool(stripe_settings and stripe_settings.get("webhook_secret")) or bool(env_stripe_webhook),
@@ -486,9 +485,8 @@ async def get_integration_settings(admin: dict = Depends(get_admin_user)):
             "configured": paypal_configured,
             "enabled": paypal_enabled,
             "mode": paypal_mode,
-            "api_username_masked": _mask_small(paypal_settings.get("api_username", "")) if paypal_settings else "",
-            "has_api_password": bool(paypal_settings and paypal_settings.get("api_password")),
-            "has_api_signature": bool(paypal_settings and paypal_settings.get("api_signature"))
+            "has_client_id": bool(paypal_settings and paypal_settings.get("client_id")),
+            "has_client_secret": bool(paypal_settings and paypal_settings.get("client_secret"))
         }
     }
 
@@ -501,9 +499,8 @@ async def update_integration_settings(
     sender_email: Optional[str] = Query(None),
     paypal_enabled: Optional[bool] = Query(None),
     paypal_mode: Optional[str] = Query(None, description="sandbox or live"),
-    paypal_api_username: Optional[str] = Query(None),
-    paypal_api_password: Optional[str] = Query(None),
-    paypal_api_signature: Optional[str] = Query(None),
+    paypal_client_id: Optional[str] = Query(None),
+    paypal_client_secret: Optional[str] = Query(None),
     admin: dict = Depends(get_admin_user)
 ):
     """Update integration settings"""
@@ -536,19 +533,17 @@ async def update_integration_settings(
         )
     
     # PayPal settings
-    if paypal_enabled is not None or paypal_mode is not None or paypal_api_username is not None or paypal_api_password is not None or paypal_api_signature is not None:
+    if paypal_enabled is not None or paypal_mode is not None or paypal_client_id is not None or paypal_client_secret is not None:
         paypal_update = {"type": "paypal_settings", "updated_at": now}
         if paypal_enabled is not None:
             paypal_update["enabled"] = paypal_enabled
         if paypal_mode:
             paypal_update["mode"] = paypal_mode
-        if paypal_api_username:
-            paypal_update["api_username"] = paypal_api_username
-        if paypal_api_password:
-            paypal_update["api_password"] = paypal_api_password
-        if paypal_api_signature:
-            paypal_update["api_signature"] = paypal_api_signature
-        
+        if paypal_client_id:
+            paypal_update["client_id"] = paypal_client_id
+        if paypal_client_secret:
+            paypal_update["client_secret"] = paypal_client_secret
+
         await db.admin_settings.update_one(
             {"type": "paypal_settings"},
             {"$set": paypal_update},
@@ -562,7 +557,7 @@ async def update_integration_settings(
         "details": {
             "stripe_updated": stripe_webhook_secret is not None or stripe_secret_key is not None,
             "email_updated": resend_api_key is not None or sender_email is not None,
-            "paypal_updated": paypal_enabled is not None or paypal_mode is not None or paypal_api_username is not None
+            "paypal_updated": paypal_enabled is not None or paypal_mode is not None or paypal_client_id is not None
         },
         "timestamp": now
     })
