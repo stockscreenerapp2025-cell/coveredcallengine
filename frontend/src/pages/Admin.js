@@ -84,7 +84,7 @@ const Admin = () => {
   const [invitations, setInvitations] = useState([]);
   const [invitationsLoading, setInvitationsLoading] = useState(false);
   const [showInviteModal, setShowInviteModal] = useState(false);
-  const [inviteForm, setInviteForm] = useState({ email: '', name: '', role: 'tester', environment: 'test', message: '' });
+  const [inviteForm, setInviteForm] = useState({ email: '', name: '', role: 'tester', environment: 'production', message: '' });
   const [sendingInvite, setSendingInvite] = useState(false);
   // Subscription settings
   const [subscriptionSettings, setSubscriptionSettings] = useState({

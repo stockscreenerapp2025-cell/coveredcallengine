@@ -34,7 +34,7 @@ class InvitationRequest(BaseModel):
 
 # Environment URLs
 ENVIRONMENT_URLS = {
-    "test": "https://covered-call-docs.preview.emergentagent.com",
+    "test": "https://coveredcallengine.com",  # Test invites use same domain
     "production": "https://coveredcallengine.com"
 }
 
