@@ -34,9 +34,9 @@ async def get_optional_user(credentials: OptionalType[HTTPAuthorizationCredentia
         from utils.auth import JWT_SECRET, JWT_ALGORITHM
         import jwt as _jwt
         payload = _jwt.decode(credentials.credentials, JWT_SECRET, algorithms=[JWT_ALGORITHM])
-        email = payload.get("sub")
-        if email:
-            user = await db.users.find_one({"email": email}, {"_id": 0, "password": 0})
+        user_id = payload.get("sub")
+        if user_id:
+            user = await db.users.find_one({"id": user_id}, {"_id": 0, "password": 0})
             return user
     except Exception:
         pass
@@ -274,14 +274,17 @@ async def checkout_return(
     user_doc = await db.users.find_one({"email": email})
     if not user_doc and email:
         # New user — create account automatically from PayPal email
-        import secrets, hashlib
+        import secrets, hashlib, uuid as _uuid
         temp_password = secrets.token_urlsafe(16)
         hashed = hashlib.sha256(temp_password.encode()).hexdigest()
+        new_user_id = str(_uuid.uuid4())
         user_doc = {
+            "id": new_user_id,
             "email": email,
             "password": hashed,
             "name": email.split("@")[0],
             "role": "user",
+            "is_admin": False,
             "created_at": now.isoformat(),
             "source": "paypal_checkout"
         }
@@ -332,14 +335,15 @@ async def checkout_return(
     auto_token = ""
     try:
         fresh_user = await db.users.find_one({"email": email})
-        if fresh_user:
-            user_id = str(fresh_user.get("id") or fresh_user.get("_id") or email)
+        if fresh_user and fresh_user.get("id"):
             auto_token = create_token(
-                user_id=user_id,
+                user_id=fresh_user["id"],
                 email=email,
                 is_admin=fresh_user.get("is_admin", False),
                 role=fresh_user.get("role", "user")
             )
+        elif fresh_user:
+            logger.warning(f"[PayPal] User {email} has no 'id' field — auto-login token skipped")
     except Exception as e:
         logger.warning(f"[PayPal] Could not generate auto-login token: {e}")
 
