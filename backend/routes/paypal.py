@@ -20,7 +20,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from database import db
-from utils.auth import get_current_user, get_admin_user
+from utils.auth import get_current_user, get_admin_user, create_token
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from typing import Optional as OptionalType
 
@@ -331,8 +331,23 @@ async def checkout_return(
         "provider": "paypal"
     })
 
+    # Generate auto-login token so user is logged in immediately after payment
+    auto_token = ""
+    try:
+        fresh_user = await db.users.find_one({"email": email})
+        if fresh_user:
+            user_id = str(fresh_user.get("id") or fresh_user.get("_id") or email)
+            auto_token = create_token(
+                user_id=user_id,
+                email=email,
+                is_admin=fresh_user.get("is_admin", False),
+                role=fresh_user.get("role", "user")
+            )
+    except Exception as e:
+        logger.warning(f"[PayPal] Could not generate auto-login token: {e}")
+
     return RedirectResponse(
-        url=f"/paypal/success?plan={plan_id}&cycle={billing_cycle}&status={subscription_data.get('status', 'active')}",
+        url=f"/paypal/success?plan={plan_id}&cycle={billing_cycle}&status={subscription_data.get('status', 'active')}&token={auto_token}",
         status_code=302
     )
 
