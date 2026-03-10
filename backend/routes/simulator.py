@@ -2679,8 +2679,17 @@ async def get_analyzer_metrics(
     largest_pos_cap = max((t.get("capital_deployed") or 0 for t in open_trades), default=0)
     largest_position_weight = (largest_pos_cap / current_capital_at_risk * 100) if current_capital_at_risk > 0 else 0
 
+    def _get_dte(t):
+        return t.get("dte_remaining") or t.get("dte") or t.get("days_to_expiry") or 99
+
+    def _get_strike(t):
+        return t.get("short_call_strike") or t.get("strike") or t.get("short_strike")
+
+    def _get_capture(t):
+        return t.get("capture_pct") or t.get("premium_capture_pct")
+
     def _needs_action(t):
-        dte = t.get("dte") or t.get("days_to_expiry") or 99
+        dte = _get_dte(t)
         delta = t.get("current_delta") or 0
         return dte <= 14 or delta >= 0.50
 
@@ -2698,10 +2707,10 @@ async def get_analyzer_metrics(
 
     # ── Section C: Action Queue ─────────────────────────────────────────────────
     def _suggest_action(t):
-        dte = t.get("dte") or t.get("days_to_expiry") or 99
+        dte = _get_dte(t)
         delta = t.get("current_delta") or 0
         pnl = t.get("unrealized_pnl") or 0
-        capture = t.get("capture_pct") or 0
+        capture = _get_capture(t) or 0
         if dte <= 7:
             return "Close", "danger"
         if delta >= 0.50:
@@ -2719,17 +2728,16 @@ async def get_analyzer_metrics(
     action_queue = []
     for t in open_trades:
         action_label, action_level = _suggest_action(t)
-        dte = t.get("dte") or t.get("days_to_expiry")
         action_queue.append({
             "trade_id": t.get("id"),
             "symbol": t.get("symbol"),
             "strategy": t.get("strategy_type"),
             "entry_date": t.get("entry_date"),
-            "expiry": t.get("expiry_date") or t.get("short_expiry"),
-            "dte": dte,
-            "strike": t.get("strike") or t.get("short_strike"),
+            "expiry": t.get("expiry_date") or t.get("short_expiry") or t.get("short_call_expiry"),
+            "dte": _get_dte(t) if _get_dte(t) != 99 else None,
+            "strike": _get_strike(t),
             "delta": t.get("current_delta"),
-            "capture_pct": t.get("capture_pct"),
+            "capture_pct": _get_capture(t),
             "unrealized_pnl": t.get("unrealized_pnl"),
             "capital_deployed": t.get("capital_deployed"),
             "suggested_action": action_label,
