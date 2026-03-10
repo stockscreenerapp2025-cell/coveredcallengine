@@ -2049,7 +2049,7 @@ const Admin = () => {
                       />
                     </div>
                     <div className="space-y-2">
-                      <Label className="text-zinc-400">Monthly Subscription Link ($49)</Label>
+                      <Label className="text-zinc-400">Monthly Subscription Link ($29/$59/$89)</Label>
                       <Input
                         value={subscriptionSettings.test_links?.monthly || ''}
                         onChange={(e) => setSubscriptionSettings(prev => ({
@@ -2061,7 +2061,7 @@ const Admin = () => {
                       />
                     </div>
                     <div className="space-y-2">
-                      <Label className="text-zinc-400">Annual Subscription Link ($499)</Label>
+                      <Label className="text-zinc-400">Annual Subscription Link ($290/$590/$890)</Label>
                       <Input
                         value={subscriptionSettings.test_links?.yearly || ''}
                         onChange={(e) => setSubscriptionSettings(prev => ({
@@ -2094,7 +2094,7 @@ const Admin = () => {
                       />
                     </div>
                     <div className="space-y-2">
-                      <Label className="text-zinc-400">Monthly Subscription Link ($49)</Label>
+                      <Label className="text-zinc-400">Monthly Subscription Link ($29/$59/$89)</Label>
                       <Input
                         value={subscriptionSettings.live_links?.monthly || ''}
                         onChange={(e) => setSubscriptionSettings(prev => ({
@@ -2106,7 +2106,7 @@ const Admin = () => {
                       />
                     </div>
                     <div className="space-y-2">
-                      <Label className="text-zinc-400">Annual Subscription Link ($499)</Label>
+                      <Label className="text-zinc-400">Annual Subscription Link ($290/$590/$890)</Label>
                       <Input
                         value={subscriptionSettings.live_links?.yearly || ''}
                         onChange={(e) => setSubscriptionSettings(prev => ({
