@@ -122,7 +122,7 @@ async def get_market_news(
     from server import MOCK_NEWS
     
     # Generate cache key for news
-    cache_key = f"market_news_v3_{symbol or 'general'}_{limit}"
+    cache_key = f"market_news_v4_{symbol or 'general'}_{limit}"
     
     # Check cache first (news is cached longer on weekends)
     cached_news = await get_cached_data(cache_key)
@@ -205,6 +205,15 @@ async def get_market_news(
                         if len(filtered_news) < limit:
                             needed = limit - len(filtered_news)
                             filtered_news.extend(fallback_pool[:needed])
+
+                        # Pass 3: still not enough? pad with mock news so we always hit limit
+                        if len(filtered_news) < limit:
+                            existing_titles = {a["title"] for a in filtered_news}
+                            for mock in MOCK_NEWS:
+                                if len(filtered_news) >= limit:
+                                    break
+                                if mock["title"] not in existing_titles:
+                                    filtered_news.append(mock)
 
                         if filtered_news:
                             await set_cached_data(cache_key, filtered_news)
