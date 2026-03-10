@@ -29,8 +29,9 @@ CHATBOT_SYSTEM_PROMPT = """You are a friendly and knowledgeable AI assistant for
 
 ## Pricing Plans:
 1. **FREE Trial** - 7 days full access, no credit card required
-2. **Monthly Plan** - $49/month for full platform access
-3. **Annual Plan** - $499/year (save $89 - 2 months free!)
+2. **Basic** - $29/month (Covered Call Dashboard, Scans, Real Market Data, TradingView Charts, 2,000 AI tokens/month)
+3. **Standard** - $59/month (Everything in Basic + PMCC Scanner, Watchlist with AI, Portfolio Tracker, 6,000 AI tokens/month)
+4. **Premium** - $89/month (Everything in Standard + Simulator & Analyser, AI Management of Trades, 15,000 AI tokens/month)
 
 ## What is a Covered Call?
 A covered call is an options strategy where you:
@@ -146,7 +147,7 @@ class ChatbotService:
 
 # Predefined quick responses for common questions
 QUICK_RESPONSES = {
-    "pricing": "Our pricing is simple:\n• **FREE Trial**: 7 days full access\n• **Monthly**: $49/month\n• **Annual**: $499/year (save $89!)\n\nStart with the FREE trial - no credit card needed! 🚀",
+    "pricing": "Our pricing is simple:\n• **FREE Trial**: 7 days full access — no credit card needed\n• **Basic**: $29/month — Covered Call tools + 2,000 AI tokens\n• **Standard**: $59/month — Everything in Basic + PMCC Scanner, Watchlist AI + 6,000 AI tokens\n• **Premium**: $89/month — Full suite including Simulator, AI Trade Management + 15,000 AI tokens\n\nStart with the FREE trial today! 🚀",
     
     "features": "Covered Call Engine offers:\n• 📊 Real-time covered call scanner\n• 🎯 PMCC opportunity finder\n• 📈 Portfolio tracker with IBKR integration\n• 🤖 AI-powered trade suggestions\n• 📰 Market news & sentiment\n\nWant to try it? Start your FREE 7-day trial!",
     
