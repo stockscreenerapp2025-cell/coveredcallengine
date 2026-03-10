@@ -122,7 +122,7 @@ async def get_market_news(
     from server import MOCK_NEWS
     
     # Generate cache key for news
-    cache_key = f"market_news_{symbol or 'general'}_{limit}"
+    cache_key = f"market_news_v2_{symbol or 'general'}_{limit}"
     
     # Check cache first (news is cached longer on weekends)
     cached_news = await get_cached_data(cache_key)
