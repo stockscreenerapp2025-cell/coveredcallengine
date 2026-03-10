@@ -1106,7 +1106,23 @@ async def get_market_status():
 
         # Data note based on system mode
         if system_mode == "EOD_LOCKED":
-            data_note = "Data served from 4:05 PM ET EOD snapshot (deterministic, frozen)"
+            # Try to get the actual snapshot date from the last EOD run
+            try:
+                last_snap = await db.eod_market_snapshot.find_one(
+                    {}, {"run_id": 1, "created_at": 1}, sort=[("created_at", -1)]
+                )
+                if last_snap and last_snap.get("run_id"):
+                    # run_id format: eod_YYYY-MM-DD_... — extract the date part
+                    run_id = last_snap["run_id"]
+                    snap_date = run_id.split("_")[1] if "_" in run_id else None
+                    if snap_date:
+                        data_note = f"Data served from EOD snapshot of {snap_date} (deterministic, frozen)"
+                    else:
+                        data_note = "Data served from last EOD snapshot (deterministic, frozen)"
+                else:
+                    data_note = "Data served from last EOD snapshot (deterministic, frozen)"
+            except Exception:
+                data_note = "Data served from last EOD snapshot (deterministic, frozen)"
         elif is_weekend:
             data_note = "Data shown is from Friday's market close"
         elif market_closed:
