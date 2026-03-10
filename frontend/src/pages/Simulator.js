@@ -1690,7 +1690,11 @@ const Simulator = () => {
           <CardContent className="py-12 text-center">
             <BarChart3 className="w-12 h-12 text-zinc-600 mx-auto mb-4" />
             <h3 className="text-lg font-medium text-white mb-2">No Data Available</h3>
-            <p className="text-zinc-400 text-sm">Add trades to the simulator to see analyzer metrics</p>
+            <p className="text-zinc-400 text-sm">
+              {analyticsStrategy || analyzerSymbol
+                ? `No trades found for the selected filter. Try switching to "All Strategies" or "All Symbols".`
+                : 'Add trades to the simulator to see analyzer metrics.'}
+            </p>
           </CardContent>
         </Card>
       ) : (
