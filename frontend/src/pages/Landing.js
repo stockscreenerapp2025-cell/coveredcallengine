@@ -96,7 +96,10 @@ const Landing = () => {
   };
 
   const handleSubscribe = (link) => {
-    if (!link) return;
+    if (!link) {
+      navigate('/register');
+      return;
+    }
     window.open(link, '_blank');
   };
 
