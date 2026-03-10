@@ -21,6 +21,26 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from database import db
 from utils.auth import get_current_user, get_admin_user
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from typing import Optional as OptionalType
+
+_bearer = HTTPBearer(auto_error=False)
+
+async def get_optional_user(credentials: OptionalType[HTTPAuthorizationCredentials] = Depends(_bearer)) -> OptionalType[dict]:
+    """Return current user if token provided, else None."""
+    if not credentials:
+        return None
+    try:
+        from utils.auth import JWT_SECRET, JWT_ALGORITHM
+        import jwt as _jwt
+        payload = _jwt.decode(credentials.credentials, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+        email = payload.get("sub")
+        if email:
+            user = await db.users.find_one({"email": email}, {"_id": 0, "password": 0})
+            return user
+    except Exception:
+        pass
+    return None
 from services.paypal_service import PayPalService
 from services.email_automation import EmailAutomationService
 from routes.subscription import SUBSCRIPTION_PLANS
@@ -86,7 +106,7 @@ async def get_paypal_links():
     }
 
 @paypal_router.post("/create-checkout")
-async def create_checkout(payload: CreateCheckoutRequest, user: dict = Depends(get_current_user)):
+async def create_checkout(payload: CreateCheckoutRequest, user: dict = Depends(get_optional_user)):
     """
     Create a PayPal Express Checkout session.
 
@@ -136,13 +156,13 @@ async def create_checkout(payload: CreateCheckoutRequest, user: dict = Depends(g
         is_trial=bool(payload.start_with_trial),
         return_url=payload.return_url,
         cancel_url=payload.cancel_url,
-        customer_email=user.get("email")
+        customer_email=user.get("email") if user else None
     )
 
     if not result.get("success"):
         raise HTTPException(status_code=400, detail=result.get("error", "Checkout creation failed"))
 
-    logger.info(f"[PayPal] Checkout created for user={user.get('email')}, plan={plan_id}, cycle={billing_cycle}, trial={payload.start_with_trial}")
+    logger.info(f"[PayPal] Checkout created for user={user.get('email') if user else 'guest'}, plan={plan_id}, cycle={billing_cycle}, trial={payload.start_with_trial}")
     return result
 
 
@@ -255,6 +275,22 @@ async def checkout_return(
         })
 
     user_doc = await db.users.find_one({"email": email})
+    if not user_doc and email:
+        # New user — create account automatically from PayPal email
+        import secrets, hashlib
+        temp_password = secrets.token_urlsafe(16)
+        hashed = hashlib.sha256(temp_password.encode()).hexdigest()
+        user_doc = {
+            "email": email,
+            "password": hashed,
+            "name": email.split("@")[0],
+            "role": "user",
+            "created_at": now.isoformat(),
+            "source": "paypal_checkout"
+        }
+        await db.users.insert_one(user_doc)
+        logger.info(f"[PayPal] Auto-created account for new subscriber: {email}")
+
     if user_doc:
         update_doc: Dict[str, Any] = {
             "subscription": subscription_data,
