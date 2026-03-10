@@ -122,7 +122,7 @@ async def get_market_news(
     from server import MOCK_NEWS
     
     # Generate cache key for news
-    cache_key = f"market_news_v2_{symbol or 'general'}_{limit}"
+    cache_key = f"market_news_v3_{symbol or 'general'}_{limit}"
     
     # Check cache first (news is cached longer on weekends)
     cached_news = await get_cached_data(cache_key)
@@ -152,10 +152,10 @@ async def get_market_news(
                 # If specific symbol requested, filter to that symbol
                 if symbol:
                     params["symbols"] = symbol.upper()
-                else:
-                    # For general news, use our tracked symbols
-                    # Use top liquid symbols for general market news
-                    params["symbols"] = ",".join(["AAPL", "MSFT", "GOOGL", "AMZN", "NVDA", "SPY", "QQQ", "META", "TSLA", "AMD"])
+                # For general news, do NOT restrict to specific symbols —
+                # MarketAux only returns articles that exist for those symbols,
+                # which can be fewer than `limit`. Instead, fetch general
+                # financial news and let is_relevant_news() filter locally.
                 
                 response = await client.get(
                     "https://api.marketaux.com/v1/news/all",
