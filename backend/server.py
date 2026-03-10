@@ -1635,6 +1635,38 @@ async def startup():
         replace_existing=True
     )
 
+    # ── Auto-seed: if DB has no scan data, trigger EOD pipeline immediately ──
+    # Ensures testers always see data on a fresh deployment without admin action.
+    async def _auto_seed_if_empty():
+        try:
+            count = await db.precomputed_scans.count_documents({})
+            if count == 0:
+                logger.info("[STARTUP] No scan data found — auto-triggering EOD pipeline to seed data...")
+                import threading as _t, asyncio as _a, os as _os2
+                from motor.motor_asyncio import AsyncIOMotorClient as _C2
+                def _seed():
+                    loop2 = _a.new_event_loop()
+                    _a.set_event_loop(loop2)
+                    _cl = None
+                    try:
+                        _cl = _C2(_os2.environ["MONGO_URL"], maxPoolSize=10, minPoolSize=1)
+                        _db2 = _cl[_os2.environ["DB_NAME"]]
+                        from services.eod_pipeline import run_eod_pipeline
+                        result = loop2.run_until_complete(run_eod_pipeline(_db2, force_build_universe=True))
+                        logger.info(f"[STARTUP] Auto-seed EOD pipeline complete: CC={result.cc_count}, PMCC={len(result.pmcc_opportunities)}")
+                    except Exception as _e:
+                        logger.error(f"[STARTUP] Auto-seed EOD pipeline failed: {_e}")
+                    finally:
+                        if _cl: _cl.close()
+                        loop2.close()
+                _t.Thread(target=_seed, daemon=True, name="eod-pipeline-autoseed").start()
+            else:
+                logger.info(f"[STARTUP] Scan data found ({count} records) — skipping auto-seed.")
+        except Exception as e:
+            logger.warning(f"[STARTUP] Auto-seed check failed: {e}")
+
+    asyncio.create_task(_auto_seed_if_empty())
+
     # EOD Pipeline Scheduler - runs at 5:00 PM ET (single snapshot per trading day)
     # Per Sanjoy's instruction: no Yahoo fetch at 4:05 PM - one snapshot at 5:00 PM only
     def scheduled_eod_pipeline():
