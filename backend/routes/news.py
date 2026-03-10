@@ -168,47 +168,45 @@ async def get_market_news(
                 if response.status_code == 200:
                     data = response.json()
                     if data.get("data"):
-                        # Filter for relevant news
+                        def _parse_article(n):
+                            entities = n.get("entities", [])
+                            scores = [e.get("sentiment_score") for e in entities if e.get("sentiment_score") is not None]
+                            if scores:
+                                avg = sum(scores) / len(scores)
+                                sentiment_label = "positive" if avg >= 0.15 else ("negative" if avg <= -0.15 else "neutral")
+                                sentiment_score = round(avg, 4)
+                            else:
+                                sentiment_label = "neutral"
+                                sentiment_score = None
+                            return {
+                                "title": n.get("title"),
+                                "description": n.get("description"),
+                                "source": n.get("source"),
+                                "url": n.get("url"),
+                                "published_at": n.get("published_at"),
+                                "sentiment": sentiment_label,
+                                "sentiment_score": sentiment_score,
+                                "tickers": [e.get("symbol") for e in entities if e.get("symbol")],
+                                "is_live": True
+                            }
+
+                        # Pass 1: strict filter (tracked symbols + keywords)
                         filtered_news = []
+                        fallback_pool = []
                         for n in data["data"]:
                             if is_relevant_news(n):
-                                # Compute sentiment from entity scores — MarketAux stores
-                                # sentiment_score per entity (-1 to 1), not at article level
-                                entities = n.get("entities", [])
-                                scores = [
-                                    e.get("sentiment_score")
-                                    for e in entities
-                                    if e.get("sentiment_score") is not None
-                                ]
-                                if scores:
-                                    avg = sum(scores) / len(scores)
-                                    if avg >= 0.15:
-                                        sentiment_label = "positive"
-                                    elif avg <= -0.15:
-                                        sentiment_label = "negative"
-                                    else:
-                                        sentiment_label = "neutral"
-                                    sentiment_score = round(avg, 4)
-                                else:
-                                    sentiment_label = None
-                                    sentiment_score = None
-
-                                filtered_news.append({
-                                    "title": n.get("title"),
-                                    "description": n.get("description"),
-                                    "source": n.get("source"),
-                                    "url": n.get("url"),
-                                    "published_at": n.get("published_at"),
-                                    "sentiment": sentiment_label,
-                                    "sentiment_score": sentiment_score,
-                                    "tickers": [e.get("symbol") for e in entities if e.get("symbol")],
-                                    "is_live": True
-                                })
+                                filtered_news.append(_parse_article(n))
                                 if len(filtered_news) >= limit:
                                     break
-                        
+                            elif not any(src in (n.get("source") or "").lower() for src in ['entertainment', 'sports', 'celebrity', 'lifestyle']):
+                                fallback_pool.append(_parse_article(n))
+
+                        # Pass 2: fill up to limit with any non-irrelevant article
+                        if len(filtered_news) < limit:
+                            needed = limit - len(filtered_news)
+                            filtered_news.extend(fallback_pool[:needed])
+
                         if filtered_news:
-                            # Cache news for weekend access
                             await set_cached_data(cache_key, filtered_news)
                             return filtered_news
                         
