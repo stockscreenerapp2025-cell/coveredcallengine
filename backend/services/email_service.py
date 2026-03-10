@@ -297,6 +297,11 @@ class EmailService:
         self.db = db
         self.base_url = os.environ.get("APP_BASE_URL", "https://coveredcallengine.com")
 
+    async def initialize(self) -> bool:
+        """Check SMTP credentials are configured. Returns True if ready to send."""
+        cfg = _get_smtp_config()
+        return bool(cfg.get("password"))
+
     def _replace_variables(self, template: str, variables: dict) -> str:
         result = template
         for key, value in variables.items():
