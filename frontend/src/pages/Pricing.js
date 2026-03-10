@@ -6,11 +6,13 @@ import { Button } from '../components/ui/button';
 import { Badge } from '../components/ui/badge';
 import { Checkbox } from '../components/ui/checkbox';
 import { Switch } from '../components/ui/switch';
+import { Input } from '../components/ui/input';
 import {
   Check,
   Shield,
   Sparkles,
-  ExternalLink
+  ExternalLink,
+  X
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -22,12 +24,11 @@ const Pricing = () => {
     standard: false,
     premium: false
   });
+  const [emailModal, setEmailModal] = useState(null); // { planId } or null
+  const [emailInput, setEmailInput] = useState('');
+  const [emailError, setEmailError] = useState('');
 
-  const handleSubscribe = async (planId) => {
-    if (!acceptedTerms[planId]) {
-      toast.error('Please accept the Terms & Conditions to subscribe');
-      return;
-    }
+  const startCheckout = async (planId, email) => {
     setSubscribing(planId);
     try {
       const returnUrl = `${window.location.origin}/api/paypal/checkout-return`;
@@ -37,16 +38,44 @@ const Pricing = () => {
         billing_cycle: isYearly ? 'yearly' : 'monthly',
         start_with_trial: true,
         return_url: returnUrl,
-        cancel_url: cancelUrl
+        cancel_url: cancelUrl,
+        customer_email: email || undefined
       });
       if (response.data.redirect_url) {
         window.location.href = response.data.redirect_url;
       }
     } catch (error) {
       toast.error(error.response?.data?.detail || 'Failed to start checkout. Please try again.');
-    } finally {
       setSubscribing(null);
     }
+  };
+
+  const handleSubscribe = (planId) => {
+    if (!acceptedTerms[planId]) {
+      toast.error('Please accept the Terms & Conditions to subscribe');
+      return;
+    }
+    // Check if already logged in
+    const existingToken = localStorage.getItem('token');
+    if (existingToken) {
+      startCheckout(planId, null);
+      return;
+    }
+    // Show email collection modal
+    setEmailInput('');
+    setEmailError('');
+    setEmailModal({ planId });
+  };
+
+  const handleEmailSubmit = () => {
+    const email = emailInput.trim();
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      setEmailError('Please enter a valid email address');
+      return;
+    }
+    const { planId } = emailModal;
+    setEmailModal(null);
+    startCheckout(planId, email);
   };
 
   // Plan definitions matching the uploaded subscription plan
@@ -319,6 +348,41 @@ const Pricing = () => {
           </span>
         </p>
       </div>
+
+      {/* Email collection modal */}
+      {emailModal && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
+          <div className="bg-zinc-900 border border-zinc-700 rounded-xl p-6 max-w-sm w-full relative">
+            <button
+              onClick={() => setEmailModal(null)}
+              className="absolute top-3 right-3 text-zinc-500 hover:text-white"
+            >
+              <X className="w-5 h-5" />
+            </button>
+            <h3 className="text-white font-bold text-lg mb-1">Enter your email</h3>
+            <p className="text-zinc-400 text-sm mb-4">
+              We'll create your account using this email so you can log in after payment.
+            </p>
+            <Input
+              type="email"
+              placeholder="you@example.com"
+              value={emailInput}
+              onChange={e => { setEmailInput(e.target.value); setEmailError(''); }}
+              onKeyDown={e => e.key === 'Enter' && handleEmailSubmit()}
+              className="bg-zinc-800 border-zinc-600 text-white mb-2"
+              autoFocus
+            />
+            {emailError && <p className="text-red-400 text-xs mb-2">{emailError}</p>}
+            <Button
+              onClick={handleEmailSubmit}
+              disabled={subscribing !== null}
+              className="w-full bg-emerald-600 hover:bg-emerald-700 text-white mt-1"
+            >
+              Continue to PayPal
+            </Button>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

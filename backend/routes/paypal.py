@@ -72,6 +72,7 @@ class CreateCheckoutRequest(BaseModel):
     start_with_trial: bool = Field(True, description="If true, start with 7-day trial before billing")
     return_url: str
     cancel_url: str
+    customer_email: Optional[str] = Field(None, description="Buyer email — used to pre-fill PayPal and create account")
 
 
 # ==================== PUBLIC ENDPOINTS ====================
@@ -146,6 +147,9 @@ async def create_checkout(payload: CreateCheckoutRequest, user: dict = Depends(g
 
     await paypal_service.initialize()
 
+    # Use explicitly provided email, or fall back to logged-in user's email
+    customer_email = payload.customer_email or (user.get("email") if user else None)
+
     result = await paypal_service.set_express_checkout(
         amount=checkout_amount,
         plan_id=plan_id,
@@ -153,7 +157,7 @@ async def create_checkout(payload: CreateCheckoutRequest, user: dict = Depends(g
         is_trial=bool(payload.start_with_trial),
         return_url=payload.return_url,
         cancel_url=payload.cancel_url,
-        customer_email=user.get("email") if user else None
+        customer_email=customer_email
     )
 
     if not result.get("success"):

@@ -171,7 +171,7 @@ class PayPalService:
             if not self._initialized:
                 return {"success": False, "error": "PayPal not configured"}
 
-        custom_data = f"{plan_id}|{billing_cycle}|{'1' if is_trial else '0'}"
+        custom_data = f"{plan_id}|{billing_cycle}|{'1' if is_trial else '0'}|{customer_email or ''}"
         interval_unit = "YEAR" if billing_cycle == "yearly" else "MONTH"
 
         # Ensure a catalog product exists (cached after first call)
@@ -277,20 +277,24 @@ class PayPalService:
         if "_error" in result:
             return {"success": False, "error": result["_error"]}
 
-        # Parse custom_id: plan_id|billing_cycle|is_trial
-        custom = result.get("custom_id", "standard|monthly|0")
+        # Parse custom_id: plan_id|billing_cycle|is_trial|customer_email
+        custom = result.get("custom_id", "standard|monthly|0|")
         parts = custom.split("|")
         plan_id = parts[0] if len(parts) > 0 else "standard"
         billing_cycle = parts[1] if len(parts) > 1 else "monthly"
         is_trial = parts[2] == "1" if len(parts) > 2 else False
+        stored_email = parts[3] if len(parts) > 3 else ""
 
         subscriber = result.get("subscriber", {}) or {}
         name = subscriber.get("name", {}) or {}
 
+        # Use subscriber email from PayPal, fall back to stored email from custom_id
+        email = subscriber.get("email_address") or stored_email or None
+
         return {
             "success": True,
             "payer_id": subscriber.get("payer_id", token),
-            "email": subscriber.get("email_address"),
+            "email": email,
             "first_name": name.get("given_name"),
             "last_name": name.get("surname"),
             "amount": None,  # Resolved from pricing DB in the route

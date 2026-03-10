@@ -1,31 +1,34 @@
-import { useEffect } from 'react';
-import { useNavigate, useSearchParams, Link } from 'react-router-dom';
-import { CheckCircle } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { useSearchParams, Link } from 'react-router-dom';
+import { CheckCircle, Mail } from 'lucide-react';
 import { Button } from '../components/ui/button';
 
 const PayPalSuccess = () => {
   const [searchParams] = useSearchParams();
-  const navigate = useNavigate();
+  const [countdown, setCountdown] = useState(5);
   const plan = searchParams.get('plan') || 'standard';
   const cycle = searchParams.get('cycle') || 'monthly';
   const status = searchParams.get('status') || 'active';
   const token = searchParams.get('token');
 
   useEffect(() => {
-    // Store token to auto-login the user
     if (token) {
       localStorage.setItem('token', token);
+      // Countdown only when we have a token (auto-login to dashboard)
+      const interval = setInterval(() => {
+        setCountdown(c => {
+          if (c <= 1) {
+            clearInterval(interval);
+            window.location.href = '/dashboard';
+            return 0;
+          }
+          return c - 1;
+        });
+      }, 1000);
+      return () => clearInterval(interval);
     }
-    // Auto-redirect after 5 seconds
-    const timer = setTimeout(() => {
-      if (token) {
-        window.location.href = '/dashboard';
-      } else {
-        navigate('/login');
-      }
-    }, 5000);
-    return () => clearTimeout(timer);
-  }, [token, navigate]);
+    // No token — stay on this page, don't redirect anywhere
+  }, [token]);
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-zinc-950">
@@ -44,26 +47,37 @@ const PayPalSuccess = () => {
             Your 7-day free trial has started. You won't be charged until the trial ends.
           </p>
         )}
-        <p className="text-zinc-500 text-sm mb-8">
-          Redirecting in 5 seconds...
-        </p>
+
         {token ? (
-          <Button
-            onClick={() => { window.location.href = '/dashboard'; }}
-            className="bg-emerald-600 hover:bg-emerald-700 text-white px-8"
-          >
-            Go to Dashboard
-          </Button>
+          <>
+            <p className="text-zinc-500 text-sm mb-8">
+              Redirecting to dashboard in {countdown} seconds...
+            </p>
+            <Button
+              onClick={() => { window.location.href = '/dashboard'; }}
+              className="bg-emerald-600 hover:bg-emerald-700 text-white px-8"
+            >
+              Go to Dashboard
+            </Button>
+          </>
         ) : (
-          <div className="space-y-3">
+          <div className="space-y-4 mt-6">
+            <div className="bg-zinc-900 border border-zinc-700 rounded-lg p-4 text-left">
+              <div className="flex items-center gap-2 mb-2">
+                <Mail className="w-5 h-5 text-emerald-400 flex-shrink-0" />
+                <p className="text-white font-semibold text-sm">Your account has been created</p>
+              </div>
+              <p className="text-zinc-400 text-sm leading-relaxed">
+                We've created an account using your PayPal email address.
+                Use <span className="text-emerald-400 font-medium">"Forgot Password"</span> on
+                the login page to set your password and access the dashboard.
+              </p>
+            </div>
             <Link to="/login">
               <Button className="bg-emerald-600 hover:bg-emerald-700 text-white px-8 w-full">
-                Log In to Dashboard
+                Go to Login &amp; Set Password
               </Button>
             </Link>
-            <p className="text-zinc-500 text-xs">
-              Use "Forgot Password" on the login page to set your password.
-            </p>
           </div>
         )}
       </div>
