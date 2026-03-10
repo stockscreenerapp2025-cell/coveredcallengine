@@ -190,6 +190,10 @@ export const simulatorApi = {
   createFromTemplate: (templateId) => api.post(`/simulator/rules/from-template/${templateId}`),
   evaluateRules: (dryRun = true) => api.post(`/simulator/rules/evaluate?dry_run=${dryRun}`),
   
+  // Unread alerts (login popup)
+  getUnreadAlerts: () => api.get('/simulator/unread-alerts'),
+  markAlertsRead: () => api.post('/simulator/mark-alerts-read'),
+
   // Action Logs
   getActionLogs: (params = {}) => {
     const queryParams = new URLSearchParams();

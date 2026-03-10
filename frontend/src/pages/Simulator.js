@@ -370,6 +370,14 @@ const Simulator = () => {
     }
   }, [activeTab]);
 
+  // Re-fetch analyzer when filters change
+  useEffect(() => {
+    if (activeTab === 'analytics') {
+      fetchAnalyzerData();
+      fetchAnalytics();
+    }
+  }, [analyticsStrategy, analyzerSymbol, analyticsTimeframe]);
+
   const fetchTrades = async () => {
     setLoading(true);
     try {
@@ -544,7 +552,7 @@ const Simulator = () => {
     setUpdating(true);
     try {
       const res = await simulatorApi.updatePrices();
-      toast.success(`Updated ${res.data.updated} trades. Expired: ${res.data.expired}, Assigned: ${res.data.assigned}`);
+      toast.success(`Prices refreshed — ${res.data.updated ?? 0} trades updated`);
       fetchTrades();
       fetchSummary();
     } catch (error) {
@@ -1574,41 +1582,56 @@ const Simulator = () => {
   );
 
   const renderAnalyticsTab = () => {
-    // This is now the ANALYZER page with fixed 3-row structure
-    // State is managed at component level
-    
-    // Available symbols from trades
     const availableSymbols = [...new Set(trades.map(t => t.symbol))].sort();
-    
-    // Format helpers
-    const getProfitFactorColor = (pf) => {
-      if (pf >= 1.5) return 'text-emerald-400';
-      if (pf >= 1) return 'text-amber-400';
-      return 'text-red-400';
+    const a = analyzerData?.section_a_performance;
+    const b = analyzerData?.section_b_risk;
+    const c = analyzerData?.section_c_action_queue || [];
+    const d = analyzerData?.section_d_strategy_quality || [];
+    const e = analyzerData?.section_e_advanced;
+    const sq = analyzerData?.sample_quality || {};
+
+    const MetricCard = ({ label, value, sub, color = 'text-white', badge }) => (
+      <div className="p-3 bg-zinc-800/50 rounded-lg">
+        <div className="text-xs text-zinc-500 mb-1 flex items-center gap-1">{label}{badge && <span className="ml-1 px-1 py-0.5 text-[10px] bg-zinc-700 text-zinc-400 rounded">{badge}</span>}</div>
+        <div className={`text-xl font-bold ${color}`}>{value ?? '—'}</div>
+        {sub && <div className="text-xs text-zinc-600 mt-0.5">{sub}</div>}
+      </div>
+    );
+
+    const actionLevelStyle = (level) => {
+      if (level === 'danger') return 'bg-red-500/20 text-red-400 border-red-500/30';
+      if (level === 'warning') return 'bg-amber-500/20 text-amber-400 border-amber-500/30';
+      if (level === 'info') return 'bg-blue-500/20 text-blue-400 border-blue-500/30';
+      return 'bg-zinc-700/50 text-zinc-400 border-zinc-600/30';
     };
-    
-    const getScopeLabel = () => {
-      if (analyzerSymbol) return `Symbol: ${analyzerSymbol}`;
-      if (analyticsStrategy === 'covered_call') return 'Strategy: Covered Call';
-      if (analyticsStrategy === 'pmcc') return 'Strategy: PMCC';
-      return 'Portfolio (All)';
-    };
-    
+
+    const scoreColor = (s) => s >= 70 ? 'text-emerald-400' : s >= 45 ? 'text-amber-400' : 'text-red-400';
+
+    const GatedMetric = ({ label, value, gated, badge }) => (
+      <div className="p-3 bg-zinc-800/50 rounded-lg">
+        <div className="text-xs text-zinc-500 mb-1 flex items-center gap-1">
+          {label}
+          {badge && <span className="ml-1 px-1 py-0.5 text-[10px] bg-zinc-700 text-zinc-400 rounded">{badge}</span>}
+        </div>
+        {gated ? (
+          <div className="text-sm text-zinc-500 italic">Low sample</div>
+        ) : (
+          <div className="text-xl font-bold text-white">{value ?? '—'}</div>
+        )}
+      </div>
+    );
+
     return (
     <div className="space-y-6" data-testid="analyzer-page">
-      {/* Analyzer Header */}
+      {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h2 className="text-xl font-semibold text-white flex items-center gap-2">
             <BarChart3 className="w-5 h-5 text-cyan-400" />
             Analyzer
           </h2>
-          <p className="text-zinc-400 text-sm mt-1">
-            Performance, Risk & Strategy Health
-          </p>
+          <p className="text-zinc-400 text-sm mt-1">Trade management dashboard &amp; strategy knowledge base</p>
         </div>
-        
-        {/* Scope Filters */}
         <div className="flex flex-wrap gap-2">
           <Select value={analyticsStrategy || "all"} onValueChange={(v) => setAnalyticsStrategy(v === "all" ? "" : v)}>
             <SelectTrigger className="w-36 h-8 bg-zinc-800/50 border-zinc-700" data-testid="strategy-filter">
@@ -1620,7 +1643,6 @@ const Simulator = () => {
               <SelectItem value="pmcc">PMCC</SelectItem>
             </SelectContent>
           </Select>
-          
           <Select value={analyzerSymbol || "all"} onValueChange={(v) => setAnalyzerSymbol(v === "all" ? "" : v)}>
             <SelectTrigger className="w-32 h-8 bg-zinc-800/50 border-zinc-700" data-testid="symbol-filter">
               <SelectValue placeholder="All Symbols" />
@@ -1632,7 +1654,6 @@ const Simulator = () => {
               ))}
             </SelectContent>
           </Select>
-          
           <Select value={analyticsTimeframe} onValueChange={setAnalyticsTimeframe}>
             <SelectTrigger className="w-28 h-8 bg-zinc-800/50 border-zinc-700" data-testid="timeframe-filter">
               <SelectValue />
@@ -1644,290 +1665,262 @@ const Simulator = () => {
               <SelectItem value="1y">1 Year</SelectItem>
             </SelectContent>
           </Select>
-          
           <Button variant="outline" onClick={fetchAnalyzerData} className="btn-outline h-8">
             <RefreshCw className={`w-4 h-4 ${analyzerLoading ? 'animate-spin' : ''}`} />
           </Button>
         </div>
       </div>
-      
-      {/* Scope Indicator */}
-      <div className="flex items-center gap-2 text-sm">
-        <Badge className="bg-cyan-500/20 text-cyan-400">{getScopeLabel()}</Badge>
-        {analyzerData?.scope?.type && (
-          <span className="text-zinc-500">
-            Scope: {analyzerData.scope.type.charAt(0).toUpperCase() + analyzerData.scope.type.slice(1)}
-          </span>
-        )}
-      </div>
+
+      {/* Sample quality warning */}
+      {sq.warnings?.length > 0 && (
+        <div className="flex items-center gap-2 text-xs text-amber-400 bg-amber-500/10 border border-amber-500/20 rounded-lg px-3 py-2">
+          <AlertTriangle className="w-3 h-3 flex-shrink-0" />
+          {sq.closed_trade_count < 5
+            ? `Only ${sq.closed_trade_count} closed trades — some metrics need 5+ to display accurately.`
+            : `${sq.closed_trade_count} closed trades, ${sq.days_of_history} days of history — advanced metrics need 10+ trades and 90+ days.`}
+        </div>
+      )}
 
       {analyzerLoading ? (
         <div className="space-y-4">
-          {Array(3).fill(0).map((_, i) => (
-            <Skeleton key={i} className="h-32 w-full" />
-          ))}
+          {Array(4).fill(0).map((_, i) => <Skeleton key={i} className="h-32 w-full" />)}
         </div>
-      ) : !analyzerData?.row1_outcome ? (
+      ) : !a ? (
         <Card className="glass-card">
           <CardContent className="py-12 text-center">
             <BarChart3 className="w-12 h-12 text-zinc-600 mx-auto mb-4" />
             <h3 className="text-lg font-medium text-white mb-2">No Data Available</h3>
-            <p className="text-zinc-400 text-sm">
-              Add trades to the simulator to see analyzer metrics
-            </p>
+            <p className="text-zinc-400 text-sm">Add trades to the simulator to see analyzer metrics</p>
           </CardContent>
         </Card>
       ) : (
         <>
-          {/* ==================== ROW 1: OUTCOME ==================== */}
-          <Card className="glass-card border-blue-500/20" data-testid="row1-outcome">
+          {/* ── Section A: Performance Summary ── */}
+          <Card className="glass-card border-blue-500/20">
             <CardHeader className="pb-2">
               <CardTitle className="text-sm flex items-center gap-2">
                 <DollarSign className="w-4 h-4 text-blue-400" />
-                <span className="text-blue-400">Row 1: Outcome</span>
+                <span className="text-blue-400">Performance Summary</span>
                 <span className="text-zinc-500 font-normal">— What did I make?</span>
+                <span className="ml-auto text-xs text-zinc-600">{a.total_trades} trades · {a.open_count} open · {a.closed_count} closed</span>
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
-                {/* Existing Metrics */}
-                <div className="p-3 bg-zinc-800/50 rounded-lg">
-                  <div className="text-xs text-zinc-500 mb-1">Total P/L</div>
-                  <div className={`text-xl font-bold ${analyzerData.row1_outcome.total_pnl >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                    {formatCurrency(analyzerData.row1_outcome.total_pnl)}
-                  </div>
-                </div>
-                <div className="p-3 bg-zinc-800/50 rounded-lg">
-                  <div className="text-xs text-zinc-500 mb-1">Win Rate</div>
-                  <div className={`text-xl font-bold ${analyzerData.row1_outcome.win_rate >= 50 ? 'text-emerald-400' : 'text-amber-400'}`}>
-                    {analyzerData.row1_outcome.win_rate}%
-                  </div>
-                </div>
-                <div className="p-3 bg-zinc-800/50 rounded-lg">
-                  <div className="text-xs text-zinc-500 mb-1">ROI</div>
-                  <div className={`text-xl font-bold ${analyzerData.row1_outcome.roi >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                    {analyzerData.row1_outcome.roi}%
-                  </div>
-                </div>
-                <div className="p-3 bg-zinc-800/50 rounded-lg">
-                  <div className="text-xs text-zinc-500 mb-1">Avg Win</div>
-                  <div className="text-xl font-bold text-emerald-400">
-                    {formatCurrency(analyzerData.row1_outcome.avg_win)}
-                  </div>
-                </div>
-                <div className="p-3 bg-zinc-800/50 rounded-lg">
-                  <div className="text-xs text-zinc-500 mb-1">Avg Loss</div>
-                  <div className="text-xl font-bold text-red-400">
-                    {formatCurrency(analyzerData.row1_outcome.avg_loss)}
-                  </div>
-                </div>
-                
-                {/* New Derived Metrics */}
-                <div className="p-3 bg-zinc-800/50 rounded-lg border border-blue-500/20">
-                  <div className="text-xs text-zinc-500 mb-1 flex items-center gap-1">
-                    Expectancy
-                    <span className="text-zinc-600 cursor-help" title={analyzerData.row1_outcome.expectancy_tooltip}>ⓘ</span>
-                  </div>
-                  <div className={`text-xl font-bold ${analyzerData.row1_outcome.expectancy >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                    {formatCurrency(analyzerData.row1_outcome.expectancy)}
-                  </div>
-                  <div className="text-xs text-zinc-600">per trade</div>
-                </div>
-                <div className="p-3 bg-zinc-800/50 rounded-lg border border-blue-500/20">
-                  <div className="text-xs text-zinc-500 mb-1">Max Drawdown</div>
-                  <div className="text-xl font-bold text-amber-400">
-                    {formatCurrency(analyzerData.row1_outcome.max_drawdown)}
-                  </div>
-                </div>
-                <div className="p-3 bg-zinc-800/50 rounded-lg border border-blue-500/20">
-                  <div className="text-xs text-zinc-500 mb-1 flex items-center gap-1">
-                    Time-Weighted Return
-                    <span className="text-zinc-600 cursor-help" title={analyzerData.row1_outcome.twr_tooltip}>ⓘ</span>
-                  </div>
-                  <div className={`text-xl font-bold ${analyzerData.row1_outcome.time_weighted_return >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                    {analyzerData.row1_outcome.time_weighted_return}%
-                  </div>
-                  <div className="text-xs text-zinc-600">annualized</div>
-                </div>
-              </div>
-              
-              {/* Trade counts */}
-              <div className="flex gap-4 mt-3 text-xs text-zinc-500">
-                <span>Total: {analyzerData.row1_outcome.total_trades}</span>
-                <span>Open: {analyzerData.row1_outcome.open_trades}</span>
-                <span>Completed: {analyzerData.row1_outcome.completed_trades}</span>
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-4 gap-3">
+                <MetricCard label="Total P/L" value={formatCurrency(a.total_pnl)} sub="Realized + unrealized" color={a.total_pnl >= 0 ? 'text-emerald-400' : 'text-red-400'} />
+                <MetricCard label="Realized P/L" value={formatCurrency(a.realized_pnl)} sub="Closed trades only" color={a.realized_pnl >= 0 ? 'text-emerald-400' : 'text-red-400'} />
+                <MetricCard label="Unrealized P/L" value={formatCurrency(a.unrealized_pnl)} sub="Open trades estimate" badge="Open-trade est." color={a.unrealized_pnl >= 0 ? 'text-emerald-400' : 'text-red-400'} />
+                <MetricCard label="Net Premium Collected" value={formatCurrency(a.net_premium_collected)} sub="All strategies" />
+                <MetricCard label="Net Premium Kept" value={formatCurrency(a.net_premium_kept)} sub="After buybacks" color="text-emerald-400" />
+                <MetricCard label="ROI on Peak Capital" value={`${a.roi_on_peak_capital}%`} sub="Realized ÷ peak deployed" color={a.roi_on_peak_capital >= 0 ? 'text-emerald-400' : 'text-red-400'} />
+                <MetricCard label="Avg Trade Return" value={`${a.avg_closed_trade_return_pct}%`} sub="Per closed trade" color={a.avg_closed_trade_return_pct >= 0 ? 'text-emerald-400' : 'text-amber-400'} />
+                <MetricCard label="Avg Hold Days" value={`${a.avg_hold_days}d`} sub="Closed trades" color="text-zinc-300" />
               </div>
             </CardContent>
           </Card>
 
-          {/* ==================== ROW 2: RISK & CAPITAL ==================== */}
-          <Card className="glass-card border-amber-500/20" data-testid="row2-risk-capital">
+          {/* ── Section B: Open Risk ── */}
+          <Card className="glass-card border-amber-500/20">
             <CardHeader className="pb-2">
               <CardTitle className="text-sm flex items-center gap-2">
                 <ShieldAlert className="w-4 h-4 text-amber-400" />
-                <span className="text-amber-400">Row 2: Risk & Capital</span>
-                <span className="text-zinc-500 font-normal">— How much pain did I take?</span>
+                <span className="text-amber-400">Open Risk</span>
+                <span className="text-zinc-500 font-normal">— Where is my capital exposed?</span>
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-4 gap-3">
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
+                <MetricCard label="Capital at Risk" value={formatCurrency(b.current_capital_at_risk)} sub="Current open positions" />
+                <MetricCard label="Peak Capital" value={formatCurrency(b.peak_capital_at_risk)} sub="Historical high" />
                 <div className="p-3 bg-zinc-800/50 rounded-lg">
-                  <div className="text-xs text-zinc-500 mb-1">Peak Capital at Risk</div>
-                  <div className="text-xl font-bold text-white">
-                    {formatCurrency(analyzerData.row2_risk_capital.peak_capital_at_risk)}
+                  <div className="text-xs text-zinc-500 mb-1">Assignment Exposure</div>
+                  <div className={`text-xl font-bold ${b.assignment_exposure > 0 ? 'text-amber-400' : 'text-zinc-300'}`}>
+                    {b.assignment_exposure} pos
                   </div>
+                  <div className="text-xs text-zinc-600">{b.assignment_exposure_pct}% of open (δ ≥ 0.50)</div>
                 </div>
+                <MetricCard label="Largest Position" value={`${b.largest_position_weight}%`} sub="Of total open capital" color={b.largest_position_weight > 40 ? 'text-amber-400' : 'text-zinc-300'} />
                 <div className="p-3 bg-zinc-800/50 rounded-lg">
-                  <div className="text-xs text-zinc-500 mb-1">Avg Capital per Trade</div>
-                  <div className="text-xl font-bold text-white">
-                    {formatCurrency(analyzerData.row2_risk_capital.avg_capital_per_trade)}
+                  <div className="text-xs text-zinc-500 mb-1">Trades Needing Action</div>
+                  <div className={`text-xl font-bold ${b.trades_needing_action > 0 ? 'text-red-400' : 'text-emerald-400'}`}>
+                    {b.trades_needing_action}
                   </div>
+                  <div className="text-xs text-zinc-600">DTE ≤ 14 or δ ≥ 0.50</div>
                 </div>
-                <div className="p-3 bg-zinc-800/50 rounded-lg">
-                  <div className="text-xs text-zinc-500 mb-1 flex items-center gap-1">
-                    Worst Case Loss
-                    <span className="text-zinc-600 cursor-help" title={analyzerData.row2_risk_capital.worst_case_loss_tooltip}>ⓘ</span>
-                  </div>
-                  <div className="text-xl font-bold text-red-400">
-                    {formatCurrency(analyzerData.row2_risk_capital.worst_case_loss)}
-                  </div>
-                  <div className="text-xs text-zinc-600">theoretical</div>
-                </div>
-                <div className="p-3 bg-zinc-800/50 rounded-lg">
-                  <div className="text-xs text-zinc-500 mb-2">Assignment Exposure</div>
-                  <div className="flex items-center gap-4">
-                    <div>
-                      <div className="text-xs text-zinc-600">CC</div>
-                      <div className={`text-lg font-bold ${analyzerData.row2_risk_capital.assignment_exposure_cc > 20 ? 'text-amber-400' : 'text-zinc-300'}`}>
-                        {analyzerData.row2_risk_capital.assignment_exposure_cc}%
-                      </div>
-                    </div>
-                    <div className="h-8 w-px bg-zinc-700" />
-                    <div>
-                      <div className="text-xs text-zinc-600">PMCC</div>
-                      <div className={`text-lg font-bold ${analyzerData.row2_risk_capital.assignment_exposure_pmcc > 20 ? 'text-red-400' : 'text-zinc-300'}`}>
-                        {analyzerData.row2_risk_capital.assignment_exposure_pmcc}%
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-              
-              {/* Risk context */}
-              <div className="flex gap-4 mt-3 text-xs text-zinc-500">
-                <span>Open Positions: {analyzerData.row2_risk_capital.total_open_positions}</span>
-                <span>CC at Risk: {analyzerData.row2_risk_capital.cc_positions_at_risk}</span>
-                <span>PMCC at Risk: {analyzerData.row2_risk_capital.pmcc_positions_at_risk}</span>
               </div>
             </CardContent>
           </Card>
 
-          {/* ==================== ROW 3: STRATEGY HEALTH ==================== */}
-          <Card className="glass-card border-emerald-500/20" data-testid="row3-strategy-health">
+          {/* ── Section C: Action Queue ── */}
+          <Card className="glass-card border-rose-500/20">
             <CardHeader className="pb-2">
               <CardTitle className="text-sm flex items-center gap-2">
-                <Activity className="w-4 h-4 text-emerald-400" />
-                <span className="text-emerald-400">Row 3: Strategy Health</span>
-                <span className="text-zinc-500 font-normal">— Is the logic working?</span>
+                <AlertCircle className="w-4 h-4 text-rose-400" />
+                <span className="text-rose-400">Action Queue</span>
+                <span className="text-zinc-500 font-normal">— What do I do today?</span>
+                <span className="ml-auto text-xs text-zinc-600">{c.length} open trade{c.length !== 1 ? 's' : ''}</span>
               </CardTitle>
             </CardHeader>
             <CardContent>
-              {analyzerData.row3_strategy_health.strategies?.length > 0 ? (
+              {c.length === 0 ? (
+                <div className="text-center py-6 text-zinc-500 text-sm">No open trades — add trades to see action recommendations</div>
+              ) : (
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
                     <thead>
-                      <tr className="text-left text-zinc-500 border-b border-zinc-800">
-                        <th className="pb-2 font-medium">Strategy</th>
-                        <th className="pb-2 font-medium">Win Rate</th>
-                        <th className="pb-2 font-medium">Avg Hold (Days)</th>
-                        <th className="pb-2 font-medium">Profit Factor</th>
-                        <th className="pb-2 font-medium">Trades</th>
-                        <th className="pb-2 font-medium">Realized P/L</th>
+                      <tr className="text-left text-zinc-500 border-b border-zinc-800 text-xs uppercase tracking-wider">
+                        <th className="pb-2">Symbol</th>
+                        <th className="pb-2">Strategy</th>
+                        <th className="pb-2 text-right">Strike</th>
+                        <th className="pb-2 text-right">DTE</th>
+                        <th className="pb-2 text-right">Delta</th>
+                        <th className="pb-2 text-right">Capture</th>
+                        <th className="pb-2 text-right">Unreal P/L</th>
+                        <th className="pb-2">Suggested Action</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {analyzerData.row3_strategy_health.strategies.map((s, idx) => (
-                        <tr key={idx} className="border-b border-zinc-800/50">
-                          <td className="py-3 font-semibold text-white">{s.strategy_label}</td>
-                          <td className={`py-3 ${s.win_rate >= 50 ? 'text-emerald-400' : 'text-amber-400'}`}>
-                            {s.win_rate}%
+                      {c.map((row, idx) => (
+                        <tr key={row.trade_id || idx} className="border-b border-zinc-800/50 hover:bg-zinc-700/20">
+                          <td className="py-2.5 font-semibold text-white">{row.symbol}</td>
+                          <td className="py-2.5">
+                            <Badge className={row.strategy === 'pmcc' ? 'bg-violet-500/20 text-violet-400 border-violet-500/30 text-xs' : 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30 text-xs'}>
+                              {row.strategy === 'pmcc' ? 'PMCC' : 'CC'}
+                            </Badge>
                           </td>
-                          <td className="py-3 text-zinc-300">{s.avg_hold_days}</td>
-                          <td className={`py-3 font-mono ${getProfitFactorColor(s.profit_factor)}`}>
-                            {s.profit_factor}
-                            <span className="ml-1 text-xs">
-                              {s.profit_factor_status === 'good' ? '✓' : s.profit_factor_status === 'caution' ? '⚠' : ''}
-                            </span>
+                          <td className="py-2.5 text-right font-mono text-zinc-300">{row.strike ? `$${row.strike}` : '—'}</td>
+                          <td className={`py-2.5 text-right font-mono ${(row.dte ?? 99) <= 7 ? 'text-red-400' : (row.dte ?? 99) <= 14 ? 'text-amber-400' : 'text-zinc-300'}`}>
+                            {row.dte != null ? `${row.dte}d` : '—'}
                           </td>
-                          <td className="py-3 text-zinc-300">
-                            {s.completed_trades} / {s.total_trades}
-                            {s.open_trades > 0 && <span className="text-zinc-500 text-xs ml-1">({s.open_trades} open)</span>}
+                          <td className={`py-2.5 text-right font-mono ${(row.delta ?? 0) >= 0.50 ? 'text-red-400' : (row.delta ?? 0) >= 0.35 ? 'text-amber-400' : 'text-emerald-400'}`}>
+                            {row.delta != null ? row.delta.toFixed(2) : '—'}
                           </td>
-                          <td className={`py-3 ${s.realized_pnl >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                            {formatCurrency(s.realized_pnl)}
+                          <td className="py-2.5 text-right font-mono text-zinc-300">
+                            {row.capture_pct != null ? `${row.capture_pct.toFixed(0)}%` : '—'}
+                          </td>
+                          <td className={`py-2.5 text-right font-mono ${(row.unrealized_pnl ?? 0) >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                            {row.unrealized_pnl != null ? formatCurrency(row.unrealized_pnl) : '—'}
+                          </td>
+                          <td className="py-2.5">
+                            <Badge className={`text-xs border ${actionLevelStyle(row.action_level)}`}>
+                              {row.suggested_action}
+                            </Badge>
                           </td>
                         </tr>
                       ))}
                     </tbody>
                   </table>
                 </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* ── Section D: Strategy Quality ── */}
+          <Card className="glass-card border-emerald-500/20">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm flex items-center gap-2">
+                <Activity className="w-4 h-4 text-emerald-400" />
+                <span className="text-emerald-400">Strategy Quality</span>
+                <span className="text-zinc-500 font-normal">— Is the logic working?</span>
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {d.length === 0 ? (
+                <div className="text-center py-6 text-zinc-500 text-sm">No strategy data available</div>
               ) : (
-                <div className="text-center py-6 text-zinc-500">
-                  No strategy data available for current scope
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="text-left text-zinc-500 border-b border-zinc-800 text-xs uppercase tracking-wider">
+                        <th className="pb-2">Strategy</th>
+                        <th className="pb-2 text-right">Score</th>
+                        <th className="pb-2 text-right">Win Rate</th>
+                        <th className="pb-2 text-right">Avg Hold</th>
+                        <th className="pb-2 text-right">Profit Factor</th>
+                        <th className="pb-2 text-right">Roll Success</th>
+                        <th className="pb-2 text-right">Assignment Rate</th>
+                        <th className="pb-2 text-right">Realized P/L</th>
+                        <th className="pb-2 text-right">Unrealized</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {d.map((s, idx) => (
+                        <tr key={idx} className="border-b border-zinc-800/50">
+                          <td className="py-3 font-semibold text-white">{s.strategy_label}</td>
+                          <td className="py-3 text-right">
+                            <span className={`font-bold ${scoreColor(s.strategy_score)}`}>{s.strategy_score}</span>
+                            <span className="text-zinc-600 text-xs">/100</span>
+                          </td>
+                          <td className={`py-3 text-right ${s.win_rate >= 50 ? 'text-emerald-400' : 'text-amber-400'}`}>
+                            {s.sample_ok ? `${s.win_rate}%` : <span className="text-zinc-500 text-xs italic">Low sample</span>}
+                          </td>
+                          <td className="py-3 text-right text-zinc-300">{s.avg_hold_days}d</td>
+                          <td className={`py-3 text-right font-mono ${s.profit_factor != null ? (s.profit_factor >= 1.5 ? 'text-emerald-400' : s.profit_factor >= 1 ? 'text-amber-400' : 'text-red-400') : 'text-zinc-500'}`}>
+                            {s.sample_ok ? (s.profit_factor != null ? s.profit_factor : '—') : <span className="text-xs italic">Low sample</span>}
+                          </td>
+                          <td className="py-3 text-right text-zinc-300">
+                            {s.roll_success_rate != null ? `${s.roll_success_rate}%` : '—'}
+                          </td>
+                          <td className={`py-3 text-right ${s.assignment_rate > 30 ? 'text-amber-400' : 'text-zinc-300'}`}>
+                            {s.assignment_rate}%
+                          </td>
+                          <td className={`py-3 text-right ${s.realized_pnl >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                            {formatCurrency(s.realized_pnl)}
+                          </td>
+                          <td className={`py-3 text-right text-xs ${s.unrealized_pnl >= 0 ? 'text-emerald-400/70' : 'text-red-400/70'}`}>
+                            {formatCurrency(s.unrealized_pnl)}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
               )}
-              
-              {/* Strategy Distribution Charts */}
-              {analyzerData.row3_strategy_health.strategy_distribution?.length > 0 && (
-                <div className="grid md:grid-cols-2 gap-4 mt-4 pt-4 border-t border-zinc-800">
-                  <div>
-                    <div className="text-xs text-zinc-500 mb-2">Strategy Distribution</div>
-                    <div className="h-32">
-                      <ResponsiveContainer width="100%" height="100%">
-                        <PieChart>
-                          <Pie
-                            data={analyzerData.row3_strategy_health.strategy_distribution}
-                            dataKey="value"
-                            nameKey="name"
-                            cx="50%"
-                            cy="50%"
-                            outerRadius={50}
-                            fill="#8b5cf6"
-                            label={({ name, value }) => `${name}: ${value}`}
-                          >
-                            {analyzerData.row3_strategy_health.strategy_distribution.map((entry, index) => (
-                              <Cell key={index} fill={index === 0 ? '#06b6d4' : '#8b5cf6'} />
-                            ))}
-                          </Pie>
-                          <Tooltip 
-                            contentStyle={{ background: '#18181b', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px' }}
-                          />
-                        </PieChart>
-                      </ResponsiveContainer>
-                    </div>
-                  </div>
-                  <div>
-                    <div className="text-xs text-zinc-500 mb-2">P/L by Strategy</div>
-                    <div className="h-32">
-                      <ResponsiveContainer width="100%" height="100%">
-                        <BarChart data={analyzerData.row3_strategy_health.pnl_by_strategy} layout="vertical">
-                          <CartesianGrid strokeDasharray="3 3" stroke="#333" />
-                          <XAxis type="number" stroke="#666" fontSize={10} tickFormatter={(v) => `$${(v/1000).toFixed(0)}k`} />
-                          <YAxis type="category" dataKey="name" stroke="#666" fontSize={10} width={80} />
-                          <Tooltip 
-                            contentStyle={{ background: '#18181b', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px' }}
-                            formatter={(value) => formatCurrency(value)}
-                          />
-                          <Bar dataKey="realized" name="Realized" fill="#10b981" radius={[0, 4, 4, 0]} />
-                          <Bar dataKey="unrealized" name="Unrealized" fill="#6366f1" radius={[0, 4, 4, 0]} />
-                        </BarChart>
-                      </ResponsiveContainer>
-                    </div>
+              {/* P/L chart */}
+              {d.length > 0 && (
+                <div className="mt-4 pt-4 border-t border-zinc-800">
+                  <div className="text-xs text-zinc-500 mb-2">P/L by Strategy</div>
+                  <div className="h-28">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={d.map(s => ({ name: s.strategy_label, Realized: s.realized_pnl, Unrealized: s.unrealized_pnl }))} layout="vertical">
+                        <CartesianGrid strokeDasharray="3 3" stroke="#333" />
+                        <XAxis type="number" stroke="#666" fontSize={10} tickFormatter={(v) => `$${(v/1000).toFixed(0)}k`} />
+                        <YAxis type="category" dataKey="name" stroke="#666" fontSize={10} width={90} />
+                        <Tooltip contentStyle={{ background: '#18181b', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px' }} formatter={(v) => formatCurrency(v)} />
+                        <Bar dataKey="Realized" fill="#10b981" radius={[0, 4, 4, 0]} />
+                        <Bar dataKey="Unrealized" fill="#6366f1" radius={[0, 4, 4, 0]} />
+                        <Legend wrapperStyle={{ fontSize: '11px', color: '#71717a' }} />
+                      </BarChart>
+                    </ResponsiveContainer>
                   </div>
                 </div>
               )}
             </CardContent>
           </Card>
+
+          {/* ── Section E: Advanced Metrics ── */}
+          {e && (
+            <Card className="glass-card border-violet-500/20">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm flex items-center gap-2">
+                  <TrendingUp className="w-4 h-4 text-violet-400" />
+                  <span className="text-violet-400">Advanced Metrics</span>
+                  <Badge className="bg-violet-500/20 text-violet-400 border-violet-500/30 text-[10px] ml-1">Advanced</Badge>
+                  <span className="text-zinc-500 font-normal ml-1">— Requires 5–10+ closed trades</span>
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+                  <GatedMetric label="Win Rate" value={`${e.win_rate}%`} gated={e.win_rate_gated} badge="5+ trades" />
+                  <GatedMetric label="Profit Factor" value={e.profit_factor} gated={e.profit_factor_gated} badge="5+ trades" />
+                  <GatedMetric label="Max Drawdown" value={e.max_drawdown != null ? formatCurrency(e.max_drawdown) : '—'} gated={e.max_drawdown_gated} badge="5+ trades" />
+                  <GatedMetric label="Time-Weighted Return" value={e.time_weighted_return != null ? `${e.time_weighted_return}% ann.` : '—'} gated={e.twr_gated} badge="10+ trades · 90d" />
+                  <MetricCard label="Avg Winning Trade" value={formatCurrency(e.avg_win)} color="text-emerald-400" />
+                  <MetricCard label="Avg Losing Trade" value={formatCurrency(e.avg_loss)} color="text-red-400" />
+                </div>
+              </CardContent>
+            </Card>
+          )}
         </>
       )}
 
@@ -1938,16 +1931,22 @@ const Simulator = () => {
             <ShieldCheck className="w-4 h-4 text-emerald-400" />
             Trade Health &amp; AI Actions
           </CardTitle>
-          <Button variant="ghost" size="sm" onClick={fetchTradesHealth} className="h-7 text-xs text-zinc-400">
-            <RefreshCw className={`w-3 h-3 mr-1 ${healthLoading ? 'animate-spin' : ''}`} />
-            Refresh
-          </Button>
+          <div className="flex gap-2">
+            <Button variant="ghost" size="sm" onClick={handleUpdatePrices} disabled={updating} className="h-7 text-xs text-zinc-400">
+              <RefreshCw className={`w-3 h-3 mr-1 ${updating ? 'animate-spin' : ''}`} />
+              {updating ? 'Updating...' : 'Refresh Prices'}
+            </Button>
+            <Button variant="ghost" size="sm" onClick={fetchTradesHealth} className="h-7 text-xs text-zinc-400">
+              <RefreshCw className={`w-3 h-3 mr-1 ${healthLoading ? 'animate-spin' : ''}`} />
+              Refresh
+            </Button>
+          </div>
         </CardHeader>
         <CardContent>
           {healthLoading ? (
             <div className="space-y-2">{[1,2,3].map(i => <div key={i} className="h-10 bg-zinc-700/30 rounded animate-pulse" />)}</div>
           ) : !healthData || healthData.trades.length === 0 ? (
-            <div className="text-center py-6 text-zinc-500 text-sm">No open trades — add trades then click Update Prices to populate health data</div>
+            <div className="text-center py-6 text-zinc-500 text-sm">No open trades — add trades to populate health data</div>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
@@ -2004,7 +2003,7 @@ const Simulator = () => {
                 </tbody>
               </table>
               <p className="text-xs text-zinc-600 mt-3">
-                Live = real bid/ask marks • Est. = Black-Scholes estimate • No Mark = option chain unavailable. Click <b>Update Prices</b> to refresh.
+                Live = real bid/ask marks • Est. = Black-Scholes estimate • No Mark = option chain unavailable. Click <b>Refresh Prices</b> above to update.
               </p>
             </div>
           )}
@@ -2028,16 +2027,6 @@ const Simulator = () => {
           </p>
         </div>
         <div className="flex gap-2">
-          <Button
-            variant="outline"
-            onClick={handleUpdatePrices}
-            disabled={updating}
-            className="btn-outline"
-            data-testid="update-prices-btn"
-          >
-            <RefreshCw className={`w-4 h-4 mr-2 ${updating ? 'animate-spin' : ''}`} />
-            {updating ? 'Updating...' : 'Update Prices'}
-          </Button>
           <Button
             variant="outline"
             onClick={handleClearAll}

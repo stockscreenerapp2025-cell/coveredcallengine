@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { simulatorApi } from '../lib/api';
 import { Button } from './ui/button';
 import {
   Activity,
@@ -32,6 +33,18 @@ const Layout = ({ children }) => {
   const { user, logout, isAdmin, isSupportStaff, hasSupportAccess } = useAuth();
   const navigate = useNavigate();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [alertPopup, setAlertPopup] = useState(false);
+  const [unreadAlerts, setUnreadAlerts] = useState([]);
+
+  useEffect(() => {
+    if (!user) return;
+    simulatorApi.getUnreadAlerts().then(res => {
+      if (res.data?.count > 0) {
+        setUnreadAlerts(res.data.alerts);
+        setAlertPopup(true);
+      }
+    }).catch(() => {});
+  }, [user]);
 
   // Build navigation based on user role
   const navItems = [];
@@ -62,8 +75,57 @@ const Layout = ({ children }) => {
     navigate('/');
   };
 
+  const dismissAlerts = () => {
+    setAlertPopup(false);
+    simulatorApi.markAlertsRead().catch(() => {});
+  };
+
   return (
     <div className="min-h-screen bg-[#09090b]">
+
+      {/* Trade Alert Popup — shown once per login if unread alerts exist */}
+      {alertPopup && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+          <div className="bg-zinc-900 border border-amber-500/30 rounded-xl shadow-2xl w-full max-w-md mx-4 p-6">
+            <div className="flex items-center gap-3 mb-4">
+              <span className="text-2xl">⚠️</span>
+              <div>
+                <h2 className="text-white font-semibold text-lg">Trade Alerts</h2>
+                <p className="text-zinc-400 text-xs">{unreadAlerts.length} new alert{unreadAlerts.length > 1 ? 's' : ''} since your last visit</p>
+              </div>
+            </div>
+            <div className="space-y-2 max-h-64 overflow-y-auto mb-5">
+              {unreadAlerts.map((alert, i) => (
+                <div key={i} className="flex items-start justify-between bg-amber-500/5 border border-amber-500/20 rounded-lg px-3 py-2">
+                  <div>
+                    <span className="text-amber-400 font-semibold text-sm">{alert.symbol}</span>
+                    <span className="text-zinc-400 text-xs ml-2">{alert.rule_name}</span>
+                    <p className="text-zinc-300 text-xs mt-0.5">{alert.message}</p>
+                  </div>
+                  <span className="text-zinc-500 text-xs whitespace-nowrap ml-3">
+                    {new Date(alert.timestamp).toLocaleDateString()}
+                  </span>
+                </div>
+              ))}
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={() => { dismissAlerts(); navigate('/simulator'); }}
+                className="flex-1 bg-amber-500/20 hover:bg-amber-500/30 text-amber-400 border border-amber-500/30 rounded-lg py-2 text-sm font-medium transition-colors"
+              >
+                View in Simulator
+              </button>
+              <button
+                onClick={dismissAlerts}
+                className="flex-1 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-lg py-2 text-sm font-medium transition-colors"
+              >
+                Dismiss
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Sidebar */}
       <aside className={`sidebar transition-transform duration-300 ${sidebarOpen ? 'open' : ''}`}>
         <div className="flex flex-col h-full">
