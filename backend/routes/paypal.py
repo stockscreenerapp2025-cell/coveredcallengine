@@ -8,6 +8,7 @@ Supports:
 - Trial-period marketing email automation triggers
 """
 from fastapi import APIRouter, Depends, Query, HTTPException, Request
+from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, Field
 from typing import Optional, Dict, Any
 from datetime import datetime, timezone, timedelta
@@ -165,13 +166,13 @@ async def checkout_return(
     # REST subscriptions return subscription_id; legacy NVP returns token + PayerID
     effective_token = subscription_id or token
     if not effective_token:
-        raise HTTPException(status_code=400, detail="Missing subscription_id or token parameter")
+        return RedirectResponse(url="/pricing?error=missing_token", status_code=302)
 
     await paypal_service.initialize()
 
     details = await paypal_service.get_express_checkout_details(effective_token)
     if not details.get("success"):
-        raise HTTPException(status_code=400, detail=details.get("error", "Failed to get checkout details"))
+        return RedirectResponse(url="/pricing?error=checkout_failed", status_code=302)
 
     email = details.get("email")
     metadata = details.get("metadata", {}) or {}
@@ -202,7 +203,7 @@ async def checkout_return(
         amount=amount
     )
     if not payment_result.get("success"):
-        raise HTTPException(status_code=400, detail=payment_result.get("error", "Payment failed"))
+        return RedirectResponse(url="/pricing?error=payment_failed", status_code=302)
 
     # Create recurring profile (REST: no-op, returns subscription_id as profile_id)
     full_amount = float(plan.get(f"{billing_cycle}_price", 0))
@@ -294,14 +295,10 @@ async def checkout_return(
         "provider": "paypal"
     })
 
-    return {
-        "success": True,
-        "email": email,
-        "plan_id": plan_id,
-        "billing_cycle": billing_cycle,
-        "status": subscription_data.get("status"),
-        "profile_id": profile_id
-    }
+    return RedirectResponse(
+        url=f"/paypal/success?plan={plan_id}&cycle={billing_cycle}&status={subscription_data.get('status', 'active')}",
+        status_code=302
+    )
 
 
 # ==================== PAYPAL IPN (LIFECYCLE) ====================

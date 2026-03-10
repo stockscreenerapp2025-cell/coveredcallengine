@@ -18,6 +18,7 @@ import Terms from "./pages/Terms";
 import Privacy from "./pages/Privacy";
 import AcceptInvitation from "./pages/AcceptInvitation";
 import AIWallet from "./pages/AIWallet";
+import PayPalSuccess from "./pages/PayPalSuccess";
 import Layout from "./components/Layout";
 import "@/App.css";
 
@@ -171,6 +172,7 @@ function App() {
           <Route path="/terms" element={<Terms />} />
           <Route path="/privacy" element={<Privacy />} />
           <Route path="/accept-invitation" element={<AcceptInvitation />} />
+          <Route path="/paypal/success" element={<PayPalSuccess />} />
           
           {/* Fallback */}
           <Route path="*" element={<Navigate to="/" replace />} />

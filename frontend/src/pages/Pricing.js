@@ -1,6 +1,5 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { useAuth } from '../contexts/AuthContext';
 import api from '../lib/api';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../components/ui/card';
 import { Button } from '../components/ui/button';
@@ -11,15 +10,12 @@ import {
   Check,
   Shield,
   Sparkles,
-  Clock,
   ExternalLink
 } from 'lucide-react';
 import { toast } from 'sonner';
 
 const Pricing = () => {
-  const { user } = useAuth();
-  const [subscriptionLinks, setSubscriptionLinks] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [subscribing, setSubscribing] = useState(null);
   const [isYearly, setIsYearly] = useState(false);
   const [acceptedTerms, setAcceptedTerms] = useState({
     basic: false,
@@ -27,37 +23,30 @@ const Pricing = () => {
     premium: false
   });
 
-  useEffect(() => {
-    fetchSubscriptionLinks();
-  }, []);
-
-  const fetchSubscriptionLinks = async () => {
-    try {
-      const response = await api.get('/subscription/links');
-      setSubscriptionLinks(response.data);
-    } catch (error) {
-      console.error('Failed to fetch subscription links:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleSubscribe = (planId, link) => {
+  const handleSubscribe = async (planId) => {
     if (!acceptedTerms[planId]) {
       toast.error('Please accept the Terms & Conditions to subscribe');
       return;
     }
-    if (!link) {
-      toast.error('Payment link not configured. Please contact support.');
-      return;
+    setSubscribing(planId);
+    try {
+      const returnUrl = `${window.location.origin}/api/paypal/checkout-return`;
+      const cancelUrl = `${window.location.origin}/pricing?cancelled=true`;
+      const response = await api.post('/paypal/create-checkout', {
+        plan_id: planId,
+        billing_cycle: isYearly ? 'yearly' : 'monthly',
+        start_with_trial: true,
+        return_url: returnUrl,
+        cancel_url: cancelUrl
+      });
+      if (response.data.redirect_url) {
+        window.location.href = response.data.redirect_url;
+      }
+    } catch (error) {
+      toast.error(error.response?.data?.detail || 'Failed to start checkout. Please try again.');
+    } finally {
+      setSubscribing(null);
     }
-    // Add user email to the payment link if user is logged in
-    let paymentUrl = link;
-    if (user?.email) {
-      const separator = link.includes('?') ? '&' : '?';
-      paymentUrl = `${link}${separator}prefilled_email=${encodeURIComponent(user.email)}`;
-    }
-    window.open(paymentUrl, '_blank');
   };
 
   // Plan definitions matching the uploaded subscription plan
@@ -202,8 +191,6 @@ const Pricing = () => {
           const colors = getColorClasses(plan.color);
           const price = isYearly ? plan.yearlyPrice : plan.monthlyPrice;
           const period = isYearly ? '/year' : '/month';
-          const linkKey = isYearly ? plan.yearlyLinkKey : plan.monthlyLinkKey;
-          const link = subscriptionLinks?.[linkKey];
 
           return (
             <Card
@@ -271,13 +258,13 @@ const Pricing = () => {
                 {/* CTA Button - Fixed at bottom */}
                 <div className="pt-2">
                   <Button
-                    onClick={() => handleSubscribe(plan.id, link)}
-                    disabled={loading || !acceptedTerms[plan.id]}
+                    onClick={() => handleSubscribe(plan.id)}
+                    disabled={subscribing !== null || !acceptedTerms[plan.id]}
                     className={`w-full ${acceptedTerms[plan.id] ? colors.button : 'bg-zinc-700 cursor-not-allowed'} text-white font-medium py-6`}
                     data-testid={`subscribe-btn-${plan.id}`}
                   >
-                    SUBSCRIBE
-                    {acceptedTerms[plan.id] && <ExternalLink className="w-4 h-4 ml-2" />}
+                    {subscribing === plan.id ? 'Redirecting to PayPal...' : 'GET STARTED'}
+                    {acceptedTerms[plan.id] && subscribing !== plan.id && <ExternalLink className="w-4 h-4 ml-2" />}
                   </Button>
                 </div>
               </CardContent>
