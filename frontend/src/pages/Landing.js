@@ -38,23 +38,9 @@ const APP_NAME = "Covered Call Engine";
 const Landing = () => {
   const navigate = useNavigate();
   const { isAuthenticated } = useAuth();
-  const [subscriptionLinks, setSubscriptionLinks] = useState(null);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [contactForm, setContactForm] = useState({ name: '', email: '', subject: '', message: '' });
   const [sendingContact, setSendingContact] = useState(false);
-
-  useEffect(() => {
-    fetchSubscriptionLinks();
-  }, []);
-
-  const fetchSubscriptionLinks = async () => {
-    try {
-      const response = await api.get('/subscription/links');
-      setSubscriptionLinks(response.data);
-    } catch (error) {
-      console.error('Failed to fetch subscription links:', error);
-    }
-  };
 
   const scrollToPricing = () => {
     const pricingSection = document.getElementById('pricing');
@@ -95,12 +81,28 @@ const Landing = () => {
     }
   };
 
-  const handleSubscribe = (link) => {
-    if (!link) {
-      navigate('/register');
-      return;
+  const [subscribing, setSubscribing] = useState(null);
+
+  const handleSubscribe = async (planId) => {
+    setSubscribing(planId);
+    try {
+      const returnUrl = `${window.location.origin}/api/paypal/checkout-return`;
+      const cancelUrl = `${window.location.origin}/#pricing`;
+      const response = await api.post('/paypal/create-checkout', {
+        plan_id: planId,
+        billing_cycle: 'monthly',
+        start_with_trial: true,
+        return_url: returnUrl,
+        cancel_url: cancelUrl
+      });
+      if (response.data.redirect_url) {
+        window.location.href = response.data.redirect_url;
+      }
+    } catch (error) {
+      toast.error(error.response?.data?.detail || 'Failed to start checkout. Please try again.');
+    } finally {
+      setSubscribing(null);
     }
-    window.open(link, '_blank');
   };
 
   const features = [
@@ -451,7 +453,6 @@ const Landing = () => {
             {plans.map((plan) => {
               const colors = getColorClasses(plan.color);
               const Icon = plan.icon;
-              const link = subscriptionLinks?.[plan.linkKey];
               
               return (
                 <Card 
@@ -507,12 +508,13 @@ const Landing = () => {
                     
                     {/* CTA Button */}
                     <Button
-                      onClick={() => handleSubscribe(link)}
+                      onClick={() => handleSubscribe(plan.id)}
+                      disabled={subscribing !== null}
                       className={`w-full ${colors.button} text-white font-bold py-6 text-base tracking-wide mt-auto`}
                       data-testid={`subscribe-btn-${plan.id}`}
                     >
-                      {plan.buttonText}
-                      <ArrowRight className="w-4 h-4 ml-2" />
+                      {subscribing === plan.id ? 'Redirecting...' : plan.buttonText}
+                      {subscribing !== plan.id && <ArrowRight className="w-4 h-4 ml-2" />}
                     </Button>
                   </CardContent>
                 </Card>
