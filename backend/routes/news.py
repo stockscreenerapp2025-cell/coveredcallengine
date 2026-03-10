@@ -70,8 +70,8 @@ def is_relevant_news(article: dict) -> bool:
     combined_text = f"{title} {description}"
     keyword_matches = sum(1 for kw in OPTIONS_TRADING_KEYWORDS if kw in combined_text)
     
-    # Require at least 2 keyword matches for general financial relevance
-    return keyword_matches >= 2
+    # Require at least 1 keyword match for general financial relevance
+    return keyword_matches >= 1
 
 
 async def check_marketaux_rate_limit() -> bool:
@@ -140,7 +140,7 @@ async def get_market_news(
         try:
             async with httpx.AsyncClient() as client:
                 # Request more items to allow for filtering
-                request_limit = min(limit * 3, 50)  # Request 3x to account for filtering
+                request_limit = min(limit * 5, 50)  # Request 5x to account for filtering
                 
                 params = {
                     "api_token": marketaux_token,
