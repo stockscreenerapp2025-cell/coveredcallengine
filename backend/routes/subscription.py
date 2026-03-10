@@ -217,17 +217,37 @@ async def get_subscription_links():
     }
     
     settings = await db.admin_settings.find_one({"type": "paypal_links"}, {"_id": 0})
-    if not settings:
-        return default_links
-    
-    # Determine which links to return based on mode
-    paypal_settings = await db.admin_settings.find_one({"type": "paypal_settings"}, {"_id": 0})
-    mode = paypal_settings.get("mode", "sandbox") if paypal_settings else "sandbox"
-    
-    if mode == "live":
-        configured_links = settings.get("live_links", {})
+    stripe_settings = await db.admin_settings.find_one({"type": "stripe_settings"}, {"_id": 0})
+
+    # Determine mode from stripe_settings (used by Billing tab) or paypal_settings
+    mode = "test"
+    if stripe_settings:
+        mode = stripe_settings.get("active_mode", "test")
     else:
-        configured_links = settings.get("sandbox_links", {})
-    
+        paypal_settings = await db.admin_settings.find_one({"type": "paypal_settings"}, {"_id": 0})
+        if paypal_settings:
+            mode = "live" if paypal_settings.get("mode") == "live" else "test"
+
+    # Get links from paypal_links collection first, fallback to stripe_settings
+    configured_links = {}
+    if settings:
+        configured_links = settings.get("live_links" if mode == "live" else "sandbox_links", {})
+
+    # If no paypal_links, use stripe_settings monthly link for all plans
+    if not configured_links and stripe_settings:
+        link_set = stripe_settings.get("live_links" if mode == "live" else "test_links", {})
+        monthly = link_set.get("monthly") or None
+        yearly = link_set.get("yearly") or None
+        trial = link_set.get("trial") or None
+        configured_links = {
+            "basic_monthly_link": monthly,
+            "basic_yearly_link": yearly,
+            "standard_monthly_link": monthly,
+            "standard_yearly_link": yearly,
+            "premium_monthly_link": monthly,
+            "premium_yearly_link": yearly,
+            "trial_link": trial,
+        }
+
     # Merge configured links with defaults (preserving null for unconfigured)
     return {**default_links, **configured_links}
