@@ -582,7 +582,7 @@ class EmailAutomationService:
                     html = html.replace(f"{{{{{k}}}}}", str(v))
                     subject = subject.replace(f"{{{{{k}}}}}", str(v))
 
-                await self.send_email(to_email=to_email, subject=subject, html=html)
+                await self._send_raw(to_email=to_email, subject=subject, html=html, template_key=template_key)
 
                 await self.db.email_jobs.update_one({"id": job_id}, {"$set": {"status": "sent", "sent_at": now.isoformat(), "updated_at": now.isoformat()}})
                 sent += 1
@@ -712,6 +712,43 @@ class EmailAutomationService:
             logger.error(f"Failed to get email stats: {e}")
             return {}
     
+    async def _send_raw(self, to_email: str, subject: str, html: str, template_key: str = "") -> Dict:
+        """Send a pre-rendered email directly (subject + html already substituted)."""
+        if not self.sender_email:
+            await self.initialize()
+        try:
+            if self.use_smtp_fallback:
+                from services.email_service import _smtp_send
+                result = await _smtp_send(to_email, subject, html)
+                send_ok = result.get("status") == "success"
+                message_id = None
+                error_msg = result.get("reason", "SMTP error")
+            else:
+                raw = resend.Emails.send({
+                    "from": self.sender_email,
+                    "to": to_email,
+                    "subject": subject,
+                    "html": html
+                })
+                send_ok = True
+                message_id = raw.get("id") if isinstance(raw, dict) else str(raw)
+                error_msg = None
+
+            await self.log_email({
+                "template_key": template_key,
+                "recipient": to_email,
+                "subject": subject,
+                "status": "sent" if send_ok else "failed",
+                "error": None if send_ok else error_msg,
+            })
+            if send_ok:
+                return {"success": True, "message_id": message_id}
+            else:
+                return {"success": False, "error": error_msg}
+        except Exception as e:
+            logger.error(f"Failed to send raw email to {to_email}: {e}")
+            return {"success": False, "error": str(e)}
+
     async def send_email(self, to_email: str, template_key: str, variables: Dict) -> Dict:
         """Send an email using a template"""
         if not await self.initialize():
