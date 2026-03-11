@@ -241,6 +241,10 @@ class PayPalService:
                 "brand_name": "Covered Call Engine",
                 "shipping_preference": "NO_SHIPPING",
                 "user_action": "SUBSCRIBE_NOW",
+                "payment_method": {
+                    "payer_selected": "PAYPAL",
+                    "payee_preferred": "UNRESTRICTED"
+                },
                 "return_url": return_url,
                 "cancel_url": cancel_url
             }
