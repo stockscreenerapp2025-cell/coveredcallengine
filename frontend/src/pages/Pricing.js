@@ -92,13 +92,12 @@ const Pricing = () => {
         'Access to Covered Call Dashboard',
         'Covered Call Scans',
         'Real Market Data',
-        'TradingView Integration Charts',
+        'TradingView Integration',
+        'Charts',
         'Key Technical Indicators',
         'Portfolio Tracker',
         'Cancel any time',
-        'Dedicated Support',
-        '7 Days FREE Trial',
-        '2,000 AI Tokens/month'
+        'Dedicated Support'
       ],
       monthlyLinkKey: 'basic_monthly_link',
       yearlyLinkKey: 'basic_yearly_link'
@@ -115,9 +114,7 @@ const Pricing = () => {
         'Everything in Basic',
         'PMCC Strategy Scanner',
         'Powerful Watch List with AI Features',
-        'Dedicated Support',
-        '7 Days FREE Trial',
-        '6,000 AI Tokens/month'
+        'Dedicated Support'
       ],
       monthlyLinkKey: 'standard_monthly_link',
       yearlyLinkKey: 'standard_yearly_link'
@@ -133,10 +130,8 @@ const Pricing = () => {
       features: [
         'Everything in Standard',
         'Powerful Simulator and Analyser',
-        'AI Management of Trades Selected',
-        'Dedicated Support',
-        '7 Days FREE Trial',
-        '15,000 AI Tokens/month'
+        'AI Management of Trades',
+        'Dedicated Support'
       ],
       monthlyLinkKey: 'premium_monthly_link',
       yearlyLinkKey: 'premium_yearly_link'
@@ -254,6 +249,11 @@ const Pricing = () => {
                   </div>
                   <div className="text-sm text-zinc-500 mt-1">
                     (USD)
+                  </div>
+                  <div className="mt-3 flex justify-center">
+                    <span className={`inline-flex items-center gap-1 text-xs font-medium px-3 py-1 rounded-full border ${colors.badge}`}>
+                      7 Days FREE Trial
+                    </span>
                   </div>
                 </div>
 
