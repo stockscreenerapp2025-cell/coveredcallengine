@@ -27,6 +27,7 @@ class UserResponse(BaseModel):
     is_tester: bool = False
     permissions: List[str] = []
     created_at: Optional[str] = None
+    subscription: Optional[Dict[str, Any]] = None
 
 class TokenResponse(BaseModel):
     access_token: str

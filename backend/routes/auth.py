@@ -128,7 +128,8 @@ async def login(credentials: UserLogin):
             is_support_staff=user.get("is_support_staff", False),
             is_tester=user.get("is_tester", False),
             permissions=user.get("permissions", []),
-            created_at=created_at
+            created_at=created_at,
+            subscription=user.get("subscription")
         )
     )
 
@@ -150,7 +151,8 @@ async def get_me(user: dict = Depends(get_current_user)):
         is_support_staff=user.get("is_support_staff", False),
         is_tester=user.get("is_tester", False),
         permissions=user.get("permissions", []),
-        created_at=created_at
+        created_at=created_at,
+        subscription=user.get("subscription")
     )
 
 
