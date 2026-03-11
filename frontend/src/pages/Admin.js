@@ -629,6 +629,17 @@ const Admin = () => {
       toast.error('Failed to set subscription');
     }
   };
+  const toggleTester = async (userId, currentValue) => {
+    const newValue = !currentValue;
+    try {
+      await api.post(`/admin/users/${userId}/toggle-tester?is_tester=${newValue}`);
+      toast.success(`Tester mode ${newValue ? 'enabled' : 'disabled'}`);
+      fetchUsers(usersPagination.page);
+    } catch (error) {
+      toast.error('Failed to update tester status');
+    }
+  };
+
   const deleteUser = async (userId, userEmail) => {
     if (!window.confirm(`Are you sure you want to delete user "${userEmail}"?\n\nThis action cannot be undone.`)) {
       return;
@@ -1634,6 +1645,15 @@ const Admin = () => {
                                   <SelectItem value="cancelled">Cancel</SelectItem>
                                 </SelectContent>
                               </Select>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => toggleTester(user.id, user.is_tester)}
+                                title={user.is_tester ? 'Tester ON — click to disable' : 'Tester OFF — click to enable'}
+                                className={user.is_tester ? 'text-amber-400 hover:text-amber-300 hover:bg-amber-500/10' : 'text-zinc-500 hover:text-zinc-300'}
+                              >
+                                <TestTube className="w-4 h-4" />
+                              </Button>
                               <Button
                                 size="sm"
                                 variant="ghost"

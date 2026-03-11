@@ -452,6 +452,29 @@ async def set_user_subscription(
     return {"message": f"User subscription set to {status} ({plan_id} / {plan})"}
 
 
+@admin_router.post("/users/{user_id}/toggle-tester")
+async def toggle_tester(
+    user_id: str,
+    is_tester: bool = Query(...),
+    admin: dict = Depends(get_admin_user)
+):
+    """Toggle tester flag for a user (testers bypass plan-based access control)"""
+    user = await db.users.find_one({"id": user_id}, {"_id": 0})
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    await db.users.update_one({"id": user_id}, {"$set": {"is_tester": is_tester}})
+    await db.audit_logs.insert_one({
+        "action": "admin_toggle_tester",
+        "admin_id": admin["id"],
+        "user_id": user_id,
+        "details": {"is_tester": is_tester},
+        "timestamp": datetime.now(timezone.utc).isoformat()
+    })
+    state = "enabled" if is_tester else "disabled"
+    return {"message": f"Tester mode {state} for {user.get('email')}"}
+
+
 # ==================== INTEGRATION SETTINGS ====================
 @admin_router.get("/integration-settings")
 async def get_integration_settings(admin: dict = Depends(get_admin_user)):
