@@ -400,53 +400,56 @@ async def delete_user(
 async def set_user_subscription(
     user_id: str,
     status: str = Query(..., description="active, trialing, cancelled, past_due"),
-    plan: str = Query("monthly", description="trial, monthly, yearly"),
+    plan: str = Query("monthly", description="monthly, yearly"),
+    plan_id: str = Query("standard", description="basic, standard, premium"),
     admin: dict = Depends(get_admin_user)
 ):
-    """Manually set user's subscription status and plan (admin action)"""
+    """Manually set user's subscription status, plan tier and billing cycle (admin action)"""
     valid_statuses = ["active", "trialing", "cancelled", "past_due", "expired"]
-    valid_plans = ["trial", "monthly", "yearly"]
-    
     if status not in valid_statuses:
         raise HTTPException(status_code=400, detail=f"Invalid status. Must be one of: {valid_statuses}")
-    if plan not in valid_plans:
-        raise HTTPException(status_code=400, detail=f"Invalid plan. Must be one of: {valid_plans}")
-    
+    if plan not in ["monthly", "yearly"]:
+        plan = "monthly"
+    if plan_id not in ["basic", "standard", "premium"]:
+        plan_id = "standard"
+
     user = await db.users.find_one({"id": user_id}, {"_id": 0})
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
-    
+
     now = datetime.now(timezone.utc)
-    
+    plan_names = {"basic": "Basic", "standard": "Standard", "premium": "Premium"}
+
     subscription_data = {
         "subscription.status": status,
         "subscription.plan": plan,
+        "subscription.plan_id": plan_id,
+        "subscription.plan_name": plan_names.get(plan_id, plan_id.title()),
+        "subscription.billing_cycle": plan,
+        "access_active": status in ["active", "trialing"],
         "updated_at": now.isoformat()
     }
-    
+
     if status == "trialing":
         subscription_data["subscription.trial_start"] = now.isoformat()
         subscription_data["subscription.trial_end"] = (now + timedelta(days=7)).isoformat()
-    
+
     if status == "active":
         subscription_data["subscription.subscription_start"] = now.isoformat()
-        if plan == "monthly":
-            subscription_data["subscription.next_billing_date"] = (now + timedelta(days=30)).isoformat()
-        elif plan == "yearly":
-            subscription_data["subscription.next_billing_date"] = (now + timedelta(days=365)).isoformat()
-    
+        days = 30 if plan == "monthly" else 365
+        subscription_data["subscription.next_billing_date"] = (now + timedelta(days=days)).isoformat()
+
     await db.users.update_one({"id": user_id}, {"$set": subscription_data})
-    
-    # Log action
+
     await db.audit_logs.insert_one({
         "action": "admin_set_subscription",
         "admin_id": admin["id"],
         "user_id": user_id,
-        "details": {"status": status, "plan": plan},
+        "details": {"status": status, "plan": plan, "plan_id": plan_id},
         "timestamp": now.isoformat()
     })
-    
-    return {"message": f"User subscription set to {status} ({plan})"}
+
+    return {"message": f"User subscription set to {status} ({plan_id} / {plan})"}
 
 
 # ==================== INTEGRATION SETTINGS ====================

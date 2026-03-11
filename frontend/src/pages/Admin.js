@@ -616,10 +616,13 @@ const Admin = () => {
       toast.error('Failed to extend trial');
     }
   };
-  const setUserSubscription = async (userId, status, plan = 'monthly') => {
+  const [userPlanSelections, setUserPlanSelections] = useState({}); // { userId: { plan_id, billing_cycle } }
+
+  const setUserSubscription = async (userId, status) => {
+    const sel = userPlanSelections[userId] || { plan_id: 'standard', billing_cycle: 'monthly' };
     try {
-      await api.post(`/admin/users/${userId}/set-subscription?status=${status}&plan=${plan}`);
-      toast.success(`Subscription set to ${status}`);
+      await api.post(`/admin/users/${userId}/set-subscription?status=${status}&plan=${sel.billing_cycle}&plan_id=${sel.plan_id}`);
+      toast.success(`Subscription set to ${status} (${sel.plan_id} / ${sel.billing_cycle})`);
       fetchUsers(usersPagination.page);
       fetchDashboardStats();
     } catch (error) {
@@ -1596,6 +1599,31 @@ const Admin = () => {
                                 >
                                 </button>
                               </div>
+                              <Select
+                                value={userPlanSelections[user.id]?.plan_id || 'standard'}
+                                onValueChange={(v) => setUserPlanSelections(prev => ({ ...prev, [user.id]: { ...(prev[user.id] || { billing_cycle: 'monthly' }), plan_id: v } }))}
+                              >
+                                <SelectTrigger className="h-8 w-24 text-xs">
+                                  <SelectValue placeholder="Plan" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="basic">Basic</SelectItem>
+                                  <SelectItem value="standard">Standard</SelectItem>
+                                  <SelectItem value="premium">Premium</SelectItem>
+                                </SelectContent>
+                              </Select>
+                              <Select
+                                value={userPlanSelections[user.id]?.billing_cycle || 'monthly'}
+                                onValueChange={(v) => setUserPlanSelections(prev => ({ ...prev, [user.id]: { ...(prev[user.id] || { plan_id: 'standard' }), billing_cycle: v } }))}
+                              >
+                                <SelectTrigger className="h-8 w-20 text-xs">
+                                  <SelectValue placeholder="Cycle" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="monthly">Monthly</SelectItem>
+                                  <SelectItem value="yearly">Yearly</SelectItem>
+                                </SelectContent>
+                              </Select>
                               <Select onValueChange={(status) => setUserSubscription(user.id, status)}>
                                 <SelectTrigger className="h-8 w-24 text-xs">
                                   <SelectValue placeholder="Set..." />
