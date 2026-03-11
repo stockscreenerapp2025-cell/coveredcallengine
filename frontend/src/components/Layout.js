@@ -82,6 +82,35 @@ const Layout = ({ children }) => {
     simulatorApi.markAlertsRead().catch(() => {});
   };
 
+  // Redirect users with no subscription to pricing page
+  if (!isAdmin && !isTester && !isSupportStaff && user && !userPlan) {
+    return (
+      <div className="min-h-screen bg-[#09090b] flex items-center justify-center p-4">
+        <div className="bg-zinc-900 border border-zinc-700 rounded-xl p-8 max-w-md w-full text-center">
+          <div className="w-14 h-14 rounded-full bg-violet-500/20 flex items-center justify-center mx-auto mb-4">
+            <Lock className="w-7 h-7 text-violet-400" />
+          </div>
+          <h2 className="text-white font-bold text-xl mb-2">No Active Subscription</h2>
+          <p className="text-zinc-400 text-sm mb-6">
+            Choose a plan to get started. All plans include a 7-day free trial.
+          </p>
+          <button
+            onClick={() => navigate('/pricing')}
+            className="w-full bg-violet-600 hover:bg-violet-700 text-white rounded-lg py-3 font-medium transition-colors"
+          >
+            View Pricing Plans
+          </button>
+          <button
+            onClick={handleLogout}
+            className="w-full mt-3 bg-zinc-800 hover:bg-zinc-700 text-zinc-400 rounded-lg py-2 text-sm transition-colors"
+          >
+            Sign Out
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-[#09090b]">
 

@@ -463,7 +463,11 @@ async def toggle_tester(
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
-    await db.users.update_one({"id": user_id}, {"$set": {"is_tester": is_tester}})
+    update_fields = {"is_tester": is_tester}
+    if not is_tester:
+        # Also clear tester role so role-based check doesn't bypass plan access
+        update_fields["role"] = None
+    await db.users.update_one({"id": user_id}, {"$set": update_fields})
     await db.audit_logs.insert_one({
         "action": "admin_toggle_tester",
         "admin_id": admin["id"],
