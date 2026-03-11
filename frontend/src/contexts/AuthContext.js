@@ -72,7 +72,30 @@ export const AuthProvider = ({ children }) => {
   const isSupportStaff = user?.is_support_staff || user?.role === 'support_staff';
   const isTester = user?.is_tester || user?.role === 'tester';
   const hasSupportAccess = isAdmin || isSupportStaff;
-  
+
+  // Plan-based access
+  const userPlan = user?.subscription?.plan_id?.toLowerCase() || null;
+
+  const PLAN_ACCESS = {
+    basic:    ['dashboard', 'screener', 'portfolio', 'watchlist', 'ai-wallet'],
+    standard: ['dashboard', 'screener', 'pmcc', 'portfolio', 'watchlist', 'ai-wallet'],
+    premium:  ['dashboard', 'screener', 'pmcc', 'portfolio', 'simulator', 'watchlist', 'ai-wallet'],
+  };
+
+  const hasPageAccess = (page) => {
+    if (isAdmin || isTester) return true;
+    if (!userPlan) return false;
+    return (PLAN_ACCESS[userPlan] || []).includes(page);
+  };
+
+  // The minimum plan required to access a page
+  const requiredPlanFor = (page) => {
+    if (PLAN_ACCESS.basic?.includes(page)) return 'basic';
+    if (PLAN_ACCESS.standard?.includes(page)) return 'standard';
+    if (PLAN_ACCESS.premium?.includes(page)) return 'premium';
+    return null;
+  };
+
   // Check if user has a specific permission
   const hasPermission = (permission) => {
     if (isAdmin) return true;
@@ -93,7 +116,10 @@ export const AuthProvider = ({ children }) => {
     isSupportStaff,
     isTester,
     hasSupportAccess,
-    hasPermission
+    hasPermission,
+    userPlan,
+    hasPageAccess,
+    requiredPlanFor
   };
 
   return (

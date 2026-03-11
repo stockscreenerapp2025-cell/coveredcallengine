@@ -261,6 +261,7 @@ async def checkout_return(
     subscription_data = {
         "plan_id": plan_id,
         "plan_name": plan.get("name", plan_id.title()),
+        "plan": billing_cycle,
         "billing_cycle": billing_cycle,
         "status": status,
         "subscription_start": now.isoformat(),

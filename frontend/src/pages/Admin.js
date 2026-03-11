@@ -1549,7 +1549,16 @@ const Admin = () => {
                             {getStatusBadge(user.subscription?.status)}
                           </td>
                           <td className="py-3">
-                            <span className="text-zinc-400">{user.subscription?.plan || '-'}</span>
+                            {user.subscription?.plan_id ? (
+                              <span className="text-zinc-300 capitalize">
+                                {user.subscription.plan_id}
+                                {user.subscription.billing_cycle && (
+                                  <span className="text-zinc-500 text-xs ml-1">/ {user.subscription.billing_cycle}</span>
+                                )}
+                              </span>
+                            ) : (
+                              <span className="text-zinc-500">{user.subscription?.plan || '-'}</span>
+                            )}
                           </td>
                           <td className="py-3">
                             {user.subscription?.trial_end ? (

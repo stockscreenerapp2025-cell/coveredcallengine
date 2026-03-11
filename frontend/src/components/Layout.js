@@ -17,7 +17,8 @@ import {
   ChevronDown,
   Play,
   Headphones,
-  Coins
+  Coins,
+  Lock
 } from 'lucide-react';
 import {
   DropdownMenu,
@@ -30,11 +31,12 @@ import {
 const APP_NAME = "Covered Call Engine";
 
 const Layout = ({ children }) => {
-  const { user, logout, isAdmin, isSupportStaff, hasSupportAccess } = useAuth();
+  const { user, logout, isAdmin, isSupportStaff, hasSupportAccess, hasPageAccess, requiredPlanFor, userPlan } = useAuth();
   const navigate = useNavigate();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [alertPopup, setAlertPopup] = useState(false);
   const [unreadAlerts, setUnreadAlerts] = useState([]);
+  const [upgradeModal, setUpgradeModal] = useState(null); // { page, requiredPlan }
 
   useEffect(() => {
     if (!user) return;
@@ -55,13 +57,13 @@ const Layout = ({ children }) => {
   } else {
     // Regular users and admins see the full navigation
     navItems.push(
-      { path: '/dashboard', icon: <LayoutDashboard className="w-5 h-5" />, label: 'Dashboard' },
-      { path: '/screener', icon: <Search className="w-5 h-5" />, label: 'Screener' },
-      { path: '/pmcc', icon: <LineChart className="w-5 h-5" />, label: 'PMCC' },
-      { path: '/portfolio', icon: <Wallet className="w-5 h-5" />, label: 'Portfolio' },
-      { path: '/simulator', icon: <Play className="w-5 h-5" />, label: 'Simulator' },
-      { path: '/watchlist', icon: <BookmarkPlus className="w-5 h-5" />, label: 'Watchlist' },
-      { path: '/ai-wallet', icon: <Coins className="w-5 h-5" />, label: 'AI Wallet' },
+      { path: '/dashboard',  pageKey: 'dashboard',  icon: <LayoutDashboard className="w-5 h-5" />, label: 'Dashboard' },
+      { path: '/screener',   pageKey: 'screener',   icon: <Search className="w-5 h-5" />,          label: 'Screener' },
+      { path: '/pmcc',       pageKey: 'pmcc',       icon: <LineChart className="w-5 h-5" />,        label: 'PMCC' },
+      { path: '/portfolio',  pageKey: 'portfolio',  icon: <Wallet className="w-5 h-5" />,           label: 'Portfolio' },
+      { path: '/simulator',  pageKey: 'simulator',  icon: <Play className="w-5 h-5" />,             label: 'Simulator' },
+      { path: '/watchlist',  pageKey: 'watchlist',  icon: <BookmarkPlus className="w-5 h-5" />,     label: 'Watchlist' },
+      { path: '/ai-wallet',  pageKey: 'ai-wallet',  icon: <Coins className="w-5 h-5" />,            label: 'AI Wallet' },
     );
     
     // Only full admins see the Admin panel
@@ -145,20 +147,37 @@ const Layout = ({ children }) => {
 
           {/* Navigation */}
           <nav className="flex-1 py-4 overflow-y-auto">
-            {navItems.map((item) => (
-              <NavLink
-                key={item.path}
-                to={item.path}
-                className={({ isActive }) =>
-                  `sidebar-nav-item ${isActive ? 'active' : ''}`
-                }
-                onClick={() => setSidebarOpen(false)}
-                data-testid={`nav-${item.label.toLowerCase()}`}
-              >
-                {item.icon}
-                <span>{item.label}</span>
-              </NavLink>
-            ))}
+            {navItems.map((item) => {
+              const locked = !hasPageAccess(item.pageKey);
+              if (locked) {
+                return (
+                  <button
+                    key={item.path}
+                    onClick={() => setUpgradeModal({ page: item.label, requiredPlan: requiredPlanFor(item.pageKey) })}
+                    className="sidebar-nav-item w-full text-left opacity-40 cursor-pointer"
+                    data-testid={`nav-${item.label.toLowerCase()}`}
+                  >
+                    {item.icon}
+                    <span className="flex-1">{item.label}</span>
+                    <Lock className="w-3.5 h-3.5 text-zinc-500" />
+                  </button>
+                );
+              }
+              return (
+                <NavLink
+                  key={item.path}
+                  to={item.path}
+                  className={({ isActive }) =>
+                    `sidebar-nav-item ${isActive ? 'active' : ''}`
+                  }
+                  onClick={() => setSidebarOpen(false)}
+                  data-testid={`nav-${item.label.toLowerCase()}`}
+                >
+                  {item.icon}
+                  <span>{item.label}</span>
+                </NavLink>
+              );
+            })}
           </nav>
 
           {/* User section */}
@@ -201,6 +220,40 @@ const Layout = ({ children }) => {
           className="fixed inset-0 bg-black/50 z-40 md:hidden"
           onClick={() => setSidebarOpen(false)}
         />
+      )}
+
+      {/* Upgrade Plan Modal */}
+      {upgradeModal && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4" onClick={() => setUpgradeModal(null)}>
+          <div className="bg-zinc-900 border border-zinc-700 rounded-xl p-6 max-w-sm w-full" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-full bg-violet-500/20 flex items-center justify-center">
+                <Lock className="w-5 h-5 text-violet-400" />
+              </div>
+              <div>
+                <h3 className="text-white font-bold text-lg">{upgradeModal.page} Locked</h3>
+                <p className="text-zinc-400 text-sm">Requires {upgradeModal.requiredPlan?.charAt(0).toUpperCase() + upgradeModal.requiredPlan?.slice(1)} plan or higher</p>
+              </div>
+            </div>
+            <p className="text-zinc-400 text-sm mb-5">
+              Your current plan <span className="text-white font-medium capitalize">({userPlan || 'none'})</span> does not include access to <span className="text-white font-medium">{upgradeModal.page}</span>. Upgrade your plan to unlock this feature.
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => { setUpgradeModal(null); navigate('/pricing'); setSidebarOpen(false); }}
+                className="flex-1 bg-violet-600 hover:bg-violet-700 text-white rounded-lg py-2.5 text-sm font-medium transition-colors"
+              >
+                Upgrade Plan
+              </button>
+              <button
+                onClick={() => setUpgradeModal(null)}
+                className="flex-1 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-lg py-2.5 text-sm font-medium transition-colors"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Main content */}

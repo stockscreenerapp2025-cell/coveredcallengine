@@ -130,7 +130,7 @@ const Pricing = () => {
       features: [
         'Everything in Standard',
         'Powerful Simulator and Analyser',
-        'AI Management of Trades',
+        'AI Management of Trades Selected',
         'Dedicated Support'
       ],
       monthlyLinkKey: 'premium_monthly_link',
