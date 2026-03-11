@@ -31,6 +31,7 @@ import {
   X
 } from 'lucide-react';
 import { Input } from '../components/ui/input';
+import { Switch } from '../components/ui/switch';
 import { toast } from 'sonner';
 
 const APP_NAME = "Covered Call Engine";
@@ -82,6 +83,7 @@ const Landing = () => {
   };
 
   const [subscribing, setSubscribing] = useState(null);
+  const [isYearly, setIsYearly] = useState(false);
 
   const handleSubscribe = async (planId) => {
     setSubscribing(planId);
@@ -90,7 +92,7 @@ const Landing = () => {
       const cancelUrl = `${window.location.origin}/#pricing`;
       const response = await api.post('/paypal/create-checkout', {
         plan_id: planId,
-        billing_cycle: 'monthly',
+        billing_cycle: isYearly ? 'yearly' : 'monthly',
         start_with_trial: true,
         return_url: returnUrl,
         cancel_url: cancelUrl
@@ -149,18 +151,20 @@ const Landing = () => {
     {
       id: 'basic',
       name: 'Basic',
-      price: '$29',
-      period: '/month',
-      description: 'Essential tools for new traders',
-      linkKey: 'basic_monthly_link',
+      monthlyPrice: 29,
+      yearlyPrice: 290,
+      description: 'Essential tools for covered call trading',
       popular: false,
-      aiTokens: '2,000',
       features: [
-        'Covered Call Dashboard',
+        'Access to Covered Call Dashboard',
         'Covered Call Scans',
         'Real Market Data',
-        'TradingView Integration Charts',
-        '2,000 AI tokens/month'
+        'TradingView Integration',
+        'Charts',
+        'Key Technical Indicators',
+        'Portfolio Tracker',
+        'Cancel any time',
+        'Dedicated Support'
       ],
       icon: Clock,
       color: 'emerald',
@@ -169,18 +173,15 @@ const Landing = () => {
     {
       id: 'standard',
       name: 'Standard',
-      price: '$59',
-      period: '/month',
-      description: 'Perfect for active traders',
-      linkKey: 'standard_monthly_link',
+      monthlyPrice: 59,
+      yearlyPrice: 590,
+      description: 'Advanced features for serious traders',
       popular: true,
-      aiTokens: '6,000',
       features: [
         'Everything in Basic',
         'PMCC Strategy Scanner',
         'Powerful Watch List with AI Features',
-        'Portfolio Tracker',
-        '6,000 AI tokens/month'
+        'Dedicated Support'
       ],
       icon: Zap,
       color: 'violet',
@@ -189,17 +190,15 @@ const Landing = () => {
     {
       id: 'premium',
       name: 'Premium',
-      price: '$89',
-      period: '/month',
-      description: 'Full suite for serious traders',
-      linkKey: 'premium_monthly_link',
+      monthlyPrice: 89,
+      yearlyPrice: 890,
+      description: 'Full suite for professional traders',
       popular: false,
-      aiTokens: '15,000',
       features: [
         'Everything in Standard',
         'Powerful Simulator and Analyser',
         'AI Management of Trades',
-        '15,000 AI tokens/month'
+        'Dedicated Support'
       ],
       icon: Crown,
       color: 'amber',
@@ -435,17 +434,31 @@ const Landing = () => {
         <div className="absolute inset-0 bg-gradient-to-b from-violet-500/5 to-transparent" />
         <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           {/* Pricing Header */}
-          <div className="text-center max-w-3xl mx-auto mb-16">
+          <div className="text-center max-w-3xl mx-auto mb-10">
             <Badge className="bg-emerald-500/20 text-emerald-400 border-emerald-500/30 mb-4">
               <Sparkles className="w-3 h-3 mr-1" />
-              Premium Access
+              Premium Features
             </Badge>
             <h2 className="text-3xl sm:text-4xl font-bold text-white mb-4">
-              Choose Your Plan
+              Choose Your <span className="text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 to-cyan-400">Trading Plan</span>
             </h2>
             <p className="text-zinc-400 text-lg">
-              Get access to professional-grade options screening tools, real-time data, and AI-powered insights.
+              All plans include a 7-day FREE trial. Cancel anytime.
             </p>
+          </div>
+
+          {/* Monthly/Yearly Toggle */}
+          <div className="flex items-center justify-center gap-4 mb-10">
+            <span className={`text-sm font-medium ${!isYearly ? 'text-white' : 'text-zinc-500'}`}>Monthly</span>
+            <Switch
+              checked={isYearly}
+              onCheckedChange={setIsYearly}
+              className="data-[state=checked]:bg-emerald-600"
+            />
+            <span className={`text-sm font-medium ${isYearly ? 'text-white' : 'text-zinc-500'}`}>Yearly</span>
+            {isYearly && (
+              <Badge className="bg-emerald-500/20 text-emerald-400 border-emerald-500/30 ml-2">Save 2 months</Badge>
+            )}
           </div>
 
           {/* Pricing Cards */}
@@ -453,7 +466,9 @@ const Landing = () => {
             {plans.map((plan) => {
               const colors = getColorClasses(plan.color);
               const Icon = plan.icon;
-              
+              const price = isYearly ? plan.yearlyPrice : plan.monthlyPrice;
+              const period = isYearly ? '/year' : '/month';
+
               return (
                 <Card 
                   key={plan.id}
@@ -492,8 +507,16 @@ const Landing = () => {
                     
                     {/* Price */}
                     <div className="text-center mb-6">
-                      <span className="text-4xl font-bold text-white">{plan.price}</span>
-                      <span className="text-zinc-500 ml-1">{plan.period}</span>
+                      <div className="flex items-baseline justify-center">
+                        <span className="text-lg text-zinc-500">$</span>
+                        <span className="text-4xl font-bold text-white">{price}</span>
+                        <span className="text-zinc-500 ml-1">{period}</span>
+                      </div>
+                      <div className="mt-3 flex justify-center">
+                        <span className={`inline-flex items-center gap-1 text-xs font-medium px-3 py-1 rounded-full border ${colors.badge}`}>
+                          7 Days FREE Trial
+                        </span>
+                      </div>
                     </div>
                     
                     {/* Features */}
