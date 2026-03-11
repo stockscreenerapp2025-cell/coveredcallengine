@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { NavLink, useNavigate } from 'react-router-dom';
+import { NavLink, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { simulatorApi } from '../lib/api';
 import { Button } from './ui/button';
@@ -31,8 +31,9 @@ import {
 const APP_NAME = "Covered Call Engine";
 
 const Layout = ({ children }) => {
-  const { user, logout, isAdmin, isSupportStaff, hasSupportAccess, hasPageAccess, requiredPlanFor, userPlan } = useAuth();
+  const { user, logout, isAdmin, isSupportStaff, isTester, hasSupportAccess, hasPageAccess, requiredPlanFor, userPlan } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [alertPopup, setAlertPopup] = useState(false);
   const [unreadAlerts, setUnreadAlerts] = useState([]);
@@ -82,8 +83,8 @@ const Layout = ({ children }) => {
     simulatorApi.markAlertsRead().catch(() => {});
   };
 
-  // Redirect users with no subscription to pricing page
-  if (!isAdmin && !isTester && !isSupportStaff && user && !userPlan) {
+  // Redirect users with no subscription to pricing page (except on /pricing itself)
+  if (!isAdmin && !isTester && !isSupportStaff && user && !userPlan && location.pathname !== '/pricing') {
     return (
       <div className="min-h-screen bg-[#09090b] flex items-center justify-center p-4">
         <div className="bg-zinc-900 border border-zinc-700 rounded-xl p-8 max-w-md w-full text-center">
