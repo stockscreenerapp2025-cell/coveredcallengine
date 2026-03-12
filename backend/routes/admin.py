@@ -531,6 +531,7 @@ async def update_integration_settings(
     paypal_mode: Optional[str] = Query(None, description="sandbox or live"),
     paypal_client_id: Optional[str] = Query(None),
     paypal_client_secret: Optional[str] = Query(None),
+    paypal_webhook_id: Optional[str] = Query(None, description="PayPal REST webhook ID for signature verification"),
     admin: dict = Depends(get_admin_user)
 ):
     """Update integration settings"""
@@ -563,7 +564,7 @@ async def update_integration_settings(
         )
     
     # PayPal settings
-    if paypal_enabled is not None or paypal_mode is not None or paypal_client_id is not None or paypal_client_secret is not None:
+    if any(v is not None for v in [paypal_enabled, paypal_mode, paypal_client_id, paypal_client_secret, paypal_webhook_id]):
         paypal_update = {"type": "paypal_settings", "updated_at": now}
         if paypal_enabled is not None:
             paypal_update["enabled"] = paypal_enabled
@@ -573,6 +574,8 @@ async def update_integration_settings(
             paypal_update["client_id"] = paypal_client_id
         if paypal_client_secret:
             paypal_update["client_secret"] = paypal_client_secret
+        if paypal_webhook_id:
+            paypal_update["webhook_id"] = paypal_webhook_id
 
         await db.admin_settings.update_one(
             {"type": "paypal_settings"},

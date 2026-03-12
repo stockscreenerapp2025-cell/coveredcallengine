@@ -58,6 +58,7 @@ class PayPalSettingsUpdate(BaseModel):
     client_id: str
     client_secret: str
     mode: str = "sandbox"  # sandbox or live
+    webhook_id: Optional[str] = None  # PayPal REST webhook ID for signature verification
 
 
 class PayPalLinksUpdate(BaseModel):
@@ -376,20 +377,50 @@ async def paypal_ipn(request: Request):
 
     Supports both REST webhook JSON format and legacy IPN form-post format.
     """
-    # Try JSON body first (REST webhooks), fall back to form data (legacy IPN)
-    data: Dict[str, Any] = {}
-    try:
-        body = await request.body()
-        if body:
-            try:
-                data = await request.json()
-            except Exception:
-                form = await request.form()
-                data = dict(form)
-    except Exception:
-        data = {}
+    # Read raw body once — required for signature verification AND for parsing
+    raw_body = await request.body()
 
     await paypal_service.initialize()
+
+    # ── Signature verification ────────────────────────────────────────────
+    settings = await db.admin_settings.find_one({"type": "paypal_settings"}, {"_id": 0})
+    webhook_id = (settings or {}).get("webhook_id", "")
+
+    is_rest_webhook = bool(request.headers.get("paypal-transmission-id"))
+    is_legacy_ipn   = not is_rest_webhook
+
+    if webhook_id:
+        # Strict mode: we have a webhook_id — verify before processing
+        if is_rest_webhook:
+            verified = await paypal_service.verify_rest_webhook(
+                headers=dict(request.headers),
+                raw_body=raw_body,
+                webhook_id=webhook_id
+            )
+        else:
+            verified = await paypal_service.verify_ipn(raw_body)
+
+        if not verified:
+            logger.warning("[PayPal IPN] Signature verification FAILED — ignoring event")
+            # Always return 200 to prevent PayPal retries for permanently-bad events
+            return {"ok": True, "verified": False}
+    else:
+        # Permissive mode: no webhook_id configured — accept but log a warning
+        logger.warning("[PayPal IPN] No webhook_id configured — skipping signature check (permissive mode)")
+
+    # ── Parse body ───────────────────────────────────────────────────────
+    data: Dict[str, Any] = {}
+    try:
+        if raw_body:
+            try:
+                import json as _json
+                data = _json.loads(raw_body)
+            except Exception:
+                from urllib.parse import parse_qs
+                qs = parse_qs(raw_body.decode("utf-8", errors="replace"))
+                data = {k: v[0] if len(v) == 1 else v for k, v in qs.items()}
+    except Exception:
+        data = {}
 
     # For REST webhooks, PayPal sends event_type; legacy sends txn_type
     event_type = (data.get("event_type") or "").strip()
@@ -510,13 +541,15 @@ async def get_paypal_settings(admin: dict = Depends(get_admin_user)):
         "mode": settings.get("mode", "sandbox"),
         "client_id_set": bool(settings.get("client_id")),
         "client_secret_set": bool(settings.get("client_secret")),
+        "webhook_id_set": bool(settings.get("webhook_id")),
+        "webhook_id": settings.get("webhook_id", ""),  # safe to return (not a secret)
     }
 
 
 @paypal_router.post("/admin/settings")
 async def update_paypal_settings(payload: PayPalSettingsUpdate, admin: dict = Depends(get_admin_user)):
     """Update PayPal settings (admin)"""
-    doc = payload.model_dump()
+    doc = payload.model_dump(exclude_none=True)  # don't overwrite webhook_id with None
     doc["type"] = "paypal_settings"
     doc["updated_at"] = datetime.now(timezone.utc).isoformat()
     await db.admin_settings.update_one({"type": "paypal_settings"}, {"$set": doc}, upsert=True)

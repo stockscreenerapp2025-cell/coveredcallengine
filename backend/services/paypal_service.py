@@ -399,13 +399,109 @@ class PayPalService:
         logger.info(f"[PayPal] Subscription {profile_id} cancelled")
         return {"success": True, "profile_id": profile_id}
 
-    async def verify_ipn(self, data: Dict[str, Any]) -> bool:
+    async def verify_rest_webhook(
+        self,
+        headers: Dict[str, str],
+        raw_body: bytes,
+        webhook_id: str
+    ) -> bool:
         """
-        REST webhooks use header-based signature verification (done in the route).
-        This method returns True to allow the route's IPN handler to proceed.
-        The route guards with PayPal-Transmission-Id header check.
+        Verify a REST webhook event using PayPal's verification API.
+
+        PayPal requires us to POST back the headers + body to:
+        POST /v1/notifications/verify-webhook-signature
+
+        Returns True if verification_status == "SUCCESS", False otherwise.
+        If the PayPal API call itself fails (network/auth), returns False.
         """
-        return True
+        import json as _json
+        token = await self._get_access_token()
+        if not token:
+            logger.error("[PayPal] Cannot verify webhook: no access token")
+            return False
+
+        # Required PayPal webhook headers (case-insensitive map)
+        headers_lower = {k.lower(): v for k, v in headers.items()}
+        transmission_id   = headers_lower.get("paypal-transmission-id", "")
+        transmission_time = headers_lower.get("paypal-transmission-time", "")
+        cert_url          = headers_lower.get("paypal-cert-url", "")
+        auth_algo         = headers_lower.get("paypal-auth-algo", "")
+        transmission_sig  = headers_lower.get("paypal-transmission-sig", "")
+
+        if not all([transmission_id, transmission_time, cert_url, auth_algo, transmission_sig]):
+            logger.warning("[PayPal] Missing webhook signature headers — cannot verify")
+            return False
+
+        try:
+            body_str = raw_body.decode("utf-8")
+        except Exception:
+            body_str = raw_body.decode("latin-1")
+
+        payload = {
+            "transmission_id":   transmission_id,
+            "transmission_time": transmission_time,
+            "cert_url":          cert_url,
+            "auth_algo":         auth_algo,
+            "transmission_sig":  transmission_sig,
+            "webhook_id":        webhook_id,
+            "webhook_event":     _json.loads(body_str) if body_str else {}
+        }
+
+        try:
+            async with httpx.AsyncClient(timeout=15.0) as client:
+                resp = await client.post(
+                    f"{self.base_url}/v1/notifications/verify-webhook-signature",
+                    json=payload,
+                    headers={
+                        "Authorization": f"Bearer {token}",
+                        "Content-Type": "application/json"
+                    }
+                )
+                if resp.status_code == 200:
+                    result = resp.json()
+                    status = result.get("verification_status", "")
+                    if status == "SUCCESS":
+                        return True
+                    logger.warning(f"[PayPal] Webhook verification_status={status}")
+                    return False
+                logger.error(f"[PayPal] Webhook verify API error: {resp.status_code} {resp.text[:200]}")
+                return False
+        except Exception as e:
+            logger.error(f"[PayPal] Webhook verify exception: {e}")
+            return False
+
+    async def verify_ipn(self, raw_body: bytes) -> bool:
+        """
+        Verify a legacy IPN post by sending it back to PayPal's validation endpoint.
+
+        PayPal expects: POST back the exact body with cmd=_notify-validate prepended.
+        Response is "VERIFIED" or "INVALID".
+        """
+        ipn_url = (
+            "https://ipnpb.sandbox.paypal.com/cgi-bin/webscr"
+            if self.mode != "live"
+            else "https://ipnpb.paypal.com/cgi-bin/webscr"
+        )
+        try:
+            body_str = raw_body.decode("utf-8")
+        except Exception:
+            body_str = raw_body.decode("latin-1")
+
+        validate_body = f"cmd=_notify-validate&{body_str}"
+        try:
+            async with httpx.AsyncClient(timeout=15.0) as client:
+                resp = await client.post(
+                    ipn_url,
+                    content=validate_body.encode("utf-8"),
+                    headers={"Content-Type": "application/x-www-form-urlencoded"}
+                )
+                verified = resp.text.strip() == "VERIFIED"
+                if not verified:
+                    logger.warning(f"[PayPal] Legacy IPN verification returned: {resp.text.strip()[:50]}")
+                return verified
+        except Exception as e:
+            logger.error(f"[PayPal] Legacy IPN verify exception: {e}")
+            return False
 
     async def process_ipn(self, raw_post_data: bytes) -> Dict[str, Any]:
         """Legacy method — kept for backward compatibility."""

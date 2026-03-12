@@ -102,7 +102,8 @@ const Admin = () => {
     paypal_enabled: true,
     paypal_mode: 'sandbox',
     paypal_client_id: '',
-    paypal_client_secret: ''
+    paypal_client_secret: '',
+    paypal_webhook_id: ''
   });
   const [integrationStatus, setIntegrationStatus] = useState(null);
   const [savingIntegration, setSavingIntegration] = useState(false);
@@ -570,6 +571,7 @@ const Admin = () => {
       if (integrationSettings.paypal_mode) params.append('paypal_mode', integrationSettings.paypal_mode);
       if (integrationSettings.paypal_client_id) params.append('paypal_client_id', integrationSettings.paypal_client_id);
       if (integrationSettings.paypal_client_secret) params.append('paypal_client_secret', integrationSettings.paypal_client_secret);
+      if (integrationSettings.paypal_webhook_id) params.append('paypal_webhook_id', integrationSettings.paypal_webhook_id);
       await api.post(`/admin/integration-settings?${params.toString()}`);
       toast.success('Integration settings saved');
       fetchIntegrationSettings();
@@ -2284,12 +2286,25 @@ const Admin = () => {
                   </div>
                 </div>
               </div>
-              {/* IPN URL Info */}
-              <div className="p-3 rounded-lg bg-cyan-500/10 border border-cyan-500/20">
+                <div className="space-y-2">
+                  <Label htmlFor="paypal_webhook_id">Webhook ID <span className="text-zinc-500 text-xs">(REST — for signature verification)</span></Label>
+                  <Input
+                    id="paypal_webhook_id"
+                    type="text"
+                    value={integrationSettings.paypal_webhook_id}
+                    onChange={(e) => setIntegrationSettings(prev => ({ ...prev, paypal_webhook_id: e.target.value }))}
+                    placeholder={integrationStatus?.paypal?.webhook_id_set ? '••••••••' : 'WH-XXXX... (from developer.paypal.com → Webhooks)'}
+                    className="bg-zinc-800 border-zinc-700"
+                  />
+                  <p className="text-xs text-zinc-500">Required for webhook signature verification. Leave blank to accept all events (permissive mode).</p>
+                </div>
+              {/* IPN / Webhook URL Info */}
+              <div className="p-3 rounded-lg bg-cyan-500/10 border border-cyan-500/20 space-y-1">
                 <p className="text-xs text-cyan-400 flex items-center gap-2">
                   <AlertCircle className="w-4 h-4" />
-                  Set your PayPal IPN URL to: <code className="bg-zinc-800 px-1 rounded">{window.location.origin}/api/paypal/ipn</code>
+                  REST Webhook URL: <code className="bg-zinc-800 px-1 rounded">{window.location.origin}/api/paypal/ipn</code>
                 </p>
+                <p className="text-xs text-zinc-500 ml-6">Set this URL in PayPal Developer → Webhooks and paste the Webhook ID above.</p>
               </div>
               <div className="flex justify-end">
                 <Button onClick={saveIntegrationSettings} className="bg-cyan-600 hover:bg-cyan-700" disabled={savingIntegration}>
