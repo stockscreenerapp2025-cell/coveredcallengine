@@ -21,7 +21,7 @@ PMCC:
 
 CRITICAL RULE: ASSIGNED = CLOSED for analytics/reporting purposes
 """
-from fastapi import APIRouter, Depends, Query, HTTPException
+from fastapi import APIRouter, Depends, Query, HTTPException, Request
 from pydantic import BaseModel, ConfigDict
 from typing import Optional, Dict, Any, List
 from datetime import datetime, timezone, timedelta
@@ -3228,7 +3228,7 @@ async def get_wallet_balance(user: dict = Depends(get_current_user)):
 @simulator_router.post("/manage/{trade_id}")
 async def manage_trade(
     trade_id: str,
-    body: ManageTradeRequest,
+    request: Request,
     user: dict = Depends(get_current_user)
 ):
     """
@@ -3258,9 +3258,10 @@ async def manage_trade(
     from services.ai_trade_manager import generate_recommendation
     MANAGE_COST_CREDITS = 5
 
+    body_data = await request.json()
     user_id = user["id"]
-    mode    = body.mode
-    goals   = body.goals
+    mode    = body_data.get("mode", "recommend_only")
+    goals   = body_data.get("goals", {})
 
     # ── 1. Load trade ────────────────────────────────────────────────────────
     trade = await db.simulator_trades.find_one(
@@ -3372,7 +3373,7 @@ async def manage_trade(
 @simulator_router.post("/manage/{trade_id}/apply")
 async def apply_trade_recommendation(
     trade_id: str,
-    body: ApplyRecommendationRequest,
+    request: Request,
     user: dict = Depends(get_current_user)
 ):
     """
@@ -3399,9 +3400,10 @@ async def apply_trade_recommendation(
     from services.ai_trade_manager import apply_recommendation_to_trade
     APPLY_COST_CREDITS = 2
 
+    body_data      = await request.json()
     user_id        = user["id"]
-    recommendation = body.recommendation
-    current_price  = float(body.current_price)
+    recommendation = body_data.get("recommendation", {})
+    current_price  = float(body_data.get("current_price", 0))
 
     if not recommendation:
         raise HTTPException(status_code=400, detail="recommendation is required")
