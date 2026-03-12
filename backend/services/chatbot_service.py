@@ -87,8 +87,10 @@ class ChatbotService:
                 resp = await client.post(url, json=payload, headers={"Content-Type": "application/json"})
                 if resp.status_code == 200:
                     return resp.json()["candidates"][0]["content"]["parts"][0]["text"]
-                raise RuntimeError(f"Gemini error {resp.status_code}: {resp.text[:200]}")
-        elif self.openai_key:
+                if resp.status_code != 429:
+                    raise RuntimeError(f"Gemini error {resp.status_code}: {resp.text[:200]}")
+                logger.warning("Gemini quota exceeded, falling back to OpenAI")
+        if self.openai_key:
             openai_messages = [{"role": "system", "content": CHATBOT_SYSTEM_PROMPT}] + messages
             async with httpx.AsyncClient(timeout=30.0) as client:
                 resp = await client.post(
