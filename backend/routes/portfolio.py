@@ -10,6 +10,7 @@ from fastapi import APIRouter, Depends, Query, HTTPException, File, UploadFile
 from pydantic import BaseModel, Field
 from typing import Optional
 from datetime import datetime, timezone
+import asyncio
 import uuid
 import csv
 import io
@@ -414,6 +415,156 @@ async def get_ibkr_summary(
         'net_premium': round(total_premium - total_fees, 2),
         'by_strategy': by_strategy
     }
+
+
+# ==================== LIFECYCLE MANUAL OVERRIDES ====================
+
+class ReclassifyRequest(BaseModel):
+    strategy_type: str = Field(..., description="New strategy type: COVERED_CALL, PMCC, NAKED_PUT, COLLAR, STOCK, ETF")
+
+class MergeRequest(BaseModel):
+    trade_id_b: str = Field(..., description="ID of the second trade to merge into the first")
+
+class SplitRequest(BaseModel):
+    split_at_date: str = Field(..., description="ISO date to split the lifecycle at (YYYY-MM-DD)")
+
+
+VALID_STRATEGY_TYPES = {"COVERED_CALL", "PMCC", "NAKED_PUT", "COLLAR", "STOCK", "ETF", "INDEX", "OPTION"}
+
+
+@portfolio_router.patch("/ibkr/trades/{trade_id}/reclassify")
+async def reclassify_trade(trade_id: str, payload: ReclassifyRequest, user: dict = Depends(get_current_user)):
+    """
+    Manually override the strategy_type for a lifecycle.
+    Also updates strategy_label and position_instance_id to reflect the new type.
+    """
+    if payload.strategy_type not in VALID_STRATEGY_TYPES:
+        raise HTTPException(status_code=400, detail=f"Invalid strategy_type. Valid: {VALID_STRATEGY_TYPES}")
+
+    trade = await db.ibkr_trades.find_one({"user_id": user["id"], "id": trade_id}, {"_id": 0})
+    if not trade:
+        raise HTTPException(status_code=404, detail="Trade not found")
+
+    from services.ibkr_parser import STRATEGY_TYPES
+    strategy_short_map = {
+        "COVERED_CALL": "CC", "COLLAR": "COLLAR", "NAKED_PUT": "CSP",
+        "PMCC": "PMCC", "STOCK": "STOCK", "ETF": "ETF", "INDEX": "IDX", "OPTION": "OPT"
+    }
+    short = strategy_short_map.get(payload.strategy_type, payload.strategy_type)
+    symbol = trade.get("symbol", "")
+    lc_idx = trade.get("lifecycle_index", 0)
+    new_lifecycle_id = f"{symbol}_{short}_{lc_idx + 1:03d}_MANUAL"
+
+    now = datetime.now(timezone.utc).isoformat()
+    await db.ibkr_trades.update_one(
+        {"user_id": user["id"], "id": trade_id},
+        {"$set": {
+            "strategy_type": payload.strategy_type,
+            "strategy_label": STRATEGY_TYPES.get(payload.strategy_type, payload.strategy_type),
+            "position_instance_id": new_lifecycle_id,
+            "manually_overridden": True,
+            "override_type": "reclassify",
+            "updated_at": now
+        }}
+    )
+    return {"success": True, "new_strategy_type": payload.strategy_type, "lifecycle_id": new_lifecycle_id}
+
+
+@portfolio_router.post("/ibkr/trades/{trade_id}/split")
+async def split_trade(trade_id: str, payload: SplitRequest, user: dict = Depends(get_current_user)):
+    """
+    Split a lifecycle into two at a given date.
+    All transactions before split_at_date stay in the original; later ones go into a new lifecycle.
+    """
+    trade = await db.ibkr_trades.find_one({"user_id": user["id"], "id": trade_id}, {"_id": 0})
+    if not trade:
+        raise HTTPException(status_code=404, detail="Trade not found")
+
+    try:
+        split_date = datetime.strptime(payload.split_at_date, "%Y-%m-%d").date()
+    except ValueError:
+        raise HTTPException(status_code=400, detail="split_at_date must be YYYY-MM-DD")
+
+    txs = trade.get("transactions", [])
+    before = [t for t in txs if t.get("date", "") < payload.split_at_date]
+    after  = [t for t in txs if t.get("date", "") >= payload.split_at_date]
+
+    if not before or not after:
+        raise HTTPException(status_code=400, detail="Split date does not divide transactions into two non-empty groups")
+
+    import hashlib as _hashlib
+    import uuid as _uuid
+    now = datetime.now(timezone.utc).isoformat()
+    symbol = trade.get("symbol", "")
+    account = trade.get("account", "")
+    lc_idx = trade.get("lifecycle_index", 0)
+
+    new_id = str(_uuid.uuid4())[:16]
+    new_trade = {
+        **trade,
+        "id": new_id,
+        "lifecycle_index": lc_idx + 1,
+        "position_instance_id": f"{symbol}_{trade.get('strategy_type', 'STOCK')}_{lc_idx + 2:03d}_SPLIT",
+        "transactions": after,
+        "date_opened": after[0].get("date") if after else None,
+        "manually_overridden": True,
+        "override_type": "split",
+        "split_from": trade_id,
+        "created_at": now,
+        "updated_at": now,
+    }
+    # Trim original to before-transactions only
+    await db.ibkr_trades.update_one(
+        {"user_id": user["id"], "id": trade_id},
+        {"$set": {
+            "transactions": before,
+            "position_instance_id": f"{symbol}_{trade.get('strategy_type', 'STOCK')}_{lc_idx + 1:03d}_SPLIT",
+            "manually_overridden": True,
+            "override_type": "split",
+            "updated_at": now,
+        }}
+    )
+    await db.ibkr_trades.insert_one({**new_trade, "user_id": user["id"]})
+    return {"success": True, "original_trade_id": trade_id, "new_trade_id": new_id}
+
+
+@portfolio_router.post("/ibkr/trades/{trade_id}/merge")
+async def merge_trades(trade_id: str, payload: MergeRequest, user: dict = Depends(get_current_user)):
+    """
+    Merge two lifecycles into one. Trade A gets all transactions from trade B appended.
+    Trade B is deleted.
+    """
+    if trade_id == payload.trade_id_b:
+        raise HTTPException(status_code=400, detail="Cannot merge a trade with itself")
+
+    trade_a, trade_b = await asyncio.gather(
+        db.ibkr_trades.find_one({"user_id": user["id"], "id": trade_id}, {"_id": 0}),
+        db.ibkr_trades.find_one({"user_id": user["id"], "id": payload.trade_id_b}, {"_id": 0}),
+    )
+    if not trade_a:
+        raise HTTPException(status_code=404, detail="Trade A not found")
+    if not trade_b:
+        raise HTTPException(status_code=404, detail="Trade B not found")
+    if trade_a.get("symbol") != trade_b.get("symbol"):
+        raise HTTPException(status_code=400, detail="Cannot merge lifecycles from different symbols")
+
+    merged_txs = sorted(
+        trade_a.get("transactions", []) + trade_b.get("transactions", []),
+        key=lambda t: t.get("datetime", t.get("date", ""))
+    )
+    now = datetime.now(timezone.utc).isoformat()
+    await db.ibkr_trades.update_one(
+        {"user_id": user["id"], "id": trade_id},
+        {"$set": {
+            "transactions": merged_txs,
+            "manually_overridden": True,
+            "override_type": "merge",
+            "merged_from": payload.trade_id_b,
+            "updated_at": now,
+        }}
+    )
+    await db.ibkr_trades.delete_one({"user_id": user["id"], "id": payload.trade_id_b})
+    return {"success": True, "merged_trade_id": trade_id, "deleted_trade_id": payload.trade_id_b}
 
 
 @portfolio_router.delete("/ibkr/clear")

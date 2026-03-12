@@ -103,6 +103,14 @@ const Portfolio = () => {
   const [closePrice, setClosePrice] = useState('');
   const fileInputRef = useRef(null);
 
+  // Lifecycle override state
+  const [overrideTrade, setOverrideTrade] = useState(null);
+  const [overrideAction, setOverrideAction] = useState(null); // 'reclassify' | 'split' | 'merge'
+  const [reclassifyStrategy, setReclassifyStrategy] = useState('');
+  const [splitDate, setSplitDate] = useState('');
+  const [mergeTargetId, setMergeTargetId] = useState('');
+  const [overrideSaving, setOverrideSaving] = useState(false);
+
   // Manual Trade Entry State
   const [manualTradeOpen, setManualTradeOpen] = useState(false);
   const [savingManualTrade, setSavingManualTrade] = useState(false);
@@ -180,12 +188,33 @@ const Portfolio = () => {
   const fetchTrades = async () => {
     setLoading(true);
     try {
+      // WHEEL is a frontend pseudo-filter (CC + CSP cycles that are part of a wheel)
+      const apiFilters = { ...filters };
+      if (apiFilters.strategy === 'WHEEL') {
+        delete apiFilters.strategy; // fetch all, filter client-side below
+      }
       const res = await portfolioApi.getIBKRTrades({
-        ...filters,
+        ...apiFilters,
         page: viewMode === 'lifecycle' ? 1 : pagination.page,
         limit: viewMode === 'lifecycle' ? 100 : 20
       });
-      setTrades(res.data.trades || []);
+      let allTrades = res.data.trades || [];
+      // Client-side WHEEL filter: symbols that have both CC and CSP/NAKED_PUT lifecycles
+      if (filters.strategy === 'WHEEL') {
+        const wheelSymbols = new Set();
+        const bySymbol = {};
+        allTrades.forEach(t => {
+          if (!bySymbol[t.symbol]) bySymbol[t.symbol] = new Set();
+          bySymbol[t.symbol].add(t.strategy_type);
+        });
+        Object.entries(bySymbol).forEach(([sym, types]) => {
+          if ((types.has('COVERED_CALL') || types.has('COLLAR')) && types.has('NAKED_PUT')) {
+            wheelSymbols.add(sym);
+          }
+        });
+        allTrades = allTrades.filter(t => wheelSymbols.has(t.symbol));
+      }
+      setTrades(allTrades);
       setPagination(prev => ({
         ...prev,
         pages: res.data.pages || 1,
@@ -565,6 +594,33 @@ const Portfolio = () => {
     }
   };
 
+  const handleLifecycleOverride = async () => {
+    if (!overrideTrade || !overrideAction) return;
+    setOverrideSaving(true);
+    try {
+      if (overrideAction === 'reclassify') {
+        if (!reclassifyStrategy) { toast.error('Select a strategy'); return; }
+        await portfolioApi.reclassifyTrade(overrideTrade.id, reclassifyStrategy);
+        toast.success('Lifecycle reclassified');
+      } else if (overrideAction === 'split') {
+        if (!splitDate) { toast.error('Enter split date'); return; }
+        await portfolioApi.splitTrade(overrideTrade.id, splitDate);
+        toast.success('Lifecycle split into two');
+      } else if (overrideAction === 'merge') {
+        if (!mergeTargetId) { toast.error('Enter target lifecycle ID'); return; }
+        await portfolioApi.mergeTrades(overrideTrade.id, mergeTargetId);
+        toast.success('Lifecycles merged');
+      }
+      setOverrideAction(null);
+      setOverrideTrade(null);
+      fetchTrades();
+    } catch (error) {
+      toast.error(error.response?.data?.detail || 'Override failed');
+    } finally {
+      setOverrideSaving(false);
+    }
+  };
+
   const handleCloseTrade = async () => {
     if (!selectedTrade || !closePrice) return;
     const price = parseFloat(closePrice);
@@ -785,8 +841,9 @@ const Portfolio = () => {
                 <SelectItem value="ETF">ETF</SelectItem>
                 <SelectItem value="COVERED_CALL">Covered Call</SelectItem>
                 <SelectItem value="PMCC">PMCC</SelectItem>
-                <SelectItem value="NAKED_PUT">Naked Put</SelectItem>
+                <SelectItem value="NAKED_PUT">Naked Put / CSP</SelectItem>
                 <SelectItem value="COLLAR">Collar</SelectItem>
+                <SelectItem value="WHEEL">Wheel (CC+CSP)</SelectItem>
               </SelectContent>
             </Select>
 
@@ -1148,7 +1205,12 @@ const Portfolio = () => {
                                     <ChevronRight className={`w-3.5 h-3.5 text-zinc-500 mt-0.5 flex-shrink-0 transition-transform ${isCycleExpanded ? 'rotate-90' : ''}`} />
                                     <div className="flex-1 min-w-0">
                                       <div className="flex items-center gap-2 mb-1 flex-wrap">
-                                        <span className="text-xs text-zinc-400 font-medium">Cycle {cycleIdx + 1}</span>
+                                        <span className="text-xs text-zinc-400 font-mono font-medium">
+                                          {trade.position_instance_id || `Cycle ${cycleIdx + 1}`}
+                                        </span>
+                                        <Badge className={`text-[10px] py-0 ${STRATEGY_COLORS[trade.strategy_type] || STRATEGY_COLORS.OTHER}`}>
+                                          {trade.strategy_type?.replace('_', ' ')}
+                                        </Badge>
                                         <Badge className={`text-[10px] py-0 ${COLOR[cycleStatusColor].badge}`}>
                                           {trade.status === 'Open' ? 'Open' : trade.close_reason || trade.status}
                                         </Badge>
@@ -1221,6 +1283,26 @@ const Portfolio = () => {
                                   {/* Expanded: full trade details + AI button */}
                                   {isCycleExpanded && (
                                     <div className="px-8 pb-4 space-y-3 border-t border-zinc-800/60">
+                                      {/* Share allocation banner for CC/COLLAR lifecycles */}
+                                      {(trade.strategy_type === 'COVERED_CALL' || trade.strategy_type === 'COLLAR') && trade.covered_shares > 0 && (
+                                        <div className="flex gap-3 pt-2">
+                                          <span className="text-[10px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2 py-1 rounded">
+                                            {trade.covered_shares} covered shares
+                                          </span>
+                                          {trade.residual_shares > 0 && (
+                                            <span className="text-[10px] bg-zinc-500/10 text-zinc-400 border border-zinc-500/20 px-2 py-1 rounded">
+                                              {trade.residual_shares} residual (unhedged)
+                                            </span>
+                                          )}
+                                        </div>
+                                      )}
+                                      {trade.is_residual && (
+                                        <div className="pt-2">
+                                          <span className="text-[10px] bg-zinc-500/10 text-zinc-400 border border-zinc-500/20 px-2 py-1 rounded">
+                                            Residual position — {trade.shares} shares not covered by options
+                                          </span>
+                                        </div>
+                                      )}
                                       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 pt-3">
                                         {[
                                           { label: 'Entry', val: formatCurrency(trade.entry_price) },
@@ -1238,10 +1320,22 @@ const Portfolio = () => {
                                           </div>
                                         ))}
                                       </div>
-                                      <div className="flex gap-2">
+                                      <div className="flex gap-2 flex-wrap">
                                         <Button size="sm" variant="outline" className="text-xs border-zinc-700 text-zinc-400 hover:text-white"
                                           onClick={() => openTradeDetail(trade)}>
                                           Full Details + AI
+                                        </Button>
+                                        <Button size="sm" variant="outline" className="text-xs border-blue-700 text-blue-400 hover:text-blue-300"
+                                          onClick={() => { setOverrideTrade(trade); setReclassifyStrategy(trade.strategy_type); setOverrideAction('reclassify'); }}>
+                                          Reclassify
+                                        </Button>
+                                        <Button size="sm" variant="outline" className="text-xs border-amber-700 text-amber-400 hover:text-amber-300"
+                                          onClick={() => { setOverrideTrade(trade); setSplitDate(''); setOverrideAction('split'); }}>
+                                          Split
+                                        </Button>
+                                        <Button size="sm" variant="outline" className="text-xs border-violet-700 text-violet-400 hover:text-violet-300"
+                                          onClick={() => { setOverrideTrade(trade); setMergeTargetId(''); setOverrideAction('merge'); }}>
+                                          Merge
                                         </Button>
                                       </div>
                                     </div>
@@ -2347,6 +2441,80 @@ const Portfolio = () => {
                   <Plus className="w-4 h-4 mr-2" />
                 )}
                 Add Trade
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Lifecycle Override Modal ────────────────────────────────── */}
+      <Dialog open={!!overrideAction} onOpenChange={(o) => { if (!o) { setOverrideAction(null); setOverrideTrade(null); } }}>
+        <DialogContent className="bg-zinc-900 border-zinc-700 max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-white">
+              {overrideAction === 'reclassify' && 'Reclassify Lifecycle'}
+              {overrideAction === 'split' && 'Split Lifecycle'}
+              {overrideAction === 'merge' && 'Merge Lifecycles'}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            {overrideTrade && (
+              <div className="text-xs text-zinc-400 bg-zinc-800 rounded px-3 py-2">
+                <span className="font-mono">{overrideTrade.position_instance_id || overrideTrade.id}</span>
+                {' — '}{overrideTrade.symbol} · {overrideTrade.strategy_type}
+              </div>
+            )}
+
+            {overrideAction === 'reclassify' && (
+              <div className="space-y-2">
+                <label className="text-xs text-zinc-400">New Strategy Type</label>
+                <select
+                  className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-sm text-white"
+                  value={reclassifyStrategy}
+                  onChange={e => setReclassifyStrategy(e.target.value)}
+                >
+                  <option value="">Select…</option>
+                  {['COVERED_CALL','PMCC','NAKED_PUT','COLLAR','STOCK','ETF','INDEX','OPTION'].map(s => (
+                    <option key={s} value={s}>{s.replace('_',' ')}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            {overrideAction === 'split' && (
+              <div className="space-y-2">
+                <label className="text-xs text-zinc-400">Split at Date (transactions on or after this date go to new lifecycle)</label>
+                <input
+                  type="date"
+                  className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-sm text-white"
+                  value={splitDate}
+                  onChange={e => setSplitDate(e.target.value)}
+                />
+              </div>
+            )}
+
+            {overrideAction === 'merge' && (
+              <div className="space-y-2">
+                <label className="text-xs text-zinc-400">Target Lifecycle ID (the lifecycle to merge into this one)</label>
+                <input
+                  type="text"
+                  placeholder="Paste trade ID from URL or expand the other lifecycle"
+                  className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-sm text-white placeholder-zinc-600"
+                  value={mergeTargetId}
+                  onChange={e => setMergeTargetId(e.target.value)}
+                />
+                <p className="text-[10px] text-zinc-500">The target lifecycle will be deleted after merging.</p>
+              </div>
+            )}
+
+            <div className="flex justify-end gap-2 pt-2">
+              <Button variant="outline" size="sm" className="border-zinc-700 text-zinc-400"
+                onClick={() => { setOverrideAction(null); setOverrideTrade(null); }}>
+                Cancel
+              </Button>
+              <Button size="sm" className="bg-blue-600 hover:bg-blue-700"
+                onClick={handleLifecycleOverride} disabled={overrideSaving}>
+                {overrideSaving ? 'Saving…' : 'Apply'}
               </Button>
             </div>
           </div>

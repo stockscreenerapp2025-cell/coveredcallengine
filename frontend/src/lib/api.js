@@ -126,6 +126,13 @@ export const portfolioApi = {
   getAISuggestion: (tradeId) => api.post(`/portfolio/ibkr/trades/${tradeId}/ai-suggestion`),
   generateAllSuggestions: () => api.post('/portfolio/ibkr/generate-suggestions'),
   clearIBKRData: () => api.delete('/portfolio/ibkr/clear'),
+  // Lifecycle manual overrides
+  reclassifyTrade: (tradeId, strategyType) =>
+    api.patch(`/portfolio/ibkr/trades/${tradeId}/reclassify`, { strategy_type: strategyType }),
+  splitTrade: (tradeId, splitAtDate) =>
+    api.post(`/portfolio/ibkr/trades/${tradeId}/split`, { split_at_date: splitAtDate }),
+  mergeTrades: (tradeIdA, tradeIdB) =>
+    api.post(`/portfolio/ibkr/trades/${tradeIdA}/merge`, { trade_id_b: tradeIdB }),
 };
 
 export const watchlistApi = {

@@ -343,8 +343,12 @@ class IBKRParser:
             buckets = self._detect_strategy_buckets(symbol, account, txs)
 
             for bucket in buckets:
-                lc_txs      = bucket['transactions']
-                lifecycle_id = bucket['lifecycle_id']
+                lc_txs           = bucket['transactions']
+                lifecycle_id     = bucket['lifecycle_id']
+                allocation_override = bucket.get('allocation_override')
+                covered_shares   = bucket.get('covered_shares', 0)
+                residual_shares  = bucket.get('residual_shares', 0)
+                is_residual      = bucket.get('is_residual', False)
                 # Derive a 0-based index from the lifecycle_id suffix (e.g. "001" → 0)
                 try:
                     lc_idx = int(lifecycle_id.rsplit('_', 1)[-1]) - 1
@@ -357,8 +361,14 @@ class IBKRParser:
                     if trade:
                         pmcc_trades.append(trade)
                 else:
-                    trade = self._create_trade_from_lifecycle(account, symbol, lc_txs, lc_idx,
-                                                              lifecycle_id=lifecycle_id)
+                    trade = self._create_trade_from_lifecycle(
+                        account, symbol, lc_txs, lc_idx,
+                        lifecycle_id=lifecycle_id,
+                        allocation_override=allocation_override,
+                        covered_shares=covered_shares,
+                        residual_shares=residual_shares,
+                        is_residual=is_residual,
+                    )
                     if trade:
                         stock_trades.append(trade)
         
@@ -511,12 +521,47 @@ class IBKRParser:
                 short    = STRATEGY_SHORT.get(strategy, strategy)
                 cnt      = strategy_counts.get(short, 0) + 1
                 strategy_counts[short] = cnt
+
+                # ── Phase 2b: share allocation ───────────────────────────────
+                # How many shares does this lifecycle actually own?
+                total_long = sum(
+                    t.get('quantity', 0) for t in lc_stock
+                    if t.get('transaction_type') in ('Buy', 'Assignment')
+                    and t.get('quantity', 0) > 0
+                )
+                short_call_qty = sum(
+                    abs(t.get('quantity', 0)) for t in lc_opts
+                    if t.get('transaction_type') == 'Sell'
+                    and t.get('option_details', {}).get('option_type') == 'Call'
+                )
+                covered  = min(total_long, short_call_qty * 100)
+                residual = max(0, total_long - covered)
+
                 buckets.append({
-                    'strategy_hint': strategy,
-                    'lifecycle_id':  f"{symbol}_{short}_{cnt:03d}",
-                    'transactions':  lc_txs,
-                    'is_pmcc':       False,
+                    'strategy_hint':  strategy,
+                    'lifecycle_id':   f"{symbol}_{short}_{cnt:03d}",
+                    'transactions':   lc_txs,
+                    'is_pmcc':        False,
+                    'covered_shares': covered,
+                    'residual_shares': residual,
                 })
+
+                # If residual shares exist, emit a separate STOCK lifecycle
+                if residual > 0 and strategy in ('COVERED_CALL', 'COLLAR'):
+                    r_short = STRATEGY_SHORT.get('ETF' if symbol in ETF_SYMBOLS else 'STOCK', 'STOCK')
+                    r_strategy = 'ETF' if symbol in ETF_SYMBOLS else 'STOCK'
+                    r_cnt = strategy_counts.get(r_short, 0) + 1
+                    strategy_counts[r_short] = r_cnt
+                    buckets.append({
+                        'strategy_hint':     r_strategy,
+                        'lifecycle_id':      f"{symbol}_{r_short}_{r_cnt:03d}",
+                        'transactions':      lc_stock,  # stock txs only, no options
+                        'is_pmcc':           False,
+                        'allocation_override': residual,  # display only residual shares
+                        'covered_shares':    0,
+                        'residual_shares':   residual,
+                        'is_residual':       True,
+                    })
 
         elif call_buys and not has_stock:
             # ── Priority 3: PMCC ────────────────────────────────────────────
@@ -921,7 +966,18 @@ class IBKRParser:
         
         return lifecycles
     
-    def _create_trade_from_lifecycle(self, account: str, symbol: str, transactions: List[Dict], lifecycle_idx: int = 0, lifecycle_id: Optional[str] = None) -> Optional[Dict]:
+    def _create_trade_from_lifecycle(
+        self,
+        account: str,
+        symbol: str,
+        transactions: List[Dict],
+        lifecycle_idx: int = 0,
+        lifecycle_id: Optional[str] = None,
+        allocation_override: Optional[int] = None,
+        covered_shares: int = 0,
+        residual_shares: int = 0,
+        is_residual: bool = False,
+    ) -> Optional[Dict]:
         """
         Create a trade record from a single lifecycle's transactions.
         
@@ -1173,7 +1229,12 @@ class IBKRParser:
             'days_in_trade': days_in_trade,
             'dte': dte,
             'status': status,
-            'shares': int(total_shares),
+            # allocation_override: for residual stock lifecycles, display only the uncovered portion
+            'shares': int(allocation_override) if allocation_override is not None else int(total_shares),
+            'total_shares_raw': int(total_shares),  # always the real transaction sum
+            'covered_shares': covered_shares,
+            'residual_shares': residual_shares,
+            'is_residual': is_residual,
             'contracts': int(total_contracts),
             'entry_price': round(entry_price, 2) if entry_price else None,
             'premium_received': round(premium_received, 2),
