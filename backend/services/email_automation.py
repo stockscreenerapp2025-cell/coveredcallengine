@@ -525,6 +525,15 @@ class EmailAutomationService:
                 "updated_at": now.isoformat(),
             }
 
+            # Skip if a job for same user + template already exists (pending or sent)
+            existing = await self.db.email_jobs.find_one({
+                "to_email": user.get("email"),
+                "template_key": rule.get("template_key"),
+                "status": {"$in": ["scheduled", "sent"]}
+            })
+            if existing:
+                continue
+
             await self.db.email_jobs.insert_one(job)
             scheduled += 1
 
