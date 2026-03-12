@@ -3395,8 +3395,9 @@ async def apply_trade_recommendation(
     Returns:
         { "trade": {...updated trade...}, "balance_after": int }
     """
-    from services.wallet_service import debit_wallet, APPLY_COST_CREDITS
+    from ai_wallet.wallet_service import WalletService as AIWalletService
     from services.ai_trade_manager import apply_recommendation_to_trade
+    APPLY_COST_CREDITS = 2
 
     user_id        = user["id"]
     recommendation = body.recommendation
@@ -3411,22 +3412,28 @@ async def apply_trade_recommendation(
     if not trade:
         raise HTTPException(status_code=404, detail="Trade not found")
 
-    # ── Debit wallet ──────────────────────────────────────────────────────────
-    debit_result = await debit_wallet(
-        db, user_id,
-        amount=APPLY_COST_CREDITS,
-        reason=f"AI apply: {trade.get('symbol')} {recommendation.get('action')}",
-        ref_id=trade_id
+    # ── Debit wallet (same service as manage endpoint) ────────────────────────
+    import uuid as _uuid
+    wallet_svc = AIWalletService(db)
+    debit_result = await wallet_svc.deduct_tokens(
+        user_id=user_id,
+        tokens_required=APPLY_COST_CREDITS,
+        action="trade_apply",
+        request_id=str(_uuid.uuid4())
     )
-    if not debit_result["success"]:
+    if not debit_result.allowed:
+        wallet = await wallet_svc.get_or_create_wallet(user_id)
+        current_bal = wallet.get("free_tokens_remaining", 0) + wallet.get("paid_tokens_remaining", 0)
         raise HTTPException(
             status_code=402,
             detail={
                 "error": "insufficient_credits",
-                "message": f"Need {APPLY_COST_CREDITS} credits to apply. Balance: {debit_result['balance']}",
-                "balance": debit_result["balance"]
+                "message": f"Need {APPLY_COST_CREDITS} credits to apply. Balance: {current_bal}",
+                "balance": current_bal
             }
         )
+
+    balance_after = debit_result.remaining_balance
 
     # ── Build and apply updates ────────────────────────────────────────────────
     field_updates = apply_recommendation_to_trade(trade, recommendation, current_price)
@@ -3459,12 +3466,11 @@ async def apply_trade_recommendation(
     )
 
     # Return the updated trade
-    updated = await db.simulator_trades.find_one({"_id": trade["_id"]})
-    updated["id"] = str(updated.pop("_id"))
+    updated = await db.simulator_trades.find_one({"id": trade_id}, {"_id": 0})
 
     return {
-        "trade":        updated,
-        "balance_after": debit_result["balance_after"],
+        "trade":         updated,
+        "balance_after": balance_after,
         "action_applied": recommendation["action"]
     }
 

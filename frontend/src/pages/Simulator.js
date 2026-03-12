@@ -322,7 +322,12 @@ const Simulator = () => {
       });
       const data = await res.json();
       if (!res.ok) {
-        alert(`Apply failed: ${data.detail || 'Unknown error'}`);
+        if (res.status === 402) {
+          alert(`Insufficient credits to apply. Need 2 credits. Balance: ${data.detail?.balance ?? 0}`);
+        } else {
+          const msg = typeof data.detail === 'object' ? (data.detail?.message || JSON.stringify(data.detail)) : (data.detail || 'Unknown error');
+          alert(`Apply failed: ${msg}`);
+        }
         return;
       }
       setWalletBalance(data.balance_after);
