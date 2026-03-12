@@ -434,10 +434,24 @@ async def evaluate_and_execute_rules(trade: dict, rules: list, db) -> list:
     # Sort rules by priority (descending)
     sorted_rules = sorted(rules, key=lambda r: r.get("priority", 0), reverse=True)
     
+    trade_strategy = (trade.get("strategy_type") or "covered_call").lower()
+    # Normalize aliases
+    if trade_strategy == "cc":
+        trade_strategy = "covered_call"
+
     for rule in sorted_rules:
         if not rule.get("is_enabled", True):
             continue
-            
+
+        # If the rule is scoped to a specific strategy type, skip trades that don't match
+        rule_strategy = rule.get("strategy_type")
+        if rule_strategy:
+            rule_strategy = rule_strategy.lower()
+            if rule_strategy == "cc":
+                rule_strategy = "covered_call"
+            if rule_strategy != trade_strategy:
+                continue
+
         if evaluate_rule(trade, rule):
             result = await execute_rule_action(trade, rule, db)
             results.append(result)
@@ -1427,16 +1441,7 @@ def _normalize_strategy_config(payload: Dict[str, Any]) -> Dict[str, Any]:
     alerts = {"assignment_risk_alert": True, "assignment_imminent_alert": True}
     controls.update(payload.get("controls") or {})
     alerts.update(payload.get("alerts") or {})
-    # Enforce contradictions: income/wheel cannot have rolling
-    if strategy_mode in {"income", "wheel"}:
-        controls["roll_itm_near_expiry"] = False
-        controls["roll_delta_based"] = False
-        controls["market_aware_roll_suggestion"] = False
-        controls["manage_short_call_only"] = False
-        controls["roll_before_assignment"] = False
-    if strategy_mode == "pmcc":
-        controls["manage_short_call_only"] = True
-        controls["roll_before_assignment"] = True
+    # Rules are now applied per-trade based on strategy_type — no global contradictions enforced
     summary = {
         "hold_to_expiry": strategy_mode in {"income", "wheel"},
         "allow_assignment": strategy_mode in {"income", "wheel"},
@@ -1448,38 +1453,61 @@ def _normalize_strategy_config(payload: Dict[str, Any]) -> Dict[str, Any]:
 
 def _materialize_strategy_rules(user_id: str, config: Dict[str, Any]) -> List[Dict[str, Any]]:
     now = datetime.now(timezone.utc).isoformat()
-    mode = config["strategy_mode"]
     controls = config["controls"]
     alerts = config["alerts"]
     rules = []
 
-    def add_rule(name, description, action_type, conditions, priority, action_params=None):
-        rules.append({"id": str(uuid.uuid4()), "user_id": user_id, "name": name, "description": description,
-                       "conditions": conditions, "action": action_type, "action_params": action_params or {},
-                       "priority": priority, "is_enabled": True, "times_triggered": 0,
-                       "created_at": now, "updated_at": now, "source": "strategy_config", "strategy_mode": mode})
+    def add_rule(name, description, action_type, conditions, priority, action_params=None, strategy_type=None):
+        rule = {"id": str(uuid.uuid4()), "user_id": user_id, "name": name, "description": description,
+                "conditions": conditions, "action": action_type, "action_params": action_params or {},
+                "priority": priority, "is_enabled": True, "times_triggered": 0,
+                "created_at": now, "updated_at": now, "source": "strategy_config"}
+        if strategy_type:
+            rule["strategy_type"] = strategy_type
+        rules.append(rule)
 
-    add_rule(f"{mode.title()} — OTM expiry", "Allow option to expire worthless when OTM at expiry.",
+    # OTM expiry — all strategies
+    add_rule("OTM Expiry", "Allow option to expire worthless when OTM at expiry.",
              "alert", [{"field": "dte_remaining", "operator": "==", "value": 0}], 100,
              {"action_type": "expire", "message": "Allow option to expire worthless"})
 
-    if mode in {"income", "wheel"}:
-        add_rule(f"{mode.title()} — Accept assignment", "Assignment is acceptable for this strategy mode.",
+    # CC and Wheel: accept assignment at expiry
+    for st in ("covered_call", "wheel"):
+        label = "CC" if st == "covered_call" else "Wheel"
+        add_rule(f"{label} — Accept Assignment", f"Assignment is acceptable for {label} strategy.",
                  "alert", [{"field": "dte_remaining", "operator": "<=", "value": 0}], 95,
-                 {"action_type": "assignment", "message": "Allow assignment"})
-    else:
-        if controls.get("roll_itm_near_expiry"):
-            add_rule(f"{mode.title()} — Roll ITM near expiry", "Roll the short call to avoid assignment.",
+                 {"action_type": "assignment", "message": "Allow assignment"}, strategy_type=st)
+
+    # PMCC and Defensive: rolling controls
+    if controls.get("roll_itm_near_expiry"):
+        for st in ("pmcc", "defensive"):
+            label = "PMCC" if st == "pmcc" else "Defensive"
+            add_rule(f"{label} — Roll ITM Near Expiry", "Roll the short call to avoid assignment.",
                      "roll_out", [{"field": "dte_remaining", "operator": "<=", "value": 7},
                                   {"field": "current_delta", "operator": ">=", "value": 0.65}], 90,
-                     {"action_type": "roll", "message": "Roll short call to avoid assignment"})
-        if controls.get("roll_delta_based"):
-            add_rule(f"{mode.title()} — Delta-based roll", "Roll when delta indicates rising assignment risk.",
+                     {"action_type": "roll", "message": "Roll short call to avoid assignment"}, strategy_type=st)
+
+    if controls.get("roll_delta_based"):
+        for st in ("pmcc", "defensive"):
+            label = "PMCC" if st == "pmcc" else "Defensive"
+            add_rule(f"{label} — Delta-Based Roll", "Roll when delta indicates rising assignment risk.",
                      "roll_out", [{"field": "current_delta", "operator": ">=", "value": 0.75}], 85,
                      {"action_type": "roll", "message": "Roll based on delta threshold",
                       "target_delta_min": controls.get("target_delta_min", 0.25),
-                      "target_delta_max": controls.get("target_delta_max", 0.35)})
+                      "target_delta_max": controls.get("target_delta_max", 0.35)}, strategy_type=st)
 
+    if controls.get("roll_before_assignment"):
+        add_rule("PMCC — Roll Before Assignment", "Roll short call before assignment occurs.",
+                 "roll_out", [{"field": "current_delta", "operator": ">=", "value": 0.80},
+                              {"field": "dte_remaining", "operator": "<=", "value": 5}], 88,
+                 {"action_type": "roll", "message": "Roll short call before assignment"}, strategy_type="pmcc")
+
+    if controls.get("manage_short_call_only"):
+        add_rule("PMCC — Manage Short Call Only", "Keep LEAPS intact and manage only the short call.",
+                 "alert", [], 80, {"action_type": "manage_short", "message": "Manage short call only"},
+                 strategy_type="pmcc")
+
+    # Alerts — all strategies
     if alerts.get("assignment_risk_alert"):
         add_rule("Assignment Risk Alert", "Alert when assignment risk is elevated.", "alert",
                  [{"field": "current_delta", "operator": ">=", "value": 0.70},
@@ -1490,9 +1518,7 @@ def _materialize_strategy_rules(user_id: str, config: Dict[str, Any]) -> List[Di
                  [{"field": "current_delta", "operator": ">=", "value": 0.85},
                   {"field": "dte_remaining", "operator": "<=", "value": 3}], 75,
                  {"action_type": "alert", "message": "Assignment is imminent"})
-    if controls.get("manage_short_call_only"):
-        add_rule("PMCC — Manage Short Call Only", "Keep LEAPS intact and manage only the short call.",
-                 "alert", [], 80, {"action_type": "manage_short", "message": "Manage short call only"})
+
     return rules
 
 
@@ -1603,11 +1629,12 @@ async def preview_rules_config(payload: RulesPreviewRequest, user: dict = Depend
         if live_trades:
             trades = live_trades
         else:
-            strat = "pmcc" if existing["strategy_mode"] == "pmcc" else "covered_call"
+            # Sample trades covering both CC and PMCC to demonstrate per-trade rules
             trades = [
-                {"id": "sample-otm", "symbol": "SAMPLE", "strategy_type": strat, "status": "open", "dte_remaining": 2, "current_delta": 0.22},
-                {"id": "sample-itm", "symbol": "SAMPLE", "strategy_type": strat, "status": "open", "dte_remaining": 3, "current_delta": 0.78},
-                {"id": "sample-high-delta", "symbol": "SAMPLE", "strategy_type": strat, "status": "open", "dte_remaining": 12, "current_delta": 0.81},
+                {"id": "sample-cc-otm", "symbol": "AAPL (CC)", "strategy_type": "covered_call", "status": "open", "dte_remaining": 2, "current_delta": 0.22},
+                {"id": "sample-cc-itm", "symbol": "TSLA (CC)", "strategy_type": "covered_call", "status": "open", "dte_remaining": 3, "current_delta": 0.78},
+                {"id": "sample-pmcc-itm", "symbol": "NVDA (PMCC)", "strategy_type": "pmcc", "status": "open", "dte_remaining": 5, "current_delta": 0.70},
+                {"id": "sample-pmcc-delta", "symbol": "AMZN (PMCC)", "strategy_type": "pmcc", "status": "open", "dte_remaining": 12, "current_delta": 0.81},
             ]
     previews = [_preview_trade_action(trade, existing) for trade in trades]
     return {

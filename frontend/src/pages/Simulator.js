@@ -618,11 +618,6 @@ const Simulator = () => {
 
   const handleToggleOptionalControl = async (key) => {
     if (!ruleConfig) return;
-    const mode = ruleConfig.strategy_mode;
-    if ((mode === 'income' || mode === 'wheel') && ['roll_itm_near_expiry', 'roll_delta_based', 'market_aware_roll_suggestion', 'manage_short_call_only', 'roll_before_assignment'].includes(key)) {
-      toast.error('Rolling controls require Defensive or PMCC mode');
-      return;
-    }
     await persistRuleConfig({ ...ruleConfig, controls: { ...(ruleConfig.controls || {}), [key]: !ruleConfig?.controls?.[key] } });
   };
 
@@ -1206,7 +1201,7 @@ const Simulator = () => {
             <div className="text-center py-8">
               <Settings className="w-10 h-10 text-zinc-600 mx-auto mb-3" />
               <p className="text-zinc-400 text-sm">No rules configured yet</p>
-              <p className="text-zinc-500 text-xs mt-1">Select a strategy mode to generate rules automatically</p>
+              <p className="text-zinc-500 text-xs mt-1">Enable controls above to generate per-strategy rules automatically</p>
             </div>
           ) : (
             <div className="space-y-3">
