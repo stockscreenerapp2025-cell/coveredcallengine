@@ -34,21 +34,66 @@ from .config import AI_ACTION_COSTS
 logger = logging.getLogger(__name__)
 
 
+async def _call_gemini(prompt: str, system_message: str, api_key: str,
+                       model: str = "gemini-1.5-flash", max_tokens: int = 1000,
+                       temperature: float = 0.7) -> str:
+    """Call Google Gemini API directly (free tier: 15 RPM, 1500 RPD)."""
+    import httpx, json as _json
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
+    payload = {
+        "system_instruction": {"parts": [{"text": system_message}]},
+        "contents": [{"role": "user", "parts": [{"text": prompt}]}],
+        "generationConfig": {
+            "maxOutputTokens": max_tokens,
+            "temperature": temperature
+        }
+    }
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        resp = await client.post(url, json=payload,
+                                 headers={"Content-Type": "application/json"})
+        if resp.status_code != 200:
+            raise RuntimeError(f"Gemini API error {resp.status_code}: {resp.text[:300]}")
+        data = resp.json()
+        return data["candidates"][0]["content"]["parts"][0]["text"]
+
+
+async def _call_openai(prompt: str, system_message: str, api_key: str,
+                       model: str = "gpt-4o-mini", max_tokens: int = 1000,
+                       temperature: float = 0.7) -> str:
+    """Call OpenAI API directly."""
+    import httpx
+    headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
+    payload = {
+        "model": model,
+        "messages": [
+            {"role": "system", "content": system_message},
+            {"role": "user",   "content": prompt}
+        ],
+        "max_tokens": max_tokens,
+        "temperature": temperature
+    }
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        resp = await client.post("https://api.openai.com/v1/chat/completions",
+                                 json=payload, headers=headers)
+        if resp.status_code != 200:
+            raise RuntimeError(f"OpenAI API error {resp.status_code}: {resp.text[:300]}")
+        return resp.json()["choices"][0]["message"]["content"]
+
+
 class AIExecutionService:
     """
     Centralized AI execution service with token management.
-    
-    All AI calls in the application should use this service to:
-    1. Check token balance
-    2. Deduct tokens atomically
-    3. Execute the AI call
-    4. Handle failures and reversals
+    Uses Google Gemini (free) when GEMINI_API_KEY is set,
+    falls back to OpenAI when OPENAI_API_KEY is set.
     """
-    
+
     def __init__(self, db):
         self.db = db
         self.guard = AIGuard(db)
-        self.api_key = os.environ.get('EMERGENT_LLM_KEY')
+        self.gemini_key = os.environ.get('GEMINI_API_KEY', '')
+        self.openai_key = os.environ.get('OPENAI_API_KEY', os.environ.get('EMERGENT_LLM_KEY', ''))
+        # Legacy field kept for compatibility
+        self.api_key = self.openai_key
     
     async def execute(
         self,
@@ -95,17 +140,30 @@ class AIExecutionService:
             }
         
         try:
-            # Execute AI call using emergentintegrations
-            from emergentintegrations.llm.chat import LlmChat, UserMessage
-            
-            chat = LlmChat(
-                api_key=self.api_key,
-                session_id=str(uuid.uuid4()),
-                system_message=system_message
-            ).with_model(provider, model)
-            
-            response = await chat.send_message(UserMessage(text=prompt))
-            response_text = response if isinstance(response, str) else str(response)
+            # Use Gemini (free) if key configured, else fall back to OpenAI
+            if self.gemini_key:
+                gemini_model = "gemini-1.5-flash"
+                response_text = await _call_gemini(
+                    prompt=prompt,
+                    system_message=system_message,
+                    api_key=self.gemini_key,
+                    model=gemini_model,
+                    max_tokens=max_tokens,
+                    temperature=temperature
+                )
+                logger.info(f"[AI] Used Gemini ({gemini_model}) for action={action}")
+            elif self.openai_key:
+                response_text = await _call_openai(
+                    prompt=prompt,
+                    system_message=system_message,
+                    api_key=self.openai_key,
+                    model=model,
+                    max_tokens=max_tokens,
+                    temperature=temperature
+                )
+                logger.info(f"[AI] Used OpenAI ({model}) for action={action}")
+            else:
+                raise RuntimeError("No AI provider configured. Set GEMINI_API_KEY (free) or OPENAI_API_KEY in .env")
             
             # Release guard (successful execution)
             await self.guard.release(user_id, guard_result.request_id)
