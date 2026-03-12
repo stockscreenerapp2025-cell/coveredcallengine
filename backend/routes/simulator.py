@@ -3396,14 +3396,7 @@ async def apply_trade_recommendation(
         raise HTTPException(status_code=400, detail="recommendation is required")
 
     # ── Load trade ────────────────────────────────────────────────────────────
-    try:
-        from bson import ObjectId
-        trade = await db.simulator_trades.find_one({
-            "_id": ObjectId(trade_id),
-            "user_id": user_id
-        })
-    except Exception:
-        trade = None
+    trade = await db.simulator_trades.find_one({"id": trade_id, "user_id": user_id}, {"_id": 0})
 
     if not trade:
         raise HTTPException(status_code=404, detail="Trade not found")
@@ -3429,7 +3422,7 @@ async def apply_trade_recommendation(
     field_updates = apply_recommendation_to_trade(trade, recommendation, current_price)
 
     await db.simulator_trades.update_one(
-        {"_id": trade["_id"]},
+        {"id": trade_id},
         {"$set": field_updates}
     )
 
