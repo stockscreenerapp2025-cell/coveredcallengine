@@ -204,6 +204,12 @@ async def forgot_password(request: ForgotPasswordRequest):
     user = await _db.users.find_one({"email": request.email})
     if not user:
         return {"message": "If that email exists, a reset link has been sent."}
+    # Ensure user has an id field (auto-created PayPal users may be missing it)
+    if not user.get("id"):
+        import uuid as _uuid
+        new_id = str(_uuid.uuid4())
+        await _db.users.update_one({"email": request.email}, {"$set": {"id": new_id}})
+        user["id"] = new_id
     token = secrets.token_urlsafe(32)
     expires = (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat()
     await _db.password_reset_tokens.insert_one({
