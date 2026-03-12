@@ -142,7 +142,7 @@ const Portfolio = () => {
   });
 
   // View mode: 'list' (flat table) or 'lifecycle' (grouped by symbol+cycle)
-  const [viewMode, setViewMode] = useState('lifecycle');
+  const [viewMode, setViewMode] = useState('list');
   const [expandedSymbols, setExpandedSymbols] = useState({});
   const [expandedCycles, setExpandedCycles] = useState({});
 
