@@ -337,33 +337,28 @@ class IBKRParser:
             
             # Sort by datetime to process chronologically
             txs.sort(key=lambda x: x.get('datetime', ''))
-            
-            # Check if this is a PMCC strategy (long call buys + short call sells, no stock)
-            stock_txs = [t for t in txs if not t.get('is_option')]
-            option_txs = [t for t in txs if t.get('is_option')]
-            
-            call_buys = [t for t in option_txs 
-                        if t.get('transaction_type') == 'Buy' and 
-                        t.get('option_details', {}).get('option_type') == 'Call']
-            
-            # If there are long call buys (LEAPS) and no actual stock buys, process as PMCC
-            has_stock_position = any(
-                t.get('transaction_type') in ['Buy', 'Assignment'] and not t.get('is_option')
-                for t in txs
-            )
-            
-            if call_buys and not has_stock_position:
-                # Pure PMCC strategy - process separately
-                pmcc_lifecycles = self._split_pmcc_lifecycles(option_txs)
-                for idx, pmcc_txs in enumerate(pmcc_lifecycles):
-                    trade = self._create_pmcc_trade(account, symbol, pmcc_txs, idx)
+
+            # Use priority-based bucket detection engine
+            # Collar → Covered Call/Wheel → PMCC → CSP → Residual Stock
+            buckets = self._detect_strategy_buckets(symbol, account, txs)
+
+            for bucket in buckets:
+                lc_txs      = bucket['transactions']
+                lifecycle_id = bucket['lifecycle_id']
+                # Derive a 0-based index from the lifecycle_id suffix (e.g. "001" → 0)
+                try:
+                    lc_idx = int(lifecycle_id.rsplit('_', 1)[-1]) - 1
+                except (ValueError, IndexError):
+                    lc_idx = 0
+
+                if bucket['is_pmcc']:
+                    trade = self._create_pmcc_trade(account, symbol, lc_txs, lc_idx,
+                                                    lifecycle_id=lifecycle_id)
                     if trade:
                         pmcc_trades.append(trade)
-            else:
-                # Stock/CC/Wheel strategy - use CSP-aware lifecycle splitting
-                lifecycles = self._split_into_lifecycles_csp_aware(txs)
-                for lifecycle_idx, lifecycle_txs in enumerate(lifecycles):
-                    trade = self._create_trade_from_lifecycle(account, symbol, lifecycle_txs, lifecycle_idx)
+                else:
+                    trade = self._create_trade_from_lifecycle(account, symbol, lc_txs, lc_idx,
+                                                              lifecycle_id=lifecycle_id)
                     if trade:
                         stock_trades.append(trade)
         
@@ -445,7 +440,124 @@ class IBKRParser:
         
         return lifecycles
     
-    def _create_pmcc_trade(self, account: str, symbol: str, transactions: List[Dict], lifecycle_idx: int = 0) -> Optional[Dict]:
+    def _detect_strategy_buckets(self, symbol: str, account: str, transactions: List[Dict]) -> List[Dict]:
+        """
+        Detect strategy buckets using priority allocation engine.
+
+        PRIORITY ORDER (highest → lowest):
+        1. COLLAR:        long stock + short call + long put
+        2. COVERED_CALL:  long stock + short call (+ optional CSP = Wheel)
+        3. PMCC:          long call (LEAPS) + short call (no stock)
+        4. NAKED_PUT:     short put only (CSP in progress, no stock yet)
+        5. STOCK/ETF:     residual stock positions
+
+        Returns list of bucket dicts:
+        [{'strategy_hint': 'CC', 'lifecycle_id': 'AAPL_CC_001',
+          'transactions': [...], 'is_pmcc': False}, ...]
+        """
+        stock_txs = [t for t in transactions if not t.get('is_option')]
+        option_txs = [t for t in transactions if t.get('is_option')]
+
+        call_buys  = [t for t in option_txs
+                      if t.get('transaction_type') == 'Buy'
+                      and t.get('option_details', {}).get('option_type') == 'Call']
+        call_sells = [t for t in option_txs
+                      if t.get('transaction_type') == 'Sell'
+                      and t.get('option_details', {}).get('option_type') == 'Call']
+        put_buys   = [t for t in option_txs
+                      if t.get('transaction_type') == 'Buy'
+                      and t.get('option_details', {}).get('option_type') == 'Put']
+        put_sells  = [t for t in option_txs
+                      if t.get('transaction_type') == 'Sell'
+                      and t.get('option_details', {}).get('option_type') == 'Put']
+
+        has_stock = any(
+            t.get('transaction_type') in ['Buy', 'Assignment'] and t.get('quantity', 0) > 0
+            for t in stock_txs
+        )
+
+        # Short label map for lifecycle IDs
+        STRATEGY_SHORT = {
+            'COVERED_CALL': 'CC',
+            'COLLAR':       'COLLAR',
+            'NAKED_PUT':    'CSP',
+            'PMCC':         'PMCC',
+            'STOCK':        'STOCK',
+            'ETF':          'ETF',
+            'INDEX':        'IDX',
+        }
+
+        buckets = []
+
+        if has_stock and call_sells and put_buys:
+            # ── Priority 1: COLLAR ──────────────────────────────────────────
+            lifecycles = self._split_into_lifecycles_csp_aware(transactions)
+            for idx, lc_txs in enumerate(lifecycles):
+                buckets.append({
+                    'strategy_hint': 'COLLAR',
+                    'lifecycle_id':  f"{symbol}_COLLAR_{idx + 1:03d}",
+                    'transactions':  lc_txs,
+                    'is_pmcc':       False,
+                })
+
+        elif has_stock and (call_sells or put_sells):
+            # ── Priority 2: COVERED CALL / WHEEL ────────────────────────────
+            lifecycles = self._split_into_lifecycles_csp_aware(transactions)
+            strategy_counts: Dict[str, int] = {}
+            for lc_txs in lifecycles:
+                lc_stock = [t for t in lc_txs if not t.get('is_option')]
+                lc_opts  = [t for t in lc_txs if t.get('is_option')]
+                strategy = self._determine_strategy(lc_stock, lc_opts)
+                short    = STRATEGY_SHORT.get(strategy, strategy)
+                cnt      = strategy_counts.get(short, 0) + 1
+                strategy_counts[short] = cnt
+                buckets.append({
+                    'strategy_hint': strategy,
+                    'lifecycle_id':  f"{symbol}_{short}_{cnt:03d}",
+                    'transactions':  lc_txs,
+                    'is_pmcc':       False,
+                })
+
+        elif call_buys and not has_stock:
+            # ── Priority 3: PMCC ────────────────────────────────────────────
+            pmcc_lifecycles = self._split_pmcc_lifecycles(option_txs)
+            for idx, lc_txs in enumerate(pmcc_lifecycles):
+                buckets.append({
+                    'strategy_hint': 'PMCC',
+                    'lifecycle_id':  f"{symbol}_PMCC_{idx + 1:03d}",
+                    'transactions':  lc_txs,
+                    'is_pmcc':       True,
+                })
+
+        elif put_sells and not has_stock:
+            # ── Priority 4: CSP / Naked Put ─────────────────────────────────
+            lifecycles = self._split_into_lifecycles(transactions)
+            for idx, lc_txs in enumerate(lifecycles):
+                buckets.append({
+                    'strategy_hint': 'NAKED_PUT',
+                    'lifecycle_id':  f"{symbol}_CSP_{idx + 1:03d}",
+                    'transactions':  lc_txs,
+                    'is_pmcc':       False,
+                })
+
+        else:
+            # ── Priority 5: Residual stock / ETF / index ────────────────────
+            lifecycles = self._split_into_lifecycles(transactions)
+            is_etf    = symbol in ETF_SYMBOLS
+            is_index  = symbol in INDEX_SYMBOLS
+            strategy  = 'ETF' if is_etf else ('INDEX' if is_index else 'STOCK')
+            short     = STRATEGY_SHORT.get(strategy, strategy)
+            for idx, lc_txs in enumerate(lifecycles):
+                buckets.append({
+                    'strategy_hint': strategy,
+                    'lifecycle_id':  f"{symbol}_{short}_{idx + 1:03d}",
+                    'transactions':  lc_txs,
+                    'is_pmcc':       False,
+                })
+
+        return buckets
+
+    def _create_pmcc_trade(self, account: str, symbol: str, transactions: List[Dict], lifecycle_idx: int = 0, lifecycle_id: Optional[str] = None) -> Optional[Dict]:
         """
         Create a PMCC trade record anchored to the long LEAPS.
         
@@ -512,7 +624,7 @@ class IBKRParser:
         
         # Position Instance ID for PMCC
         date_part = first_date[:7] if first_date else datetime.now().strftime('%Y-%m')
-        position_instance_id = f"{symbol}-PMCC-{date_part}-{leaps_strike}-Entry-{lifecycle_idx + 1:02d}"
+        position_instance_id = lifecycle_id or f"{symbol}_PMCC_{lifecycle_idx + 1:03d}"
         
         trade_unique_key = f"{account}-{symbol}-PMCC-{leaps_strike}-{leaps_expiry}-{lifecycle_idx}"
         trade_id = hashlib.md5(trade_unique_key.encode()).hexdigest()[:16]
@@ -809,7 +921,7 @@ class IBKRParser:
         
         return lifecycles
     
-    def _create_trade_from_lifecycle(self, account: str, symbol: str, transactions: List[Dict], lifecycle_idx: int = 0) -> Optional[Dict]:
+    def _create_trade_from_lifecycle(self, account: str, symbol: str, transactions: List[Dict], lifecycle_idx: int = 0, lifecycle_id: Optional[str] = None) -> Optional[Dict]:
         """
         Create a trade record from a single lifecycle's transactions.
         
@@ -1038,17 +1150,9 @@ class IBKRParser:
         # =====================================================
         # POSITION INSTANCE ID (Lifecycle Tracking)
         # =====================================================
-        # Each lifecycle gets a unique ID, even for the same ticker
-        # Format: {SYMBOL}-{YYYY-MM}-Entry-{NN}
-        # Example: IREN-2024-05-Entry-01
-        
-        # Create Position Instance ID based on the lifecycle's first transaction date
-        if first_date:
-            date_part = first_date[:7]  # YYYY-MM
-        else:
-            date_part = datetime.now().strftime('%Y-%m')
-        
-        position_instance_id = f"{symbol}-{date_part}-Entry-{lifecycle_idx + 1:02d}"
+        # Format: {SYMBOL}_{STRATEGY}_{NNN}  e.g. AAPL_CC_001
+        # Falls back to date-based ID for backward compatibility.
+        position_instance_id = lifecycle_id or f"{symbol}_UNKNOWN_{lifecycle_idx + 1:03d}"
         
         # Create deterministic trade ID that includes lifecycle index
         trade_unique_key = f"{account}-{symbol}-{first_date or 'unknown'}-lifecycle{lifecycle_idx}"
