@@ -198,7 +198,6 @@ class StrategyAlerts(BaseModel):
 
 class StrategyRuleConfigUpdate(BaseModel):
     model_config = ConfigDict(extra='ignore')
-    strategy_mode: str
     controls: StrategyControls = StrategyControls()
     alerts: StrategyAlerts = StrategyAlerts()
 
@@ -315,13 +314,13 @@ async def execute_rule_action(trade: dict, rule: dict, db) -> dict:
         entry_premium = trade.get("short_call_premium", 0)
         current_option_value = trade.get("current_option_value", 0)
         
-        if trade["strategy_type"] == "covered_call":
+        if trade["strategy_type"] in ("covered_call", "wheel", "defensive"):
             stock_pnl = (current_price - trade["entry_underlying_price"]) * 100 * trade["contracts"]
             option_pnl = (entry_premium - current_option_value) * 100 * trade["contracts"]
             final_pnl = stock_pnl + option_pnl
         else:  # PMCC
             final_pnl = trade.get("unrealized_pnl", 0)
-        
+
         update_doc = {
             "status": "closed",
             "close_date": now.strftime("%Y-%m-%d"),
@@ -461,8 +460,8 @@ async def add_simulator_trade(trade: SimulatorTradeEntry, user: dict = Depends(g
     entry_date = now.strftime("%Y-%m-%d")
     
     # Calculate key metrics based on strategy type
-    if trade.strategy_type == "covered_call":
-        # Covered Call: Long 100 shares + Short call
+    if trade.strategy_type in ("covered_call", "wheel", "defensive"):
+        # Covered Call / Wheel / Defensive: Long 100 shares + Short call
         capital_per_contract = trade.underlying_price * 100  # Cost of 100 shares
         total_capital = capital_per_contract * trade.contracts
         premium_received = trade.short_call_premium * trade.contracts * 100
@@ -486,7 +485,15 @@ async def add_simulator_trade(trade: SimulatorTradeEntry, user: dict = Depends(g
         max_loss = total_capital  # LEAPS expires worthless
         breakeven = trade.leaps_strike + net_debit
     else:
-        raise HTTPException(status_code=400, detail="Invalid strategy type. Must be 'covered_call' or 'pmcc'")
+        if trade.strategy_type not in {"covered_call", "pmcc", "wheel", "defensive"}:
+            raise HTTPException(status_code=400, detail="Invalid strategy type. Must be 'covered_call', 'pmcc', 'wheel', or 'defensive'")
+        # wheel and defensive: same capital structure as covered_call
+        capital_per_contract = trade.underlying_price * 100
+        total_capital = capital_per_contract * trade.contracts
+        premium_received = trade.short_call_premium * trade.contracts * 100
+        max_profit = ((trade.short_call_strike - trade.underlying_price) * 100 + trade.short_call_premium * 100) * trade.contracts
+        max_loss = (trade.underlying_price * 100 - trade.short_call_premium * 100) * trade.contracts
+        breakeven = trade.underlying_price - trade.short_call_premium
     
     # Calculate DTE
     try:
@@ -726,7 +733,7 @@ async def close_simulator_trade(
     entry_premium = trade.get("short_call_premium", 0)
     current_option_value = trade.get("current_option_value", 0)
     
-    if trade["strategy_type"] == "covered_call":
+    if trade["strategy_type"] in ("covered_call", "wheel", "defensive"):
         stock_pnl = (final_price - trade["entry_underlying_price"]) * 100 * trade["contracts"]
         option_pnl = (entry_premium - current_option_value) * 100 * trade["contracts"]
         final_pnl = stock_pnl + option_pnl
@@ -1215,7 +1222,7 @@ async def get_trades_health(user: dict = Depends(get_current_user)):
         if total_pl is None and data_quality != "missing_option_mark":
             total_pl = t.get("unrealized_pnl")
             if total_pl is not None:
-                if strategy == "covered_call":
+                if strategy in ("covered_call", "wheel", "defensive"):
                     capital = entry_spot * 100 * contracts
                     roi_pct = round(total_pl / capital * 100, 2) if capital > 0 else None
                 else:
@@ -1401,6 +1408,15 @@ STRATEGY_MODE_DEFAULTS = {
 }
 
 
+STRATEGY_TYPE_TO_MODE = {
+    "covered_call": "income",
+    "cc": "income",
+    "wheel": "wheel",
+    "defensive": "defensive",
+    "pmcc": "pmcc",
+}
+
+
 def _normalize_strategy_config(payload: Dict[str, Any]) -> Dict[str, Any]:
     strategy_mode = (payload.get("strategy_mode") or "income").lower()
     if strategy_mode not in STRATEGY_MODE_DEFAULTS:
@@ -1481,7 +1497,8 @@ def _materialize_strategy_rules(user_id: str, config: Dict[str, Any]) -> List[Di
 
 
 def _preview_trade_action(trade: Dict[str, Any], config: Dict[str, Any]) -> Dict[str, Any]:
-    mode = config["strategy_mode"]
+    trade_strategy = trade.get("strategy_type", "covered_call")
+    mode = STRATEGY_TYPE_TO_MODE.get(trade_strategy, "income")
     delta = float(trade.get("current_delta") or 0)
     dte = int(trade.get("dte_remaining") or 0)
     triggers = []
@@ -1532,14 +1549,23 @@ async def get_rules_config(user: dict = Depends(get_current_user)):
         existing = _normalize_strategy_config({"strategy_mode": "income"})
         existing["user_id"] = user["id"]
         existing["updated_at"] = datetime.now(timezone.utc).isoformat()
-    existing["materialized_rules"] = _materialize_strategy_rules(user["id"], existing)
-    return existing
+    materialized = _materialize_strategy_rules(user["id"], existing)
+    return {
+        "controls": existing.get("controls", {}),
+        "alerts": existing.get("alerts", {}),
+        "materialized_rules": materialized,
+        "updated_at": existing.get("updated_at"),
+    }
 
 
 @simulator_router.put("/rules/config")
 async def update_rules_config(config: StrategyRuleConfigUpdate, user: dict = Depends(get_current_user)):
-    normalized = _normalize_strategy_config(config.dict())
+    payload = config.dict()
     now = datetime.now(timezone.utc).isoformat()
+    # Preserve existing strategy_mode from DB so _normalize_strategy_config is happy
+    existing_doc = await db.simulator_rule_configs.find_one({"user_id": user["id"]}, {"_id": 0})
+    payload["strategy_mode"] = (existing_doc or {}).get("strategy_mode", "income")
+    normalized = _normalize_strategy_config(payload)
     doc = {**normalized, "user_id": user["id"], "updated_at": now}
     await db.simulator_rule_configs.update_one({"user_id": user["id"]}, {"$set": doc}, upsert=True)
     await db.simulator_rules.delete_many({"user_id": user["id"], "source": "strategy_config"})
@@ -1547,8 +1573,16 @@ async def update_rules_config(config: StrategyRuleConfigUpdate, user: dict = Dep
     if materialized_rules:
         await db.simulator_rules.insert_many(materialized_rules)
     # pymongo adds _id (ObjectId) to each dict in-place during insert_many — strip before returning
-    doc["materialized_rules"] = [{k: v for k, v in r.items() if k != "_id"} for r in materialized_rules]
-    return {"message": "Rules config saved", "config": doc}
+    cleaned_rules = [{k: v for k, v in r.items() if k != "_id"} for r in materialized_rules]
+    return {
+        "message": "Rules config saved",
+        "config": {
+            "controls": normalized.get("controls", {}),
+            "alerts": normalized.get("alerts", {}),
+            "materialized_rules": cleaned_rules,
+            "updated_at": now,
+        },
+    }
 
 
 @simulator_router.post("/rules/preview")
@@ -2342,7 +2376,7 @@ async def get_performance_analytics(
         
         # Assignment is a WIN for covered calls (you got paid strike price)
         # Expired OTM is a WIN (kept premium)
-        if status == "assigned" and t.get("strategy_type") == "covered_call":
+        if status == "assigned" and t.get("strategy_type") in ("covered_call", "wheel", "defensive"):
             winners.append(pnl)
         elif status == "expired":
             winners.append(pnl)

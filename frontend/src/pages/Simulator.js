@@ -70,7 +70,9 @@ const STATUS_COLORS = {
 
 const STRATEGY_COLORS = {
   'covered_call': 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30',
-  'pmcc': 'bg-violet-500/20 text-violet-400 border-violet-500/30'
+  'pmcc': 'bg-violet-500/20 text-violet-400 border-violet-500/30',
+  'wheel': 'bg-amber-500/20 text-amber-400 border-amber-500/30',
+  'defensive': 'bg-sky-500/20 text-sky-400 border-sky-500/30'
 };
 
 const CHART_COLORS = {
@@ -898,6 +900,8 @@ const Simulator = () => {
                 <SelectItem value="all">All Strategies</SelectItem>
                 <SelectItem value="covered_call">Covered Call</SelectItem>
                 <SelectItem value="pmcc">PMCC</SelectItem>
+                <SelectItem value="wheel">Wheel</SelectItem>
+                <SelectItem value="defensive">Defensive</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -959,7 +963,7 @@ const Simulator = () => {
                         </td>
                         <td>
                           <Badge className={STRATEGY_COLORS[trade.strategy_type]}>
-                            {trade.strategy_type === 'covered_call' ? 'CC' : 'PMCC'}
+                            {{ covered_call: 'CC', pmcc: 'PMCC', wheel: 'WHEEL', defensive: 'DEF' }[trade.strategy_type] || (trade.strategy_type || '').toUpperCase()}
                           </Badge>
                         </td>
                         <td>
@@ -1091,29 +1095,18 @@ const Simulator = () => {
   );
 
   const renderRulesTab = () => {
-    const mode = ruleConfig?.strategy_mode || 'income';
     const controls = ruleConfig?.controls || {};
     const alerts = ruleConfig?.alerts || {};
-    const ruleSummary = ruleConfig?.summary || {};
 
-    const modes = [
-      { id: 'income', title: 'Income Mode', desc: 'Hold to expiry and allow assignment if ITM' },
-      { id: 'wheel', title: 'Wheel Mode', desc: 'Assignment is acceptable as part of the wheel strategy' },
-      { id: 'defensive', title: 'Defensive Mode', desc: 'Roll to avoid assignment and protect shares' },
-      { id: 'pmcc', title: 'PMCC Mode', desc: 'Manage short call only and prevent assignment' },
+    const optionalControls = [
+      { key: 'avoid_early_close', label: 'Avoid Early Close' },
+      { key: 'brokerage_aware_hold', label: 'Brokerage-Aware Hold' },
+      { key: 'roll_itm_near_expiry', label: 'Roll ITM Near Expiry' },
+      { key: 'roll_delta_based', label: 'Roll Based on Delta' },
+      { key: 'market_aware_roll_suggestion', label: 'Market-Aware Roll Suggestion' },
+      { key: 'manage_short_call_only', label: 'Manage Short Call Only' },
+      { key: 'roll_before_assignment', label: 'Roll Before Assignment' },
     ];
-
-    const optionalControls = mode === 'income' || mode === 'wheel'
-      ? [
-          { key: 'avoid_early_close', label: 'Avoid Early Close' },
-          { key: 'brokerage_aware_hold', label: 'Brokerage-Aware Hold' },
-        ]
-      : [
-          { key: 'roll_itm_near_expiry', label: 'Roll ITM Near Expiry' },
-          { key: 'roll_delta_based', label: 'Roll Based on Delta' },
-          { key: 'market_aware_roll_suggestion', label: 'Market-Aware Roll Suggestion' },
-          ...(mode === 'pmcc' ? [{ key: 'manage_short_call_only', label: 'Manage Short Call Only' }, { key: 'roll_before_assignment', label: 'Roll Before Assignment' }] : []),
-        ];
 
     return (
     <div className="space-y-6">
@@ -1125,7 +1118,7 @@ const Simulator = () => {
             Trade Strategy Rules
           </h2>
           <p className="text-zinc-400 text-sm mt-1">
-            Select a strategy mode — the system sets consistent, non-contradictory rules automatically.
+            Rules are applied per-trade based on each trade's strategy type. Configure optional controls and alerts below.
           </p>
         </div>
         <Button
@@ -1138,65 +1131,6 @@ const Simulator = () => {
           Execute Preview
         </Button>
       </div>
-
-      {/* Section 1: Strategy Mode Cards */}
-      <Card className="glass-card">
-        <CardHeader className="pb-3">
-          <CardTitle className="text-sm flex items-center gap-2">
-            <Target className="w-4 h-4 text-violet-400" />
-            Strategy Mode
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
-            {modes.map(m => {
-              const isSelected = mode === m.id;
-              return (
-                <button
-                  key={m.id}
-                  onClick={() => handleStrategyModeChange(m.id)}
-                  disabled={ruleSaving}
-                  className={`text-left p-4 rounded-lg border-2 transition-all ${
-                    isSelected
-                      ? 'border-violet-500/50 bg-violet-500/10'
-                      : 'border-zinc-700/50 bg-zinc-800/30 hover:border-zinc-600'
-                  }`}
-                >
-                  <div className="flex items-center gap-2 mb-1">
-                    <span className="font-semibold text-white text-sm">{m.title}</span>
-                    {isSelected && <Badge className="bg-violet-500/20 text-violet-400 text-xs">Active</Badge>}
-                  </div>
-                  <p className="text-xs text-zinc-400 leading-relaxed">{m.desc}</p>
-                </button>
-              );
-            })}
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Section 2: Active Rule Summary */}
-      {ruleConfig && Object.keys(ruleSummary).length > 0 && (
-        <Card className="glass-card border-violet-500/20">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm flex items-center gap-2">
-              <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-              Active Rule Summary
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-              {Object.entries(ruleSummary).map(([key, val]) => (
-                <div key={key} className={`p-3 rounded-lg border ${val ? 'bg-emerald-500/5 border-emerald-500/20' : 'bg-zinc-800/30 border-zinc-700/30'}`}>
-                  <div className="text-xs text-zinc-500 mb-1 capitalize">{key.replace(/_/g, ' ')}</div>
-                  <div className={`text-sm font-bold ${val ? 'text-emerald-400' : 'text-zinc-500'}`}>
-                    {val ? 'ON' : 'OFF'}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      )}
 
       {/* Section 3: Optional Controls */}
       <Card className="glass-card">
@@ -1297,7 +1231,7 @@ const Simulator = () => {
                         </Badge>
                         {rule.strategy_type && (
                           <Badge className={STRATEGY_COLORS[rule.strategy_type]}>
-                            {rule.strategy_type === 'covered_call' ? 'CC Only' : 'PMCC Only'}
+                            {{ covered_call: 'CC Only', pmcc: 'PMCC Only', wheel: 'WHEEL Only', defensive: 'DEF Only' }[rule.strategy_type] || (rule.strategy_type || '').toUpperCase()}
                           </Badge>
                         )}
                       </div>
@@ -1361,7 +1295,7 @@ const Simulator = () => {
                     <div className="flex items-center gap-2 text-sm">
                       <span className="font-semibold text-white">{log.symbol}</span>
                       <Badge className={STRATEGY_COLORS[log.strategy_type]} variant="outline">
-                        {log.strategy_type === 'covered_call' ? 'CC' : 'PMCC'}
+                        {{ covered_call: 'CC', pmcc: 'PMCC', wheel: 'WHEEL', defensive: 'DEF' }[log.strategy_type] || (log.strategy_type || '').toUpperCase()}
                       </Badge>
                       {log.rule_name && (
                         <span className="text-xs text-violet-400">via &quot;{log.rule_name}&quot;</span>
@@ -1641,6 +1575,8 @@ const Simulator = () => {
               <SelectItem value="all">All Strategies</SelectItem>
               <SelectItem value="covered_call">Covered Call</SelectItem>
               <SelectItem value="pmcc">PMCC</SelectItem>
+              <SelectItem value="wheel">Wheel</SelectItem>
+              <SelectItem value="defensive">Defensive</SelectItem>
             </SelectContent>
           </Select>
           <Select value={analyzerSymbol || "all"} onValueChange={(v) => setAnalyzerSymbol(v === "all" ? "" : v)}>
@@ -2331,7 +2267,7 @@ const Simulator = () => {
                       <div className="flex items-center gap-2 mb-2">
                         <span className="font-semibold text-white">{result.symbol}</span>
                         <Badge className={STRATEGY_COLORS[result.strategy]}>
-                          {result.strategy === 'covered_call' ? 'CC' : 'PMCC'}
+                          {{ covered_call: 'CC', pmcc: 'PMCC', wheel: 'WHEEL', defensive: 'DEF' }[result.strategy] || (result.strategy || '').toUpperCase()}
                         </Badge>
                         {result.decision && (
                           <Badge className={
