@@ -5,6 +5,7 @@ from fastapi import APIRouter, HTTPException, Depends
 from datetime import datetime, timezone
 import uuid
 import secrets
+import logging
 from datetime import timedelta
 from fastapi.responses import RedirectResponse
 
