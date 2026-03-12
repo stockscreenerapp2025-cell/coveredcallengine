@@ -65,42 +65,65 @@ Remember: You're here to help visitors understand how Covered Call Engine can im
 class ChatbotService:
     def __init__(self, db=None):
         self.db = db
-        self.api_key = os.environ.get('EMERGENT_LLM_KEY')
-    
+        self.gemini_key = os.environ.get('GEMINI_API_KEY', '')
+        self.openai_key = os.environ.get('OPENAI_API_KEY', os.environ.get('EMERGENT_LLM_KEY', ''))
+
+    async def _call_ai(self, messages: List[Dict]) -> str:
+        """Call AI provider — Gemini first, OpenAI fallback."""
+        import httpx
+        if self.gemini_key:
+            # Build Gemini contents from message history
+            contents = []
+            for m in messages:
+                role = "user" if m["role"] == "user" else "model"
+                contents.append({"role": role, "parts": [{"text": m["content"]}]})
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={self.gemini_key}"
+            payload = {
+                "system_instruction": {"parts": [{"text": CHATBOT_SYSTEM_PROMPT}]},
+                "contents": contents,
+                "generationConfig": {"maxOutputTokens": 500, "temperature": 0.7}
+            }
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                resp = await client.post(url, json=payload, headers={"Content-Type": "application/json"})
+                if resp.status_code == 200:
+                    return resp.json()["candidates"][0]["content"]["parts"][0]["text"]
+                raise RuntimeError(f"Gemini error {resp.status_code}: {resp.text[:200]}")
+        elif self.openai_key:
+            openai_messages = [{"role": "system", "content": CHATBOT_SYSTEM_PROMPT}] + messages
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                resp = await client.post(
+                    "https://api.openai.com/v1/chat/completions",
+                    json={"model": "gpt-4o-mini", "messages": openai_messages, "max_tokens": 500},
+                    headers={"Authorization": f"Bearer {self.openai_key}", "Content-Type": "application/json"}
+                )
+                if resp.status_code == 200:
+                    return resp.json()["choices"][0]["message"]["content"]
+                raise RuntimeError(f"OpenAI error {resp.status_code}: {resp.text[:200]}")
+        else:
+            raise RuntimeError("No AI provider configured. Set GEMINI_API_KEY or OPENAI_API_KEY.")
+
     async def get_response(self, session_id: str, message: str, history: List[Dict] = None) -> Dict:
         """Get AI response for a chat message"""
         try:
-            from emergentintegrations.llm.chat import LlmChat, UserMessage
-            
-            # Initialize chat with system prompt
-            chat = LlmChat(
-                api_key=self.api_key,
-                session_id=session_id,
-                system_message=CHATBOT_SYSTEM_PROMPT
-            ).with_model("openai", "gpt-4o-mini")  # Using gpt-4o-mini for fast responses
-            
-            # Add conversation history if provided
+            # Build message list (last 10 history + current)
+            messages = []
             if history:
-                for msg in history[-10:]:  # Keep last 10 messages for context
-                    if msg.get('role') == 'user':
-                        chat.add_user_message(msg.get('content', ''))
-                    elif msg.get('role') == 'assistant':
-                        chat.add_assistant_message(msg.get('content', ''))
-            
-            # Send the new message
-            user_message = UserMessage(text=message)
-            response = await chat.send_message(user_message)
-            
-            # Log the conversation if db is available
+                for msg in history[-10:]:
+                    if msg.get('role') in ('user', 'assistant'):
+                        messages.append({"role": msg['role'], "content": msg.get('content', '')})
+            messages.append({"role": "user", "content": message})
+
+            response = await self._call_ai(messages)
+
             if self.db is not None:
                 await self._log_conversation(session_id, message, response)
-            
+
             return {
                 "success": True,
                 "response": response,
                 "session_id": session_id
             }
-            
+
         except Exception as e:
             logger.error(f"Chatbot error: {e}")
             return {
