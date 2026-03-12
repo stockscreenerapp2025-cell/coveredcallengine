@@ -206,6 +206,16 @@ class RulesPreviewRequest(BaseModel):
     trade_id: Optional[str] = None
 
 
+class ManageTradeRequest(BaseModel):
+    mode: str = "recommend_only"
+    goals: Dict[str, Any] = {}
+
+
+class ApplyRecommendationRequest(BaseModel):
+    recommendation: Dict[str, Any]
+    current_price: float
+
+
 # ==================== HELPER FUNCTIONS ====================
 
 def _get_server_functions():
@@ -3218,7 +3228,7 @@ async def get_wallet_balance(user: dict = Depends(get_current_user)):
 @simulator_router.post("/manage/{trade_id}")
 async def manage_trade(
     trade_id: str,
-    body: dict,
+    body: ManageTradeRequest,
     user: dict = Depends(get_current_user)
 ):
     """
@@ -3249,8 +3259,8 @@ async def manage_trade(
     MANAGE_COST_CREDITS = 5
 
     user_id = user["id"]
-    mode    = body.get("mode", "recommend_only")
-    goals   = body.get("goals", {})
+    mode    = body.mode
+    goals   = body.goals
 
     # ── 1. Load trade ────────────────────────────────────────────────────────
     trade = await db.simulator_trades.find_one(
@@ -3362,7 +3372,7 @@ async def manage_trade(
 @simulator_router.post("/manage/{trade_id}/apply")
 async def apply_trade_recommendation(
     trade_id: str,
-    body: dict,
+    body: ApplyRecommendationRequest,
     user: dict = Depends(get_current_user)
 ):
     """
@@ -3389,8 +3399,8 @@ async def apply_trade_recommendation(
     from services.ai_trade_manager import apply_recommendation_to_trade
 
     user_id        = user["id"]
-    recommendation = body.get("recommendation", {})
-    current_price  = float(body.get("current_price", 0))
+    recommendation = body.recommendation
+    current_price  = float(body.current_price)
 
     if not recommendation:
         raise HTTPException(status_code=400, detail="recommendation is required")
