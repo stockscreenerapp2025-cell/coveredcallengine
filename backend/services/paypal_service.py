@@ -125,7 +125,16 @@ class PayPalService:
         settings = await self.db.admin_settings.find_one({"type": "paypal_settings"}, {"_id": 0})
         product_id = (settings or {}).get(f"product_id_{self.mode}")
         if product_id:
-            return product_id
+            # Verify the cached product still exists under current credentials
+            check = await self._api("GET", f"/v1/catalogs/products/{product_id}")
+            if "_error" not in check:
+                return product_id
+            # Stale/invalid — clear cache and recreate
+            logger.warning(f"[PayPal] Cached product {product_id} not found — recreating")
+            await self.db.admin_settings.update_one(
+                {"type": "paypal_settings"},
+                {"$unset": {f"product_id_{self.mode}": ""}}
+            )
 
         result = await self._api("POST", "/v1/catalogs/products", {
             "name": "Covered Call Engine Subscription",
