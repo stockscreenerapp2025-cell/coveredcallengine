@@ -600,18 +600,34 @@ class IBKRParser:
             pa_date = pa.get('date', '')
             pa_qty = pa.get('quantity', 0)
             pa_price = pa.get('price', 0)  # This should match the put strike
-            
-            # Find matching CSP contract
+
+            # Find matching CSP contract — use 1.0 tolerance to handle IBKR rounding
             best_match = None
+            best_price_diff = float('inf')
             for (strike, expiry), csps in csp_contracts.items():
-                # Match by strike (assignment price should equal put strike)
-                if strike and abs(strike - pa_price) < 0.01:
-                    # Also check expiry is close to assignment date
+                if not strike:
+                    continue
+                price_diff = abs(strike - pa_price)
+                # Allow up to $1.00 tolerance for price rounding differences
+                if price_diff < 1.0:
                     if expiry and expiry <= pa_date:
-                        # This CSP was likely exercised
-                        if best_match is None or expiry > best_match[0][1]:  # Prefer most recent expiry
+                        # Prefer the closest price match, then most recent expiry
+                        if price_diff < best_price_diff or (
+                            price_diff == best_price_diff and
+                            best_match and expiry > best_match[0][1]
+                        ):
                             best_match = ((strike, expiry), csps)
-            
+                            best_price_diff = price_diff
+
+            # Fallback: if no match within $1.00, try closest CSP before assignment date
+            if not best_match and csp_contracts:
+                for (strike, expiry), csps in csp_contracts.items():
+                    if expiry and expiry <= pa_date:
+                        price_diff = abs((strike or 0) - pa_price)
+                        if price_diff < best_price_diff:
+                            best_match = ((strike, expiry), csps)
+                            best_price_diff = price_diff
+
             if best_match:
                 assignment_to_csp[pa.get('id')] = best_match[0]
         
@@ -643,15 +659,25 @@ class IBKRParser:
                 # Track shares for this lifecycle
                 lifecycle_shares = pa_qty
                 
+                # Collect all option IDs already used in other lifecycles
+                used_opt_ids = {
+                    lt.get('id') for lc in lifecycles for lt in lc
+                }
+
                 for opt in option_txs:
+                    opt_id = opt.get('id')
+                    if opt_id in used_opt_ids:
+                        continue
                     if opt.get('transaction_type') == 'Sell':
                         opt_details = opt.get('option_details', {})
                         if opt_details.get('option_type') == 'Call':
-                            opt_date = opt.get('date', '')
-                            # CC must be after assignment
-                            if opt_date >= pa_date:
-                                # Add to this lifecycle
-                                lifecycle_txs.append(opt)
+                            # Include CC sells both before and after assignment —
+                            # pre-assignment CCs can exist when user sells CC against
+                            # existing stock that was later joined with a put assignment
+                            lifecycle_txs.append(opt)
+                    elif opt.get('transaction_type') in ('Expiry', 'Exercise', 'Assignment'):
+                        # Include option closing events (expiry/assignment of the short call)
+                        lifecycle_txs.append(opt)
                 
                 # Find call assignments that close this lifecycle
                 call_assignments = [t for t in stock_txs 
@@ -669,24 +695,18 @@ class IBKRParser:
                 lifecycles.append(lifecycle_txs)
                 processed_csp_keys.add(csp_key)
         
+        # Collect all transaction IDs already assigned to a lifecycle
+        assigned_tx_ids = {lt.get('id') for lc in lifecycles for lt in lc}
+
         # Handle stock buys that are NOT from CSP assignments
-        regular_buys = [t for t in stock_txs 
-                       if t.get('transaction_type') == 'Buy']
-        
+        regular_buys = [t for t in stock_txs
+                        if t.get('transaction_type') == 'Buy'
+                        and t.get('id') not in assigned_tx_ids]
+
         if regular_buys:
-            # Group remaining transactions into lifecycles
-            remaining_txs = []
-            for tx in transactions:
-                tx_id = tx.get('id')
-                # Skip transactions already assigned to CSP lifecycles
-                is_in_lifecycle = any(
-                    tx_id == lt.get('id') 
-                    for lifecycle in lifecycles 
-                    for lt in lifecycle
-                )
-                if not is_in_lifecycle:
-                    remaining_txs.append(tx)
-            
+            remaining_txs = [tx for tx in transactions
+                             if tx.get('id') not in assigned_tx_ids]
+
             if remaining_txs:
                 # Use the original lifecycle splitting for remaining transactions
                 remaining_lifecycles = self._split_into_lifecycles(remaining_txs)
