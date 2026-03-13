@@ -348,16 +348,20 @@ const Simulator = () => {
     fetchSummary();
   }, [statusFilter, strategyFilter, pagination.page]);
   
-  // Auto-update prices on first load if there are active trades without current data
+  // Auto-update prices on first load only if trades are stale (last update > 1 hour ago)
   useEffect(() => {
     if (!initialUpdateDone && trades.length > 0 && !loading) {
-      const needsUpdate = trades.some(t => isLive(t.status) && (!t.current_delta || t.current_delta === 0));
-      if (needsUpdate) {
-        setInitialUpdateDone(true);
-        handleUpdatePrices();
-      } else {
-        setInitialUpdateDone(true);
-      }
+      setInitialUpdateDone(true);
+      const oneHourAgo = Date.now() - 60 * 60 * 1000;
+      const hasStale = trades.some(t => {
+        if (!isLive(t.status)) return false;
+        if (!t.current_delta || t.current_delta === 0) {
+          const updatedAt = t.updated_at ? new Date(t.updated_at).getTime() : 0;
+          return updatedAt < oneHourAgo;
+        }
+        return false;
+      });
+      if (hasStale) handleUpdatePrices();
     }
   }, [trades, loading, initialUpdateDone]);
 

@@ -1975,6 +1975,9 @@ async def screen_pmcc(
             "trace_id": trace_id
         }
     }
+_dashboard_cache: dict = {"data": None, "ts": 0.0}
+_DASHBOARD_CACHE_TTL = 300  # 5 minutes
+
 @screener_router.get("/dashboard-opportunities")
 async def get_dashboard_opportunities(
     debug_enrichment: bool = Query(False, description="Include enrichment debug info"),
@@ -1982,17 +1985,22 @@ async def get_dashboard_opportunities(
 ):
     """
     Get top opportunities for dashboard display.
-    
+
     Returns Top 5 Weekly + Top 5 Monthly covered calls for dashboard display.
-    
+
     ARCHITECTURE (Feb 2026): MONGODB READ-ONLY
     ==========================================
     - Reads directly from scan_results_cc collection
     - NO LIVE YAHOO CALLS during request/response cycle
     - Fallback: precomputed_scans collection (legacy)
+    - In-memory cache: 5 min TTL to speed up repeated Dashboard loads
     """
     import time
     start_time = time.time()
+
+    # Serve from in-memory cache if fresh (skip cache when debug requested)
+    if not debug_enrichment and _dashboard_cache["data"] and (time.time() - _dashboard_cache["ts"]) < _DASHBOARD_CACHE_TTL:
+        return _dashboard_cache["data"]
     
     # Get latest EOD run
     run_id = await _get_latest_eod_run_id()
@@ -2091,8 +2099,8 @@ async def get_dashboard_opportunities(
     combined = await _merge_analyst_enrichment(combined, debug_enrichment=debug_enrichment)
     
     elapsed_ms = (time.time() - start_time) * 1000
-    
-    return {
+
+    response = {
         "total": len(combined),
         "opportunities": combined,
         "weekly_count": len([o for o in combined if o.get("expiry_type") == "Weekly"]),
@@ -2108,6 +2116,13 @@ async def get_dashboard_opportunities(
         "architecture": "EOD_PIPELINE_READ_MODEL",
         "latency_ms": round(elapsed_ms, 1)
     }
+
+    # Populate in-memory cache (skip if debug mode to avoid caching partial data)
+    if not debug_enrichment:
+        _dashboard_cache["data"] = response
+        _dashboard_cache["ts"] = time.time()
+
+    return response
 
 
 # ============================================================

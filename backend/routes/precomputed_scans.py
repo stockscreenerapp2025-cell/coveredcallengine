@@ -147,33 +147,42 @@ async def _get_eod_pmcc_opportunities(
     # Profile-specific strategy filters — each profile targets a distinct
     # region of the LEAP/short parameter space so results differ meaningfully.
     # IV Rank >= 20 ensures premium is worth selling (applied where available).
+    # Each field uses $or with $exists:false so legacy docs without the field still pass.
+    def _field_or(field, condition):
+        return [
+            {field: condition},
+            {field: {"$exists": False}},
+            {field: None},
+        ]
+
     if risk_profile == "conservative":
-        # Capital Efficient: deep ITM LEAP (0.70-0.85δ), 300+ DTE, conservative short
-        profile_filter = {
-            "leap_delta": {"$gte": 0.70, "$lte": 0.85},
-            "leap_dte":   {"$gte": 300},
-            "short_delta": {"$gte": 0.15, "$lte": 0.25},
-            "short_dte":   {"$gte": 30, "$lte": 45},
-            "roi_cycle":   {"$gte": 0.05},
-        }
+        # Capital Efficient: deep ITM LEAP (0.65-0.90δ), 180+ DTE, conservative short
+        profile_and = [
+            {"$or": _field_or("leap_delta",  {"$gte": 0.65, "$lte": 0.90})},
+            {"$or": _field_or("leap_dte",    {"$gte": 180})},
+            {"$or": _field_or("short_delta", {"$gte": 0.10, "$lte": 0.35})},
+            {"$or": _field_or("short_dte",   {"$gte": 21, "$lte": 60})},
+            {"$or": _field_or("roi_cycle",   {"$gte": 0.03})},
+        ]
     elif risk_profile == "balanced":
-        # Leveraged Income: moderate ITM LEAP (0.65-0.75δ), 180+ DTE, balanced short
-        profile_filter = {
-            "leap_delta": {"$gte": 0.65, "$lte": 0.75},
-            "leap_dte":   {"$gte": 180},
-            "short_delta": {"$gte": 0.20, "$lte": 0.30},
-            "short_dte":   {"$gte": 21, "$lte": 45},
-            "roi_cycle":   {"$gte": 0.08},
-        }
+        # Leveraged Income: moderate ITM LEAP (0.55-0.80δ), 150+ DTE, balanced short
+        profile_and = [
+            {"$or": _field_or("leap_delta",  {"$gte": 0.55, "$lte": 0.80})},
+            {"$or": _field_or("leap_dte",    {"$gte": 150})},
+            {"$or": _field_or("short_delta", {"$gte": 0.15, "$lte": 0.40})},
+            {"$or": _field_or("short_dte",   {"$gte": 14, "$lte": 60})},
+            {"$or": _field_or("roi_cycle",   {"$gte": 0.04})},
+        ]
     else:
-        # Max Yield Diagonal: lower delta LEAP (0.55-0.70δ), 180+ DTE, aggressive short
-        profile_filter = {
-            "leap_delta": {"$gte": 0.55, "$lte": 0.70},
-            "leap_dte":   {"$gte": 180},
-            "short_delta": {"$gte": 0.20, "$lte": 0.30},
-            "short_dte":   {"$gte": 21, "$lte": 45},
-            "roi_cycle":   {"$gte": 0.12},
-        }
+        # Max Yield Diagonal: lower delta LEAP (0.45-0.75δ), 120+ DTE, aggressive short
+        profile_and = [
+            {"$or": _field_or("leap_delta",  {"$gte": 0.45, "$lte": 0.75})},
+            {"$or": _field_or("leap_dte",    {"$gte": 120})},
+            {"$or": _field_or("short_delta", {"$gte": 0.15, "$lte": 0.45})},
+            {"$or": _field_or("short_dte",   {"$gte": 14, "$lte": 60})},
+            {"$or": _field_or("roi_cycle",   {"$gte": 0.05})},
+        ]
+    profile_filter = {"$and": profile_and}
 
     async def _fetch_for_runs(run_ids):
         if not run_ids:
