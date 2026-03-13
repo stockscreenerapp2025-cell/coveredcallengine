@@ -542,7 +542,7 @@ async def get_available_scans(user: dict = Depends(get_current_user)):
 @scans_router.get("/covered-call/{risk_profile}")
 async def get_covered_call_scan(
     risk_profile: str,
-    limit: int = Query(50, ge=1, le=100),
+    limit: int = Query(200, ge=1, le=500),
     min_score: float = Query(0, ge=0),
     sector: Optional[str] = None,
     user: dict = Depends(get_current_user)
@@ -624,7 +624,7 @@ async def get_covered_call_scan(
 @scans_router.get("/pmcc/{risk_profile}")
 async def get_pmcc_scan(
     risk_profile: str,
-    limit: int = Query(50, ge=1, le=100),
+    limit: int = Query(200, ge=1, le=500),
     min_score: float = Query(0, ge=0),
     sector: Optional[str] = None,
     user: dict = Depends(get_current_user)
