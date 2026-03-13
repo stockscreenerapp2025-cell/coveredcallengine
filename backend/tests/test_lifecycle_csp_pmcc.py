@@ -333,6 +333,85 @@ class TestCSPLifecycleIsolation:
             f"CSP premium should be ~95, got {csp_trade.get('premium_received')}"
 
 
+    def test_cc_sell_same_day_as_stock_buy_single_lifecycle(self):
+        """
+        Regression: CC sell arrives before stock buy in IBKR sort order (same day).
+        Expected: ONE lifecycle (COVERED_CALL), NOT two separate lifecycles.
+
+        OXY scenario: CC sold and stock bought on the same day. IBKR sometimes
+        emits the option transaction before the stock transaction. The old code
+        incorrectly split them because has_pending_options was False for call sells.
+        """
+        parser = IBKRParser()
+
+        transactions = [
+            # CC sell arrives first in sort order (same day as stock buy)
+            {
+                'id': 'cc1',
+                'date': '2026-02-10',
+                'datetime': '2026-02-10T09:30:00',
+                'account': 'TEST',
+                'transaction_type': 'Sell',
+                'symbol': 'OXY 260220C47000',
+                'underlying_symbol': 'OXY',
+                'is_option': True,
+                'option_details': {
+                    'underlying': 'OXY',
+                    'expiry': '2026-02-20',
+                    'option_type': 'Call',
+                    'strike': 47.0,
+                },
+                'quantity': -1,
+                'price': 0.86,
+                'net_amount': 86.0,
+                'commission': 1.05,
+            },
+            # Stock buy arrives second (same day)
+            {
+                'id': 'stk1',
+                'date': '2026-02-10',
+                'datetime': '2026-02-10T09:31:00',
+                'account': 'TEST',
+                'transaction_type': 'Buy',
+                'symbol': 'OXY',
+                'underlying_symbol': 'OXY',
+                'is_option': False,
+                'quantity': 100,
+                'price': 46.63,
+                'net_amount': -4663.0,
+                'commission': 1.0,
+            },
+            # Stock sell closes position
+            {
+                'id': 'stk2',
+                'date': '2026-02-20',
+                'datetime': '2026-02-20T15:00:00',
+                'account': 'TEST',
+                'transaction_type': 'Sell',
+                'symbol': 'OXY',
+                'underlying_symbol': 'OXY',
+                'is_option': False,
+                'quantity': -100,
+                'price': 47.59,
+                'net_amount': 4759.0,
+                'commission': 1.0,
+            },
+        ]
+
+        trades = parser._group_transactions(transactions)
+
+        assert len(trades) == 1, (
+            f"Expected 1 lifecycle (COVERED_CALL), got {len(trades)}: "
+            f"{[t.get('strategy_type') for t in trades]}"
+        )
+        assert trades[0].get('strategy_type') == 'COVERED_CALL', (
+            f"Expected COVERED_CALL, got {trades[0].get('strategy_type')}"
+        )
+        assert trades[0].get('contracts', 0) >= 1, "Should have option contracts"
+        # covered_shares = shares that were bought (position now closed, so open shares = 0)
+        assert trades[0].get('covered_shares', 0) == 100, "Should have 100 covered shares"
+
+
 class TestPMCCLifecycleRules:
     """Tests for PMCC Lifecycle Rules"""
     

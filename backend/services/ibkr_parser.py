@@ -920,12 +920,16 @@ class IBKRParser:
                 # Stock transaction
                 if tx_type == 'Buy':
                     # Check if this is a new lifecycle (buying after position was FULLY closed)
-                    # Key: We DON'T start new lifecycle if we have pending CSP options
-                    if current_shares == 0 and current_lifecycle and not has_pending_options:
-                        # Position was closed AND no pending CSP, this is a new lifecycle
+                    # Key: We DON'T start new lifecycle if we have pending CSP options OR if the
+                    # current lifecycle only has option transactions (no stock yet). The latter
+                    # handles the case where a CC sell arrives before the stock buy on the same
+                    # day (IBKR sort order) — the stock buy belongs in the same lifecycle.
+                    lifecycle_has_stock = any(not t.get('is_option') for t in current_lifecycle)
+                    if current_shares == 0 and current_lifecycle and not has_pending_options and lifecycle_has_stock:
+                        # Prior lifecycle genuinely closed (had stock that went to 0)
                         lifecycles.append(current_lifecycle)
                         current_lifecycle = []
-                    
+
                     current_lifecycle.append(tx)
                     current_shares += qty
                     has_pending_options = False  # Clear pending flag as we now have stock
