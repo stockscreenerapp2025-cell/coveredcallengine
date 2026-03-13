@@ -825,16 +825,20 @@ class IBKRParser:
                     opt_id = opt.get('id')
                     if opt_id in used_opt_ids:
                         continue
+                    opt_date = opt.get('date', '')
                     if opt.get('transaction_type') == 'Sell':
                         opt_details = opt.get('option_details', {})
                         if opt_details.get('option_type') == 'Call':
-                            # Include CC sells both before and after assignment —
-                            # pre-assignment CCs can exist when user sells CC against
-                            # existing stock that was later joined with a put assignment
-                            lifecycle_txs.append(opt)
+                            # Only include CC sells sold ON OR AFTER the put assignment date.
+                            # Calls sold BEFORE the assignment belong to the regular stock-buy
+                            # lifecycle — they were sold against pre-existing stock, not the
+                            # shares received from this put assignment.
+                            if opt_date >= pa_date:
+                                lifecycle_txs.append(opt)
                     elif opt.get('transaction_type') in ('Expiry', 'Exercise', 'Assignment'):
-                        # Include option closing events (expiry/assignment of the short call)
-                        lifecycle_txs.append(opt)
+                        # Include option-closing events on or after the assignment date
+                        if opt_date >= pa_date:
+                            lifecycle_txs.append(opt)
                 
                 # Find call assignments that close this lifecycle
                 call_assignments = [t for t in stock_txs 

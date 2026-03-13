@@ -196,6 +196,143 @@ class TestCSPLifecycleIsolation:
             f"Premium should be ~{expected_premium}, got {trade.get('premium_received')}"
 
 
+    def test_cc_before_csp_assignment_separate_lifecycles(self):
+        """
+        Test: Regular stock buy + CC sold BEFORE a separate put assignment
+        creates TWO lifecycles — CC lifecycle gets the calls, CSP lifecycle
+        gets the put assignment.  (OXY bug regression test)
+
+        Timeline:
+          Feb 10 — Buy stock (regular)
+          Feb 10 — Sell call (CC against existing stock)
+          Feb 15 — Sell put (CSP)
+          Feb 20 — Call expires worthless
+          Feb 20 — Put assigned (more stock)
+
+        Expected:
+          Lifecycle 1: CC  — stock_buy + call_sell + call_expiry
+          Lifecycle 2: CSP — put_sell + put_assignment
+        """
+        parser = IBKRParser()
+
+        transactions = [
+            # Regular stock buy
+            {
+                'id': 'stock1',
+                'date': '2026-02-10',
+                'datetime': '2026-02-10T09:00:00',
+                'account': 'TEST',
+                'transaction_type': 'Buy',
+                'symbol': 'OXY',
+                'underlying_symbol': 'OXY',
+                'is_option': False,
+                'option_details': None,
+                'quantity': 300,
+                'price': 46.63,
+                'net_amount': -13989.0,
+                'commission': 3.0
+            },
+            # Sell CC BEFORE the put assignment
+            {
+                'id': 'cc1',
+                'date': '2026-02-10',
+                'datetime': '2026-02-10T09:30:00',
+                'account': 'TEST',
+                'transaction_type': 'Sell',
+                'symbol': 'OXY 260220C47000',
+                'underlying_symbol': 'OXY',
+                'is_option': True,
+                'option_details': {
+                    'underlying': 'OXY',
+                    'expiry': '2026-02-20',
+                    'option_type': 'Call',
+                    'strike': 47.0
+                },
+                'quantity': -3,
+                'price': 1.10,
+                'net_amount': 322.0,
+                'commission': 3.0
+            },
+            # Sell Put (CSP)
+            {
+                'id': 'put1',
+                'date': '2026-02-15',
+                'datetime': '2026-02-15T09:00:00',
+                'account': 'TEST',
+                'transaction_type': 'Sell',
+                'symbol': 'OXY 260220P46000',
+                'underlying_symbol': 'OXY',
+                'is_option': True,
+                'option_details': {
+                    'underlying': 'OXY',
+                    'expiry': '2026-02-20',
+                    'option_type': 'Put',
+                    'strike': 46.0
+                },
+                'quantity': -1,
+                'price': 0.95,
+                'net_amount': 95.0,
+                'commission': 1.0
+            },
+            # Call expires worthless (Feb 20)
+            {
+                'id': 'exp1',
+                'date': '2026-02-20',
+                'datetime': '2026-02-20T16:00:00',
+                'account': 'TEST',
+                'transaction_type': 'Expiry',
+                'symbol': 'OXY 260220C47000',
+                'underlying_symbol': 'OXY',
+                'is_option': True,
+                'option_details': {
+                    'underlying': 'OXY',
+                    'expiry': '2026-02-20',
+                    'option_type': 'Call',
+                    'strike': 47.0
+                },
+                'quantity': 3,
+                'price': 0,
+                'net_amount': 0,
+                'commission': 0
+            },
+            # Put assigned (Feb 20) — stock arrives
+            {
+                'id': 'assign1',
+                'date': '2026-02-20',
+                'datetime': '2026-02-20T16:30:00',
+                'account': 'TEST',
+                'transaction_type': 'Assignment',
+                'symbol': 'OXY',
+                'underlying_symbol': 'OXY',
+                'is_option': False,
+                'option_details': None,
+                'quantity': 100,
+                'price': 46.0,
+                'net_amount': -4600.0,
+                'commission': 0
+            },
+        ]
+
+        trades = parser._group_transactions(transactions)
+
+        # Should produce 2 lifecycles
+        assert len(trades) == 2, f"Expected 2 lifecycles, got {len(trades)}: {[t['strategy_type'] for t in trades]}"
+
+        # Find CC lifecycle (has call option)
+        cc_trade = next((t for t in trades if t.get('strategy_type') == 'COVERED_CALL'), None)
+        assert cc_trade is not None, "Expected a COVERED_CALL lifecycle"
+        assert cc_trade.get('shares') == 300, f"CC lifecycle should have 300 shares, got {cc_trade.get('shares')}"
+        assert cc_trade.get('contracts') > 0, "CC lifecycle should have contracts"
+        assert abs(cc_trade.get('premium_received', 0) - 322.0) < 1, \
+            f"CC premium should be ~322, got {cc_trade.get('premium_received')}"
+
+        # Find CSP lifecycle (put assignment, no CC)
+        csp_trade = next((t for t in trades if t.get('strategy_type') != 'COVERED_CALL'), None)
+        assert csp_trade is not None, "Expected a CSP/Stock lifecycle from put assignment"
+        assert abs(csp_trade.get('premium_received', 0) - 95.0) < 1, \
+            f"CSP premium should be ~95, got {csp_trade.get('premium_received')}"
+
+
 class TestPMCCLifecycleRules:
     """Tests for PMCC Lifecycle Rules"""
     
