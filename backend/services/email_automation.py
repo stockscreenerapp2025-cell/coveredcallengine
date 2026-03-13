@@ -325,7 +325,7 @@ DEFAULT_RULES = [
     {
         "name": "Welcome Email",
         "trigger_type": "subscription_created",
-        "condition": {"status": "trialing"},
+        "condition": {"status": ["trialing", "active"]},
         "delay_minutes": 0,
         "action": "send_email",
         "template_key": "welcome_free_trial",
@@ -334,7 +334,7 @@ DEFAULT_RULES = [
     {
         "name": "Getting Started",
         "trigger_type": "subscription_created",
-        "condition": {"status": "trialing"},
+        "condition": {"status": ["trialing", "active"]},
         "delay_minutes": 1440,  # 1 day
         "action": "send_email",
         "template_key": "getting_started",
@@ -343,7 +343,7 @@ DEFAULT_RULES = [
     {
         "name": "Feature Highlight",
         "trigger_type": "subscription_created",
-        "condition": {"status": "trialing"},
+        "condition": {"status": ["trialing", "active"]},
         "delay_minutes": 4320,  # 3 days
         "action": "send_email",
         "template_key": "feature_highlight",
@@ -352,7 +352,7 @@ DEFAULT_RULES = [
     {
         "name": "Trial Check-in",
         "trigger_type": "subscription_created",
-        "condition": {"status": "trialing"},
+        "condition": {"status": ["trialing", "active"]},
         "delay_minutes": 10080,  # 7 days
         "action": "send_email",
         "template_key": "trial_checkin",
