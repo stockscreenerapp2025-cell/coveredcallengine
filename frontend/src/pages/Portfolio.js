@@ -577,7 +577,7 @@ const Portfolio = () => {
 
   const getAISuggestion = async () => {
     if (!selectedTrade) return;
-    
+
     setLoadingAI(true);
     try {
       const res = await portfolioApi.getAISuggestion(selectedTrade.id);
@@ -588,7 +588,17 @@ const Portfolio = () => {
       }));
       toast.success('AI suggestion generated');
     } catch (error) {
-      toast.error('Failed to get AI suggestion');
+      const detail = error.response?.data?.detail;
+      if (error.response?.status === 402) {
+        const bal = typeof detail === 'object' ? detail?.remaining_balance : null;
+        toast.error(`Insufficient AI credits${bal !== null ? ` (balance: ${bal})` : ''}. Please top up your AI wallet.`);
+      } else if (typeof detail === 'object' && detail?.error) {
+        toast.error(`AI error: ${detail.error}`);
+      } else if (typeof detail === 'string') {
+        toast.error(detail);
+      } else {
+        toast.error('Failed to get AI suggestion — check server logs for details.');
+      }
     } finally {
       setLoadingAI(false);
     }

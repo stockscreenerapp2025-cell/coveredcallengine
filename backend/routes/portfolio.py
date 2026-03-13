@@ -579,15 +579,23 @@ async def clear_ibkr_data(user: dict = Depends(get_current_user)):
 @portfolio_router.post("/ibkr/trades/{trade_id}/ai-suggestion")
 async def get_trade_ai_suggestion(trade_id: str, user: dict = Depends(get_current_user)):
     """Get AI-powered suggestion for a trade (uses AI tokens)"""
+    import os
     from ai_wallet.ai_service import AIExecutionService
-    
+
+    # Pre-flight: require at least one AI key before touching the token wallet
+    if not os.environ.get("GEMINI_API_KEY") and not os.environ.get("OPENAI_API_KEY") and not os.environ.get("EMERGENT_LLM_KEY"):
+        raise HTTPException(
+            status_code=503,
+            detail="AI service is not configured on this server. Please contact support."
+        )
+
     trade = await db.ibkr_trades.find_one({"user_id": user["id"], "id": trade_id}, {"_id": 0})
     if not trade:
         raise HTTPException(status_code=404, detail="Trade not found")
-    
+
     # Build trade context
     trade_context = _build_trade_context(trade)
-    
+
     # Execute through AI service with token guard
     ai_service = AIExecutionService(db)
     result = await ai_service.execute_trade_suggestion(
