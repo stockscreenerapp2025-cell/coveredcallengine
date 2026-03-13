@@ -525,17 +525,19 @@ class EmailAutomationService:
                 "updated_at": now.isoformat(),
             }
 
-            # Skip if a job for same user + template already exists (pending or sent)
-            existing = await self.db.email_jobs.find_one({
-                "to_email": user.get("email"),
-                "template_key": rule.get("template_key"),
-                "status": {"$in": ["scheduled", "sent"]}
-            })
-            if existing:
-                continue
-
-            await self.db.email_jobs.insert_one(job)
-            scheduled += 1
+            # Atomic upsert — prevents duplicates even under concurrent requests
+            result = await self.db.email_jobs.update_one(
+                {
+                    "to_email": job["to_email"],
+                    "template_key": job["template_key"],
+                    "trigger_type": trigger_type,
+                    "status": {"$in": ["scheduled", "sent"]},
+                },
+                {"$setOnInsert": job},
+                upsert=True,
+            )
+            if result.upserted_id:
+                scheduled += 1
 
         return {"scheduled": scheduled}
 
@@ -558,15 +560,26 @@ class EmailAutomationService:
         await self.initialize()
         now = datetime.now(timezone.utc)
 
-        jobs = await self.db.email_jobs.find(
-            {"status": "scheduled", "run_at": {"$lte": now.isoformat()}},
-            {"_id": 0}
-        ).to_list(limit)
+        # Recover jobs stuck in 'processing' for more than 10 minutes (crash recovery)
+        stale_cutoff = (now - timedelta(minutes=10)).isoformat()
+        await self.db.email_jobs.update_many(
+            {"status": "processing", "updated_at": {"$lte": stale_cutoff}},
+            {"$set": {"status": "scheduled", "updated_at": now.isoformat()}},
+        )
 
         sent = 0
         failed = 0
 
-        for job in jobs:
+        for _ in range(limit):
+            # Atomically claim one due job — prevents double-send if two workers run concurrently
+            job = await self.db.email_jobs.find_one_and_update(
+                {"status": "scheduled", "run_at": {"$lte": now.isoformat()}},
+                {"$set": {"status": "processing", "updated_at": now.isoformat()}},
+                return_document=True,
+            )
+            if job is None:
+                break  # no more due jobs
+
             job_id = job.get("id")
             template_key = job.get("template_key")
             to_email = job.get("to_email")
