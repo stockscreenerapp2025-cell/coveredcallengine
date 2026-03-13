@@ -256,6 +256,8 @@ from typing import List, Optional
 class NewsItem(BaseModel):
     title: str
     description: Optional[str] = None
+    sentiment: Optional[str] = None        # "positive" / "negative" / "neutral" from MarketAux
+    sentiment_score: Optional[float] = None  # raw MarketAux score (-1 to 1)
 
 
 POSITIVE_WORDS = [
@@ -291,117 +293,99 @@ def _keyword_sentiment(title: str, description: str) -> tuple:
     return "Neutral", 50
 
 
+def _score_label(avg: float) -> str:
+    if avg >= 54:
+        return "Bullish"
+    if avg <= 46:
+        return "Bearish"
+    return "Neutral"
+
+
+def _marketaux_to_score(raw: float) -> int:
+    """Convert MarketAux sentiment_score (-1..1) to 0-100 scale."""
+    return max(0, min(100, int(50 + raw * 50)))
+
+
 @news_router.post("/analyze-sentiment")
 async def analyze_news_sentiment(
     news_items: List[NewsItem],
     user: dict = Depends(get_current_user)
 ):
-    """Analyze sentiment of news articles.
-    Uses OpenAI when configured, falls back to keyword-based analysis.
-    """
-    import os
-    import json
-    import re
+    """Analyze sentiment. Priority: MarketAux scores → keyword analysis → Gemini AI."""
+    import os, json, re
 
     if not news_items:
-        return {
-            "sentiments": [],
-            "overall_sentiment": "Neutral",
-            "overall_score": 50
-        }
+        return {"sentiments": [], "overall_sentiment": "Neutral", "overall_score": 50}
 
-    gemini_key = os.environ.get("GEMINI_API_KEY")
-
-    def _keyword_fallback(items):
+    # ── Tier 1: use MarketAux sentiment scores already embedded in the news items ──
+    marketaux_items = [it for it in news_items[:5] if it.sentiment_score is not None]
+    if marketaux_items:
         sentiments = []
         scores = []
+        for i, item in enumerate(marketaux_items, 1):
+            score = _marketaux_to_score(item.sentiment_score)
+            label = _score_label(score)
+            sentiments.append({"index": i, "sentiment": label, "confidence": "High"})
+            scores.append(score)
+        avg_score = int(sum(scores) / len(scores))
+        return {
+            "sentiments": sentiments,
+            "overall_sentiment": _score_label(avg_score),
+            "overall_score": avg_score,
+        }
+
+    # ── Tier 2: keyword analysis (no API key needed, always works) ──
+    def _keyword_fallback(items):
+        sentiments, scores = [], []
         for i, item in enumerate(items[:5], 1):
             label, score = _keyword_sentiment(item.title, item.description or "")
             sentiments.append({"index": i, "sentiment": label, "confidence": "Medium"})
             scores.append(score)
-        if scores:
-            most_bullish = max(scores)
-            most_bearish = min(scores)
-            extreme = most_bullish if abs(most_bullish - 50) >= abs(most_bearish - 50) else most_bearish
-            weighted_scores = scores + [extreme, extreme]
-            avg_score = int(sum(weighted_scores) / len(weighted_scores))
-        else:
-            avg_score = 50
-        if avg_score >= 54:
-            overall = "Bullish"
-        elif avg_score <= 46:
-            overall = "Bearish"
-        else:
-            overall = "Neutral"
-        return {"sentiments": sentiments, "overall_sentiment": overall, "overall_score": avg_score}
+        if not scores:
+            return {"sentiments": [], "overall_sentiment": "Neutral", "overall_score": 50}
+        most_bullish, most_bearish = max(scores), min(scores)
+        extreme = most_bullish if abs(most_bullish - 50) >= abs(most_bearish - 50) else most_bearish
+        avg = int(sum(scores + [extreme, extreme]) / (len(scores) + 2))
+        return {"sentiments": sentiments, "overall_sentiment": _score_label(avg), "overall_score": avg}
 
-    # Use keyword fallback when no Gemini key
+    gemini_key = os.environ.get("GEMINI_API_KEY")
     if not gemini_key:
         return _keyword_fallback(news_items)
 
+    # ── Tier 3: Gemini AI (best quality, optional) ──
     try:
-        # Prepare news text for analysis
-        news_text = ""
-        for i, item in enumerate(news_items[:5], 1):  # Limit to 5 articles
-            title = item.title
-            desc = item.description or ""
-            news_text += f"{i}. {title}\n{desc[:200] if desc else ''}\n\n"
-
-        system_message = """You are a financial sentiment analyst. Analyze the sentiment of stock-related news articles.
-For each article, provide:
-1. Sentiment: Positive, Neutral, or Negative
-2. Confidence: High, Medium, or Low
-
-Then provide an overall sentiment score from 0-100 where:
-- 0-30 = Very Bearish
-- 31-45 = Bearish
-- 46-55 = Neutral
-- 56-70 = Bullish
-- 71-100 = Very Bullish
-
-Respond in JSON format ONLY:
-{
-  "articles": [
-    {"index": 1, "sentiment": "Positive", "confidence": "High"},
-    ...
-  ],
-  "overall_sentiment": "Bullish",
-  "overall_score": 65,
-  "summary": "Brief 1-sentence summary of overall sentiment"
-}"""
-
-        prompt = system_message + f"\n\nAnalyze the sentiment of these news articles:\n\n{news_text}"
-        gemini_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={gemini_key}"
-        async with httpx.AsyncClient(timeout=30) as client:
-            response = await client.post(
-                gemini_url,
+        news_text = "".join(
+            f"{i}. {item.title}\n{(item.description or '')[:200]}\n\n"
+            for i, item in enumerate(news_items[:5], 1)
+        )
+        prompt = (
+            "You are a financial sentiment analyst. Analyze these news articles and respond in JSON ONLY:\n"
+            '{"articles":[{"index":1,"sentiment":"Positive","confidence":"High"}],'
+            '"overall_sentiment":"Bullish","overall_score":65,'
+            '"summary":"one sentence"}\n\n'
+            "Sentiment scale: 0-30=Very Bearish, 31-45=Bearish, 46-55=Neutral, 56-70=Bullish, 71-100=Very Bullish\n\n"
+            + news_text
+        )
+        async with httpx.AsyncClient(timeout=20) as client:
+            resp = await client.post(
+                f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={gemini_key}",
                 headers={"Content-Type": "application/json"},
-                json={
-                    "contents": [{"role": "user", "parts": [{"text": prompt}]}],
-                    "generationConfig": {"temperature": 0.3, "maxOutputTokens": 500}
-                }
+                json={"contents": [{"role": "user", "parts": [{"text": prompt}]}],
+                      "generationConfig": {"temperature": 0.3, "maxOutputTokens": 400}},
             )
-
-        if response.status_code != 200:
-            logging.error(f"Gemini API error: {response.text}")
-            return _keyword_fallback(news_items)
-
-        content = response.json()["candidates"][0]["content"]["parts"][0]["text"]
-
-        # Extract JSON from response
-        json_match = re.search(r'\{[\s\S]*\}', content)
-        if json_match:
-            result = json.loads(json_match.group())
-            return {
-                "sentiments": result.get("articles", []),
-                "overall_sentiment": result.get("overall_sentiment", "Neutral"),
-                "overall_score": result.get("overall_score", 50),
-                "summary": result.get("summary", "")
-            }
-
-        # Couldn't parse Gemini response — use keyword fallback
-        return _keyword_fallback(news_items)
-
+        if resp.status_code == 200:
+            text = resp.json()["candidates"][0]["content"]["parts"][0]["text"]
+            m = re.search(r'\{[\s\S]*\}', text)
+            if m:
+                result = json.loads(m.group())
+                return {
+                    "sentiments": result.get("articles", []),
+                    "overall_sentiment": result.get("overall_sentiment", "Neutral"),
+                    "overall_score": result.get("overall_score", 50),
+                    "summary": result.get("summary", ""),
+                }
+        logging.warning(f"Gemini fallback triggered: status={resp.status_code}")
     except Exception as e:
-        logging.error(f"Sentiment analysis error: {e}")
-        return _keyword_fallback(news_items)
+        logging.error(f"Gemini sentiment error: {e}")
+
+    return _keyword_fallback(news_items)
