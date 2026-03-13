@@ -169,12 +169,7 @@ async def create_checkout(payload: CreateCheckoutRequest, user: dict = Depends(g
 
 
 @paypal_router.get("/checkout-return")
-async def checkout_return(
-    token: Optional[str] = Query(None),
-    PayerID: Optional[str] = Query(None),
-    subscription_id: Optional[str] = Query(None),
-    ba_token: Optional[str] = Query(None),
-):
+async def checkout_return(request: Request):
     """
     Handle return from PayPal after user approves checkout.
 
@@ -185,6 +180,13 @@ async def checkout_return(
     - Stores paypal_profile_id (= subscription_id for REST)
     - Triggers email automation for subscription_created
     """
+    # Extract query params manually to avoid FastAPI/Pydantic v2 Optional[str] regression
+    params = request.query_params
+    token = params.get("token")
+    PayerID = params.get("PayerID")
+    subscription_id = params.get("subscription_id")
+    ba_token = params.get("ba_token")
+
     # REST subscriptions return subscription_id; legacy NVP returns token + PayerID
     effective_token = subscription_id or token
     if not effective_token:
