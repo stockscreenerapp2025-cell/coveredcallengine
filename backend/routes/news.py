@@ -312,20 +312,18 @@ async def analyze_news_sentiment(
 
     gemini_key = os.environ.get("GEMINI_API_KEY")
 
-    # --- Keyword-based fallback (no API key needed) ---
-    if not gemini_key:
+    def _keyword_fallback(items):
         sentiments = []
         scores = []
-        for i, item in enumerate(news_items[:5], 1):
+        for i, item in enumerate(items[:5], 1):
             label, score = _keyword_sentiment(item.title, item.description or "")
             sentiments.append({"index": i, "sentiment": label, "confidence": "Medium"})
             scores.append(score)
         if scores:
-            # Weight the most extreme score 3x so one strong headline moves the needle
             most_bullish = max(scores)
             most_bearish = min(scores)
             extreme = most_bullish if abs(most_bullish - 50) >= abs(most_bearish - 50) else most_bearish
-            weighted_scores = scores + [extreme, extreme]  # add extreme twice for extra weight
+            weighted_scores = scores + [extreme, extreme]
             avg_score = int(sum(weighted_scores) / len(weighted_scores))
         else:
             avg_score = 50
@@ -335,11 +333,11 @@ async def analyze_news_sentiment(
             overall = "Bearish"
         else:
             overall = "Neutral"
-        return {
-            "sentiments": sentiments,
-            "overall_sentiment": overall,
-            "overall_score": avg_score
-        }
+        return {"sentiments": sentiments, "overall_sentiment": overall, "overall_score": avg_score}
+
+    # Use keyword fallback when no Gemini key
+    if not gemini_key:
+        return _keyword_fallback(news_items)
 
     try:
         # Prepare news text for analysis
@@ -386,7 +384,7 @@ Respond in JSON format ONLY:
 
         if response.status_code != 200:
             logging.error(f"Gemini API error: {response.text}")
-            return {"sentiments": [], "overall_sentiment": "Neutral", "overall_score": 50, "error": "AI call failed"}
+            return _keyword_fallback(news_items)
 
         content = response.json()["candidates"][0]["content"]["parts"][0]["text"]
 
@@ -401,18 +399,9 @@ Respond in JSON format ONLY:
                 "summary": result.get("summary", "")
             }
 
-        return {
-            "sentiments": [],
-            "overall_sentiment": "Neutral",
-            "overall_score": 50,
-            "error": "Could not parse AI response"
-        }
+        # Couldn't parse Gemini response — use keyword fallback
+        return _keyword_fallback(news_items)
 
     except Exception as e:
         logging.error(f"Sentiment analysis error: {e}")
-        return {
-            "sentiments": [],
-            "overall_sentiment": "Neutral",
-            "overall_score": 50,
-            "error": str(e)
-        }
+        return _keyword_fallback(news_items)
