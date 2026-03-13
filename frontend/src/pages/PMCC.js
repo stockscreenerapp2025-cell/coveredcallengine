@@ -140,9 +140,12 @@ const PMCC = () => {
     const economics = opp.economics || {};
     const strikeWidth = economics.width || opp.width || opp.strike_width || (shortStrike && leapsStrike ? shortStrike - leapsStrike : 0);
 
-    // Net debit: backend sends per-share, normalize to total if small
-    const rawNetDebit = economics.net_debit || opp.net_debit || opp.net_debit_total || (leapsCost - shortPremiumTotal);
-    const netDebit = rawNetDebit < 50 ? rawNetDebit * 100 : rawNetDebit;
+    // Net debit: prefer net_debit_total (already per-contract), fall back to per-share × 100
+    const rawNetDebit = economics.net_debit_total || opp.net_debit_total ||
+      (economics.net_debit ? economics.net_debit * 100 : null) ||
+      (opp.net_debit ? opp.net_debit * 100 : null) ||
+      (leapsCost - shortPremiumTotal);
+    const netDebit = rawNetDebit || 0;
 
     const roiPerCycle = economics.roi_pct || opp.roi_per_cycle || opp.roi_pct || (netDebit > 0 ? (shortPremiumTotal / netDebit) * 100 : 0);
     const annualizedRoi = economics.annualized_roi_pct || opp.annualized_roi || (shortDte > 0 ? roiPerCycle * (365 / shortDte) : 0);
