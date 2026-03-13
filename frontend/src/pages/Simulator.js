@@ -1098,15 +1098,60 @@ const Simulator = () => {
     const controls = ruleConfig?.controls || {};
     const alerts = ruleConfig?.alerts || {};
 
-    const optionalControls = [
-      { key: 'avoid_early_close', label: 'Avoid Early Close' },
-      { key: 'brokerage_aware_hold', label: 'Brokerage-Aware Hold' },
-      { key: 'roll_itm_near_expiry', label: 'Roll ITM Near Expiry' },
-      { key: 'roll_delta_based', label: 'Roll Based on Delta' },
-      { key: 'market_aware_roll_suggestion', label: 'Market-Aware Roll Suggestion' },
-      { key: 'manage_short_call_only', label: 'Manage Short Call Only' },
-      { key: 'roll_before_assignment', label: 'Roll Before Assignment' },
+    const strategyGroups = [
+      {
+        key: 'cc', label: 'CC', title: 'Covered Call Rules', color: 'emerald',
+        desc: 'Applied to trades with strategy type CC',
+        controls: [
+          { key: 'avoid_early_close',           label: 'Avoid Early Close',            desc: 'Hold the short call even if profitable early — wait for time decay' },
+          { key: 'brokerage_aware_hold',         label: 'Brokerage-Aware Hold',         desc: 'Skip action if brokerage fees would wipe out the gain' },
+          { key: 'roll_itm_near_expiry',         label: 'Roll ITM Near Expiry',         desc: 'Roll to next cycle when the call goes deep ITM close to expiry' },
+          { key: 'roll_delta_based',             label: 'Roll Based on Delta',          desc: 'Roll when delta exceeds the configured threshold' },
+          { key: 'market_aware_roll_suggestion', label: 'Market-Aware Roll Suggestion', desc: 'Factor in market conditions before suggesting a roll' },
+        ],
+      },
+      {
+        key: 'wheel', label: 'WHEEL', title: 'Wheel Strategy Rules', color: 'sky',
+        desc: 'Applied to trades with strategy type Wheel (CSP → Assignment → CC)',
+        controls: [
+          { key: 'avoid_early_close',           label: 'Avoid Early Close',            desc: 'Hold the short put/call even if profitable early' },
+          { key: 'brokerage_aware_hold',         label: 'Brokerage-Aware Hold',         desc: 'Skip action if brokerage fees would wipe out the gain' },
+          { key: 'roll_before_assignment',       label: 'Roll Put Before Assignment',   desc: 'Roll the short put to avoid taking stock assignment' },
+          { key: 'roll_itm_near_expiry',         label: 'Roll ITM Near Expiry',         desc: 'Roll to next cycle when the option goes ITM near expiry' },
+          { key: 'roll_delta_based',             label: 'Roll Based on Delta',          desc: 'Roll when delta exceeds the configured threshold' },
+          { key: 'market_aware_roll_suggestion', label: 'Market-Aware Roll Suggestion', desc: 'Factor in market conditions before suggesting a roll' },
+        ],
+      },
+      {
+        key: 'pmcc', label: 'PMCC', title: "Poor Man's Covered Call Rules", color: 'violet',
+        desc: 'Applied to trades with strategy type PMCC',
+        controls: [
+          { key: 'manage_short_call_only',       label: 'Manage Short Call Only',       desc: 'Keep the LEAP untouched — only manage the short call leg' },
+          { key: 'roll_before_assignment',       label: 'Roll Before Assignment',       desc: 'Roll the short call before it can be assigned, protecting the LEAP' },
+          { key: 'roll_itm_near_expiry',         label: 'Roll ITM Near Expiry',         desc: 'Roll to next cycle when the short call goes ITM near expiry' },
+          { key: 'roll_delta_based',             label: 'Roll Based on Delta',          desc: 'Roll when short call delta exceeds the configured threshold' },
+          { key: 'market_aware_roll_suggestion', label: 'Market-Aware Roll Suggestion', desc: 'Factor in market conditions before suggesting a roll' },
+        ],
+      },
+      {
+        key: 'defensive', label: 'DEFENSIVE', title: 'Defensive / Collar Rules', color: 'amber',
+        desc: 'Applied to trades with strategy type Defensive or Collar',
+        controls: [
+          { key: 'avoid_early_close',           label: 'Avoid Early Close',            desc: 'Hold positions even if profitable early — prioritise protection' },
+          { key: 'brokerage_aware_hold',         label: 'Brokerage-Aware Hold',         desc: 'Skip action if brokerage fees would wipe out the gain' },
+          { key: 'manage_short_call_only',       label: 'Manage Short Call Only',       desc: 'Keep the protective put intact — only manage the short call' },
+          { key: 'roll_itm_near_expiry',         label: 'Roll ITM Near Expiry',         desc: 'Roll to next cycle when the call goes ITM near expiry' },
+          { key: 'roll_delta_based',             label: 'Roll Based on Delta',          desc: 'Roll when delta exceeds the configured threshold' },
+          { key: 'market_aware_roll_suggestion', label: 'Market-Aware Roll Suggestion', desc: 'Factor in market conditions before suggesting a roll' },
+        ],
+      },
     ];
+    const colorMap = {
+      emerald: { border: 'border-emerald-500/20', bg: 'bg-emerald-500/5', row: 'border-emerald-500/20', header: 'text-emerald-400' },
+      sky:     { border: 'border-sky-500/20',     bg: 'bg-sky-500/5',     row: 'border-sky-500/20',     header: 'text-sky-400'     },
+      violet:  { border: 'border-violet-500/20',  bg: 'bg-violet-500/5',  row: 'border-violet-500/20',  header: 'text-violet-400'  },
+      amber:   { border: 'border-amber-500/20',   bg: 'bg-amber-500/5',   row: 'border-amber-500/20',   header: 'text-amber-400'   },
+    };
 
     return (
     <div className="space-y-6">
@@ -1132,29 +1177,39 @@ const Simulator = () => {
         </Button>
       </div>
 
-      {/* Section 3: Optional Controls */}
-      <Card className="glass-card">
-        <CardHeader className="pb-3">
-          <CardTitle className="text-sm flex items-center gap-2">
-            <Settings className="w-4 h-4 text-zinc-400" />
-            Optional Controls
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-3">
-            {optionalControls.map(ctrl => (
-              <div key={ctrl.key} className="flex items-center justify-between p-3 rounded-lg bg-zinc-800/30 border border-zinc-700/30">
-                <span className="text-sm text-zinc-300">{ctrl.label}</span>
-                <Switch
-                  checked={!!controls[ctrl.key]}
-                  onCheckedChange={() => handleToggleOptionalControl(ctrl.key)}
-                  disabled={ruleSaving}
-                />
+      {/* Section 3: Optional Controls — one card per strategy */}
+      {strategyGroups.map(group => {
+        const c = colorMap[group.color];
+        return (
+          <Card key={group.key} className={`glass-card ${c.border}`}>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm flex items-center gap-2">
+                <Settings className={`w-4 h-4 ${c.header}`} />
+                <span className={c.header}>{group.label}</span>
+                <span className="text-zinc-400 font-normal">— {group.title}</span>
+              </CardTitle>
+              <p className="text-xs text-zinc-500 mt-1">{group.desc}</p>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-3">
+                {group.controls.map(ctrl => (
+                  <div key={ctrl.key} className={`flex items-center justify-between p-3 rounded-lg ${c.bg} border ${c.row}`}>
+                    <div>
+                      <p className="text-sm text-zinc-200 font-medium">{ctrl.label}</p>
+                      <p className="text-xs text-zinc-500 mt-0.5">{ctrl.desc}</p>
+                    </div>
+                    <Switch
+                      checked={!!controls[ctrl.key]}
+                      onCheckedChange={() => handleToggleOptionalControl(ctrl.key)}
+                      disabled={ruleSaving}
+                    />
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
-        </CardContent>
-      </Card>
+            </CardContent>
+          </Card>
+        );
+      })}
 
       {/* Section 4: Alerts */}
       <Card className="glass-card border-amber-500/20">
