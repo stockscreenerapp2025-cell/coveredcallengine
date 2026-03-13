@@ -464,13 +464,13 @@ const Dashboard = () => {
                       {strategyData.length > 0 && (
                         <div className="bg-zinc-800/30 rounded-lg p-4">
                           <h5 className="text-xs text-zinc-400 mb-3">Strategy Distribution</h5>
-                          <div className="h-48">
+                          <div className="h-56">
                             <ResponsiveContainer width="100%" height="100%">
                               <RechartsPie>
                                 <Pie
                                   data={strategyData}
                                   cx="50%"
-                                  cy="50%"
+                                  cy="60%"
                                   innerRadius={40}
                                   outerRadius={70}
                                   paddingAngle={2}
@@ -901,7 +901,7 @@ const Dashboard = () => {
                         <td>
                           <div className="flex flex-col">
                             <span className={`font-mono text-sm ${isWeekly ? 'text-cyan-400' : 'text-violet-400'}`}>
-                              {formatOptionContract(opp.dte, opp.strike, opp.expiry)}
+                              {(() => { const s = formatOptionContract(opp.dte, opp.strike, opp.expiry); const i = s.indexOf(' '); return i > -1 ? <>{s.slice(0, i)}<br />{s.slice(i + 1)}</> : s; })()}
                             </span>
                             <Badge className={`mt-0.5 w-fit ${opp.moneyness === 'ATM' ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30 text-xs' : 'bg-blue-500/20 text-blue-400 border-blue-500/30 text-xs'}`}>
                               {opp.moneyness || (opp.otm_pct !== undefined ? (Math.abs(opp.otm_pct) <= 2 ? 'ATM' : 'OTM') : 'OTM')}

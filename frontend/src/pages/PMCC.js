@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { screenerApi, simulatorApi, scansApi } from '../lib/api';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
@@ -79,6 +79,7 @@ const PMCC = () => {
   // Pre-computed scans state
   const [availableScans, setAvailableScans] = useState(null);
   const [activeScan, setActiveScan] = useState(null);
+  const activeScanRef = useRef(null);
   const [scanLoading, setScanLoading] = useState(false);
 
   // Simulator state
@@ -285,6 +286,7 @@ const PMCC = () => {
   const loadPrecomputedScan = async (riskProfile) => {
     setScanLoading(true);
     setActiveScan(riskProfile);
+    activeScanRef.current = riskProfile;
     try {
       const res = await scansApi.getPMCCScan(riskProfile);
       setOpportunities(res.data.opportunities || []);
@@ -308,6 +310,7 @@ const PMCC = () => {
 
   const clearActiveScan = () => {
     setActiveScan(null);
+    activeScanRef.current = null;
     fetchOpportunities();
   };
 
@@ -344,8 +347,10 @@ const PMCC = () => {
       }
       opportunities = Object.values(symbolMap);
 
-      setOpportunities(opportunities);
-      setApiInfo(response.data);
+      if (!activeScanRef.current) {
+        setOpportunities(opportunities);
+        setApiInfo(response.data);
+      }
     } catch (error) {
       console.error('PMCC fetch error:', error);
       toast.error('Failed to load PMCC opportunities');

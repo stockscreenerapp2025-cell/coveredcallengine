@@ -579,7 +579,7 @@ const Landing = () => {
             <p className="flex items-center justify-center gap-6 flex-wrap">
               <span className="flex items-center gap-1">
                 <Shield className="w-4 h-4 text-emerald-400" />
-                Secure Payment via Stripe
+                Secure Payment via PayPal
               </span>
               <span className="flex items-center gap-1">
                 <Check className="w-4 h-4 text-emerald-400" />
@@ -777,7 +777,7 @@ const Landing = () => {
               <div className="flex items-center gap-6 text-sm text-zinc-500">
                 <span className="flex items-center gap-1">
                   <Shield className="w-4 h-4 text-emerald-400" />
-                  Secure Payment via Stripe
+                  Secure Payment via PayPal
                 </span>
               </div>
             </div>

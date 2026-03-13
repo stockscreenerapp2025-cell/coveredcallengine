@@ -310,10 +310,10 @@ async def analyze_news_sentiment(
             "overall_score": 50
         }
 
-    api_key = os.environ.get("OPENAI_API_KEY")
+    gemini_key = os.environ.get("GEMINI_API_KEY")
 
     # --- Keyword-based fallback (no API key needed) ---
-    if not api_key:
+    if not gemini_key:
         sentiments = []
         scores = []
         for i, item in enumerate(news_items[:5], 1):
@@ -372,29 +372,23 @@ Respond in JSON format ONLY:
   "summary": "Brief 1-sentence summary of overall sentiment"
 }"""
 
+        prompt = system_message + f"\n\nAnalyze the sentiment of these news articles:\n\n{news_text}"
+        gemini_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={gemini_key}"
         async with httpx.AsyncClient(timeout=30) as client:
             response = await client.post(
-                "https://api.openai.com/v1/chat/completions",
-                headers={
-                    "Authorization": f"Bearer {api_key}",
-                    "Content-Type": "application/json"
-                },
+                gemini_url,
+                headers={"Content-Type": "application/json"},
                 json={
-                    "model": "gpt-4o-mini",
-                    "messages": [
-                        {"role": "system", "content": system_message},
-                        {"role": "user", "content": f"Analyze the sentiment of these news articles:\n\n{news_text}"}
-                    ],
-                    "temperature": 0.3,
-                    "max_tokens": 500
+                    "contents": [{"role": "user", "parts": [{"text": prompt}]}],
+                    "generationConfig": {"temperature": 0.3, "maxOutputTokens": 500}
                 }
             )
 
         if response.status_code != 200:
-            logging.error(f"OpenAI API error: {response.text}")
+            logging.error(f"Gemini API error: {response.text}")
             return {"sentiments": [], "overall_sentiment": "Neutral", "overall_score": 50, "error": "AI call failed"}
 
-        content = response.json()["choices"][0]["message"]["content"]
+        content = response.json()["candidates"][0]["content"]["parts"][0]["text"]
 
         # Extract JSON from response
         json_match = re.search(r'\{[\s\S]*\}', content)

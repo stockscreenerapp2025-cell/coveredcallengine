@@ -802,13 +802,13 @@ const Simulator = () => {
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="h-48">
+                <div className="h-56">
                   <ResponsiveContainer width="100%" height="100%">
                     <PieChart>
                       <Pie
                         data={strategyDistribution}
                         cx="50%"
-                        cy="50%"
+                        cy="60%"
                         innerRadius={40}
                         outerRadius={70}
                         paddingAngle={2}
@@ -979,7 +979,7 @@ const Simulator = () => {
                           ${trade.current_underlying_price?.toFixed(2) || '-'}
                         </td>
                         <td className="font-mono text-xs text-zinc-400">
-                          {formatOptionContract(trade.short_call_expiry, trade.short_call_strike)}
+                          {(() => { const s = formatOptionContract(trade.short_call_expiry, trade.short_call_strike); const i = s.indexOf(' '); return i > -1 ? <>{s.slice(0, i)}<br />{s.slice(i + 1)}</> : s; })()}
                         </td>
                         <td className={`${trade.dte_remaining <= 7 ? 'text-amber-400' : 'text-zinc-300'}`}>
                           {isLive(trade.status) ? `${trade.dte_remaining}d` : '-'}

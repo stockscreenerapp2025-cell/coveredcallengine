@@ -84,6 +84,7 @@ const Screener = () => {
   // Pre-computed scans state
   const [availableScans, setAvailableScans] = useState(null);
   const [activeScan, setActiveScan] = useState(null);
+  const activeScanRef = useRef(null);
   const [scanLoading, setScanLoading] = useState(false);
 
   // Simulator state
@@ -240,6 +241,7 @@ const Screener = () => {
   const loadPrecomputedScan = async (riskProfile) => {
     setScanLoading(true);
     setActiveScan(riskProfile);
+    activeScanRef.current = riskProfile;
     try {
       const res = await scansApi.getCoveredCallScan(riskProfile);
       setOpportunities(res.data.opportunities || []);
@@ -263,6 +265,7 @@ const Screener = () => {
 
   const clearActiveScan = () => {
     setActiveScan(null);
+    activeScanRef.current = null;
     fetchOpportunities();
   };
 
@@ -346,7 +349,9 @@ const Screener = () => {
         });
       }
 
-      setOpportunities(results);
+      if (!activeScanRef.current) {
+        setOpportunities(results);
+      }
     } catch (error) {
       console.error('Screener fetch error:', error);
       toast.error('Failed to load opportunities');
@@ -730,7 +735,7 @@ const Screener = () => {
             Export
           </Button>
           <Button
-            onClick={() => { setActiveScan(null); fetchOpportunities(true); }}
+            onClick={() => { setActiveScan(null); activeScanRef.current = null; fetchOpportunities(true); }}
             className="bg-emerald-600 hover:bg-emerald-700 text-white"
             data-testid="apply-filters-btn"
           >
@@ -1310,7 +1315,7 @@ const Screener = () => {
                       <SortHeader field="volume" label="OV" />
                       <SortHeader field="open_interest" label="OI" />
                       {activeScan && <th>Sector</th>}
-                      <SortHeader field="score" label="Score" />
+                      <SortHeader field="score" label="AI Score" />
                       <th>Analyst</th>
                       <th className="text-center w-px whitespace-nowrap">Action</th>
                     </tr>
@@ -1346,7 +1351,7 @@ const Screener = () => {
                         <td>${opp.stock_price?.toFixed(2)}</td>
                         <td>
                           <span className="font-mono text-sm">
-                            {formatOptionContract(opp.expiry, opp.strike, opp.option_type || 'call')}
+                            {(() => { const s = formatOptionContract(opp.expiry, opp.strike, opp.option_type || 'call'); const i = s.indexOf(' '); return i > -1 ? <>{s.slice(0, i)}<br />{s.slice(i + 1)}</> : s; })()}
                           </span>
                         </td>
                         <td>{opp.dte}d</td>
