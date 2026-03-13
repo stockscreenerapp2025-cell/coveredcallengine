@@ -286,18 +286,18 @@ def _keyword_sentiment(title: str, description: str) -> tuple:
     ratio = pos / total
     if ratio >= 0.6:
         score = int(55 + ratio * 30)
-        return "Bullish", min(score, 85)
+        return "Positive", min(score, 85)
     elif ratio <= 0.4:
         score = int(45 - (1 - ratio) * 30)
-        return "Bearish", max(score, 15)
+        return "Negative", max(score, 15)
     return "Neutral", 50
 
 
 def _score_label(avg: float) -> str:
     if avg >= 54:
-        return "Bullish"
+        return "Positive"
     if avg <= 46:
-        return "Bearish"
+        return "Negative"
     return "Neutral"
 
 
@@ -361,9 +361,10 @@ async def analyze_news_sentiment(
         prompt = (
             "You are a financial sentiment analyst. Analyze these news articles and respond in JSON ONLY:\n"
             '{"articles":[{"index":1,"sentiment":"Positive","confidence":"High"}],'
-            '"overall_sentiment":"Bullish","overall_score":65,'
+            '"overall_sentiment":"Positive","overall_score":65,'
             '"summary":"one sentence"}\n\n'
-            "Sentiment scale: 0-30=Very Bearish, 31-45=Bearish, 46-55=Neutral, 56-70=Bullish, 71-100=Very Bullish\n\n"
+            "Use only these sentiment labels: Positive, Neutral, Negative\n"
+            "Score scale: 0-30=Very Negative, 31-45=Negative, 46-55=Neutral, 56-70=Positive, 71-100=Very Positive\n\n"
             + news_text
         )
         async with httpx.AsyncClient(timeout=20) as client:
