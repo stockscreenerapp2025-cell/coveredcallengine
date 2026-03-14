@@ -221,41 +221,41 @@ PMCC_PROFILES = {
     "conservative": {
         "label": "Capital Efficient Income",
         "description": "High delta LEAPS with conservative short calls for stable income",
-        "long_dte_min": 365,  # Minimum 12 months for true LEAPS
+        "long_dte_min": 270,  # 9 months — includes JAN27 LEAPS (~308 DTE)
         "long_dte_max": 730,
         "long_delta_min": 0.70,
-        "long_delta_max": 0.80,
+        "long_delta_max": 0.90,  # widened to catch more ITM LEAPS
         "long_itm_pct": 0.05,  # ITM >= 10%
         "short_delta_min": 0.20,
         "short_delta_max": 0.30,
-        "short_dte_min": 25,
+        "short_dte_min": 21,
         "short_dte_max": 45,
     },
     "balanced": {
         "label": "Leveraged Income",
         "description": "Moderate delta LEAPS with balanced risk/reward diagonal spread",
-        "long_dte_min": 365,  # Minimum 12 months for true LEAPS
+        "long_dte_min": 270,  # 9 months — includes JAN27 LEAPS (~308 DTE)
         "long_dte_max": 730,
-        "long_delta_min": 0.65,
-        "long_delta_max": 0.75,
+        "long_delta_min": 0.60,  # widened from 0.65
+        "long_delta_max": 0.80,  # widened from 0.75
         "long_itm_pct": 0.05,
-        "short_delta_min": 0.30,
+        "short_delta_min": 0.25,
         "short_delta_max": 0.40,
-        "short_dte_min": 20,
-        "short_dte_max": 40,
+        "short_dte_min": 21,
+        "short_dte_max": 45,
     },
     "aggressive": {
         "label": "Max Yield Diagonal",
         "description": "Lower delta LEAPS with aggressive short calls for maximum yield",
-        "long_dte_min": 365,  # Minimum 12 months for true LEAPS
+        "long_dte_min": 270,  # 9 months — includes JAN27 LEAPS (~308 DTE)
         "long_dte_max": 730,
-        "long_delta_min": 0.55,
-        "long_delta_max": 0.70,
+        "long_delta_min": 0.50,  # widened from 0.55
+        "long_delta_max": 0.75,  # widened from 0.70
         "long_itm_pct": 0.05,
-        "short_delta_min": 0.35,
+        "short_delta_min": 0.30,
         "short_delta_max": 0.55,
-        "short_dte_min": 7,
-        "short_dte_max": 30,
+        "short_dte_min": 14,
+        "short_dte_max": 35,
     }
 }
 
