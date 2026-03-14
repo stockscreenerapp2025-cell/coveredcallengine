@@ -319,6 +319,7 @@ def _transform_pmcc_for_scans(row: Dict) -> Dict:
         "short_premium": sanitize_money(row.get("short_bid")),
         # Economics - MONETARY: 2-decimal
         "net_debit": sanitize_money(row.get("net_debit")),
+        "net_debit_total": sanitize_money(row.get("net_debit_total")),
         "width": sanitize_money(row.get("width")),
         "max_profit": sanitize_money(row.get("max_profit")),
         "breakeven": sanitize_money(row.get("breakeven")),

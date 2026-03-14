@@ -1396,11 +1396,12 @@ const Portfolio = () => {
                           <div className="flex items-center gap-2">
                             <span className="font-medium text-white">{trade.symbol}</span>
                             <a
-                              href={`https://finance.yahoo.com/quote/${trade.symbol}`}
+                              href={`https://www.tradingview.com/symbols/${trade.symbol}`}
                               target="_blank"
                               rel="noopener noreferrer"
                               onClick={(e) => e.stopPropagation()}
                               className="text-zinc-500 hover:text-violet-400"
+                              title="View on TradingView"
                             >
                               <ExternalLink className="w-3 h-3" />
                             </a>
@@ -2063,14 +2064,6 @@ const Portfolio = () => {
               {/* External Links */}
               <div className="flex items-center gap-4 pt-4 border-t border-zinc-800">
                 <span className="text-sm text-zinc-500">Quick Links:</span>
-                <a
-                  href={`https://finance.yahoo.com/quote/${selectedTrade.symbol}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-sm text-violet-400 hover:underline flex items-center gap-1"
-                >
-                  Yahoo Finance <ExternalLink className="w-3 h-3" />
-                </a>
                 <a
                   href={`https://www.tradingview.com/symbols/${selectedTrade.symbol}`}
                   target="_blank"
