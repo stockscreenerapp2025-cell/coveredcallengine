@@ -96,31 +96,26 @@ class IBKRParser:
                 break
         
         if not transaction_header:
-            logger.warning("No transaction history header found in CSV")
-            return {
-                'accounts': [],
-                'trades': [],
-                'raw_transactions': [],
-                'fx_rates': {},
-                'summary': self._calculate_summary([])
-            }
-        
-        # Parse transaction data rows
-        for line in lines:
-            if 'Transaction History,Data,' in line:
-                parts = line.split(',')
-                if len(parts) >= len(transaction_header) + 2:
-                    data_values = parts[2:]
-                    row = {}
-                    for i, header in enumerate(transaction_header):
-                        if i < len(data_values):
-                            row[header.strip()] = data_values[i].strip()
-                    
-                    parsed = self._parse_row(row)
-                    if parsed:
-                        raw_transactions.append(parsed)
-                        if parsed.get('account'):
-                            self.accounts.add(parsed['account'])
+            # Fallback: try standard IBKR Activity Statement format (Trades section)
+            logger.info("No Flex Report format found — trying Activity Statement format")
+            raw_transactions = self._parse_activity_statement(lines)
+        else:
+            # Parse Flex Report transaction data rows
+            for line in lines:
+                if 'Transaction History,Data,' in line:
+                    parts = line.split(',')
+                    if len(parts) >= len(transaction_header) + 2:
+                        data_values = parts[2:]
+                        row = {}
+                        for i, header in enumerate(transaction_header):
+                            if i < len(data_values):
+                                row[header.strip()] = data_values[i].strip()
+
+                        parsed = self._parse_row(row)
+                        if parsed:
+                            raw_transactions.append(parsed)
+                            if parsed.get('account'):
+                                self.accounts.add(parsed['account'])
         
         # Extract FX rates
         self._extract_fx_rates(raw_transactions)
@@ -136,6 +131,128 @@ class IBKRParser:
             'summary': self._calculate_summary(trades)
         }
     
+    def _parse_activity_statement(self, lines: list) -> list:
+        """Parse standard IBKR Activity Statement CSV (Trades,Header/Data format)"""
+        # Extract account number from Account Information section
+        account_num = ''
+        for line in lines:
+            if 'Account Information,Data,Account,' in line:
+                parts = line.split(',')
+                if len(parts) >= 4:
+                    account_num = parts[3].strip()
+                    self.accounts.add(account_num)
+                    break
+
+        # Find Trades header
+        trades_header = None
+        for line in lines:
+            if line.startswith('Trades,Header,'):
+                reader = csv.reader([line])
+                for row in reader:
+                    trades_header = row[2:]  # skip "Trades", "Header"
+                break
+
+        if not trades_header:
+            logger.warning("No Activity Statement Trades section found in CSV")
+            return []
+
+        raw_transactions = []
+        for line in lines:
+            if not line.startswith('Trades,Data,'):
+                continue
+            try:
+                reader = csv.reader([line])
+                for parts in reader:
+                    if len(parts) < len(trades_header) + 2:
+                        continue
+                    data_values = parts[2:]
+                    row = {trades_header[i].strip(): data_values[i].strip()
+                           for i in range(len(trades_header)) if i < len(data_values)}
+
+                    disc = row.get('DataDiscriminator', '')
+                    if disc in ('', 'DataDiscriminator', 'SubTotal', 'Total'):
+                        continue
+
+                    asset_cat = row.get('Asset Category', '')
+                    if asset_cat not in ('Stocks', 'Equity and Index Options', 'Options', 'Equity Options'):
+                        continue
+
+                    parsed = self._parse_activity_row(row, account_num)
+                    if parsed:
+                        raw_transactions.append(parsed)
+                        if parsed.get('account'):
+                            self.accounts.add(parsed['account'])
+            except Exception as e:
+                logger.warning(f"Error parsing activity line: {e}")
+                continue
+
+        logger.info(f"Activity Statement parser found {len(raw_transactions)} transactions")
+        return raw_transactions
+
+    def _parse_activity_row(self, row: Dict, account: str) -> Optional[Dict]:
+        """Parse one Activity Statement Trades row into unified transaction format"""
+        try:
+            symbol = row.get('Symbol', '').strip()
+            if not symbol:
+                return None
+
+            # Date/Time field: "2024-01-15, 10:30:00" or "2024-01-15"
+            date_str = row.get('Date/Time', '').strip()
+            if not date_str:
+                return None
+            date_only = date_str.split(',')[0].strip()
+            try:
+                trade_date = datetime.strptime(date_only, '%Y-%m-%d')
+            except ValueError:
+                try:
+                    trade_date = datetime.strptime(date_only, '%m/%d/%Y')
+                except ValueError:
+                    return None
+
+            quantity = self._parse_number(row.get('Quantity', '0'))
+            price = self._parse_number(row.get('T. Price', '0'))
+            proceeds = self._parse_number(row.get('Proceeds', '0'))
+            commission = self._parse_number(row.get('Comm/Fee', '0'))
+            net_amount = proceeds + commission
+
+            asset_cat = row.get('Asset Category', '')
+            is_option = asset_cat in ('Equity and Index Options', 'Options', 'Equity Options')
+            transaction_type = 'Buy' if quantity > 0 else 'Sell'
+
+            option_details = None
+            underlying_symbol = symbol
+            if is_option and len(symbol) > 6:
+                option_details = self._parse_option_symbol(symbol)
+                if option_details:
+                    underlying_symbol = option_details['underlying']
+
+            currency = row.get('Currency', 'USD').strip() or 'USD'
+
+            unique_key = f"{account}-{date_only}-{symbol}-{transaction_type}-{quantity}-{price}-{proceeds}"
+            tx_id = hashlib.md5(unique_key.encode()).hexdigest()[:16]
+
+            return {
+                'id': tx_id,
+                'date': trade_date.strftime('%Y-%m-%d'),
+                'datetime': trade_date.isoformat(),
+                'account': account,
+                'description': row.get('Code', ''),
+                'transaction_type': transaction_type,
+                'symbol': symbol,
+                'underlying_symbol': underlying_symbol,
+                'is_option': is_option,
+                'option_details': option_details,
+                'quantity': quantity,
+                'price': price,
+                'gross_amount': proceeds,
+                'commission': abs(commission),
+                'net_amount': net_amount,
+                'currency': currency
+            }
+        except Exception as e:
+            logger.warning(f"Error parsing activity row: {e}")
+            return None
+
     def _parse_row(self, row: Dict) -> Optional[Dict]:
         """Parse a single CSV row into a transaction"""
         try:
