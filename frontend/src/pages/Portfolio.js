@@ -1096,6 +1096,7 @@ const Portfolio = () => {
           ) : viewMode === 'lifecycle' ? (
             // LIFECYCLE ENGINE VIEW
             (() => {
+              try {
               if (lifecycleLoading) return (
                 <div className='flex items-center justify-center py-20'>
                   <Loader2 className='w-8 h-8 animate-spin text-violet-400' />
@@ -1301,6 +1302,14 @@ const Portfolio = () => {
                   })}
                 </div>
               );
+              } catch (err) {
+                return (
+                  <div className='text-center py-16 text-red-400'>
+                    Error rendering lifecycle view. Please re-import your IBKR CSV and try again.<br/>
+                    <span className='text-xs text-zinc-500'>{String(err)}</span>
+                  </div>
+                );
+              }
             })()
           ) : (
             <>
