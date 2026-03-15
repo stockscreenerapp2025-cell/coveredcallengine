@@ -1298,9 +1298,23 @@ class LifecycleEngine:
             1 for p in pmcc_cycles if p["status"] in closed_statuses
         )
 
+        # Expose option positions and long call lots as lookup maps for frontend
+        options_map = {
+            opt_id: asdict(opt)
+            for opt_id, opt in self.options.items()
+            if opt.symbol == symbol
+        }
+        long_call_lots_map = {
+            lot_id: asdict(lot)
+            for lot_id, lot in self.long_call_lots.items()
+            if lot.symbol == symbol
+        }
+
         return {
             "cc_cycles": cc_cycles,
             "pmcc_cycles": pmcc_cycles,
+            "options": options_map,
+            "long_call_lots": long_call_lots_map,
             "summary": {
                 "total_premium_received": round(total_premium, 2),
                 "realized_pnl": round(realized_pnl, 2),

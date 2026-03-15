@@ -567,6 +567,87 @@ async def merge_trades(trade_id: str, payload: MergeRequest, user: dict = Depend
     return {"success": True, "merged_trade_id": trade_id, "deleted_trade_id": payload.trade_id_b}
 
 
+
+
+# ==================== LIFECYCLE ENGINE ====================
+@portfolio_router.get("/ibkr/lifecycles")
+async def get_lifecycles(
+    user: dict = Depends(get_current_user),
+    account: Optional[str] = Query(None),
+    symbol: Optional[str] = Query(None)
+):
+    """
+    Run the lot-based lifecycle engine on raw transactions.
+    Returns CC and PMCC cycles per symbol with full trade history.
+    """
+    from services.lifecycle_engine import LifecycleEngine
+
+    query = {"user_id": user["id"]}
+    if account:
+        query["account"] = account
+    if symbol:
+        query["symbol"] = symbol.upper()
+
+    # Fetch raw transactions (not parsed trades)
+    raw_txns = await db.ibkr_transactions.find(query, {"_id": 0}).sort("datetime", 1).to_list(5000)
+    if not raw_txns:
+        return {"lifecycles": {}, "summary": {"total_premium_received": 0, "realized_pnl": 0, "unrealized_pnl": 0, "open_cycles": 0, "closed_cycles": 0}}
+
+    # Group by symbol
+    by_symbol = {}
+    for tx in raw_txns:
+        sym = tx.get("symbol", "")
+        if sym not in by_symbol:
+            by_symbol[sym] = []
+        by_symbol[sym].append(tx)
+
+    result = {}
+    total_summary = {"total_premium_received": 0.0, "realized_pnl": 0.0, "unrealized_pnl": 0.0, "open_cycles": 0, "closed_cycles": 0}
+
+    for sym, txns in by_symbol.items():
+        try:
+            engine = LifecycleEngine()
+            sym_result = engine.process_transactions(txns, sym)
+            result[sym] = sym_result
+            s = sym_result.get("summary", {})
+            total_summary["total_premium_received"] += s.get("total_premium_received", 0)
+            total_summary["realized_pnl"] += s.get("realized_pnl", 0)
+            total_summary["unrealized_pnl"] += s.get("unrealized_pnl", 0)
+            total_summary["open_cycles"] += s.get("open_cycles", 0)
+            total_summary["closed_cycles"] += s.get("closed_cycles", 0)
+        except Exception as e:
+            logging.error(f"Lifecycle engine error for {sym}: {e}")
+            result[sym] = {"cc_cycles": [], "pmcc_cycles": [], "error": str(e)}
+
+    return {"lifecycles": result, "summary": total_summary}
+
+
+@portfolio_router.get("/ibkr/lifecycles/{symbol}")
+async def get_lifecycles_for_symbol(
+    symbol: str,
+    user: dict = Depends(get_current_user),
+    account: Optional[str] = Query(None)
+):
+    """Run lifecycle engine for a single symbol."""
+    from services.lifecycle_engine import LifecycleEngine
+
+    query = {"user_id": user["id"], "symbol": symbol.upper()}
+    if account:
+        query["account"] = account
+
+    raw_txns = await db.ibkr_transactions.find(query, {"_id": 0}).sort("datetime", 1).to_list(1000)
+    if not raw_txns:
+        return {"symbol": symbol.upper(), "cc_cycles": [], "pmcc_cycles": [], "summary": {}}
+
+    try:
+        engine = LifecycleEngine()
+        result = engine.process_transactions(raw_txns, symbol.upper())
+        result["symbol"] = symbol.upper()
+        return result
+    except Exception as e:
+        logging.error(f"Lifecycle engine error for {symbol}: {e}")
+        raise HTTPException(status_code=500, detail=f"Lifecycle engine error: {str(e)}")
+
 @portfolio_router.delete("/ibkr/clear")
 async def clear_ibkr_data(user: dict = Depends(get_current_user)):
     """Clear all imported IBKR data for the user"""

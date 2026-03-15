@@ -124,6 +124,8 @@ export const portfolioApi = {
     return api.get(`/portfolio/ibkr/summary${params}`);
   },
   getAISuggestion: (tradeId) => api.post(`/portfolio/ibkr/trades/${tradeId}/ai-suggestion`),
+  getLifecycles: (params = {}) => api.get(`/portfolio/ibkr/lifecycles`, { params }),
+  getLifecyclesForSymbol: (symbol, params = {}) => api.get(`/portfolio/ibkr/lifecycles/${symbol}`, { params }),
   generateAllSuggestions: () => api.post('/portfolio/ibkr/generate-suggestions'),
   clearIBKRData: () => api.delete('/portfolio/ibkr/clear'),
   // Lifecycle manual overrides

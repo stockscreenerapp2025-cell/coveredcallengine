@@ -145,6 +145,8 @@ const Portfolio = () => {
   const [viewMode, setViewMode] = useState('list');
   const [expandedSymbols, setExpandedSymbols] = useState({});
   const [expandedCycles, setExpandedCycles] = useState({});
+  const [lifecycleData, setLifecycleData] = useState(null);
+  const [lifecycleLoading, setLifecycleLoading] = useState(false);
 
   const toggleSymbol = (symbol) =>
     setExpandedSymbols(prev => ({ ...prev, [symbol]: !prev[symbol] }));
@@ -174,7 +176,23 @@ const Portfolio = () => {
   useEffect(() => {
     fetchTrades();
     fetchSummary();
+    if (viewMode === 'lifecycle') fetchLifecycles();
   }, [filters, pagination.page, viewMode]);
+
+  const fetchLifecycles = async () => {
+    setLifecycleLoading(true);
+    try {
+      const params = {};
+      if (filters.account) params.account = filters.account;
+      if (filters.symbol) params.symbol = filters.symbol;
+      const res = await portfolioApi.getLifecycles(params);
+      setLifecycleData(res.data);
+    } catch (err) {
+      console.error('Lifecycle fetch error:', err);
+    } finally {
+      setLifecycleLoading(false);
+    }
+  };
 
   const fetchAccounts = async () => {
     try {
@@ -1076,278 +1094,201 @@ const Portfolio = () => {
               </div>
             </div>
           ) : viewMode === 'lifecycle' ? (
-            // ── LIFECYCLE GROUPED VIEW ─────────────────────────────────────
+            // LIFECYCLE ENGINE VIEW
             (() => {
-              // Helper: derive lifecycle events from trade-level fields
-              // (transactions are not included in list endpoint — only in detail endpoint)
-              const getLifecycleEvents = (trade) => {
-                const events = [];
-                const st = trade.strategy_type || '';
-                const closeReason = (trade.close_reason || '').toLowerCase();
-
-                // Entry event
-                if (st === 'NAKED_PUT') {
-                  events.push({ label: 'CSP Sold', color: 'violet', date: trade.date_opened,
-                    strike: trade.csp_put_strike || trade.option_strike,
-                    amount: trade.premium_received > 0 ? trade.premium_received : null });
-                } else if (st === 'PMCC') {
-                  events.push({ label: 'LEAPS Bought', color: 'blue', date: trade.date_opened,
-                    amount: trade.entry_price ? -trade.entry_price : null });
-                  if (trade.option_strike) {
-                    events.push({ label: 'Short Call', color: 'violet', date: trade.date_opened,
-                      strike: trade.option_strike,
-                      amount: trade.premium_received > 0 ? trade.premium_received : null });
-                  }
-                } else if (st === 'COVERED_CALL') {
-                  events.push({ label: 'Stock Bought', color: 'emerald', date: trade.date_opened,
-                    amount: trade.entry_price ? -(trade.entry_price * (trade.shares || 100)) : null });
-                  if (trade.option_strike) {
-                    events.push({ label: 'CC Sold', color: 'violet', date: trade.date_opened,
-                      strike: trade.option_strike, expiry: trade.option_expiry,
-                      amount: trade.premium_received > 0 ? trade.premium_received : null });
-                  }
-                } else if (st === 'STOCK' || st === 'ETF') {
-                  events.push({ label: st === 'ETF' ? 'ETF Bought' : 'Stock Bought', color: 'emerald',
-                    date: trade.date_opened, amount: null });
-                } else if (st === 'COLLAR') {
-                  events.push({ label: 'Stock Bought', color: 'emerald', date: trade.date_opened, amount: null });
-                  if (trade.option_strike)
-                    events.push({ label: 'CC Sold', color: 'violet', date: trade.date_opened,
-                      strike: trade.option_strike, amount: trade.premium_received > 0 ? trade.premium_received : null });
-                } else {
-                  events.push({ label: 'Opened', color: 'emerald', date: trade.date_opened, amount: null });
-                }
-
-                // Close event
-                if (trade.status !== 'Open') {
-                  if (closeReason === 'assigned' || trade.status === 'Assigned') {
-                    const isCallAssigned = st === 'COVERED_CALL' || st === 'PMCC';
-                    events.push({ label: isCallAssigned ? 'Call Assigned' : 'Put Assigned',
-                      color: isCallAssigned ? 'red' : 'amber', date: trade.date_closed,
-                      amount: trade.realized_pnl });
-                  } else if (closeReason === 'expired' || trade.status === 'Expired') {
-                    events.push({ label: 'Expired Worthless', color: 'zinc', date: trade.date_closed,
-                      amount: trade.realized_pnl });
-                  } else if (closeReason === 'sold' || closeReason === 'closed') {
-                    events.push({ label: 'Closed', color: trade.realized_pnl >= 0 ? 'emerald' : 'red',
-                      date: trade.date_closed, amount: trade.realized_pnl });
-                  } else {
-                    events.push({ label: trade.close_reason || trade.status || 'Closed',
-                      color: 'zinc', date: trade.date_closed, amount: trade.realized_pnl });
-                  }
-                } else {
-                  events.push({ label: 'Active', color: 'violet', date: null,
-                    amount: trade.unrealized_pnl, current: true });
-                }
-
-                return events;
-              };
-
-              // Group trades by symbol, then sort cycles by lifecycle_index
-              const bySymbol = {};
-              trades.forEach(t => {
-                if (!bySymbol[t.symbol]) bySymbol[t.symbol] = [];
-                bySymbol[t.symbol].push(t);
-              });
-              Object.keys(bySymbol).forEach(sym =>
-                bySymbol[sym].sort((a, b) => (a.lifecycle_index || 0) - (b.lifecycle_index || 0))
+              if (lifecycleLoading) return (
+                <div className='flex items-center justify-center py-20'>
+                  <Loader2 className='w-8 h-8 animate-spin text-violet-400' />
+                  <span className='ml-3 text-zinc-400'>Building lifecycles...</span>
+                </div>
+              );
+              if (!lifecycleData || !lifecycleData.lifecycles || Object.keys(lifecycleData.lifecycles).length === 0) return (
+                <div className='text-center py-16 text-zinc-500'>No lifecycle data found. Import IBKR transactions first.</div>
               );
 
-              const COLOR = {
-                emerald: { dot: 'bg-emerald-500', text: 'text-emerald-400', border: 'border-emerald-500/40', badge: 'bg-emerald-500/20 text-emerald-400' },
-                blue:    { dot: 'bg-blue-500',    text: 'text-blue-400',    border: 'border-blue-500/40',    badge: 'bg-blue-500/20 text-blue-400' },
-                amber:   { dot: 'bg-amber-500',   text: 'text-amber-400',   border: 'border-amber-500/40',   badge: 'bg-amber-500/20 text-amber-400' },
-                red:     { dot: 'bg-red-500',     text: 'text-red-400',     border: 'border-red-500/40',     badge: 'bg-red-500/20 text-red-400' },
-                violet:  { dot: 'bg-violet-500',  text: 'text-violet-400',  border: 'border-violet-500/40',  badge: 'bg-violet-500/20 text-violet-400' },
-                zinc:    { dot: 'bg-zinc-500',    text: 'text-zinc-400',    border: 'border-zinc-500/40',    badge: 'bg-zinc-500/20 text-zinc-400' },
+              const STATUS_COLOR = {
+                'Open - Covered Call Active':  'bg-emerald-500/20 text-emerald-400 border-emerald-500/30',
+                'Open - Uncovered':            'bg-zinc-700/50 text-zinc-400 border-zinc-600',
+                'Open - Partial Coverage':     'bg-yellow-500/20 text-yellow-400 border-yellow-500/30',
+                'Open - Put Entry Active':     'bg-violet-500/20 text-violet-400 border-violet-500/30',
+                'Open - Short Call Active':    'bg-emerald-500/20 text-emerald-400 border-emerald-500/30',
+                'Open - Waiting to Resell':    'bg-blue-500/20 text-blue-400 border-blue-500/30',
+                'Open - LEAPS Only':           'bg-blue-500/20 text-blue-400 border-blue-500/30',
+                'Partially Assigned':          'bg-amber-500/20 text-amber-400 border-amber-500/30',
+                'Closed by Assignment':        'bg-red-500/20 text-red-400 border-red-500/30',
+                'Closed by Share Sale':        'bg-zinc-600/40 text-zinc-400 border-zinc-600',
+                'Closed':                      'bg-zinc-600/40 text-zinc-400 border-zinc-600',
+                'Roll in Progress':            'bg-amber-500/20 text-amber-400 border-amber-500/30',
+                'Assigned / Closing':          'bg-red-500/20 text-red-400 border-red-500/30',
               };
 
+              const fmt = (n) => n == null ? '-' : `$${Number(n).toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})}`;
+              const pnlColor = (n) => n > 0 ? 'text-emerald-400' : n < 0 ? 'text-red-400' : 'text-zinc-400';
+              const symbols = Object.keys(lifecycleData.lifecycles).sort();
+
               return (
-                <div className="space-y-3">
-                  {Object.entries(bySymbol).map(([symbol, cycles]) => {
-                    const totalPnl = cycles.reduce((s, c) => s + (c.realized_pnl || 0), 0);
-                    const openCycles = cycles.filter(c => c.status === 'Open').length;
-                    const isExpanded = expandedSymbols[symbol] !== false; // default open
+                <div className='space-y-6 p-4'>
+                  {lifecycleData.summary && (
+                    <div className='grid grid-cols-2 md:grid-cols-5 gap-3'>
+                      {[
+                        { label: 'Open Cycles',    value: lifecycleData.summary.open_cycles },
+                        { label: 'Closed Cycles',  value: lifecycleData.summary.closed_cycles },
+                        { label: 'Total Premium',  value: fmt(lifecycleData.summary.total_premium_received) },
+                        { label: 'Realized P&L',   value: fmt(lifecycleData.summary.realized_pnl), pnl: lifecycleData.summary.realized_pnl },
+                        { label: 'Unrealized P&L', value: fmt(lifecycleData.summary.unrealized_pnl), pnl: lifecycleData.summary.unrealized_pnl },
+                      ].map(item => (
+                        <div key={item.label} className='bg-zinc-800/60 rounded-lg p-3'>
+                          <div className='text-xs text-zinc-500'>{item.label}</div>
+                          <div className={`text-lg font-bold mt-1 ${item.pnl != null ? pnlColor(item.pnl) : 'text-white'}`}>{item.value}</div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {symbols.map(sym => {
+                    const symData = lifecycleData.lifecycles[sym];
+                    const ccCycles = symData.cc_cycles || [];
+                    const pmccCycles = symData.pmcc_cycles || [];
+                    if (ccCycles.length === 0 && pmccCycles.length === 0) return null;
+                    const isExpanded = expandedSymbols[sym] !== false;
 
                     return (
-                      <div key={symbol} className="border border-zinc-700/50 rounded-lg overflow-hidden">
-                        {/* Symbol header */}
-                        <button
-                          onClick={() => toggleSymbol(symbol)}
-                          className="w-full flex items-center justify-between px-4 py-3 bg-zinc-800/60 hover:bg-zinc-800 transition-colors text-left"
-                        >
-                          <div className="flex items-center gap-3">
-                            <ChevronRight className={`w-4 h-4 text-zinc-400 transition-transform ${isExpanded ? 'rotate-90' : ''}`} />
-                            <span className="font-bold text-white text-base">{symbol}</span>
-                            <span className="text-xs text-zinc-500">{cycles.length} cycle{cycles.length !== 1 ? 's' : ''}</span>
-                            {openCycles > 0 && (
-                              <span className="text-xs bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded-full">{openCycles} open</span>
+                      <div key={sym} className='bg-zinc-900 border border-zinc-700 rounded-xl overflow-hidden'>
+                        <button className='w-full flex items-center justify-between px-4 py-3 bg-zinc-800/60 hover:bg-zinc-800 transition-colors'
+                          onClick={() => toggleSymbol(sym)}>
+                          <div className='flex items-center gap-3'>
+                            <span className='font-bold text-white text-lg'>{sym}</span>
+                            <span className='text-xs text-zinc-500'>{ccCycles.length + pmccCycles.length} cycle{ccCycles.length + pmccCycles.length !== 1 ? 's' : ''}</span>
+                            {ccCycles.some(c => c.jointly_managed_with && c.jointly_managed_with.length > 0) && (
+                              <span className='text-xs bg-violet-500/20 text-violet-400 px-2 py-0.5 rounded'>Jointly Managed</span>
                             )}
-                            <div className="flex gap-1">
-                              {[...new Set(cycles.map(c => c.strategy_type))].map(st => (
-                                <Badge key={st} className={`text-[10px] py-0 ${STRATEGY_COLORS[st] || STRATEGY_COLORS.OTHER}`}>{st?.replace('_', ' ')}</Badge>
-                              ))}
-                            </div>
                           </div>
-                          <div className={`text-sm font-semibold ${totalPnl >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                            {totalPnl !== 0 ? `${totalPnl >= 0 ? '+' : ''}$${Math.abs(totalPnl).toFixed(2)}` : '—'}
-                          </div>
+                          <ChevronDown className={`w-4 h-4 text-zinc-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
                         </button>
 
-                        {/* Cycles */}
                         {isExpanded && (
-                          <div className="divide-y divide-zinc-800">
-                            {cycles.map((trade, cycleIdx) => {
-                              const cycleKey = `${symbol}-${cycleIdx}`;
-                              const isCycleExpanded = expandedCycles[cycleKey];
-                              const events = getLifecycleEvents(trade);
-                              const cycleStatusColor = trade.status === 'Open' ? 'emerald' :
-                                (trade.close_reason || '').toLowerCase() === 'assigned' ? 'amber' :
-                                (trade.close_reason || '').toLowerCase() === 'expired' ? 'zinc' : 'blue';
-
+                          <div className='divide-y divide-zinc-800'>
+                            {ccCycles.map((cycle) => {
+                              const cycleKey = sym + '_' + cycle.cycle_id;
+                              const isCycleOpen = expandedCycles[cycleKey] !== false;
+                              const statusCls = STATUS_COLOR[cycle.status] || 'bg-zinc-700/50 text-zinc-400 border-zinc-600';
                               return (
-                                <div key={cycleKey} className="bg-zinc-900/40">
-                                  {/* Cycle row */}
-                                  <button
-                                    onClick={() => toggleCycle(cycleKey)}
-                                    className="w-full flex items-start gap-3 px-4 py-3 hover:bg-zinc-800/30 transition-colors text-left"
-                                  >
-                                    <ChevronRight className={`w-3.5 h-3.5 text-zinc-500 mt-0.5 flex-shrink-0 transition-transform ${isCycleExpanded ? 'rotate-90' : ''}`} />
-                                    <div className="flex-1 min-w-0">
-                                      <div className="flex items-center gap-2 mb-1 flex-wrap">
-                                        <span className="text-xs text-zinc-400 font-mono font-medium">
-                                          {trade.position_instance_id || `Cycle ${cycleIdx + 1}`}
-                                        </span>
-                                        <Badge className={`text-[10px] py-0 ${STRATEGY_COLORS[trade.strategy_type] || STRATEGY_COLORS.OTHER}`}>
-                                          {trade.strategy_type?.replace('_', ' ')}
-                                        </Badge>
-                                        <Badge className={`text-[10px] py-0 ${COLOR[cycleStatusColor].badge}`}>
-                                          {trade.status === 'Open' ? 'Open' : trade.close_reason || trade.status}
-                                        </Badge>
-                                        <span className="text-[10px] text-zinc-500">
-                                          {formatDate(trade.date_opened)}{trade.date_closed ? ` → ${formatDate(trade.date_closed)}` : ' → present'}
-                                          {trade.days_in_trade ? ` (${trade.days_in_trade}d)` : ''}
-                                        </span>
-                                        {trade.entry_price && (
-                                          <span className="text-[10px] text-zinc-500">Entry: {formatCurrency(trade.entry_price)}</span>
-                                        )}
-                                        {trade.premium_received > 0 && (
-                                          <span className="text-[10px] text-emerald-400">Premium: +{formatCurrency(trade.premium_received)}</span>
-                                        )}
-                                      </div>
-
-                                      {/* Mini lifecycle timeline */}
-                                      {events.length > 0 ? (
-                                        <div className="flex items-center gap-1 overflow-x-auto pb-1 flex-wrap">
-                                          {events.map((ev, ei) => {
-                                            const c = COLOR[ev.color] || COLOR.zinc;
-                                            return (
-                                              <div key={ei} className="flex items-center gap-1 flex-shrink-0">
-                                                <div className={`flex items-center gap-1 px-2 py-0.5 rounded border ${c.border} bg-zinc-900/80`}>
-                                                  <span className={`w-1.5 h-1.5 rounded-full ${c.dot} flex-shrink-0`} />
-                                                  <span className={`text-[10px] font-medium ${c.text}`}>{ev.label}</span>
-                                                  {ev.strike && <span className="text-[10px] text-zinc-500">${ev.strike}</span>}
-                                                  {ev.date && <span className="text-[10px] text-zinc-600">{ev.date.slice(5)}</span>}
-                                                  {ev.amount != null && (
-                                                    <span className={`text-[10px] ${ev.amount >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                                                      {ev.amount >= 0 ? '+' : ''}{formatCurrency(ev.amount)}
-                                                    </span>
-                                                  )}
-                                                </div>
-                                                {ei < events.length - 1 && <span className="text-zinc-700 text-xs">›</span>}
-                                              </div>
-                                            );
-                                          })}
-                                        </div>
-                                      ) : (
-                                        <div className="text-[10px] text-zinc-600 italic">No transaction detail available</div>
+                                <div key={cycle.cycle_id} className='p-4'>
+                                  <div className='flex items-center justify-between mb-3'>
+                                    <div className='flex items-center gap-2 flex-wrap'>
+                                      <span className='text-sm font-semibold text-zinc-300'>{cycle.cycle_id}</span>
+                                      <span className={`text-xs px-2 py-0.5 rounded border ${statusCls}`}>{cycle.status}</span>
+                                      <span className='text-xs bg-zinc-800 text-zinc-400 px-2 py-0.5 rounded'>{cycle.entry_mode === 'PUT_ENTRY' ? 'Wheel / CSP Entry' : 'Stock Buy'}</span>
+                                      {cycle.jointly_managed_with && cycle.jointly_managed_with.length > 0 && (
+                                        <span className='text-xs bg-violet-500/10 text-violet-400 px-2 py-0.5 rounded border border-violet-500/30'>Jointly managed with {cycle.jointly_managed_with.join(', ')}</span>
                                       )}
                                     </div>
-
-                                    {/* Cycle P&L */}
-                                    <div className="text-right flex-shrink-0 ml-2">
-                                      {trade.status === 'Open' ? (
-                                        <div>
-                                          {trade.unrealized_pnl != null && (
-                                            <div className={`text-xs font-medium ${trade.unrealized_pnl >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                                              {trade.unrealized_pnl >= 0 ? '+' : ''}{formatCurrency(trade.unrealized_pnl)}
+                                    <button onClick={() => toggleCycle(cycleKey)} className='text-zinc-500 hover:text-zinc-300'>
+                                      <ChevronDown className={`w-4 h-4 transition-transform ${isCycleOpen ? 'rotate-180' : ''}`} />
+                                    </button>
+                                  </div>
+                                  <div className='grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-2 text-xs mb-3'>
+                                    {[
+                                      { label: 'Shares', value: cycle.shares_current },
+                                      { label: 'Covered', value: cycle.shares_covered_by_calls },
+                                      { label: 'Uncovered', value: cycle.uncovered_shares },
+                                      { label: 'Avg Cost', value: fmt(cycle.avg_cost) },
+                                      { label: 'Eff. Cost', value: fmt(cycle.effective_avg_cost) },
+                                      { label: 'Premium', value: fmt(cycle.total_premium_received) },
+                                      { label: 'Realized P&L', value: fmt(cycle.realized_pnl), pnl: cycle.realized_pnl },
+                                      { label: 'Rolls', value: cycle.number_of_rolls },
+                                    ].map(m => (
+                                      <div key={m.label} className='bg-zinc-800/50 rounded p-2'>
+                                        <div className='text-zinc-500 mb-0.5'>{m.label}</div>
+                                        <div className={`font-semibold ${m.pnl != null ? pnlColor(m.pnl) : 'text-white'}`}>{m.value != null ? m.value : '-'}</div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                  {isCycleOpen && cycle.short_calls && cycle.short_calls.length > 0 && (
+                                    <div className='mt-2'>
+                                      <div className='text-xs text-zinc-500 mb-1'>Short Call History ({cycle.short_calls.length} legs)</div>
+                                      <div className='space-y-1'>
+                                        {cycle.short_calls.map(optId => {
+                                          const opt = symData.options ? symData.options[optId] : null;
+                                          if (!opt) return null;
+                                          const oc = opt.status === 'EXPIRED' ? 'text-zinc-500' : opt.status === 'ASSIGNED' ? 'text-red-400' : 'text-emerald-400';
+                                          return (
+                                            <div key={optId} className='flex items-center gap-3 text-xs bg-zinc-800/30 rounded px-3 py-1.5'>
+                                              <span className={`w-16 ${oc}`}>{opt.status}</span>
+                                              <span className='text-zinc-300'>{opt.expiry} ${opt.strike}C</span>
+                                              <span className='text-zinc-400'>{opt.contracts}x</span>
+                                              <span className='text-emerald-400'>+{fmt(opt.open_premium * opt.contracts * 100)}</span>
+                                              {opt.close_premium != null && <span className='text-red-400'>-{fmt(opt.close_premium * opt.contracts * 100)}</span>}
                                             </div>
-                                          )}
-                                          <div className="text-[10px] text-zinc-500">unrealized</div>
-                                        </div>
-                                      ) : trade.realized_pnl != null ? (
-                                        <div>
-                                          <div className={`text-xs font-medium ${trade.realized_pnl >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                                            {trade.realized_pnl >= 0 ? '+' : ''}{formatCurrency(trade.realized_pnl)}
-                                          </div>
-                                          {trade.roi != null && (
-                                            <div className={`text-[10px] ${trade.roi >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                                              {trade.roi >= 0 ? '+' : ''}{trade.roi.toFixed(1)}%
-                                            </div>
-                                          )}
-                                        </div>
-                                      ) : <span className="text-zinc-600 text-xs">—</span>}
+                                          );
+                                        })}
+                                      </div>
                                     </div>
-                                  </button>
+                                  )}
+                                </div>
+                              );
+                            })}
 
-                                  {/* Expanded: full trade details + AI button */}
-                                  {isCycleExpanded && (
-                                    <div className="px-8 pb-4 space-y-3 border-t border-zinc-800/60">
-                                      {/* Share allocation banner for CC/COLLAR lifecycles */}
-                                      {(trade.strategy_type === 'COVERED_CALL' || trade.strategy_type === 'COLLAR') && trade.covered_shares > 0 && (
-                                        <div className="flex gap-3 pt-2">
-                                          <span className="text-[10px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2 py-1 rounded">
-                                            {trade.covered_shares} covered shares
-                                          </span>
-                                          {trade.residual_shares > 0 && (
-                                            <span className="text-[10px] bg-zinc-500/10 text-zinc-400 border border-zinc-500/20 px-2 py-1 rounded">
-                                              {trade.residual_shares} residual (unhedged)
-                                            </span>
-                                          )}
-                                        </div>
-                                      )}
-                                      {trade.is_residual && (
-                                        <div className="pt-2">
-                                          <span className="text-[10px] bg-zinc-500/10 text-zinc-400 border border-zinc-500/20 px-2 py-1 rounded">
-                                            Residual position — {trade.shares} shares not covered by options
-                                          </span>
-                                        </div>
-                                      )}
-                                      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 pt-3">
-                                        {[
-                                          { label: 'Entry', val: formatCurrency(trade.entry_price) },
-                                          { label: 'Break-Even', val: formatCurrency(trade.break_even) },
-                                          { label: 'Shares', val: trade.shares || '—' },
-                                          { label: 'Contracts', val: trade.contracts || '—' },
-                                          { label: 'Option Strike', val: trade.option_strike ? `$${trade.option_strike}` : '—' },
-                                          { label: 'Option Expiry', val: formatDate(trade.option_expiry) || '—' },
-                                          { label: 'Fees', val: formatCurrency(trade.total_fees) },
-                                          { label: 'Account', val: trade.account || '—' },
-                                        ].map(({ label, val }) => (
-                                          <div key={label} className="text-xs">
-                                            <span className="text-zinc-500">{label}: </span>
-                                            <span className="text-zinc-300">{val}</span>
+                            {pmccCycles.map((cycle) => {
+                              const cycleKey = sym + '_' + cycle.cycle_id;
+                              const isCycleOpen = expandedCycles[cycleKey] !== false;
+                              const statusCls = STATUS_COLOR[cycle.status] || 'bg-zinc-700/50 text-zinc-400 border-zinc-600';
+                              return (
+                                <div key={cycle.cycle_id} className='p-4 bg-blue-950/10'>
+                                  <div className='flex items-center justify-between mb-3'>
+                                    <div className='flex items-center gap-2'>
+                                      <span className='text-sm font-semibold text-zinc-300'>{cycle.cycle_id}</span>
+                                      <span className={`text-xs px-2 py-0.5 rounded border ${statusCls}`}>{cycle.status}</span>
+                                      <span className='text-xs bg-blue-500/10 text-blue-400 px-2 py-0.5 rounded border border-blue-500/20'>PMCC</span>
+                                    </div>
+                                    <button onClick={() => toggleCycle(cycleKey)} className='text-zinc-500 hover:text-zinc-300'>
+                                      <ChevronDown className={`w-4 h-4 transition-transform ${isCycleOpen ? 'rotate-180' : ''}`} />
+                                    </button>
+                                  </div>
+                                  <div className='grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-2 text-xs mb-3'>
+                                    {[
+                                      { label: 'Net Capital', value: fmt(cycle.net_capital_in_use) },
+                                      { label: 'Debit Paid', value: fmt(cycle.total_debit_paid) },
+                                      { label: 'Short Premium', value: fmt(cycle.total_short_premium_received) },
+                                      { label: 'Close Cost', value: fmt(cycle.total_short_close_cost) },
+                                      { label: 'Realized P&L', value: fmt(cycle.realized_pnl), pnl: cycle.realized_pnl },
+                                      { label: 'Rolls', value: cycle.number_of_rolls },
+                                    ].map(m => (
+                                      <div key={m.label} className='bg-zinc-800/50 rounded p-2'>
+                                        <div className='text-zinc-500 mb-0.5'>{m.label}</div>
+                                        <div className={`font-semibold ${m.pnl != null ? pnlColor(m.pnl) : 'text-white'}`}>{m.value != null ? m.value : '-'}</div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                  {isCycleOpen && (
+                                    <div className='space-y-1 mt-2'>
+                                      {(cycle.long_call_lots || []).map(lotId => {
+                                        const lot = symData.long_call_lots ? symData.long_call_lots[lotId] : null;
+                                        if (!lot) return null;
+                                        return (
+                                          <div key={lotId} className='flex items-center gap-3 text-xs bg-blue-500/5 border border-blue-500/20 rounded px-3 py-1.5'>
+                                            <span className='text-blue-400 w-16'>{lot.status}</span>
+                                            <span className='text-zinc-300'>LEAPS {lot.expiry} ${lot.strike}C</span>
+                                            <span className='text-zinc-400'>{lot.contracts_open}x</span>
+                                            <span className='text-red-400'>-{fmt(lot.total_cost)}</span>
+                                            {lot.delta_at_open != null && <span className='text-zinc-500'>delta {lot.delta_at_open.toFixed(2)}</span>}
                                           </div>
-                                        ))}
-                                      </div>
-                                      <div className="flex gap-2 flex-wrap">
-                                        <Button size="sm" variant="outline" className="text-xs border-zinc-700 text-zinc-400 hover:text-white"
-                                          onClick={() => openTradeDetail(trade)}>
-                                          Full Details + AI
-                                        </Button>
-                                        <Button size="sm" variant="outline" className="text-xs border-blue-700 text-blue-400 hover:text-blue-300"
-                                          onClick={() => { setOverrideTrade(trade); setReclassifyStrategy(trade.strategy_type); setOverrideAction('reclassify'); }}>
-                                          Reclassify
-                                        </Button>
-                                        <Button size="sm" variant="outline" className="text-xs border-amber-700 text-amber-400 hover:text-amber-300"
-                                          onClick={() => { setOverrideTrade(trade); setSplitDate(''); setOverrideAction('split'); }}>
-                                          Split
-                                        </Button>
-                                        <Button size="sm" variant="outline" className="text-xs border-violet-700 text-violet-400 hover:text-violet-300"
-                                          onClick={() => { setOverrideTrade(trade); setMergeTargetId(''); setOverrideAction('merge'); }}>
-                                          Merge
-                                        </Button>
-                                      </div>
+                                        );
+                                      })}
+                                      {(cycle.short_calls || []).map(optId => {
+                                        const opt = symData.options ? symData.options[optId] : null;
+                                        if (!opt) return null;
+                                        const oc = opt.status === 'EXPIRED' ? 'text-zinc-500' : opt.status === 'ASSIGNED' ? 'text-red-400' : 'text-emerald-400';
+                                        return (
+                                          <div key={optId} className='flex items-center gap-3 text-xs bg-zinc-800/30 rounded px-3 py-1.5'>
+                                            <span className={`w-16 ${oc}`}>{opt.status}</span>
+                                            <span className='text-zinc-300'>Short {opt.expiry} ${opt.strike}C</span>
+                                            <span className='text-zinc-400'>{opt.contracts}x</span>
+                                            <span className='text-emerald-400'>+{fmt(opt.open_premium * opt.contracts * 100)}</span>
+                                            {opt.close_premium != null && <span className='text-red-400'>-{fmt(opt.close_premium * opt.contracts * 100)}</span>}
+                                          </div>
+                                        );
+                                      })}
                                     </div>
                                   )}
                                 </div>
@@ -1361,7 +1302,6 @@ const Portfolio = () => {
                 </div>
               );
             })()
-          ) : (
             <>
               <div className="overflow-x-auto">
                 <Table>
