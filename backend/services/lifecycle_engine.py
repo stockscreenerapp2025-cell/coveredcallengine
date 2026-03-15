@@ -1183,7 +1183,27 @@ class LifecycleEngine:
         )
         if total_shares > 0:
             cycle.avg_cost = total_cost / total_shares
-            cycle.effective_avg_cost = total_eff_cost / total_shares
+            # Effective cost = avg cost minus net premium collected per share (spec rule)
+            net_premium = cycle.total_premium_received - cycle.total_premium_paid
+            cycle.effective_avg_cost = cycle.avg_cost - (net_premium / total_shares)
+
+        # Realized P&L from expired/bought-back options (not yet counted — assignment P&L
+        # is tracked separately during event processing)
+        option_pnl = 0.0
+        for opt_id in cycle.short_calls:
+            opt = self.options.get(opt_id)
+            if opt and opt.status in ("EXPIRED", "BOUGHT_BACK"):
+                received = opt.open_premium * opt.contracts * 100
+                paid = (opt.close_premium or 0.0) * opt.contracts * 100
+                option_pnl += received - paid
+        for opt_id in getattr(cycle, 'short_puts', []):
+            opt = self.options.get(opt_id)
+            if opt and opt.status in ("EXPIRED", "BOUGHT_BACK"):
+                received = opt.open_premium * opt.contracts * 100
+                paid = (opt.close_premium or 0.0) * opt.contracts * 100
+                option_pnl += received - paid
+        # Add option P&L — stock/assignment P&L already tracked during event processing
+        cycle.realized_pnl += option_pnl
 
     def _recalculate_all_cycles(self):
         """Final pass to recompute derived fields for all cycles."""
