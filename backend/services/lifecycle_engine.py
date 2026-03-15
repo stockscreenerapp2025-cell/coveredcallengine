@@ -1326,11 +1326,29 @@ class LifecycleEngine:
 
     def _build_output(self, symbol: str) -> dict:
         """Return a serializable dict of all cycles for this symbol."""
-        cc_cycles = [
-            asdict(c)
-            for c in sorted(self.cycles.values(), key=lambda x: x.opened_date)
-            if c.symbol == symbol
-        ]
+        cc_cycles = []
+        for c in sorted(self.cycles.values(), key=lambda x: x.opened_date):
+            if c.symbol != symbol:
+                continue
+            d = asdict(c)
+            # Effective cost = avg cost minus net premium per share (customer spec)
+            if c.shares_current > 0 and c.avg_cost > 0:
+                net_prem = c.total_premium_received - c.total_premium_paid
+                d['effective_avg_cost'] = round(c.avg_cost - (net_prem / c.shares_current), 2)
+            # Realized P&L: add net premium from all EXPIRED / BOUGHT_BACK calls and puts
+            option_pnl = 0.0
+            for opt_id in c.short_calls:
+                opt = self.options.get(opt_id)
+                if opt and opt.status in ("EXPIRED", "BOUGHT_BACK"):
+                    option_pnl += opt.open_premium * opt.contracts * 100
+                    option_pnl -= (opt.close_premium or 0.0) * opt.contracts * 100
+            for opt_id in getattr(c, 'short_puts', []):
+                opt = self.options.get(opt_id)
+                if opt and opt.status in ("EXPIRED", "BOUGHT_BACK"):
+                    option_pnl += opt.open_premium * opt.contracts * 100
+                    option_pnl -= (opt.close_premium or 0.0) * opt.contracts * 100
+            d['realized_pnl'] = round(c.realized_pnl + option_pnl, 2)
+            cc_cycles.append(d)
         pmcc_cycles = [
             self._pmcc_cycle_to_dict(p)
             for p in sorted(self.pmcc_cycles.values(), key=lambda x: x.opened_date)
