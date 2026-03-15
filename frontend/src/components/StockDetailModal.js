@@ -842,23 +842,33 @@ const StockDetailModal = ({ symbol, isOpen, onClose, scanData = null }) => {
                             <div>
                               <div className="text-xs text-zinc-500 mb-1">Overall Sentiment</div>
                               <Badge className={`text-sm ${
-                                sentimentData.overall_score > 55 
+                                sentimentData.overall_sentiment === 'Positive'
                                   ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30'
-                                  : sentimentData.overall_score < 45
+                                  : sentimentData.overall_sentiment === 'Negative'
                                     ? 'bg-red-500/20 text-red-400 border-red-500/30'
                                     : 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30'
                               }`}>
                                 {sentimentData.overall_sentiment}
                               </Badge>
+                              {sentimentData.source && (
+                                <div className="text-[10px] text-zinc-600 mt-1">via {sentimentData.source}</div>
+                              )}
                             </div>
                             <div className="text-right">
                               <div className="text-xs text-zinc-500 mb-1">Sentiment Score</div>
                               <div className={`text-2xl font-bold ${
-                                sentimentData.overall_score > 55 ? 'text-emerald-400' :
-                                sentimentData.overall_score < 45 ? 'text-red-400' : 'text-yellow-400'
+                                sentimentData.overall_sentiment === 'Positive' ? 'text-emerald-400' :
+                                sentimentData.overall_sentiment === 'Negative' ? 'text-red-400' : 'text-yellow-400'
                               }`}>
-                                {sentimentData.overall_score}
+                                {sentimentData.sentiment_score !== undefined
+                                  ? (sentimentData.sentiment_score >= 0 ? '+' : '') + sentimentData.sentiment_score.toFixed(2)
+                                  : sentimentData.overall_score}
                               </div>
+                              {sentimentData.confidence !== undefined && (
+                                <div className="text-[10px] text-zinc-600">
+                                  confidence: {Math.round(sentimentData.confidence * 100)}%
+                                </div>
+                              )}
                             </div>
                           </div>
                           {sentimentData.summary && (

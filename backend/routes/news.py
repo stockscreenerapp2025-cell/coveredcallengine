@@ -260,133 +260,164 @@ class NewsItem(BaseModel):
     sentiment_score: Optional[float] = None  # raw MarketAux score (-1 to 1)
 
 
-POSITIVE_WORDS = [
-    'surge', 'soar', 'jump', 'rally', 'gain', 'rise', 'up', 'high', 'record', 'beat',
-    'exceed', 'strong', 'growth', 'profit', 'revenue', 'upgrade', 'buy', 'outperform',
-    'bullish', 'positive', 'boost', 'opportunity', 'success', 'increase', 'expand',
-    'target raised', 'price target', 'earnings beat', 'better than expected', 'breakout'
+# Sentiment keywords (Tier 2)
+POSITIVE_KEYWORDS = [
+    'upgrade', 'beats earnings', 'strong guidance', 'record revenue', 'growth',
+    'partnership', 'buyback', 'expansion', 'ai adoption', 'contract win',
+    'surge', 'soar', 'jump', 'rally', 'gain', 'outperform', 'profit',
+    'revenue beat', 'better than expected', 'breakout', 'price target raised',
+    'strong buy', 'record high', 'market share', 'dividend increase',
+]
+NEGATIVE_KEYWORDS = [
+    'downgrade', 'miss earnings', 'lawsuit', 'bankruptcy', 'investigation',
+    'recall', 'guidance cut', 'layoffs', 'regulation risk',
+    'fall', 'plunge', 'crash', 'loss', 'weak', 'miss', 'below expectations',
+    'disappointing', 'debt', 'fraud', 'warning', 'concern', 'underperform',
+    'sell rating', 'price target cut', 'market share loss',
 ]
 
-NEGATIVE_WORDS = [
-    'fall', 'drop', 'decline', 'plunge', 'crash', 'lose', 'loss', 'down', 'low',
-    'miss', 'weak', 'concern', 'risk', 'warning', 'cut', 'downgrade', 'sell',
-    'underperform', 'bearish', 'negative', 'lawsuit', 'investigation', 'fraud',
-    'layoff', 'miss', 'below', 'disappointing', 'worse than expected', 'debt'
-]
+
+def _sentiment_label(score: float) -> str:
+    if score >= 0.30:
+        return 'Positive'
+    if score <= -0.30:
+        return 'Negative'
+    return 'Neutral'
 
 
-def _keyword_sentiment(title: str, description: str) -> tuple:
-    """Simple keyword-based sentiment scoring. Returns (label, score 0-100)."""
-    text = (title + " " + (description or "")).lower()
-    pos = sum(1 for w in POSITIVE_WORDS if w in text)
-    neg = sum(1 for w in NEGATIVE_WORDS if w in text)
-    total = pos + neg
-    if total == 0:
-        return "Neutral", 50
-    ratio = pos / total
-    if ratio >= 0.6:
-        score = int(55 + ratio * 30)
-        return "Positive", min(score, 85)
-    elif ratio <= 0.4:
-        score = int(45 - (1 - ratio) * 30)
-        return "Negative", max(score, 15)
-    return "Neutral", 50
+def _score_to_display(score: float) -> int:
+    return max(0, min(100, int(50 + score * 50)))
 
 
-def _score_label(avg: float) -> str:
-    if avg >= 54:
-        return "Positive"
-    if avg <= 46:
-        return "Negative"
-    return "Neutral"
+def _marketaux_weighted_score(items) -> float:
+    import math as _m
+    weighted_sum, total_weight = 0.0, 0.0
+    for item in items:
+        if item.sentiment_score is None:
+            continue
+        raw = max(-1.0, min(1.0, float(item.sentiment_score)))
+        if raw >= 0.6:
+            mapped = 0.8
+        elif raw >= 0.2:
+            mapped = 0.5
+        elif raw >= -0.2:
+            mapped = 0.0
+        elif raw >= -0.6:
+            mapped = -0.5
+        else:
+            mapped = -0.8
+        weighted_sum += mapped
+        total_weight += 1.0
+    if total_weight == 0:
+        return 0.0
+    avg = weighted_sum / total_weight
+    volume_factor = _m.log(len(items) + 1) / _m.log(6)
+    return max(-1.0, min(1.0, avg * volume_factor + avg * (1 - volume_factor)))
 
 
-def _marketaux_to_score(raw: float) -> int:
-    """Convert MarketAux sentiment_score (-1..1) to 0-100 scale."""
-    return max(0, min(100, int(50 + raw * 50)))
+def _keyword_score(title: str, description: str) -> float:
+    text = (title + ' ' + (description or '')).lower()
+    score = 0.0
+    for kw in POSITIVE_KEYWORDS:
+        if kw in text:
+            score += 0.1
+    for kw in NEGATIVE_KEYWORDS:
+        if kw in text:
+            score -= 0.1
+    return max(-0.6, min(0.6, score))
 
 
-@news_router.post("/analyze-sentiment")
+@news_router.post('/analyze-sentiment')
 async def analyze_news_sentiment(
     news_items: List[NewsItem],
     user: dict = Depends(get_current_user)
 ):
-    """Analyze sentiment. Priority: MarketAux scores → keyword analysis → Gemini AI."""
-    import os, json, re
+    import os, json, re, math
 
     if not news_items:
-        return {"sentiments": [], "overall_sentiment": "Neutral", "overall_score": 50}
+        return {'sentiments': [], 'overall_sentiment': 'Neutral',
+                'sentiment_score': 0.0, 'overall_score': 50,
+                'confidence': 0.0, 'source': 'none'}
 
-    # ── Tier 1: use MarketAux sentiment scores already embedded in the news items ──
-    marketaux_items = [it for it in news_items[:5] if it.sentiment_score is not None]
-    if marketaux_items:
-        sentiments = []
-        scores = []
-        for i, item in enumerate(marketaux_items, 1):
-            score = _marketaux_to_score(item.sentiment_score)
-            label = _score_label(score)
-            sentiments.append({"index": i, "sentiment": label, "confidence": "High"})
-            scores.append(score)
-        avg_score = int(sum(scores) / len(scores))
-        return {
-            "sentiments": sentiments,
-            "overall_sentiment": _score_label(avg_score),
-            "overall_score": avg_score,
-        }
+    # Tier 1: MarketAux
+    ma_items = [it for it in news_items if it.sentiment_score is not None]
+    if ma_items:
+        score = _marketaux_weighted_score(ma_items)
+        label = _sentiment_label(score)
+        confidence = round(min(0.95, 0.5 + abs(score) * 0.5), 2)
+        per_article = []
+        for i, item in enumerate(ma_items[:5], 1):
+            art_raw = max(-1.0, min(1.0, float(item.sentiment_score)))
+            per_article.append({'index': i, 'sentiment': _sentiment_label(art_raw),
+                                 'score': round(art_raw, 2), 'confidence': 'High'})
+        return {'sentiments': per_article, 'overall_sentiment': label,
+                'sentiment_score': round(score, 2), 'overall_score': _score_to_display(score),
+                'confidence': confidence, 'source': 'MarketAux'}
 
-    # ── Tier 2: keyword analysis (no API key needed, always works) ──
     def _keyword_fallback(items):
-        sentiments, scores = [], []
+        scores, per_article = [], []
         for i, item in enumerate(items[:5], 1):
-            label, score = _keyword_sentiment(item.title, item.description or "")
-            sentiments.append({"index": i, "sentiment": label, "confidence": "Medium"})
-            scores.append(score)
-        if not scores:
-            return {"sentiments": [], "overall_sentiment": "Neutral", "overall_score": 50}
-        most_bullish, most_bearish = max(scores), min(scores)
-        extreme = most_bullish if abs(most_bullish - 50) >= abs(most_bearish - 50) else most_bearish
-        avg = int(sum(scores + [extreme, extreme]) / (len(scores) + 2))
-        return {"sentiments": sentiments, "overall_sentiment": _score_label(avg), "overall_score": avg}
+            s = _keyword_score(item.title, item.description or '')
+            scores.append(s)
+            per_article.append({'index': i, 'sentiment': _sentiment_label(s),
+                                 'score': round(s, 2), 'confidence': 'Medium'})
+        avg = (sum(scores) / len(scores)) if scores else 0.0
+        avg = max(-0.6, min(0.6, avg))
+        return {'sentiments': per_article, 'overall_sentiment': _sentiment_label(avg),
+                'sentiment_score': round(avg, 2), 'overall_score': _score_to_display(avg),
+                'confidence': round(0.3 + abs(avg) * 0.3, 2), 'source': 'Keyword'}
 
-    gemini_key = os.environ.get("GEMINI_API_KEY")
+    gemini_key = os.environ.get('GEMINI_API_KEY')
     if not gemini_key:
         return _keyword_fallback(news_items)
 
-    # ── Tier 3: Gemini AI (best quality, optional) ──
+    # Tier 3: Gemini (only when keyword signal is weak)
+    kw_scores = [_keyword_score(it.title, it.description or '') for it in news_items[:5]]
+    kw_avg = sum(kw_scores) / len(kw_scores) if kw_scores else 0.0
+    if abs(kw_avg) >= 0.2:
+        return _keyword_fallback(news_items)
+
     try:
-        news_text = "".join(
+        news_text = ''.join(
             f"{i}. {item.title}\n{(item.description or '')[:200]}\n\n"
             for i, item in enumerate(news_items[:5], 1)
         )
         prompt = (
-            "You are a financial sentiment analyst. Analyze these news articles and respond in JSON ONLY:\n"
-            '{"articles":[{"index":1,"sentiment":"Positive","confidence":"High"}],'
-            '"overall_sentiment":"Positive","overall_score":65,'
-            '"summary":"one sentence"}\n\n'
-            "Use only these sentiment labels: Positive, Neutral, Negative\n"
-            "Score scale: 0-30=Very Negative, 31-45=Negative, 46-55=Neutral, 56-70=Positive, 71-100=Very Positive\n\n"
+            'You are a financial sentiment analyst. Analyze these headlines.\n'
+            'Respond in JSON ONLY (no markdown):\n'
+            '{"articles":[{"index":1,"sentiment":"Positive","confidence_score":0.8}],'
+            '"overall_sentiment":"Positive","overall_score":0.62,"summary":"one sentence"}\n\n'
+            'sentiment: Positive | Neutral | Negative\n'
+            'overall_score: -1.0 to +1.0\n\n'
             + news_text
         )
         async with httpx.AsyncClient(timeout=20) as client:
             resp = await client.post(
                 f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={gemini_key}",
-                headers={"Content-Type": "application/json"},
-                json={"contents": [{"role": "user", "parts": [{"text": prompt}]}],
-                      "generationConfig": {"temperature": 0.3, "maxOutputTokens": 400}},
+                headers={'Content-Type': 'application/json'},
+                json={'contents': [{'role': 'user', 'parts': [{'text': prompt}]}],
+                      'generationConfig': {'temperature': 0.2, 'maxOutputTokens': 400}},
             )
         if resp.status_code == 200:
-            text = resp.json()["candidates"][0]["content"]["parts"][0]["text"]
+            text = resp.json()['candidates'][0]['content']['parts'][0]['text']
             m = re.search(r'\{[\s\S]*\}', text)
             if m:
                 result = json.loads(m.group())
-                return {
-                    "sentiments": result.get("articles", []),
-                    "overall_sentiment": result.get("overall_sentiment", "Neutral"),
-                    "overall_score": result.get("overall_score", 50),
-                    "summary": result.get("summary", ""),
-                }
-        logging.warning(f"Gemini fallback triggered: status={resp.status_code}")
+                raw = float(result.get('overall_score', 0))
+                raw = max(-1.0, min(1.0, raw))
+                per_article = []
+                for art in result.get('articles', []):
+                    conf = float(art.get('confidence_score', 0.7))
+                    lbl = art.get('sentiment', 'Neutral')
+                    gem_s = (0.6 * conf) if lbl == 'Positive' else (-0.6 * conf if lbl == 'Negative' else 0.0)
+                    per_article.append({'index': art.get('index'), 'sentiment': lbl,
+                                        'score': round(gem_s, 2), 'confidence': round(conf, 2)})
+                return {'sentiments': per_article, 'overall_sentiment': _sentiment_label(raw),
+                        'sentiment_score': round(raw, 2), 'overall_score': _score_to_display(raw),
+                        'confidence': round(min(0.9, 0.5 + abs(raw) * 0.4), 2),
+                        'source': 'Gemini', 'summary': result.get('summary', '')}
+        logging.warning(f'Gemini sentiment fallback: status={resp.status_code}')
     except Exception as e:
-        logging.error(f"Gemini sentiment error: {e}")
+        logging.error(f'Gemini sentiment error: {e}')
 
     return _keyword_fallback(news_items)
