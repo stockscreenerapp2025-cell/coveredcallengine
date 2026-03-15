@@ -42,6 +42,7 @@ import {
   Brain,
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
   Search,
   Filter,
   Clock,
