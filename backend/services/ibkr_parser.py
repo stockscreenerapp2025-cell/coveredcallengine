@@ -186,8 +186,107 @@ class IBKRParser:
                 logger.warning(f"Error parsing activity line: {e}")
                 continue
 
+        # Also parse Corporate Actions section for expiry / assignment events
+        corp_header = None
+        for line in lines:
+            if line.startswith('Corporate Actions,Header,'):
+                reader = csv.reader([line])
+                for row in reader:
+                    corp_header = row[2:]
+                break
+
+        if corp_header:
+            for line in lines:
+                if not line.startswith('Corporate Actions,Data,'):
+                    continue
+                try:
+                    reader = csv.reader([line])
+                    for parts in reader:
+                        if len(parts) < len(corp_header) + 2:
+                            continue
+                        data_values = parts[2:]
+                        row = {corp_header[i].strip(): data_values[i].strip()
+                               for i in range(len(corp_header)) if i < len(data_values)}
+                        asset_cat = row.get('Asset Category', '')
+                        if asset_cat not in ('Equity and Index Options', 'Options', 'Equity Options'):
+                            continue
+                        desc = row.get('Description', '') or row.get('Action Description', '')
+                        desc_lower = desc.lower()
+                        if 'expir' in desc_lower:
+                            corp_type = 'Expiry'
+                        elif 'assign' in desc_lower:
+                            corp_type = 'Assignment'
+                        else:
+                            continue
+                        parsed = self._parse_corporate_action_row(row, account_num, corp_type)
+                        if parsed:
+                            raw_transactions.append(parsed)
+                except Exception as e:
+                    logger.warning(f"Error parsing corporate action line: {e}")
+                    continue
+
         logger.info(f"Activity Statement parser found {len(raw_transactions)} transactions")
         return raw_transactions
+
+    def _parse_corporate_action_row(self, row: Dict, account: str, corp_type: str) -> Optional[Dict]:
+        """Parse a Corporate Actions row (expiry or assignment) into unified transaction format"""
+        try:
+            # IBKR Corporate Actions use 'Description' field which contains the option symbol
+            # e.g. "IREN  251107C00077000(Expired 2025-11-07)" or just the raw symbol
+            desc = row.get('Description', '').strip()
+            if not desc:
+                return None
+
+            # Extract symbol from description — it's typically the option symbol at the start
+            # e.g. "IREN  251107C00077000(Expired...)" → take the option part before "("
+            raw_symbol = desc.split('(')[0].strip()
+            if not raw_symbol:
+                return None
+
+            date_str = row.get('Date/Time', '') or row.get('Report Date', '') or row.get('Date', '')
+            date_str = date_str.strip()
+            if not date_str:
+                return None
+            date_only = date_str.split(',')[0].strip()
+            try:
+                trade_date = datetime.strptime(date_only, '%Y-%m-%d')
+            except ValueError:
+                try:
+                    trade_date = datetime.strptime(date_only, '%m/%d/%Y')
+                except ValueError:
+                    return None
+
+            quantity = self._parse_number(row.get('Quantity', '0'))
+            proceeds = self._parse_number(row.get('Proceeds', '0'))
+
+            option_details = self._parse_option_symbol(raw_symbol)
+            underlying_symbol = option_details['underlying'] if option_details else raw_symbol
+
+            import hashlib
+            unique_key = f"{account}-{date_only}-{raw_symbol}-{corp_type}-{quantity}"
+            tx_id = hashlib.md5(unique_key.encode()).hexdigest()[:16]
+
+            return {
+                'id': tx_id,
+                'date': trade_date.strftime('%Y-%m-%d'),
+                'datetime': trade_date.isoformat(),
+                'account': account,
+                'description': corp_type,
+                'transaction_type': corp_type,
+                'symbol': raw_symbol,
+                'underlying_symbol': underlying_symbol,
+                'is_option': True,
+                'option_details': option_details,
+                'quantity': quantity,
+                'price': 0.0,
+                'gross_amount': proceeds,
+                'commission': 0.0,
+                'net_amount': proceeds,
+                'currency': row.get('Currency', 'USD').strip() or 'USD',
+            }
+        except Exception as e:
+            logger.warning(f"Error parsing corporate action row: {e}")
+            return None
 
     def _parse_activity_row(self, row: Dict, account: str) -> Optional[Dict]:
         """Parse one Activity Statement Trades row into unified transaction format"""
@@ -217,7 +316,18 @@ class IBKRParser:
 
             asset_cat = row.get('Asset Category', '')
             is_option = asset_cat in ('Equity and Index Options', 'Options', 'Equity Options')
-            transaction_type = 'Buy' if quantity > 0 else 'Sell'
+
+            # Detect expiry / assignment from IBKR Code column (e.g. "EP", "C;EP", "A", "C;A")
+            code = row.get('Code', '')
+            codes = {c.strip() for c in code.split(';')}
+            if is_option and 'EP' in codes:
+                transaction_type = 'Expiry'
+            elif 'A' in codes and is_option:
+                transaction_type = 'Assignment'
+            elif 'A' in codes and not is_option:
+                transaction_type = 'Assignment'  # stock delivery from call/put assignment
+            else:
+                transaction_type = 'Buy' if quantity > 0 else 'Sell'
 
             option_details = None
             underlying_symbol = symbol
