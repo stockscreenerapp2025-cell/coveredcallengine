@@ -1119,8 +1119,10 @@ class LifecycleEngine:
         from datetime import date as _date
         today = _date.today()
 
-        # Infer expired short calls
-        for opt in list(self._open_calls.values()):
+        # Infer expired short calls (CC cycles) — self.options holds all positions
+        for opt in list(self.options.values()):
+            if opt.opt_type != "CALL" or opt.side != "SELL" or opt.status != "OPEN":
+                continue
             if not opt.expiry:
                 continue
             try:
@@ -1131,10 +1133,14 @@ class LifecycleEngine:
                 opt.status = "EXPIRED"
                 opt.close_date = opt.expiry
                 opt.close_premium = 0.0
-                self._open_calls.pop(opt.option_id, None)
                 # Release covered shares back to uncovered
                 self._release_shares_for_option(opt)
                 self._update_cycle_coverage_status(opt.linked_cycle_ids)
+                # Update PMCC cycle if this was a PMCC short call
+                for pmcc in self.pmcc_cycles.values():
+                    if pmcc.active_short_call_id == opt.option_id:
+                        pmcc.active_short_call_id = None
+                        pmcc.status = "Open - Waiting to Resell"
 
         # Infer expired short puts
         for opt in list(self._open_puts.values()):
@@ -1155,26 +1161,6 @@ class LifecycleEngine:
                         cycle.status = "Closed by Share Sale"
                         cycle.closed_date = opt.expiry
                         cycle.realized_pnl += cycle.total_premium_received - cycle.total_premium_paid
-
-        # Infer expired PMCC short calls
-        for pmcc in self.pmcc_cycles.values():
-            if not pmcc.active_short_call_id:
-                continue
-            sc = self._option_positions.get(pmcc.active_short_call_id)
-            if not sc or sc.status != "OPEN":
-                continue
-            if not sc.expiry:
-                continue
-            try:
-                exp_date = datetime.strptime(sc.expiry, "%Y-%m-%d").date()
-            except ValueError:
-                continue
-            if exp_date < today:
-                sc.status = "EXPIRED"
-                sc.close_date = sc.expiry
-                sc.close_premium = 0.0
-                pmcc.active_short_call_id = None
-                pmcc.status = "Open - Waiting to Resell"
 
     def _recalculate_cycle_costs(self, cycle: TradeCycle):
         """Recompute avg_cost and effective_avg_cost from lots."""
