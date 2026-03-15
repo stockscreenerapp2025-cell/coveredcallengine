@@ -133,10 +133,15 @@ const Admin = () => {
   const [actionTypes, setActionTypes] = useState([]);
   const [broadcastData, setBroadcastData] = useState({
     template_key: 'announcement',
+    subject_override: '',
     announcement_title: '',
-    announcement_content: ''
+    announcement_content: '',
+    update_title: '',
+    update_content: '',
+    recipient_filter: 'all'
   });
   const [sendingBroadcast, setSendingBroadcast] = useState(false);
+  const [broadcastPreviewCount, setBroadcastPreviewCount] = useState(null);
   // IMAP Email Sync
   const [imapSettings, setImapSettings] = useState({
     imap_server: 'imap.hostinger.com',
@@ -425,21 +430,37 @@ const Admin = () => {
     }
   };
   const handleSendBroadcast = async () => {
-    if (!broadcastData.announcement_title || !broadcastData.announcement_content) {
-      toast.error('Please fill in title and content');
+    const tk = broadcastData.template_key;
+    if (tk === 'announcement' && (!broadcastData.announcement_title || !broadcastData.announcement_content)) {
+      toast.error('Please fill in announcement title and content');
       return;
     }
+    if (tk === 'system_update' && (!broadcastData.update_title || !broadcastData.update_content)) {
+      toast.error('Please fill in update title and content');
+      return;
+    }
+    if (!window.confirm(`Send "${tk}" email to ${broadcastPreviewCount ?? 'all'} users?\n\nThis cannot be undone.`)) return;
     setSendingBroadcast(true);
     try {
-      const response = await api.post('/admin/email-automation/broadcast', null, {
-        params: {
-          template_key: broadcastData.template_key,
-          announcement_title: broadcastData.announcement_title,
-          announcement_content: broadcastData.announcement_content
-        }
-      });
-      toast.success(`Broadcast sent to ${response.data.sent} users`);
-      setBroadcastData({ template_key: 'announcement', announcement_title: '', announcement_content: '' });
+      const filterMap = {
+        all: null,
+        trialing: JSON.stringify({ subscription_status: 'trialing' }),
+        active: JSON.stringify({ subscription_status: 'active' }),
+        expired: JSON.stringify({ subscription_status: 'expired' })
+      };
+      const params = {
+        template_key: tk,
+        ...(broadcastData.subject_override && { subject_override: broadcastData.subject_override }),
+        ...(broadcastData.announcement_title && { announcement_title: broadcastData.announcement_title }),
+        ...(broadcastData.announcement_content && { announcement_content: broadcastData.announcement_content }),
+        ...(broadcastData.update_title && { update_title: broadcastData.update_title }),
+        ...(broadcastData.update_content && { update_content: broadcastData.update_content }),
+        ...(filterMap[broadcastData.recipient_filter] && { recipient_filter: filterMap[broadcastData.recipient_filter] })
+      };
+      const response = await api.post('/admin/email-automation/broadcast', null, { params });
+      toast.success(`Broadcast sent to ${response.data.sent} / ${response.data.total} users (${response.data.failed} failed)`);
+      setBroadcastData({ template_key: 'announcement', subject_override: '', announcement_title: '', announcement_content: '', update_title: '', update_content: '', recipient_filter: 'all' });
+      setBroadcastPreviewCount(null);
       fetchEmailLogs();
       fetchEmailStats();
     } catch (error) {
@@ -1825,7 +1846,7 @@ const Admin = () => {
             <TabsList className="bg-zinc-800/50">
               <TabsTrigger value="templates">Templates</TabsTrigger>
               <TabsTrigger value="rules">Automation Rules</TabsTrigger>
-              <TabsTrigger value="broadcast">Broadcast</TabsTrigger>
+              <TabsTrigger value="broadcast" onClick={async () => { try { const r = await api.get('/admin/users', { params: { limit: 1 } }); setBroadcastPreviewCount(r.data.total ?? null); } catch {} }}>Broadcast</TabsTrigger>
               <TabsTrigger value="logs">Logs</TabsTrigger>
             </TabsList>
             {/* Templates */}
@@ -1916,31 +1937,141 @@ const Admin = () => {
             <TabsContent value="broadcast" className="mt-4">
               <Card className="glass-card">
                 <CardHeader>
-                  <CardTitle className="text-lg">Send Broadcast</CardTitle>
-                  <CardDescription>Send an announcement to all active users</CardDescription>
+                  <CardTitle className="text-lg">Manual Broadcast</CardTitle>
+                  <CardDescription>Select any template and send to your subscribers</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
+                  {/* Template selector */}
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <Label>Email Template</Label>
+                      <select
+                        value={broadcastData.template_key}
+                        onChange={(e) => setBroadcastData(d => ({ ...d, template_key: e.target.value }))}
+                        className="w-full mt-1 px-3 py-2 rounded-lg bg-zinc-800/50 border border-zinc-700 text-white focus:outline-none focus:border-violet-500"
+                      >
+                        {emailTemplates.length > 0 ? emailTemplates.map(t => (
+                          <option key={t.key || t.template_key} value={t.key || t.template_key}>
+                            {t.name || t.key || t.template_key}
+                          </option>
+                        )) : (
+                          <>
+                            <option value="announcement">Announcement</option>
+                            <option value="system_update">System Update</option>
+                            <option value="welcome">Welcome – Free Trial</option>
+                            <option value="getting_started">Getting Started</option>
+                            <option value="feature_highlight">Feature Highlight – Scanner</option>
+                            <option value="trial_checkin">Trial Check-in</option>
+                            <option value="trial_expiry_reminder">Trial Expiry Reminder</option>
+                            <option value="trial_expired">Trial Expired</option>
+                          </>
+                        )}
+                      </select>
+                    </div>
+                    <div>
+                      <Label>Send To</Label>
+                      <select
+                        value={broadcastData.recipient_filter}
+                        onChange={async (e) => {
+                          const val = e.target.value;
+                          setBroadcastData(d => ({ ...d, recipient_filter: val }));
+                          try {
+                            const params = { limit: 1 };
+                            if (val !== 'all') params.status = val;
+                            const res = await api.get('/admin/users', { params });
+                            setBroadcastPreviewCount(res.data.total ?? null);
+                          } catch { setBroadcastPreviewCount(null); }
+                        }}
+                        className="w-full mt-1 px-3 py-2 rounded-lg bg-zinc-800/50 border border-zinc-700 text-white focus:outline-none focus:border-violet-500"
+                      >
+                        <option value="all">All Users</option>
+                        <option value="trialing">Trialing Only</option>
+                        <option value="active">Active Subscribers Only</option>
+                        <option value="expired">Expired / Churned</option>
+                      </select>
+                      {broadcastPreviewCount !== null && (
+                        <p className="text-xs text-zinc-400 mt-1">{broadcastPreviewCount} recipients</p>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Optional subject override */}
                   <div>
-                    <Label>Announcement Title</Label>
+                    <Label>Subject Override <span className="text-zinc-500 text-xs">(optional — leave blank to use template default)</span></Label>
                     <Input
-                      value={broadcastData.announcement_title}
-                      onChange={(e) => setBroadcastData(d => ({ ...d, announcement_title: e.target.value }))}
+                      value={broadcastData.subject_override}
+                      onChange={(e) => setBroadcastData(d => ({ ...d, subject_override: e.target.value }))}
                       className="input-dark mt-1"
-                      placeholder="New Feature Announcement"
+                      placeholder="e.g. Important update from CoveredCallEngine"
                     />
                   </div>
-                  <div>
-                    <Label>Content</Label>
-                    <textarea
-                      value={broadcastData.announcement_content}
-                      onChange={(e) => setBroadcastData(d => ({ ...d, announcement_content: e.target.value }))}
-                      className="w-full h-32 mt-1 px-3 py-2 rounded-lg bg-zinc-800/50 border border-zinc-700 text-white resize-none focus:outline-none focus:border-emerald-500"
-                      placeholder="We're excited to announce..."
-                    />
-                  </div>
-                  <Button onClick={handleSendBroadcast} disabled={sendingBroadcast} className="bg-violet-600 hover:bg-violet-700">
-                    {sendingBroadcast ? <RefreshCw className="w-4 h-4 mr-2 animate-spin" /> : <Mail className="w-4 h-4 mr-2" />}
-                    Send Broadcast
+
+                  {/* Announcement fields */}
+                  {broadcastData.template_key === 'announcement' && (
+                    <>
+                      <div>
+                        <Label>Announcement Title <span className="text-red-400">*</span></Label>
+                        <Input
+                          value={broadcastData.announcement_title}
+                          onChange={(e) => setBroadcastData(d => ({ ...d, announcement_title: e.target.value }))}
+                          className="input-dark mt-1"
+                          placeholder="New Feature Announcement"
+                        />
+                      </div>
+                      <div>
+                        <Label>Announcement Content <span className="text-red-400">*</span></Label>
+                        <textarea
+                          value={broadcastData.announcement_content}
+                          onChange={(e) => setBroadcastData(d => ({ ...d, announcement_content: e.target.value }))}
+                          className="w-full h-32 mt-1 px-3 py-2 rounded-lg bg-zinc-800/50 border border-zinc-700 text-white resize-none focus:outline-none focus:border-violet-500"
+                          placeholder="We're excited to announce..."
+                        />
+                      </div>
+                    </>
+                  )}
+
+                  {/* System Update fields */}
+                  {broadcastData.template_key === 'system_update' && (
+                    <>
+                      <div>
+                        <Label>Update Title <span className="text-red-400">*</span></Label>
+                        <Input
+                          value={broadcastData.update_title}
+                          onChange={(e) => setBroadcastData(d => ({ ...d, update_title: e.target.value }))}
+                          className="input-dark mt-1"
+                          placeholder="Platform Maintenance — Sunday 2am UTC"
+                        />
+                      </div>
+                      <div>
+                        <Label>Update Details <span className="text-red-400">*</span></Label>
+                        <textarea
+                          value={broadcastData.update_content}
+                          onChange={(e) => setBroadcastData(d => ({ ...d, update_content: e.target.value }))}
+                          className="w-full h-32 mt-1 px-3 py-2 rounded-lg bg-zinc-800/50 border border-zinc-700 text-white resize-none focus:outline-none focus:border-violet-500"
+                          placeholder="We will be performing scheduled maintenance..."
+                        />
+                      </div>
+                    </>
+                  )}
+
+                  {/* Info box for auto-sequence templates */}
+                  {!['announcement', 'system_update'].includes(broadcastData.template_key) && (
+                    <div className="p-3 rounded-lg bg-amber-500/10 border border-amber-500/30">
+                      <p className="text-xs text-amber-400">
+                        This template is part of the automated onboarding sequence. Sending it manually will deliver it immediately using each recipient's existing account data (name, trial dates, etc.).
+                      </p>
+                    </div>
+                  )}
+
+                  <Button
+                    onClick={handleSendBroadcast}
+                    disabled={sendingBroadcast}
+                    className="bg-violet-600 hover:bg-violet-700 w-full"
+                  >
+                    {sendingBroadcast
+                      ? <><RefreshCw className="w-4 h-4 mr-2 animate-spin" />Sending...</>
+                      : <><Mail className="w-4 h-4 mr-2" />Send to {broadcastPreviewCount ?? 'All'} Users</>
+                    }
                   </Button>
                 </CardContent>
               </Card>

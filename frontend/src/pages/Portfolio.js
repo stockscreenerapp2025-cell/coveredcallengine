@@ -1302,6 +1302,7 @@ const Portfolio = () => {
                 </div>
               );
             })()
+          ) : (
             <>
               <div className="overflow-x-auto">
                 <Table>
