@@ -593,10 +593,12 @@ async def get_lifecycles(
     if not raw_txns:
         return {"lifecycles": {}, "summary": {"total_premium_received": 0, "realized_pnl": 0, "unrealized_pnl": 0, "open_cycles": 0, "closed_cycles": 0}}
 
-    # Group by symbol
+    # Group by underlying symbol (so stock + option transactions are together)
     by_symbol = {}
     for tx in raw_txns:
-        sym = tx.get("symbol", "")
+        sym = tx.get("underlying_symbol") or tx.get("symbol", "")
+        if not sym:
+            continue
         if sym not in by_symbol:
             by_symbol[sym] = []
         by_symbol[sym].append(tx)
@@ -631,7 +633,7 @@ async def get_lifecycles_for_symbol(
     """Run lifecycle engine for a single symbol."""
     from services.lifecycle_engine import LifecycleEngine
 
-    query = {"user_id": user["id"], "symbol": symbol.upper()}
+    query = {"user_id": user["id"], "underlying_symbol": symbol.upper()}
     if account:
         query["account"] = account
 
