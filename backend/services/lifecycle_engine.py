@@ -242,6 +242,7 @@ class LifecycleEngine:
                     exc_info=True,
                 )
 
+        self._infer_expired_options()
         self._recalculate_all_cycles()
         return self._build_output(symbol)
 
@@ -1108,6 +1109,72 @@ class LifecycleEngine:
                 cycle.status = "Open - Partial Coverage"
             else:
                 cycle.status = "Open - Covered Call Active"
+
+    def _infer_expired_options(self):
+        """
+        IBKR Activity Statements don't export zero-value expiry rows.
+        Any short option still marked OPEN whose expiry date is in the past
+        is assumed to have expired worthless — apply expiry logic now.
+        """
+        from datetime import date as _date
+        today = _date.today()
+
+        # Infer expired short calls
+        for opt in list(self._open_calls.values()):
+            if not opt.expiry:
+                continue
+            try:
+                exp_date = datetime.strptime(opt.expiry, "%Y-%m-%d").date()
+            except ValueError:
+                continue
+            if exp_date < today:
+                opt.status = "EXPIRED"
+                opt.close_date = opt.expiry
+                opt.close_premium = 0.0
+                self._open_calls.pop(opt.option_id, None)
+                # Release covered shares back to uncovered
+                self._release_shares_for_option(opt)
+                self._update_cycle_coverage_status(opt.linked_cycle_ids)
+
+        # Infer expired short puts
+        for opt in list(self._open_puts.values()):
+            if not opt.expiry:
+                continue
+            try:
+                exp_date = datetime.strptime(opt.expiry, "%Y-%m-%d").date()
+            except ValueError:
+                continue
+            if exp_date < today:
+                opt.status = "EXPIRED"
+                opt.close_date = opt.expiry
+                opt.close_premium = 0.0
+                self._open_puts.pop(opt.option_id, None)
+                for cycle_id in opt.linked_cycle_ids:
+                    cycle = self.cycles.get(cycle_id)
+                    if cycle and not cycle.lots:
+                        cycle.status = "Closed by Share Sale"
+                        cycle.closed_date = opt.expiry
+                        cycle.realized_pnl += cycle.total_premium_received - cycle.total_premium_paid
+
+        # Infer expired PMCC short calls
+        for pmcc in self.pmcc_cycles.values():
+            if not pmcc.active_short_call_id:
+                continue
+            sc = self._option_positions.get(pmcc.active_short_call_id)
+            if not sc or sc.status != "OPEN":
+                continue
+            if not sc.expiry:
+                continue
+            try:
+                exp_date = datetime.strptime(sc.expiry, "%Y-%m-%d").date()
+            except ValueError:
+                continue
+            if exp_date < today:
+                sc.status = "EXPIRED"
+                sc.close_date = sc.expiry
+                sc.close_premium = 0.0
+                pmcc.active_short_call_id = None
+                pmcc.status = "Open - Waiting to Resell"
 
     def _recalculate_cycle_costs(self, cycle: TradeCycle):
         """Recompute avg_cost and effective_avg_cost from lots."""
