@@ -335,7 +335,7 @@ class LifecycleEngine:
             "id": txn.get("id", _uid()),
             "date": date_str,
             "datetime": txn.get("datetime", date_str),
-            "symbol": txn.get("symbol", symbol),
+            "symbol": txn.get("underlying_symbol") or txn.get("symbol", symbol),
             "quantity": quantity,
             "price": txn.get("price", 0.0),
             "net_amount": txn.get("net_amount", 0.0),
