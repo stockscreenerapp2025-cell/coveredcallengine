@@ -429,6 +429,18 @@ class LifecycleEngine:
         if event_type is None:
             return None
 
+        # Normalise contracts count into option_details.
+        # Activity Statement: qty in contracts (e.g. -5 = 5 contracts)
+        # Flex Report:        qty in shares   (e.g. -500 = 5 contracts)
+        if is_option and opt is not None and "contracts" not in opt:
+            raw_qty = abs(quantity)
+            if raw_qty >= 100 and raw_qty % 100 == 0:
+                contracts_count = raw_qty // 100   # Flex Report
+            else:
+                contracts_count = raw_qty or 1     # Activity Statement
+            opt = dict(opt)
+            opt["contracts"] = contracts_count
+
         return {
             "event_type": event_type,
             "id": txn.get("id", _uid()),
