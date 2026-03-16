@@ -1480,11 +1480,16 @@ class LifecycleEngine:
             if c.symbol != symbol:
                 continue
             d = asdict(c)
-            # Effective cost = avg cost minus net premium per share (customer spec)
+            # Compute avg_cost from total_stock_cost when not set (e.g. CSP/Wheel closed cycles)
+            avg_cost = c.avg_cost
             ref_shares = c.shares_current if c.shares_current > 0 else c.total_shares_entered
-            if ref_shares > 0 and c.avg_cost > 0:
+            if avg_cost == 0 and ref_shares > 0 and c.total_stock_cost > 0:
+                avg_cost = c.total_stock_cost / ref_shares
+                d['avg_cost'] = round(avg_cost, 2)
+            # Effective cost = avg cost minus net premium per share (customer spec)
+            if ref_shares > 0 and avg_cost > 0:
                 net_prem = c.total_premium_received - c.total_premium_paid
-                d['effective_avg_cost'] = round(c.avg_cost - (net_prem / ref_shares), 2)
+                d['effective_avg_cost'] = round(avg_cost - (net_prem / ref_shares), 2)
             # Realized P&L: add net premium from all EXPIRED / BOUGHT_BACK calls and puts
             option_pnl = 0.0
             for opt_id in c.short_calls:
