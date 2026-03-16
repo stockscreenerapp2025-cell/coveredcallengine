@@ -578,9 +578,34 @@ class LifecycleEngine:
         date_str = event["date"]
 
         open_lots = self._get_open_lots(symbol)
+
+        # If no uncovered shares (all covered by calls) — this is a call assignment.
+        # Release the covering call(s) first so the shares become sellable.
         if not open_lots:
-            logger.warning("SELL_STOCK: no open lots for %s", symbol)
-            return
+            covered_lots = sorted(
+                [l for l in self.lots.values() if l.symbol == symbol and l.shares_open > 0],
+                key=lambda l: l.open_date,
+            )
+            if not covered_lots:
+                logger.warning("SELL_STOCK: no open lots for %s", symbol)
+                return
+            # Find and mark covering calls as ASSIGNED, then release the shares
+            covering_calls = [
+                op for op in self.options.values()
+                if op.symbol == symbol and op.opt_type == "CALL" and op.status == "OPEN"
+            ]
+            for op in covering_calls:
+                op.status = "ASSIGNED"
+                op.close_date = date_str
+                self._release_shares_for_option(op)
+                for cid in op.linked_cycle_ids:
+                    # Premium was already booked at open — no additional credit
+                    pass
+                self._update_cycle_coverage_status(op.linked_cycle_ids)
+            open_lots = self._get_open_lots(symbol)
+            if not open_lots:
+                logger.warning("SELL_STOCK: still no open lots for %s after call release", symbol)
+                return
 
         remaining = shares_to_sell
         for lot in open_lots:
@@ -596,7 +621,7 @@ class LifecycleEngine:
                 cycle.realized_pnl += realized
                 cycle.shares_current = max(0, cycle.shares_current - allocated)
                 if cycle.shares_current == 0:
-                    cycle.status = "Closed by Share Sale"
+                    cycle.status = "Closed by Assignment"
                     cycle.closed_date = date_str
 
     def _handle_sell_call(self, event: dict):
