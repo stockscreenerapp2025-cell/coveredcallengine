@@ -1481,9 +1481,10 @@ class LifecycleEngine:
                 continue
             d = asdict(c)
             # Effective cost = avg cost minus net premium per share (customer spec)
-            if c.shares_current > 0 and c.avg_cost > 0:
+            ref_shares = c.shares_current if c.shares_current > 0 else c.total_shares_entered
+            if ref_shares > 0 and c.avg_cost > 0:
                 net_prem = c.total_premium_received - c.total_premium_paid
-                d['effective_avg_cost'] = round(c.avg_cost - (net_prem / c.shares_current), 2)
+                d['effective_avg_cost'] = round(c.avg_cost - (net_prem / ref_shares), 2)
             # Realized P&L: add net premium from all EXPIRED / BOUGHT_BACK calls and puts
             option_pnl = 0.0
             for opt_id in c.short_calls:
