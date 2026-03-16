@@ -315,7 +315,12 @@ class LifecycleEngine:
             total_gross = sum(t.get("gross_amount", 0) for t in group)
             total_net = sum(t.get("net_amount", 0) for t in group)
             total_commission = sum(t.get("commission", 0) for t in group)
-            avg_price = abs(total_gross / total_qty) if total_qty != 0 else txn.get("price", 0)
+            if is_option:
+                # Options: price is per-share (e.g. $2.05), keep it as-is
+                avg_price = txn.get("price", 0)
+            else:
+                # Stocks: price is per-share, quantity is in shares
+                avg_price = abs(total_gross / total_qty) if total_qty != 0 else txn.get("price", 0)
 
             mtxn = dict(txn)
             mtxn["quantity"] = total_qty
