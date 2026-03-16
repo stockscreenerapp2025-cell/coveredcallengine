@@ -1558,15 +1558,15 @@ async def screen_pmcc(
                         # Estimate delta based on moneyness (no actual delta from Yahoo)
                         # For deep ITM calls, delta approaches 1.0 as strike goes deeper
                         moneyness = (current_price - strike) / current_price  # % ITM (0.1 = 10% ITM)
-                        # Delta estimation: starts at 0.70 for 10% ITM, approaches 0.92 for 50%+ ITM
-                        opt_delta = min(0.92, 0.70 + moneyness * 0.5)
+                        # Delta estimation: starts at 0.70 for 10% ITM, caps at 0.85 for very deep ITM
+                        opt_delta = min(0.85, 0.70 + moneyness * 0.5)
                         opt_delta = round(opt_delta, 2)
 
-                        # Reject if estimated delta exceeds max_leaps_delta or is too close to 1.0
-                        if opt_delta > min(max_leaps_delta, 0.92):
+                        # Reject if estimated delta exceeds the hard cap of 0.85
+                        if opt_delta >= 0.85:
                             continue
 
-                        if min_leaps_delta <= opt_delta <= max_leaps_delta:
+                        if min_leaps_delta <= opt_delta <= min(max_leaps_delta, 0.84):
                             opt["delta"] = opt_delta
                             opt["cost"] = premium * 100
                             opt["open_interest"] = open_interest
@@ -1631,13 +1631,18 @@ async def screen_pmcc(
                         for short in top_shorts:
                             if leaps["cost"] <= 0:
                                 continue
-                                
+
+                            # Hard delta cap: LEAPS delta must not exceed 0.85 (rejects δ1.00 deep ITM)
+                            if leaps.get("delta", 0) > 0.85:
+                                continue
+
                             net_debit = leaps["cost"] - short["premium"]
-                            
+
                             if net_debit <= 0:
                                 continue
-                            
-                            roi_per_cycle = (short["premium"] / leaps["cost"]) * 100
+
+                            # ROI based on net_debit (capital at risk), not LEAPS cost alone
+                            roi_per_cycle = (short["premium"] / net_debit) * 100
                             cycles_per_year = 365 / max(short.get("dte", 30), 7)
                             annualized_roi = roi_per_cycle * min(cycles_per_year, 52)
                             
@@ -1681,7 +1686,7 @@ async def screen_pmcc(
                                     long_oi=leaps.get("open_interest", 0),
                                     long_iv=leaps.get("implied_volatility", 0),
                                     short_strike=short.get("strike", 0),
-                                    short_bid=short.get("bid", short.get("premium", 0)),
+                                    short_bid=short.get("bid", short.get("premium", 0) / 100),
                                     short_delta=short["delta"],
                                     short_dte=short.get("dte", 30),
                                     short_oi=short.get("open_interest", 0),
@@ -1690,8 +1695,15 @@ async def screen_pmcc(
                                 if _reject:
                                     rejected_symbols.append({"symbol": symbol, "reason": _reject})
                                     continue
-                            except Exception:
-                                pass  # If scoring fails, don't block the result
+                                # Fallback cap_eff check in case hard_reject doesn't catch it
+                                cap_eff = _metrics.get("cap_eff", 0) if isinstance(_metrics, dict) else getattr(_metrics, "cap_eff", 0)
+                                if cap_eff > 0 and cap_eff < 1.08:
+                                    rejected_symbols.append({"symbol": symbol, "reason": f"cap_eff {cap_eff:.2f} < 1.08"})
+                                    continue
+                            except ImportError:
+                                pass  # pmcc_scoring not available; rely on delta/ROI filters above
+                            except Exception as e:
+                                logging.warning(f"PMCC hard_reject error for {symbol}: {e}")
 
                             opportunities.append({
                                     "symbol": symbol,
