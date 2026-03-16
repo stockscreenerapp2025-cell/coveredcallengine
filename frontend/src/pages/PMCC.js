@@ -155,16 +155,31 @@ const PMCC = () => {
     const breakeven = economics.breakeven || opp.breakeven || 0;
     const maxProfit = economics.max_profit || opp.max_profit || 0;
 
-    const capEffRatio = opp.capital_efficiency_ratio || economics.capital_efficiency_ratio || 0;
-    const capitalSavedDollar = opp.capital_saved_dollar || economics.capital_saved_dollar || 0;
-    const capitalSavedPct = opp.capital_saved_percent || economics.capital_saved_percent || 0;
+    const stockPrice = opp.stock_price || opp.price || 0;
+    const stockEquivCost = stockPrice * 100;
+
+    // Capital efficiency — compute from stock_price / net_debit if not stored in DB yet
+    const rawCapEff = opp.capital_efficiency_ratio || economics.capital_efficiency_ratio || 0;
+    const capEffRatio = rawCapEff > 0 ? rawCapEff : (netDebit > 0 ? stockEquivCost / netDebit : 0);
+
+    const capitalSavedDollar = opp.capital_saved_dollar || economics.capital_saved_dollar || (stockEquivCost - netDebit);
+    const capitalSavedPct = opp.capital_saved_percent || economics.capital_saved_percent ||
+      (stockEquivCost > 0 ? ((stockEquivCost - netDebit) / stockEquivCost * 100) : 0);
+
     const leapsExtrinsicPct = opp.leaps_extrinsic_percent || economics.leaps_extrinsic_percent || 0;
-    const paybackMonths = opp.payback_months || economics.payback_months || 0;
-    const initialCappedPl = opp.initial_capped_pl || economics.initial_capped_pl || 0;
-    const assignmentRisk = opp.assignment_risk || "Medium";
+
+    // Payback — compute from net_debit / short_premium if not stored
+    const rawPayback = opp.payback_months || economics.payback_months || 0;
+    const paybackMonths = rawPayback > 0 ? rawPayback :
+      (shortPremiumTotal > 0 && shortDte > 0 ? (netDebit / shortPremiumTotal) * (shortDte / 30) : 0);
+
+    const initialCappedPl = opp.initial_capped_pl || economics.initial_capped_pl ||
+      ((strikeWidth * 100) - netDebit);
+    const assignmentRisk = opp.assignment_risk || (shortDelta <= 0.20 ? "Low" : shortDelta <= 0.30 ? "Medium" : "High");
     const warningBadges = opp.warning_badges || [];
     const pmccScore = opp.pmcc_score || opp.score || 0;
-    const syntheticStockCost = opp.synthetic_stock_cost || economics.synthetic_stock_cost || 0;
+    const syntheticStockCost = opp.synthetic_stock_cost || economics.synthetic_stock_cost ||
+      (leapsStrike + leapsPremium);
 
     return {
       ...opp,
@@ -317,13 +332,24 @@ const PMCC = () => {
     activeScanRef.current = riskProfile;
     try {
       const res = await scansApi.getPMCCScan(riskProfile);
-      setOpportunities(res.data.opportunities || []);
+      const loaded = res.data.opportunities || [];
+      setOpportunities(loaded);
       setApiInfo({
         from_cache: false,
         is_precomputed: true,
         computed_at: res.data.computed_at,
         risk_profile: riskProfile,
         label: res.data.label
+      });
+      // Update card count to reflect actual loaded results
+      setAvailableScans(prev => {
+        if (!prev?.pmcc) return prev;
+        const profileOrder = ['conservative', 'balanced', 'aggressive'];
+        const idx = profileOrder.indexOf(riskProfile);
+        if (idx === -1) return prev;
+        const updated = [...prev.pmcc];
+        updated[idx] = { ...updated[idx], count: res.data.total ?? loaded.length };
+        return { ...prev, pmcc: updated };
       });
       toast.success(`Loaded ${res.data.label} PMCC scan: ${res.data.total} opportunities`);
     } catch (error) {
