@@ -352,7 +352,11 @@ class LifecycleEngine:
         """
         sorted_txns = sorted(
             transactions,
-            key=lambda t: t.get("datetime", t.get("date", "1970-01-01")),
+            key=lambda t: (
+                t.get("datetime", t.get("date", "1970-01-01")),
+                # On same timestamp: stocks before options (per customer spec)
+                1 if t.get("is_option") else 0,
+            ),
         )
 
         # Merge partial fills before processing
