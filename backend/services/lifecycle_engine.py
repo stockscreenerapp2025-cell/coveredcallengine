@@ -232,6 +232,10 @@ class LifecycleEngine:
         events = self._normalize(transactions, symbol)
         for event in events:
             try:
+                # Before processing each event, expire any open options whose
+                # expiry date has passed relative to this event's date.
+                # This ensures shares are released before new calls are sold.
+                self._infer_expired_options(as_of=event.get("date"))
                 self._process_event(event)
             except Exception as exc:
                 logger.warning(
@@ -242,6 +246,7 @@ class LifecycleEngine:
                     exc_info=True,
                 )
 
+        # Final pass: expire anything remaining after last event
         self._infer_expired_options()
         self._recalculate_all_cycles()
         return self._build_output(symbol)
@@ -1203,14 +1208,21 @@ class LifecycleEngine:
             else:
                 cycle.status = "Open - Covered Call Active"
 
-    def _infer_expired_options(self):
+    def _infer_expired_options(self, as_of: str = None):
         """
         IBKR Activity Statements don't export zero-value expiry rows.
-        Any short option still marked OPEN whose expiry date is in the past
-        is assumed to have expired worthless — apply expiry logic now.
+        Any short option still marked OPEN whose expiry date is before
+        as_of (or today if not given) is assumed to have expired worthless.
+        Called inline before each new event so shares are released in time.
         """
         from datetime import date as _date
-        today = _date.today()
+        if as_of:
+            try:
+                today = datetime.strptime(as_of, "%Y-%m-%d").date()
+            except ValueError:
+                today = _date.today()
+        else:
+            today = _date.today()
 
         # Infer expired short calls (CC cycles) — self.options holds all positions
         for opt in list(self.options.values()):
