@@ -606,6 +606,12 @@ async def get_lifecycles(
     result = {}
     total_summary = {"total_premium_received": 0.0, "realized_pnl": 0.0, "unrealized_pnl": 0.0, "open_cycles": 0, "closed_cycles": 0}
 
+    _open_statuses = {
+        "Open - Uncovered", "Open - Covered Call Active", "Open - Put Entry Active",
+        "Open - Partial Coverage", "Partially Assigned", "Open - LEAPS Only",
+        "Open - Short Call Active", "Open - Waiting to Resell", "Roll in Progress",
+    }
+
     for sym, txns in by_symbol.items():
         try:
             engine = LifecycleEngine()
@@ -614,13 +620,49 @@ async def get_lifecycles(
             s = sym_result.get("summary", {})
             total_summary["total_premium_received"] += s.get("total_premium_received", 0)
             total_summary["realized_pnl"] += s.get("realized_pnl", 0)
-            total_summary["unrealized_pnl"] += s.get("unrealized_pnl", 0)
             total_summary["open_cycles"] += s.get("open_cycles", 0)
             total_summary["closed_cycles"] += s.get("closed_cycles", 0)
         except Exception as e:
             logging.error(f"Lifecycle engine error for {sym}: {e}")
             result[sym] = {"cc_cycles": [], "pmcc_cycles": [], "error": str(e)}
 
+    # Fetch current prices for symbols with open positions and compute unrealized P&L
+    open_syms = [
+        sym for sym, sym_data in result.items()
+        if any(
+            c.get("status") in _open_statuses and c.get("shares_current", 0) > 0
+            for c in sym_data.get("cc_cycles", [])
+        )
+    ]
+    import asyncio
+    async def _safe_price(sym):
+        try:
+            q = await fetch_stock_quote(sym)
+            return sym, (q.get("price") or 0) if q else 0
+        except Exception:
+            return sym, 0
+
+    if open_syms:
+        price_results = await asyncio.gather(*[_safe_price(s) for s in open_syms])
+        current_prices = {sym: price for sym, price in price_results if price}
+
+        for sym, sym_data in result.items():
+            price = current_prices.get(sym, 0)
+            if not price:
+                continue
+            sym_unrealized = 0.0
+            for cycle in sym_data.get("cc_cycles", []):
+                shares = cycle.get("shares_current", 0)
+                eff_cost = cycle.get("effective_avg_cost", 0)
+                if shares > 0 and eff_cost > 0:
+                    u_pnl = round((price - eff_cost) * shares, 2)
+                    cycle["unrealized_pnl"] = u_pnl
+                    cycle["current_price"] = round(price, 2)
+                    sym_unrealized += u_pnl
+            sym_data["summary"]["unrealized_pnl"] = round(sym_unrealized, 2)
+            total_summary["unrealized_pnl"] += sym_unrealized
+
+    total_summary["unrealized_pnl"] = round(total_summary["unrealized_pnl"], 2)
     return {"lifecycles": result, "summary": total_summary}
 
 

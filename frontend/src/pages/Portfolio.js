@@ -1154,6 +1154,9 @@ const Portfolio = () => {
                     if (ccCycles.length === 0 && pmccCycles.length === 0) return null;
                     const isExpanded = expandedSymbols[sym] !== false;
 
+                    // Track which option IDs have already been rendered (for jointly managed dedup)
+                    const renderedOptIds = new Set();
+
                     return (
                       <div key={sym} className='bg-zinc-900 border border-zinc-700 rounded-xl overflow-hidden'>
                         <button className='w-full flex items-center justify-between px-4 py-3 bg-zinc-800/60 hover:bg-zinc-800 transition-colors'
@@ -1189,7 +1192,7 @@ const Portfolio = () => {
                                       <ChevronDown className={`w-4 h-4 transition-transform ${isCycleOpen ? 'rotate-180' : ''}`} />
                                     </button>
                                   </div>
-                                  <div className='grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-2 text-xs mb-3'>
+                                  <div className='grid grid-cols-2 md:grid-cols-4 lg:grid-cols-9 gap-2 text-xs mb-3'>
                                     {[
                                       { label: 'Shares', value: cycle.shares_current },
                                       { label: 'Covered', value: cycle.shares_covered_by_calls },
@@ -1198,6 +1201,7 @@ const Portfolio = () => {
                                       { label: 'Eff. Cost', value: fmt(cycle.effective_avg_cost) },
                                       { label: 'Premium', value: fmt(cycle.total_premium_received) },
                                       { label: 'Realized P&L', value: fmt(cycle.realized_pnl), pnl: cycle.realized_pnl },
+                                      { label: 'Unrealized P&L', value: cycle.unrealized_pnl != null ? fmt(cycle.unrealized_pnl) : '-', pnl: cycle.unrealized_pnl },
                                       { label: 'Rolls', value: cycle.number_of_rolls },
                                     ].map(m => (
                                       <div key={m.label} className='bg-zinc-800/50 rounded p-2'>
@@ -1206,27 +1210,41 @@ const Portfolio = () => {
                                       </div>
                                     ))}
                                   </div>
-                                  {isCycleOpen && cycle.short_calls && cycle.short_calls.length > 0 && (
-                                    <div className='mt-2'>
-                                      <div className='text-xs text-zinc-500 mb-1'>Short Call History ({cycle.short_calls.length} legs)</div>
-                                      <div className='space-y-1'>
-                                        {cycle.short_calls.map(optId => {
-                                          const opt = symData.options ? symData.options[optId] : null;
-                                          if (!opt) return null;
-                                          const oc = opt.status === 'EXPIRED' ? 'text-zinc-500' : opt.status === 'ASSIGNED' ? 'text-red-400' : 'text-emerald-400';
-                                          return (
-                                            <div key={optId} className='flex items-center gap-3 text-xs bg-zinc-800/30 rounded px-3 py-1.5'>
-                                              <span className={`w-16 ${oc}`}>{opt.status}</span>
-                                              <span className='text-zinc-300'>{opt.expiry} ${opt.strike}C</span>
-                                              <span className='text-zinc-400'>{opt.contracts}x</span>
-                                              <span className='text-emerald-400'>+{fmt(opt.open_premium * opt.contracts * 100)}</span>
-                                              {opt.close_premium != null && <span className='text-red-400'>-{fmt(opt.close_premium * opt.contracts * 100)}</span>}
-                                            </div>
-                                          );
-                                        })}
+                                  {isCycleOpen && cycle.short_calls && cycle.short_calls.length > 0 && (() => {
+                                    // Deduplicate: skip options already shown in a jointly-managed sibling cycle
+                                    const uniqueOptIds = cycle.short_calls.filter(id => !renderedOptIds.has(id));
+                                    uniqueOptIds.forEach(id => renderedOptIds.add(id));
+                                    const isShared = cycle.jointly_managed_with && cycle.jointly_managed_with.length > 0;
+                                    if (uniqueOptIds.length === 0) return (
+                                      <div className='mt-2 text-xs text-zinc-600 italic'>
+                                        Short calls shown in sibling cycle
                                       </div>
-                                    </div>
-                                  )}
+                                    );
+                                    return (
+                                      <div className='mt-2'>
+                                        <div className='text-xs text-zinc-500 mb-1'>
+                                          Short Call History ({uniqueOptIds.length} legs)
+                                          {isShared && <span className='ml-2 text-violet-400'>(shared across jointly managed cycles)</span>}
+                                        </div>
+                                        <div className='space-y-1'>
+                                          {uniqueOptIds.map(optId => {
+                                            const opt = symData.options ? symData.options[optId] : null;
+                                            if (!opt) return null;
+                                            const oc = opt.status === 'EXPIRED' ? 'text-zinc-500' : opt.status === 'ASSIGNED' ? 'text-red-400' : 'text-emerald-400';
+                                            return (
+                                              <div key={optId} className='flex items-center gap-3 text-xs bg-zinc-800/30 rounded px-3 py-1.5'>
+                                                <span className={`w-16 ${oc}`}>{opt.status}</span>
+                                                <span className='text-zinc-300'>{opt.expiry} ${opt.strike}C</span>
+                                                <span className='text-zinc-400'>{opt.contracts}x</span>
+                                                <span className='text-emerald-400'>+{fmt(opt.open_premium * opt.contracts * 100)}</span>
+                                                {opt.close_premium != null && <span className='text-red-400'>-{fmt(opt.close_premium * opt.contracts * 100)}</span>}
+                                              </div>
+                                            );
+                                          })}
+                                        </div>
+                                      </div>
+                                    );
+                                  })()}
                                 </div>
                               );
                             })}
