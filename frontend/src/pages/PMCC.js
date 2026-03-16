@@ -1106,14 +1106,14 @@ const PMCC = () => {
                                       <div className="flex justify-between"><span className="text-zinc-500">Stock Price</span><span className="font-mono text-white">${opp.stock_price?.toFixed(2)}</span></div>
                                       <div className="flex justify-between"><span className="text-zinc-500">LEAPS Strike</span><span className="font-mono text-emerald-400">${norm.leaps_strike?.toFixed(0)}</span></div>
                                       <div className="flex justify-between"><span className="text-zinc-500">Short Strike</span><span className="font-mono text-cyan-400">${norm.short_strike?.toFixed(0)}</span></div>
-                                      <div className="flex justify-between"><span className="text-zinc-500">Net Debit/share</span><span className="font-mono text-white">${norm.net_debit?.toFixed(2)}</span></div>
+                                      <div className="flex justify-between"><span className="text-zinc-500">Net Debit/share</span><span className="font-mono text-white">${norm.net_debit ? (norm.net_debit / 100).toFixed(2) : '-'}</span></div>
                                       <div className="flex justify-between"><span className="text-zinc-500">Width</span><span className="font-mono">${norm.strike_width?.toFixed(0)}</span></div>
                                     </div>
                                     {/* Capital Analysis */}
                                     <div className="bg-zinc-800/60 rounded-lg p-3 space-y-1">
                                       <p className="text-zinc-400 font-semibold uppercase tracking-wide text-[10px] mb-2">Capital Analysis</p>
                                       <div className="flex justify-between"><span className="text-zinc-500">Stock Cost</span><span className="font-mono">${opp.stock_equivalent_cost?.toLocaleString() || (opp.stock_price * 100)?.toLocaleString()}</span></div>
-                                      <div className="flex justify-between"><span className="text-zinc-500">PMCC Cost</span><span className="font-mono text-red-400">${norm.net_debit ? (norm.net_debit * 100)?.toLocaleString() : '-'}</span></div>
+                                      <div className="flex justify-between"><span className="text-zinc-500">PMCC Cost</span><span className="font-mono text-red-400">${norm.net_debit ? norm.net_debit.toLocaleString() : '-'}</span></div>
                                       <div className="flex justify-between"><span className="text-zinc-500">Capital Saved</span><span className="font-mono text-emerald-400">${norm.capital_saved_dollar?.toLocaleString() || '-'}</span></div>
                                       <div className="flex justify-between"><span className="text-zinc-500">Cap Efficiency</span><span className={`font-mono font-semibold ${cerColor}`}>{cerIcon} {cer?.toFixed(2)}x</span></div>
                                       <div className="flex justify-between"><span className="text-zinc-500">Capital Saved %</span><span className="font-mono text-emerald-400">{norm.capital_saved_percent?.toFixed(1)}%</span></div>
