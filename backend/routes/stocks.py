@@ -315,13 +315,18 @@ async def get_stock_details(symbol: str, user: dict = Depends(get_current_user))
                 if news_response.status_code == 200:
                     news_data = news_response.json()
                     for article in news_data.get("results", [])[:5]:
+                        # Only include articles tagged with this symbol
+                        tickers = [t.upper() for t in article.get("tickers", [])]
+                        if tickers and symbol.upper() not in tickers:
+                            continue
                         result["news"].append({
                             "title": article.get("title", ""),
                             "description": article.get("description", ""),
                             "published": article.get("published_utc", ""),
                             "source": article.get("publisher", {}).get("name", ""),
                             "url": article.get("article_url", ""),
-                            "image": article.get("image_url", "")
+                            "image": article.get("image_url", ""),
+                            "sentiment_score": None  # Polygon doesn't provide sentiment scores
                         })
                 
                 # Calculate technical indicators from historical data
@@ -396,15 +401,28 @@ async def get_stock_details(symbol: str, user: dict = Depends(get_current_user))
                 if response.status_code == 200:
                     data = response.json()
                     for article in data.get("data", []):
-                        if len(result["news"]) < 8:
-                            result["news"].append({
-                                "title": article.get("title", ""),
-                                "description": article.get("description", ""),
-                                "published": article.get("published_at", ""),
-                                "source": article.get("source", ""),
-                                "url": article.get("url", ""),
-                                "sentiment": article.get("sentiment", 0)
-                            })
+                        if len(result["news"]) >= 8:
+                            break
+                        # Only include articles where the exact symbol appears in entities
+                        entities = article.get("entities", [])
+                        sym_entity = next(
+                            (e for e in entities if (e.get("symbol") or "").upper() == symbol.upper()),
+                            None
+                        )
+                        if not sym_entity and entities:
+                            continue  # Skip articles not directly about this symbol
+                        # Extract entity-level sentiment score for this symbol
+                        sentiment_score = None
+                        if sym_entity:
+                            sentiment_score = sym_entity.get("sentiment_score")
+                        result["news"].append({
+                            "title": article.get("title", ""),
+                            "description": article.get("description", ""),
+                            "published": article.get("published_at", ""),
+                            "source": article.get("source", ""),
+                            "url": article.get("url", ""),
+                            "sentiment_score": sentiment_score,  # float for Tier 1 analyzer
+                        })
         except Exception as e:
             logging.error(f"MarketAux news error: {e}")
     
