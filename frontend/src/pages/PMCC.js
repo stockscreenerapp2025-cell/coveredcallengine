@@ -182,6 +182,14 @@ const PMCC = () => {
     const syntheticStockCost = opp.synthetic_stock_cost || economics.synthetic_stock_cost ||
       (leapsStrike + leapsPremium);
 
+    // Max Return if Assigned = (Short Premium + max(0, Short Strike - Stock Price)) / Stock Price
+    // Same formula users know from covered calls — shows total return if short call is assigned
+    const shortPremiumPerShare = shortPremium < 10 ? shortPremium : shortPremium / 100;
+    const upsideToStrike = shortStrike && stockPrice ? Math.max(0, shortStrike - stockPrice) : 0;
+    const maxReturnPct = stockPrice > 0
+      ? ((shortPremiumPerShare + upsideToStrike) / stockPrice) * 100
+      : 0;
+
     return {
       ...opp,
       // Short call normalized fields
@@ -223,6 +231,7 @@ const PMCC = () => {
       warning_badges: warningBadges,
       pmcc_score: pmccScore,
       synthetic_stock_cost: syntheticStockCost,
+      max_return_pct: maxReturnPct,
     };
   };
 
@@ -683,7 +692,7 @@ const PMCC = () => {
         </CardContent>
       </Card>
 
-      <div className="grid lg:grid-cols-8 gap-4">
+      <div className="grid lg:grid-cols-10 gap-4">
         {/* Filters Panel */}
         {filtersOpen && (
           <Card className="glass-card lg:col-span-2 h-fit max-h-[60vh] lg:max-h-none overflow-y-auto" data-testid="pmcc-filters-panel">
@@ -902,7 +911,7 @@ const PMCC = () => {
         )}
 
         {/* Results Section */}
-        <div className={`space-y-4 ${filtersOpen ? 'lg:col-span-6' : 'lg:col-span-8'}`}>
+        <div className={`space-y-4 ${filtersOpen ? 'lg:col-span-8' : 'lg:col-span-10'}`}>
           {/* Live Data Badge */}
           {apiInfo?.is_live && (
             <div className="flex items-center gap-2">
@@ -960,6 +969,7 @@ const PMCC = () => {
                         <SortHeader field="net_debit" label="Net Debit" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
                         <SortHeader field="capital_efficiency_ratio" label="Cap Eff" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
                         <SortHeader field="roi_per_cycle" label="Income/Cycle" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
+                        <SortHeader field="max_return_pct" label="Max Return" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
                         <SortHeader field="payback_months" label="Payback" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
                         <SortHeader field="score" label="Score" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
                         <th>Signal</th>
@@ -1028,6 +1038,9 @@ const PMCC = () => {
                                 {cerIcon} {cer?.toFixed(2)}x
                               </td>
                               <td className="text-yellow-400 font-semibold">{norm.roi_per_cycle?.toFixed(1)}%</td>
+                              <td className="text-emerald-400 font-semibold">
+                                {norm.max_return_pct > 0 ? `${norm.max_return_pct.toFixed(1)}%` : '-'}
+                              </td>
                               <td className={`font-semibold ${pbColor}`}>{pbMonths > 0 ? `${pbMonths?.toFixed(1)}mo` : '-'}</td>
                               <td>
                                 <Badge className={`${norm.pmcc_score >= 70 ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' : norm.pmcc_score >= 50 ? 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30' : 'bg-violet-500/20 text-violet-400 border-violet-500/30'}`}>
