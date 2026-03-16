@@ -462,35 +462,58 @@ async def get_available_scans(user: dict = Depends(get_current_user)):
             "delta": {"$gte": 0.35}
         })
     
-    # Compute PMCC counts using SAME filtering logic as detail endpoint
-    # (profile-specific delta/DTE/roi_cycle filters must match _get_eod_pmcc_opportunities)
+    # Compute PMCC counts using IDENTICAL filtering logic as _get_eod_pmcc_opportunities.
+    # Uses _field_or pattern (missing field = pass) and same ranges/score floors.
+    # Counts across the 5 most recent completed runs (same multi-run expansion as scan).
+    def _fo(field, condition):
+        return {"$or": [{field: condition}, {field: {"$exists": False}}, {field: None}]}
+
     _iv_filter = {"$or": [{"iv_rank": {"$gte": 20}}, {"iv_rank": None}, {"iv_rank": {"$exists": False}}]}
-    pmcc_counts = {}
+
+    # Gather multi-run IDs (same expansion as the scan endpoint)
+    pmcc_run_ids = []
     if run_id:
-        pmcc_counts["conservative"] = await db.scan_results_pmcc.count_documents({
-            "run_id": run_id, "score": {"$gte": 60},
-            "leap_delta": {"$gte": 0.70, "$lte": 0.85},
-            "leap_dte": {"$gte": 300},
-            "short_delta": {"$gte": 0.15, "$lte": 0.25},
-            "short_dte": {"$gte": 30, "$lte": 45},
-            "roi_cycle": {"$gte": 0.05}, **_iv_filter
-        })
-        pmcc_counts["balanced"] = await db.scan_results_pmcc.count_documents({
-            "run_id": run_id, "score": {"$gte": 45},
-            "leap_delta": {"$gte": 0.65, "$lte": 0.75},
-            "leap_dte": {"$gte": 180},
-            "short_delta": {"$gte": 0.20, "$lte": 0.30},
-            "short_dte": {"$gte": 21, "$lte": 45},
-            "roi_cycle": {"$gte": 0.08}, **_iv_filter
-        })
-        pmcc_counts["aggressive"] = await db.scan_results_pmcc.count_documents({
-            "run_id": run_id, "score": {"$gte": 30},
-            "leap_delta": {"$gte": 0.55, "$lte": 0.70},
-            "leap_dte": {"$gte": 180},
-            "short_delta": {"$gte": 0.20, "$lte": 0.30},
-            "short_dte": {"$gte": 21, "$lte": 45},
-            "roi_cycle": {"$gte": 0.12}, **_iv_filter
-        })
+        recent_cursor = db.scan_runs.find(
+            {"status": "completed"}, {"run_id": 1, "_id": 0}
+        ).sort("completed_at", -1).limit(5)
+        recent_docs = await recent_cursor.to_list(5)
+        pmcc_run_ids = list({r["run_id"] for r in recent_docs if r.get("run_id")})
+        if not pmcc_run_ids:
+            pmcc_run_ids = [run_id]
+
+    pmcc_counts = {}
+    if pmcc_run_ids:
+        run_filter = {"run_id": {"$in": pmcc_run_ids}}
+
+        conservative_q = {**run_filter, "score": {"$gte": 60}, **_iv_filter, "$and": [
+            _fo("leap_delta",  {"$gte": 0.65, "$lte": 0.90}),
+            _fo("leap_dte",    {"$gte": 180}),
+            _fo("short_delta", {"$gte": 0.10, "$lte": 0.35}),
+            _fo("short_dte",   {"$gte": 21, "$lte": 60}),
+            _fo("roi_cycle",   {"$gte": 0.03}),
+        ]}
+        balanced_q = {**run_filter, "score": {"$gte": 45}, **_iv_filter, "$and": [
+            _fo("leap_delta",  {"$gte": 0.55, "$lte": 0.80}),
+            _fo("leap_dte",    {"$gte": 150}),
+            _fo("short_delta", {"$gte": 0.15, "$lte": 0.40}),
+            _fo("short_dte",   {"$gte": 14, "$lte": 60}),
+            _fo("roi_cycle",   {"$gte": 0.04}),
+        ]}
+        aggressive_q = {**run_filter, "score": {"$gte": 30}, **_iv_filter, "$and": [
+            _fo("leap_delta",  {"$gte": 0.45, "$lte": 0.75}),
+            _fo("leap_dte",    {"$gte": 120}),
+            _fo("short_delta", {"$gte": 0.15, "$lte": 0.45}),
+            _fo("short_dte",   {"$gte": 14, "$lte": 60}),
+            _fo("roi_cycle",   {"$gte": 0.05}),
+        ]}
+
+        # Distinct-symbol counts (mirrors dedup done in the scan endpoint)
+        raw_c = await db.scan_results_pmcc.distinct("symbol", conservative_q)
+        raw_b = await db.scan_results_pmcc.distinct("symbol", balanced_q)
+        raw_a = await db.scan_results_pmcc.distinct("symbol", aggressive_q)
+        pmcc_counts["conservative"] = len(raw_c)
+        pmcc_counts["balanced"]     = len(raw_b)
+        pmcc_counts["aggressive"]   = len(raw_a)
     
     computed_at = run_info.get("completed_at") if run_info else None
     
