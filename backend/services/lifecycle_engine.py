@@ -58,6 +58,7 @@ class OptionPosition:
     status: str = "OPEN"            # 'OPEN','EXPIRED','BOUGHT_BACK','ASSIGNED'
     linked_cycle_ids: list = field(default_factory=list)
     source_trade_ids: list = field(default_factory=list)
+    shares_per_cycle: dict = field(default_factory=dict)  # cycle_id -> shares allocated
 
 
 @dataclass
@@ -387,8 +388,12 @@ class LifecycleEngine:
             elif txn_type in ("Sell",) and quantity < 0:
                 event_type = EV_SELL_STOCK
             elif txn_type == "Assignment":
-                # Stock leg of a put assignment
-                event_type = EV_PUT_ASSIGNMENT
+                # Negative qty = shares sold = call was assigned (call assignment)
+                # Positive qty = shares received = put was assigned (put assignment)
+                if quantity < 0:
+                    event_type = EV_SELL_STOCK   # call assigned → sold shares at strike
+                else:
+                    event_type = EV_PUT_ASSIGNMENT
             else:
                 logger.debug("Unclassified stock transaction: %s", txn)
                 return None
@@ -627,22 +632,28 @@ class LifecycleEngine:
             return
 
         touched_cycle_ids = []
+        shares_per_cycle: dict[str, int] = {}
         for lot, shares_alloc in allocated_lots:
             lot.shares_remaining -= shares_alloc
-            if lot.linked_cycle_id not in touched_cycle_ids:
-                touched_cycle_ids.append(lot.linked_cycle_id)
+            cid = lot.linked_cycle_id
+            if cid not in touched_cycle_ids:
+                touched_cycle_ids.append(cid)
+            shares_per_cycle[cid] = shares_per_cycle.get(cid, 0) + shares_alloc
 
         option_id = self._create_option_position(
             symbol, "CALL", "SELL", strike, expiry,
             contracts, premium, date_str, trade_id,
             linked_cycle_ids=touched_cycle_ids,
+            shares_per_cycle=shares_per_cycle,
         )
 
         for cycle_id in touched_cycle_ids:
             cycle = self.cycles.get(cycle_id)
             if cycle:
                 cycle.short_calls.append(option_id)
-                cycle.total_premium_received += premium * contracts * 100
+                # Proportional premium: cycle's share of covered shares
+                cycle_shares = shares_per_cycle.get(cycle_id, 0)
+                cycle.total_premium_received += premium * cycle_shares
 
         # Rule 4 & 5: Mark jointly_managed if call spans multiple cycles
         if len(touched_cycle_ids) > 1:
@@ -669,10 +680,15 @@ class LifecycleEngine:
         matched.close_date = date_str
         matched.close_premium = close_premium
 
+        total_shares = sum(matched.shares_per_cycle.values()) if matched.shares_per_cycle else (matched.contracts * 100)
         for cycle_id in matched.linked_cycle_ids:
             cycle = self.cycles.get(cycle_id)
             if cycle:
-                cycle.total_premium_paid += close_premium * matched.contracts * 100
+                if matched.shares_per_cycle:
+                    cycle_shares = matched.shares_per_cycle.get(cycle_id, 0)
+                else:
+                    cycle_shares = matched.contracts * 100
+                cycle.total_premium_paid += close_premium * cycle_shares
                 # Release covered shares back to lots
                 self._release_shares_for_option(matched)
         self._update_cycle_coverage_status(matched.linked_cycle_ids)
@@ -1357,6 +1373,7 @@ class LifecycleEngine:
         date_str: str,
         trade_id: str,
         linked_cycle_ids: list[str] = None,
+        shares_per_cycle: dict = None,
     ) -> str:
         option_id = f"OPT_{symbol}_{opt_type}_{_uid()}"
         op = OptionPosition(
@@ -1371,6 +1388,7 @@ class LifecycleEngine:
             open_date=date_str,
             linked_cycle_ids=linked_cycle_ids or [],
             source_trade_ids=[trade_id],
+            shares_per_cycle=shares_per_cycle or {},
         )
         self.options[option_id] = op
         return option_id
