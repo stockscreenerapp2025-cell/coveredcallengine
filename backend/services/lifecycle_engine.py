@@ -250,6 +250,91 @@ class LifecycleEngine:
     # Normalisation
     # ------------------------------------------------------------------
 
+    def _merge_partial_fills(self, transactions: list[dict]) -> list[dict]:
+        """
+        Merge same-day partial fills into single transactions:
+        - Stock buys: same account + symbol + date + price (within $0.05) → one buy row
+        - Short calls: same account + symbol + date + strike + expiry → one sell row
+        This prevents 4 partial fill rows from becoming 4 separate lifecycle cycles.
+        """
+        merged = []
+        used = set()
+
+        for i, txn in enumerate(transactions):
+            if i in used:
+                continue
+            is_option = txn.get("is_option", False)
+            ttype = txn.get("transaction_type", "")
+            date = txn.get("date", "")
+            account = txn.get("account", "")
+            symbol = txn.get("symbol", "")
+            qty = txn.get("quantity", 0)
+
+            # Only merge stock buys and option sells (short calls/puts)
+            can_merge = (not is_option and ttype == "Buy") or (is_option and ttype == "Sell")
+            if not can_merge:
+                merged.append(txn)
+                continue
+
+            group = [txn]
+            used.add(i)
+
+            for j, other in enumerate(transactions):
+                if j in used or j == i:
+                    continue
+                if (other.get("account") != account or
+                        other.get("symbol") != symbol or
+                        other.get("date") != date or
+                        other.get("transaction_type") != ttype or
+                        other.get("is_option") != is_option):
+                    continue
+
+                if is_option:
+                    # Match same strike + expiry
+                    opt1 = txn.get("option_details") or {}
+                    opt2 = other.get("option_details") or {}
+                    if (opt1.get("strike") == opt2.get("strike") and
+                            opt1.get("expiry") == opt2.get("expiry") and
+                            opt1.get("option_type") == opt2.get("option_type")):
+                        group.append(other)
+                        used.add(j)
+                else:
+                    # Match same price (within $0.05) for stock
+                    price1 = txn.get("price", 0)
+                    price2 = other.get("price", 0)
+                    if abs(price1 - price2) <= 0.05:
+                        group.append(other)
+                        used.add(j)
+
+            if len(group) == 1:
+                merged.append(txn)
+                continue
+
+            # Build merged transaction
+            total_qty = sum(t.get("quantity", 0) for t in group)
+            total_gross = sum(t.get("gross_amount", 0) for t in group)
+            total_net = sum(t.get("net_amount", 0) for t in group)
+            total_commission = sum(t.get("commission", 0) for t in group)
+            avg_price = abs(total_gross / total_qty) if total_qty != 0 else txn.get("price", 0)
+
+            mtxn = dict(txn)
+            mtxn["quantity"] = total_qty
+            mtxn["price"] = avg_price
+            mtxn["gross_amount"] = total_gross
+            mtxn["net_amount"] = total_net
+            mtxn["commission"] = total_commission
+            mtxn["id"] = txn["id"] + "_merged"
+
+            # Fix option contracts count
+            if is_option and mtxn.get("option_details"):
+                opt = dict(mtxn["option_details"])
+                opt["contracts"] = abs(total_qty) // 100 or abs(total_qty)
+                mtxn["option_details"] = opt
+
+            merged.append(mtxn)
+
+        return merged
+
     def _normalize(self, transactions: list[dict], symbol: str) -> list[dict]:
         """
         Sort transactions by datetime and classify each into an event_type.
@@ -259,6 +344,9 @@ class LifecycleEngine:
             transactions,
             key=lambda t: t.get("datetime", t.get("date", "1970-01-01")),
         )
+
+        # Merge partial fills before processing
+        sorted_txns = self._merge_partial_fills(sorted_txns)
 
         events = []
         for txn in sorted_txns:
