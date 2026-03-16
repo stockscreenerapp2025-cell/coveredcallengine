@@ -411,10 +411,13 @@ async def get_stock_details(symbol: str, user: dict = Depends(get_current_user))
                         )
                         if not sym_entity and entities:
                             continue  # Skip articles not directly about this symbol
-                        # Extract entity-level sentiment score for this symbol
-                        sentiment_score = None
-                        if sym_entity:
-                            sentiment_score = sym_entity.get("sentiment_score")
+                        # Extract entity-level sentiment score for this symbol;
+                        # fall back to average of all entity scores if symbol entity has none
+                        sentiment_score = sym_entity.get("sentiment_score") if sym_entity else None
+                        if sentiment_score is None:
+                            all_ent_scores = [e.get("sentiment_score") for e in entities if e.get("sentiment_score") is not None]
+                            if all_ent_scores:
+                                sentiment_score = round(sum(all_ent_scores) / len(all_ent_scores), 4)
                         result["news"].append({
                             "title": article.get("title", ""),
                             "description": article.get("description", ""),
