@@ -88,6 +88,9 @@ const PMCC = () => {
   const [simulateContracts, setSimulateContracts] = useState(1);
   const [simulateLoading, setSimulateLoading] = useState(false);
 
+  // Expanded row details state
+  const [expandedRow, setExpandedRow] = useState(null);
+
   // Helper to normalize PMCC data from both custom API (leap_*) and pre-computed API (long_*)
   // Note: Backend now uses nested objects (short_call, long_call) + legacy flat fields
   const normalizeOpp = (opp) => {
@@ -152,6 +155,17 @@ const PMCC = () => {
     const breakeven = economics.breakeven || opp.breakeven || 0;
     const maxProfit = economics.max_profit || opp.max_profit || 0;
 
+    const capEffRatio = opp.capital_efficiency_ratio || economics.capital_efficiency_ratio || 0;
+    const capitalSavedDollar = opp.capital_saved_dollar || economics.capital_saved_dollar || 0;
+    const capitalSavedPct = opp.capital_saved_percent || economics.capital_saved_percent || 0;
+    const leapsExtrinsicPct = opp.leaps_extrinsic_percent || economics.leaps_extrinsic_percent || 0;
+    const paybackMonths = opp.payback_months || economics.payback_months || 0;
+    const initialCappedPl = opp.initial_capped_pl || economics.initial_capped_pl || 0;
+    const assignmentRisk = opp.assignment_risk || "Medium";
+    const warningBadges = opp.warning_badges || [];
+    const pmccScore = opp.pmcc_score || opp.score || 0;
+    const syntheticStockCost = opp.synthetic_stock_cost || economics.synthetic_stock_cost || 0;
+
     return {
       ...opp,
       // Short call normalized fields
@@ -182,6 +196,17 @@ const PMCC = () => {
       annualized_roi: annualizedRoi,
       breakeven: breakeven,
       max_profit: maxProfit,
+      // Extended pmcc_scoring fields
+      capital_efficiency_ratio: capEffRatio,
+      capital_saved_dollar: capitalSavedDollar,
+      capital_saved_percent: capitalSavedPct,
+      leaps_extrinsic_percent: leapsExtrinsicPct,
+      payback_months: paybackMonths,
+      initial_capped_pl: initialCappedPl,
+      assignment_risk: assignmentRisk,
+      warning_badges: warningBadges,
+      pmcc_score: pmccScore,
+      synthetic_stock_cost: syntheticStockCost,
     };
   };
 
@@ -903,134 +928,194 @@ const PMCC = () => {
                       <tr>
                         <SortHeader field="symbol" label="Symbol" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
                         <SortHeader field="stock_price" label="Price" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
-                        <th>LEAPS (Buy)</th>
-                        <th>Premium (Ask)</th>
-                        <SortHeader field="leaps_cost" label="Cost" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
-                        <th>Short (Sell)</th>
-                        <SortHeader field="short_premium" label="Premium (Bid)" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
+                        <th>LEAPS</th>
+                        <th>Short Call</th>
                         <SortHeader field="net_debit" label="Net Debit" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
-                        <th>Width</th>
-                        <th>ROI/Cycle</th>
-                        <th>Ann. ROI</th>
-                        <th>Max Return</th>
-                        <SortHeader field="score" label="AI Score" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
-                        <th>Analyst</th>
+                        <SortHeader field="capital_efficiency_ratio" label="Cap Eff" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
+                        <SortHeader field="roi_per_cycle" label="Income/Cycle" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
+                        <SortHeader field="payback_months" label="Payback" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
+                        <SortHeader field="score" label="Score" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
+                        <th>Signal</th>
                         <th className="text-center w-px whitespace-nowrap">Action</th>
                       </tr>
                     </thead>
                     <tbody>
                       {sortedOpportunities.map((opp, index) => {
-                        // Normalize data from both custom API and pre-computed API
                         const norm = normalizeOpp(opp);
+                        const isExpanded = expandedRow === opp.symbol;
+
+                        const cer = norm.capital_efficiency_ratio || 0;
+                        const cerColor = cer >= 1.40 ? 'text-emerald-400' : cer >= 1.20 ? 'text-yellow-400' : 'text-red-400';
+                        const cerIcon = cer >= 1.40 ? '🟢' : cer >= 1.20 ? '🟡' : '🔴';
+
+                        const extPct = norm.leaps_extrinsic_percent || 0;
+                        const extColor = extPct < 15 ? 'text-emerald-400' : extPct <= 25 ? 'text-yellow-400' : 'text-red-400';
+
+                        const pbMonths = norm.payback_months || 0;
+                        const pbColor = pbMonths < 12 ? 'text-emerald-400' : pbMonths <= 18 ? 'text-yellow-400' : 'text-red-400';
 
                         return (
-                          <tr
-                            key={index}
-                            className="cursor-pointer hover:bg-zinc-800/50 transition-colors"
-                            data-testid={`pmcc-row-${opp.symbol}`}
-                            onClick={() => {
-                              setSelectedStock(opp.symbol);
-                              setSelectedScanData(activeScan ? opp : null);
-                              setIsModalOpen(true);
-                            }}
-                            title={`Click to view ${opp.symbol} details with Technical, Fundamentals & News`}
-                          >
-                            <td className="font-semibold text-white">{opp.symbol}</td>
-                            <td className="font-mono">${opp.stock_price?.toFixed(2)}</td>
-                            <td>
-                              <div className="flex flex-col">
-                                <span className="text-emerald-400 font-mono text-sm">
-                                  {(() => { const s = formatOptionContract(norm.leaps_expiry || norm.leaps_dte, norm.leaps_strike); const i = s.indexOf(' '); return i > -1 ? <>{s.slice(0, i)}<br />{s.slice(i + 1)}</> : s; })()}
-                                </span>
-                                <span className="text-sm text-zinc-300 font-medium">δ{norm.leaps_delta?.toFixed(2) || '-'} <span className="text-zinc-500">|</span> {norm.leaps_dte}d</span>
-                              </div>
-                            </td>
-                            <td className="text-cyan-400 font-mono">${norm.leaps_premium?.toFixed(2) || '-'}</td>
-                            <td className="text-red-400 font-mono">${norm.leaps_cost?.toLocaleString()}</td>
-                            <td>
-                              <div className="flex flex-col">
-                                <span className="text-cyan-400 font-mono text-sm">
-                                  {(() => { const s = formatOptionContract(opp.short_expiry || opp.short_dte, opp.short_strike); const i = s.indexOf(' '); return i > -1 ? <>{s.slice(0, i)}<br />{s.slice(i + 1)}</> : s; })()}
-                                </span>
-                                <span className="text-sm text-zinc-300 font-medium">δ{(opp.short_delta || norm.short_delta)?.toFixed(2) || '-'} <span className="text-zinc-500">|</span> {opp.short_dte}d</span>
-                              </div>
-                            </td>
-                            <td className="text-emerald-400 font-mono">${norm.short_premium_total?.toFixed(0)}</td>
-                            <td className="text-white font-mono">${norm.net_debit?.toLocaleString()}</td>
-                            <td className="font-mono">${norm.strike_width?.toFixed(0)}</td>
-                            <td className="text-yellow-400 font-semibold">{norm.roi_per_cycle?.toFixed(1)}%</td>
-                            <td className="text-emerald-400 font-semibold">{norm.annualized_roi?.toFixed(0)}%</td>
-                            <td className="text-purple-400 font-semibold">
-                              {opp.stock_price > 0 ? `${(((opp.short_premium || norm.short_premium_total || 0) + Math.max(0, (opp.short_strike || 0) - opp.stock_price)) / opp.stock_price * 100).toFixed(2)}%` : '-'}
-                            </td>
-                            <td>
-                              <TooltipProvider>
-                                <Tooltip>
-                                  <TooltipTrigger asChild>
-                                    <Badge className={`cursor-pointer ${opp.score >= 70 ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' : opp.score >= 50 ? 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30' : 'bg-violet-500/20 text-violet-400 border-violet-500/30'}`}>
-                                      {opp.score?.toFixed(0)}
-                                    </Badge>
-                                  </TooltipTrigger>
-                                  <TooltipContent className="bg-zinc-800 border-zinc-700 p-3 max-w-xs">
-                                    {opp.score_breakdown?.pillars ? (
-                                      <div className="space-y-2">
-                                        <p className="font-semibold text-zinc-200 mb-2">PMCC Score Breakdown</p>
-                                        {Object.values(opp.score_breakdown.pillars).map((pillar, idx) => (
-                                          <div key={idx} className="text-xs">
-                                            <div className="flex justify-between text-zinc-300">
-                                              <span>{pillar.name}</span>
-                                              <span className="text-emerald-400">{pillar.actual_score}/{pillar.max_score}</span>
-                                            </div>
-                                            <div className="w-full bg-zinc-700 h-1 rounded-full mt-1">
-                                              <div
-                                                className="bg-emerald-500 h-1 rounded-full"
-                                                style={{width: `${pillar.percentage}%`}}
-                                              />
-                                            </div>
-                                          </div>
-                                        ))}
-                                      </div>
-                                    ) : (
-                                      <p className="text-zinc-400 text-xs">Score: {opp.score?.toFixed(1)}</p>
-                                    )}
-                                  </TooltipContent>
-                                </Tooltip>
-                              </TooltipProvider>
-                            </td>
-                            <td>
-                              {(opp.analyst_rating_label || opp.analyst_rating) ? (
-                                <Badge className={`text-xs ${
-                                  (opp.analyst_rating_label || opp.analyst_rating) === 'Strong Buy'
-                                    ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30'
-                                    : (opp.analyst_rating_label || opp.analyst_rating) === 'Buy'
-                                      ? 'bg-green-500/20 text-green-400 border-green-500/30'
-                                      : (opp.analyst_rating_label || opp.analyst_rating) === 'Hold'
-                                        ? 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30'
-                                        : 'bg-red-500/20 text-red-400 border-red-500/30'
-                                }`}>
-                                  {opp.analyst_rating_label || opp.analyst_rating}
+                          <>
+                            <tr
+                              key={`row-${index}`}
+                              className="cursor-pointer hover:bg-zinc-800/50 transition-colors"
+                              data-testid={`pmcc-row-${opp.symbol}`}
+                              onClick={() => {
+                                setSelectedStock(opp.symbol);
+                                setSelectedScanData(activeScan ? opp : null);
+                                setIsModalOpen(true);
+                              }}
+                              title={`Click to view ${opp.symbol} details`}
+                            >
+                              <td className="font-semibold text-white">
+                                <div className="flex flex-col gap-0.5">
+                                  <span>{opp.symbol}</span>
+                                  {norm.warning_badges && norm.warning_badges.length > 0 && (
+                                    <div className="flex flex-wrap gap-1 mt-0.5">
+                                      {norm.warning_badges.map((badge, bi) => (
+                                        <span key={bi} className="text-[10px] bg-yellow-500/20 text-yellow-400 border border-yellow-500/30 rounded px-1 py-0 leading-4">{badge}</span>
+                                      ))}
+                                    </div>
+                                  )}
+                                </div>
+                              </td>
+                              <td className="font-mono">${opp.stock_price?.toFixed(2)}</td>
+                              <td>
+                                <div className="flex flex-col">
+                                  <span className="text-emerald-400 font-mono text-sm">
+                                    {(() => { const s = formatOptionContract(norm.leaps_expiry || norm.leaps_dte, norm.leaps_strike); const i = s.indexOf(' '); return i > -1 ? <>{s.slice(0, i)}<br />{s.slice(i + 1)}</> : s; })()}
+                                  </span>
+                                  <span className="text-zinc-400">δ{norm.leaps_delta?.toFixed(2) || '-'} | {norm.leaps_dte}d</span>
+                                </div>
+                              </td>
+                              <td>
+                                <div className="flex flex-col">
+                                  <span className="text-cyan-400 font-mono text-sm">
+                                    {(() => { const s = formatOptionContract(opp.short_expiry || opp.short_dte, opp.short_strike); const i = s.indexOf(' '); return i > -1 ? <>{s.slice(0, i)}<br />{s.slice(i + 1)}</> : s; })()}
+                                  </span>
+                                  <span className="text-zinc-400">δ{(opp.short_delta || norm.short_delta)?.toFixed(2) || '-'} | {opp.short_dte}d</span>
+                                </div>
+                              </td>
+                              <td className="text-white font-mono">${norm.net_debit?.toLocaleString()}</td>
+                              <td className={`font-semibold ${cerColor}`}>
+                                {cerIcon} {cer?.toFixed(2)}x
+                              </td>
+                              <td className="text-yellow-400 font-semibold">{norm.roi_per_cycle?.toFixed(1)}%</td>
+                              <td className={`font-semibold ${pbColor}`}>{pbMonths > 0 ? `${pbMonths?.toFixed(1)}mo` : '-'}</td>
+                              <td>
+                                <Badge className={`${norm.pmcc_score >= 70 ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' : norm.pmcc_score >= 50 ? 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30' : 'bg-violet-500/20 text-violet-400 border-violet-500/30'}`}>
+                                  {norm.pmcc_score?.toFixed(0)}
                                 </Badge>
-                              ) : (
-                                <span className="text-zinc-600 text-xs">N/A</span>
-                              )}
-                            </td>
-                            <td className="text-center">
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setSimulateOpp(opp);
-                                  setSimulateModalOpen(true);
-                                }}
-                                className="bg-violet-500/10 border-violet-500/30 text-violet-400 hover:bg-violet-500/20 hover:text-violet-300"
-                                data-testid={`simulate-btn-${opp.symbol}`}
-                              >
-                                <Play className="w-3 h-3 mr-1" />
-                                Simulate
-                              </Button>
-                            </td>
-                          </tr>
+                              </td>
+                              <td>
+                                {(opp.analyst_rating_label || opp.analyst_rating) ? (
+                                  <Badge className={`text-xs ${
+                                    (opp.analyst_rating_label || opp.analyst_rating) === 'Strong Buy'
+                                      ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30'
+                                      : (opp.analyst_rating_label || opp.analyst_rating) === 'Buy'
+                                        ? 'bg-green-500/20 text-green-400 border-green-500/30'
+                                        : (opp.analyst_rating_label || opp.analyst_rating) === 'Hold'
+                                          ? 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30'
+                                          : 'bg-red-500/20 text-red-400 border-red-500/30'
+                                  }`}>
+                                    {opp.analyst_rating_label || opp.analyst_rating}
+                                  </Badge>
+                                ) : (
+                                  <span className="text-zinc-600 text-xs">N/A</span>
+                                )}
+                              </td>
+                              <td className="text-center">
+                                <div className="flex gap-1 justify-center">
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setExpandedRow(isExpanded ? null : opp.symbol);
+                                    }}
+                                    className="bg-zinc-700/40 border-zinc-600 text-zinc-300 hover:bg-zinc-600/60 hover:text-white"
+                                    title="Toggle details panel"
+                                  >
+                                    {isExpanded ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                                    Details
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setSimulateOpp(opp);
+                                      setSimulateModalOpen(true);
+                                    }}
+                                    className="bg-violet-500/10 border-violet-500/30 text-violet-400 hover:bg-violet-500/20 hover:text-violet-300"
+                                    data-testid={`simulate-btn-${opp.symbol}`}
+                                  >
+                                    <Play className="w-3 h-3 mr-1" />
+                                    Simulate
+                                  </Button>
+                                </div>
+                              </td>
+                            </tr>
+                            {isExpanded && (
+                              <tr key={`details-${index}`} className="bg-zinc-900/60">
+                                <td colSpan={11} className="px-4 py-4">
+                                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 text-xs">
+                                    {/* Trade Structure */}
+                                    <div className="bg-zinc-800/60 rounded-lg p-3 space-y-1">
+                                      <p className="text-zinc-400 font-semibold uppercase tracking-wide text-[10px] mb-2">Trade Structure</p>
+                                      <div className="flex justify-between"><span className="text-zinc-500">Stock Price</span><span className="font-mono text-white">${opp.stock_price?.toFixed(2)}</span></div>
+                                      <div className="flex justify-between"><span className="text-zinc-500">LEAPS Strike</span><span className="font-mono text-emerald-400">${norm.leaps_strike?.toFixed(0)}</span></div>
+                                      <div className="flex justify-between"><span className="text-zinc-500">Short Strike</span><span className="font-mono text-cyan-400">${norm.short_strike?.toFixed(0)}</span></div>
+                                      <div className="flex justify-between"><span className="text-zinc-500">Net Debit/share</span><span className="font-mono text-white">${norm.net_debit?.toFixed(2)}</span></div>
+                                      <div className="flex justify-between"><span className="text-zinc-500">Width</span><span className="font-mono">${norm.strike_width?.toFixed(0)}</span></div>
+                                    </div>
+                                    {/* Capital Analysis */}
+                                    <div className="bg-zinc-800/60 rounded-lg p-3 space-y-1">
+                                      <p className="text-zinc-400 font-semibold uppercase tracking-wide text-[10px] mb-2">Capital Analysis</p>
+                                      <div className="flex justify-between"><span className="text-zinc-500">Stock Cost</span><span className="font-mono">${opp.stock_equivalent_cost?.toLocaleString() || (opp.stock_price * 100)?.toLocaleString()}</span></div>
+                                      <div className="flex justify-between"><span className="text-zinc-500">PMCC Cost</span><span className="font-mono text-red-400">${norm.net_debit ? (norm.net_debit * 100)?.toLocaleString() : '-'}</span></div>
+                                      <div className="flex justify-between"><span className="text-zinc-500">Capital Saved</span><span className="font-mono text-emerald-400">${norm.capital_saved_dollar?.toLocaleString() || '-'}</span></div>
+                                      <div className="flex justify-between"><span className="text-zinc-500">Cap Efficiency</span><span className={`font-mono font-semibold ${cerColor}`}>{cerIcon} {cer?.toFixed(2)}x</span></div>
+                                      <div className="flex justify-between"><span className="text-zinc-500">Capital Saved %</span><span className="font-mono text-emerald-400">{norm.capital_saved_percent?.toFixed(1)}%</span></div>
+                                    </div>
+                                    {/* LEAPS Quality */}
+                                    <div className="bg-zinc-800/60 rounded-lg p-3 space-y-1">
+                                      <p className="text-zinc-400 font-semibold uppercase tracking-wide text-[10px] mb-2">LEAPS Quality</p>
+                                      <div className="flex justify-between"><span className="text-zinc-500">Delta</span><span className="font-mono">{norm.leaps_delta?.toFixed(2)}</span></div>
+                                      <div className="flex justify-between"><span className="text-zinc-500">Extrinsic %</span><span className={`font-mono font-semibold ${extColor}`}>{extPct?.toFixed(1)}%</span></div>
+                                      <div className="flex justify-between"><span className="text-zinc-500">DTE</span><span className="font-mono">{norm.leaps_dte}d</span></div>
+                                      <div className="flex justify-between"><span className="text-zinc-500">Ask</span><span className="font-mono">${norm.leaps_premium?.toFixed(2)}</span></div>
+                                      <div className="flex justify-between"><span className="text-zinc-500">Synthetic Cost</span><span className="font-mono">${norm.synthetic_stock_cost?.toFixed(2) || '-'}</span></div>
+                                    </div>
+                                    {/* Income Analysis */}
+                                    <div className="bg-zinc-800/60 rounded-lg p-3 space-y-1">
+                                      <p className="text-zinc-400 font-semibold uppercase tracking-wide text-[10px] mb-2">Income Analysis</p>
+                                      <div className="flex justify-between"><span className="text-zinc-500">Short Bid</span><span className="font-mono text-emerald-400">${norm.short_premium?.toFixed(2)}</span></div>
+                                      <div className="flex justify-between"><span className="text-zinc-500">ROI/Cycle</span><span className="font-mono font-semibold text-yellow-400">{norm.roi_per_cycle?.toFixed(2)}%</span></div>
+                                      <div className="flex justify-between"><span className="text-zinc-500">Cycle Length</span><span className="font-mono">{norm.short_dte}d</span></div>
+                                      <div className="flex justify-between"><span className="text-zinc-500">Ann. Yield</span><span className="font-mono text-emerald-400">{(opp.annualized_income_yield || norm.annualized_roi)?.toFixed(1)}%</span></div>
+                                    </div>
+                                    {/* Payback & Risk */}
+                                    <div className="bg-zinc-800/60 rounded-lg p-3 space-y-1">
+                                      <p className="text-zinc-400 font-semibold uppercase tracking-wide text-[10px] mb-2">Payback & Risk</p>
+                                      <div className="flex justify-between"><span className="text-zinc-500">Payback Cycles</span><span className="font-mono">{norm.payback_cycles?.toFixed(1) || '-'}</span></div>
+                                      <div className="flex justify-between"><span className="text-zinc-500">Payback Months</span><span className={`font-mono font-semibold ${pbColor}`}>{pbMonths?.toFixed(1)}mo</span></div>
+                                      <div className="flex justify-between"><span className="text-zinc-500">Assignment Risk</span><span className={`font-semibold ${norm.assignment_risk === 'Low' ? 'text-emerald-400' : norm.assignment_risk === 'Medium' ? 'text-yellow-400' : 'text-red-400'}`}>{norm.assignment_risk}</span></div>
+                                      <div className="flex justify-between"><span className="text-zinc-500">Short Delta</span><span className="font-mono">{norm.short_delta?.toFixed(2)}</span></div>
+                                      <div className="flex justify-between"><span className="text-zinc-500">Breakeven</span><span className="font-mono">${norm.breakeven?.toFixed(2)}</span></div>
+                                    </div>
+                                    {/* Max Profit */}
+                                    <div className="bg-zinc-800/60 rounded-lg p-3 space-y-1">
+                                      <p className="text-zinc-400 font-semibold uppercase tracking-wide text-[10px] mb-2">If Assigned</p>
+                                      <div className="flex justify-between"><span className="text-zinc-500">Max Spread Value</span><span className="font-mono">${norm.strike_width ? (norm.strike_width * 100)?.toLocaleString() : '-'}</span></div>
+                                      <div className="flex justify-between"><span className="text-zinc-500">Initial Capped P/L</span><span className={`font-mono font-semibold ${(norm.initial_capped_pl || 0) > 0 ? 'text-emerald-400' : 'text-red-400'}`}>${norm.initial_capped_pl?.toLocaleString() || '-'}</span></div>
+                                      <div className="flex justify-between"><span className="text-zinc-500">Net Debit Total</span><span className="font-mono text-red-400">${norm.net_debit ? (norm.net_debit * 100)?.toLocaleString() : '-'}</span></div>
+                                    </div>
+                                  </div>
+                                </td>
+                              </tr>
+                            )}
+                          </>
                         );
                       })}
                     </tbody>

@@ -2189,23 +2189,35 @@ class PrecomputedScanService:
                 breakeven = economics["breakeven"]
                 capital_efficiency = economics["capital_efficiency"] or 0
 
-                # ROI on capital deployed (LEAP cost)
+                # ROI on capital deployed (net_debit basis)
                 roi_pct = economics["roi_per_cycle"]
 
-                # Calculate score
-                score = 0
-                score += min(roi_pct * 5, 30)  # ROI contribution
-                score += min(capital_efficiency * 2, 20)  # Capital efficiency
-                # High delta LEAP
-                score += 10 if best_leap["delta"] >= 0.70 else 5
-                # Low delta short
-                score += 10 if best_short["delta"] <= 0.30 else 5
+                # Use shared pmcc_scoring service
+                from backend.services.pmcc_scoring import compute_pmcc_metrics, hard_reject, warning_badges, score_pmcc
 
-                # Fundamental bonus
-                if fund_data.get("eps_ttm", 0) > 0:
-                    score += 10
-                if fund_data.get("roe", 0) > 0.15:
-                    score += 5
+                spot = current_price
+                pmcc_metrics = compute_pmcc_metrics(
+                    spot=spot,
+                    long_strike=best_leap["strike"],
+                    long_ask=leap_ask,
+                    long_delta=best_leap.get("delta", 0),
+                    long_dte=best_leap.get("dte", 365),
+                    long_oi=best_leap.get("oi", 0),
+                    long_iv=best_leap.get("iv", 0),
+                    short_strike=best_short["strike"],
+                    short_bid=short_bid,
+                    short_delta=best_short.get("delta", 0),
+                    short_dte=best_short.get("dte", 30),
+                    short_oi=best_short.get("oi", 0),
+                    long_spread_pct=best_leap.get("spread_pct", 20.0),
+                    short_spread_pct=best_short.get("spread_pct", 20.0),
+                )
+                reject = hard_reject(pmcc_metrics, risk_profile)
+                if reject:
+                    pmcc_debug.reject("pmcc_scoring_rejected", {"symbol": symbol, "reason": reject})
+                    continue
+                badges = warning_badges(pmcc_metrics)
+                score = score_pmcc(pmcc_metrics, risk_profile)
 
                 opportunities.append({
                     "symbol": symbol,
@@ -2238,6 +2250,10 @@ class PrecomputedScanService:
                     "capital_efficiency": round(capital_efficiency, 1),
                     "pricing_rule": economics["pricing_rule"],
                     "score": round(score, 1),
+                    # pmcc_scoring metrics
+                    **{k: pmcc_metrics[k] for k in pmcc_metrics},
+                    "warning_badges": badges,
+                    "pmcc_score": round(score, 1),
                     # Technical indicators
                     "sma50": tech_data.get("sma50"),
                     "sma200": tech_data.get("sma200"),

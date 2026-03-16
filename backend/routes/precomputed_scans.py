@@ -340,7 +340,22 @@ def _transform_pmcc_for_scans(row: Dict) -> Dict:
         "quality_flags": row.get("quality_flags", []),
         "analyst_rating": row.get("analyst_rating"),
         "as_of": row.get("as_of"),
-        "run_id": row.get("run_id")
+        "run_id": row.get("run_id"),
+        # Extended pmcc_scoring fields
+        "stock_equivalent_cost": sanitize_money(row.get("stock_equivalent_cost")),
+        "synthetic_stock_cost": sanitize_money(row.get("synthetic_stock_cost")),
+        "capital_efficiency_ratio": sanitize_float(row.get("capital_efficiency_ratio")),
+        "capital_saved_dollar": sanitize_money(row.get("capital_saved_dollar")),
+        "capital_saved_percent": sanitize_float(row.get("capital_saved_percent")),
+        "leaps_extrinsic": sanitize_money(row.get("leaps_extrinsic")),
+        "leaps_extrinsic_percent": sanitize_float(row.get("leaps_extrinsic_percent")),
+        "payback_months": sanitize_float(row.get("payback_months")),
+        "payback_cycles": sanitize_float(row.get("payback_cycles")),
+        "initial_capped_pl": sanitize_money(row.get("initial_capped_pl")),
+        "assignment_risk": row.get("assignment_risk", "Medium"),
+        "warning_badges": row.get("warning_badges", []),
+        "pmcc_score": sanitize_float(row.get("pmcc_score")),
+        "annualized_income_yield": sanitize_float(row.get("annualized_income_yield")),
     }
     return result
 

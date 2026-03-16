@@ -200,56 +200,54 @@ def compute_pmcc_economics(
     short_strike: float,
     leap_ask: float,
     short_bid: float,
-    current_price: float = None
+    current_price: float = None,
+    long_delta: float = 0.0,
+    long_dte: int = 365,
+    long_oi: int = 0,
+    long_iv: float = 0.0,
+    short_delta: float = 0.0,
+    short_dte: int = 30,
+    short_oi: int = 0,
+    long_spread_pct: float = 0.0,
+    short_spread_pct: float = 0.0,
 ) -> Dict[str, Any]:
-    """
-    Compute PMCC economic metrics using proper pricing rules.
-    
-    Uses:
-    - BUY = ask (for LEAP)
-    - SELL = bid (for short call)
-    
-    Args:
-        long_strike: LEAP strike price
-        short_strike: Short call strike price
-        leap_ask: ASK price of LEAP
-        short_bid: BID price of short call
-        current_price: Current stock price (optional, for capital efficiency)
-        
-    Returns:
-        Dict with computed economics
-    """
-    # Proper pricing: BUY at ASK, SELL at BID
-    leap_cost = leap_ask * 100  # Per contract
-    short_premium = short_bid * 100  # Per contract
-    
-    net_debit = leap_ask - short_bid
-    net_debit_total = net_debit * 100
-    
-    width = short_strike - long_strike
-    max_profit = width - net_debit if width > net_debit else 0
-    max_profit_total = max_profit * 100
-    
-    breakeven = long_strike + net_debit
-    
-    # ROI per cycle
-    roi_per_cycle = (short_bid / leap_ask) * 100 if leap_ask > 0 else 0
-    
-    # Capital efficiency (vs buying stock)
-    capital_efficiency = None
-    if current_price and current_price > 0 and net_debit > 0:
-        capital_efficiency = (current_price * 100) / net_debit_total
-    
+    """Compute PMCC economic metrics. BUY at ASK, SELL at BID."""
+    from backend.services.pmcc_scoring import compute_pmcc_metrics, hard_reject, warning_badges, score_pmcc
+
+    spot = current_price or (long_strike * 1.05)  # fallback estimate
+
+    metrics = compute_pmcc_metrics(
+        spot=spot,
+        long_strike=long_strike,
+        long_ask=leap_ask,
+        long_delta=long_delta,
+        long_dte=long_dte,
+        long_oi=long_oi,
+        long_iv=long_iv,
+        short_strike=short_strike,
+        short_bid=short_bid,
+        short_delta=short_delta,
+        short_dte=short_dte,
+        short_oi=short_oi,
+        long_spread_pct=long_spread_pct,
+        short_spread_pct=short_spread_pct,
+    )
+
+    reject_reason = hard_reject(metrics)
+    badges = warning_badges(metrics)
+    pmcc_score = score_pmcc(metrics)
+
     return {
-        "leap_cost": round(leap_cost, 2),
-        "short_premium": round(short_premium, 2),
-        "net_debit": round(net_debit, 2),
-        "net_debit_total": round(net_debit_total, 2),
-        "width": round(width, 2),
-        "max_profit": round(max_profit, 2),
-        "max_profit_total": round(max_profit_total, 2),
-        "breakeven": round(breakeven, 2),
-        "roi_per_cycle": round(roi_per_cycle, 2),
-        "capital_efficiency": round(capital_efficiency, 1) if capital_efficiency else None,
-        "pricing_rule": "BUY_ASK_SELL_BID"
+        **metrics,
+        "reject_reason": reject_reason,
+        "warning_badges": badges,
+        "pmcc_score": pmcc_score,
+        "pricing_rule": "BUY_ASK_SELL_BID",
+        # Legacy aliases
+        "leap_cost": metrics["leaps_cost"],
+        "short_premium": metrics["short_credit"],
+        "max_profit": metrics["initial_capped_pl"],
+        "max_profit_total": metrics["initial_capped_pl"],
+        "roi_per_cycle": metrics["roi_cycle"],
+        "capital_efficiency": metrics["capital_efficiency_ratio"],
     }
