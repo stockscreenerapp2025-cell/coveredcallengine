@@ -168,10 +168,11 @@ const PMCC = () => {
 
     const leapsExtrinsicPct = opp.leaps_extrinsic_percent || economics.leaps_extrinsic_percent || 0;
 
-    // Payback — compute from net_debit / short_premium if not stored
+    // Payback — use roi_per_cycle to avoid shortPremiumTotal normalization issues
+    // payback_months = (100 / roi_per_cycle) * (short_dte / 30)
     const rawPayback = opp.payback_months || economics.payback_months || 0;
     const paybackMonths = rawPayback > 0 ? rawPayback :
-      (shortPremiumTotal > 0 && shortDte > 0 ? (netDebit / shortPremiumTotal) * (shortDte / 30) : 0);
+      (roiPerCycle > 0 && shortDte > 0 ? (100 / roiPerCycle) * (shortDte / 30) : 0);
 
     const initialCappedPl = opp.initial_capped_pl || economics.initial_capped_pl ||
       ((strikeWidth * 100) - netDebit);
