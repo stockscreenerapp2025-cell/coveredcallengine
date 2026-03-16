@@ -870,7 +870,7 @@ const Portfolio = () => {
                 <SelectItem value="ETF">ETF</SelectItem>
                 <SelectItem value="COVERED_CALL">Covered Call</SelectItem>
                 <SelectItem value="PMCC">PMCC</SelectItem>
-                <SelectItem value="NAKED_PUT">Naked Put / CSP</SelectItem>
+                <SelectItem value="NAKED_PUT">Cash Secured Put</SelectItem>
                 <SelectItem value="COLLAR">Collar</SelectItem>
                 <SelectItem value="WHEEL">Wheel (CC+CSP)</SelectItem>
               </SelectContent>
@@ -1182,8 +1182,14 @@ const Portfolio = () => {
                                   <div className='flex items-center justify-between mb-3'>
                                     <div className='flex items-center gap-2 flex-wrap'>
                                       <span className='text-sm font-semibold text-zinc-300'>{cycle.cycle_id}</span>
+                                      {/* Strategy badge */}
+                                      {cycle.strategy === 'WHEEL' && <span className='text-xs bg-amber-500/20 text-amber-400 px-2 py-0.5 rounded border border-amber-500/30'>Wheel</span>}
+                                      {cycle.strategy === 'CC' && <span className='text-xs bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded border border-emerald-500/30'>Covered Call</span>}
+                                      {cycle.strategy === 'CSP' && <span className='text-xs bg-blue-500/20 text-blue-400 px-2 py-0.5 rounded border border-blue-500/30'>Cash Secured Put</span>}
                                       <span className={`text-xs px-2 py-0.5 rounded border ${statusCls}`}>{cycle.status}</span>
-                                      <span className='text-xs bg-zinc-800 text-zinc-400 px-2 py-0.5 rounded'>{cycle.entry_mode === 'PUT_ENTRY' ? 'Wheel / CSP Entry' : 'Stock Buy'}</span>
+                                      <span className='text-xs bg-zinc-800 text-zinc-400 px-2 py-0.5 rounded'>
+                                        {cycle.strategy === 'WHEEL' ? 'CSP → Assignment → CC' : cycle.entry_mode === 'PUT_ENTRY' ? 'CSP Entry' : 'Stock Buy'}
+                                      </span>
                                       {cycle.jointly_managed_with && cycle.jointly_managed_with.length > 0 && (
                                         <span className='text-xs bg-violet-500/10 text-violet-400 px-2 py-0.5 rounded border border-violet-500/30'>Jointly managed with {cycle.jointly_managed_with.join(', ')}</span>
                                       )}
@@ -1246,6 +1252,55 @@ const Portfolio = () => {
                                       </div>
                                     );
                                   })()}
+
+                                  {/* Short Puts (CSP legs of Wheel cycles) */}
+                                  {isCycleOpen && cycle.short_puts && cycle.short_puts.length > 0 && (
+                                    <div className='mt-2'>
+                                      <div className='text-xs text-zinc-500 mb-1'>Put History ({cycle.short_puts.length} legs)</div>
+                                      <div className='space-y-1'>
+                                        {cycle.short_puts.map(optId => {
+                                          const opt = symData.options ? symData.options[optId] : null;
+                                          if (!opt) return null;
+                                          const oc = opt.status === 'EXPIRED' ? 'text-zinc-500' : opt.status === 'ASSIGNED' ? 'text-amber-400' : 'text-blue-400';
+                                          return (
+                                            <div key={optId} className='flex items-center gap-3 text-xs bg-blue-500/5 border border-blue-500/20 rounded px-3 py-1.5'>
+                                              <span className={`w-16 ${oc}`}>{opt.status}</span>
+                                              <span className='text-zinc-300'>{opt.expiry} ${opt.strike}P</span>
+                                              <span className='text-zinc-400'>{opt.contracts}x</span>
+                                              <span className='text-emerald-400'>+{fmt(opt.open_premium * opt.contracts * 100)}</span>
+                                              {opt.close_premium != null && <span className='text-red-400'>-{fmt(opt.close_premium * opt.contracts * 100)}</span>}
+                                            </div>
+                                          );
+                                        })}
+                                      </div>
+                                    </div>
+                                  )}
+
+                                  {/* Per-lot breakdown */}
+                                  {isCycleOpen && cycle.lot_details && cycle.lot_details.length > 0 && (
+                                    <div className='mt-2'>
+                                      <div className='text-xs text-zinc-500 mb-1'>Lots ({cycle.lot_details.length})</div>
+                                      <div className='space-y-1'>
+                                        {cycle.lot_details.map((lot, i) => (
+                                          <div key={lot.lot_id || i} className='flex items-center gap-3 text-xs bg-zinc-800/20 border border-zinc-700/40 rounded px-3 py-1.5'>
+                                            <span className='text-zinc-500 w-20'>{lot.open_date}</span>
+                                            <span className='text-zinc-400'>{lot.entry_type === 'PUT_ASSIGNMENT' ? 'Put Assigned' : 'Bought'}</span>
+                                            <span className='text-zinc-300'>{lot.shares_open} shares</span>
+                                            <span className='text-zinc-400'>Entry: {fmt(lot.entry_price)}</span>
+                                            <span className='text-blue-300'>Eff: {fmt(lot.effective_entry)}</span>
+                                            {lot.realized_pnl !== 0 && (
+                                              <span className={lot.realized_pnl >= 0 ? 'text-emerald-400' : 'text-red-400'}>
+                                                P&L: {fmt(lot.realized_pnl)}
+                                              </span>
+                                            )}
+                                            {lot.shares_remaining > 0 && (
+                                              <span className='text-zinc-500 ml-auto'>{lot.shares_remaining} remaining</span>
+                                            )}
+                                          </div>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  )}
                                 </div>
                               );
                             })}

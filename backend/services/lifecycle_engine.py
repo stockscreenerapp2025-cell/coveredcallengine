@@ -40,6 +40,7 @@ class ShareLot:
     entry_type: str                 # 'BUY' or 'PUT_ASSIGNMENT'
     source_trade_ids: list = field(default_factory=list)
     linked_cycle_id: str = ""
+    realized_pnl: float = 0.0      # per-lot realized P&L
 
 
 @dataclass
@@ -614,6 +615,7 @@ class LifecycleEngine:
             allocated = min(lot.shares_remaining, remaining)
             realized = allocated * (price - lot.effective_entry)
             lot.shares_remaining -= allocated
+            lot.realized_pnl += realized
             remaining -= allocated
 
             cycle = self.cycles.get(lot.linked_cycle_id)
@@ -649,9 +651,9 @@ class LifecycleEngine:
             self._handle_sell_short_call_pmcc(event, active_pmcc, option_id)
             return
 
-        # CC short call — FIFO allocate
+        # CC short call — same-day lots first, then FIFO
         shares_needed = contracts * 100
-        allocated_lots = self._fifo_allocate(symbol, shares_needed)
+        allocated_lots = self._fifo_allocate(symbol, shares_needed, same_day=date_str)
         if not allocated_lots:
             logger.warning("SELL_CALL_OPEN: no uncovered lots for %s (contracts=%d)", symbol, contracts)
             return
@@ -790,6 +792,7 @@ class LifecycleEngine:
                 assigned = min(covered_in_lot, remaining)
                 realized = assigned * (strike - lot.effective_entry) + matched.open_premium * assigned
                 lot.shares_open -= assigned
+                lot.realized_pnl += realized
                 # shares_remaining doesn't change (these were covered shares)
                 cycle.realized_pnl += realized
                 cycle.shares_current = max(0, cycle.shares_current - assigned)
@@ -1153,23 +1156,30 @@ class LifecycleEngine:
     # FIFO helpers
     # ------------------------------------------------------------------
 
-    def _get_open_lots(self, symbol: str) -> list[ShareLot]:
-        """Return all open lots for symbol sorted oldest first."""
-        return sorted(
-            [
-                lot for lot in self.lots.values()
-                if lot.symbol == symbol and lot.shares_remaining > 0
-            ],
-            key=lambda l: l.open_date,
-        )
+    def _get_open_lots(self, symbol: str, same_day: str = "") -> list[ShareLot]:
+        """
+        Return all open lots for symbol.
+        If same_day is provided, same-date lots come first (matching trader intent),
+        followed by all other lots sorted oldest-first (FIFO).
+        """
+        open_lots = [
+            lot for lot in self.lots.values()
+            if lot.symbol == symbol and lot.shares_remaining > 0
+        ]
+        if same_day:
+            same = sorted([l for l in open_lots if l.open_date == same_day], key=lambda l: l.open_date)
+            other = sorted([l for l in open_lots if l.open_date != same_day], key=lambda l: l.open_date)
+            return same + other
+        return sorted(open_lots, key=lambda l: l.open_date)
 
-    def _fifo_allocate(self, symbol: str, shares_needed: int) -> list[tuple]:
+    def _fifo_allocate(self, symbol: str, shares_needed: int, same_day: str = "") -> list[tuple]:
         """
         FIFO-allocate shares_needed uncovered shares across open lots.
-        Returns [(ShareLot, shares_allocated), ...] oldest-first.
+        Same-day lots are consumed first (matching trader intent), then FIFO.
+        Returns [(ShareLot, shares_allocated), ...].
         Does NOT mutate the lots — caller is responsible for decrementing.
         """
-        open_lots = self._get_open_lots(symbol)
+        open_lots = self._get_open_lots(symbol, same_day=same_day)
         allocations = []
         remaining = shares_needed
         for lot in open_lots:
@@ -1503,6 +1513,12 @@ class LifecycleEngine:
                     option_pnl += opt.open_premium * opt.contracts * 100
                     option_pnl -= (opt.close_premium or 0.0) * opt.contracts * 100
             d['realized_pnl'] = round(c.realized_pnl + option_pnl, 2)
+            # Include full lot details so frontend can show per-lot cost/P&L
+            d['lot_details'] = [
+                asdict(self.lots[lid])
+                for lid in c.lots
+                if lid in self.lots
+            ]
             cc_cycles.append(d)
         pmcc_cycles = [
             self._pmcc_cycle_to_dict(p)

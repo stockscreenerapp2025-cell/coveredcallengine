@@ -393,7 +393,7 @@ async def analyze_news_sentiment(
         )
         async with httpx.AsyncClient(timeout=20) as client:
             resp = await client.post(
-                f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={gemini_key}",
+                f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-04-17:generateContent?key={gemini_key}",
                 headers={'Content-Type': 'application/json'},
                 json={'contents': [{'role': 'user', 'parts': [{'text': prompt}]}],
                       'generationConfig': {'temperature': 0.2, 'maxOutputTokens': 400}},

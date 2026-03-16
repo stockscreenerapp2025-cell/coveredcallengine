@@ -21,7 +21,7 @@ STRATEGY_TYPES = {
     'INDEX': 'Index',
     'COVERED_CALL': 'Covered Call',
     'PMCC': 'PMCC',
-    'NAKED_PUT': 'Naked Put',
+    'NAKED_PUT': 'Cash Secured Put',
     'COLLAR': 'Collar',
     'OPTION': 'Option',
     'DIVIDEND': 'Dividend',
@@ -745,6 +745,11 @@ class IBKRParser:
                 lc_stock = [t for t in lc_txs if not t.get('is_option')]
                 lc_opts  = [t for t in lc_txs if t.get('is_option')]
                 strategy = self._determine_strategy(lc_stock, lc_opts)
+                # If a sub-lifecycle has stock but no options, it's part of the
+                # wheel pattern (we're in Priority 2 because the symbol has options).
+                # Classify as COVERED_CALL rather than STOCK.
+                if strategy in ('STOCK', 'ETF', 'INDEX') and lc_stock and not lc_opts:
+                    strategy = 'COVERED_CALL'
                 short    = STRATEGY_SHORT.get(strategy, strategy)
                 cnt      = strategy_counts.get(short, 0) + 1
                 strategy_counts[short] = cnt
@@ -772,23 +777,6 @@ class IBKRParser:
                     'covered_shares': covered,
                     'residual_shares': residual,
                 })
-
-                # If residual shares exist, emit a separate STOCK lifecycle
-                if residual > 0 and strategy in ('COVERED_CALL', 'COLLAR'):
-                    r_short = STRATEGY_SHORT.get('ETF' if symbol in ETF_SYMBOLS else 'STOCK', 'STOCK')
-                    r_strategy = 'ETF' if symbol in ETF_SYMBOLS else 'STOCK'
-                    r_cnt = strategy_counts.get(r_short, 0) + 1
-                    strategy_counts[r_short] = r_cnt
-                    buckets.append({
-                        'strategy_hint':     r_strategy,
-                        'lifecycle_id':      f"{symbol}_{r_short}_{r_cnt:03d}",
-                        'transactions':      lc_stock,  # stock txs only, no options
-                        'is_pmcc':           False,
-                        'allocation_override': residual,  # display only residual shares
-                        'covered_shares':    0,
-                        'residual_shares':   residual,
-                        'is_residual':       True,
-                    })
 
         elif call_buys and not has_stock:
             # ── Priority 3: PMCC ────────────────────────────────────────────

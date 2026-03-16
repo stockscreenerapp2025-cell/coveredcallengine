@@ -35,7 +35,7 @@ logger = logging.getLogger(__name__)
 
 
 async def _call_gemini(prompt: str, system_message: str, api_key: str,
-                       model: str = "gemini-2.0-flash", max_tokens: int = 1000,
+                       model: str = "gemini-2.5-flash-preview-04-17", max_tokens: int = 1000,
                        temperature: float = 0.7) -> str:
     """Call Google Gemini API directly (free tier: 15 RPM, 1500 RPD)."""
     import httpx, json as _json
@@ -142,7 +142,7 @@ class AIExecutionService:
         try:
             # Use Gemini (free) if key configured, else fall back to OpenAI
             if self.gemini_key:
-                gemini_model = "gemini-2.0-flash"
+                gemini_model = "gemini-2.5-flash-preview-04-17"
                 response_text = await _call_gemini(
                     prompt=prompt,
                     system_message=system_message,
