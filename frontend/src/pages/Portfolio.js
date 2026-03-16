@@ -1192,7 +1192,7 @@ const Portfolio = () => {
                                       <ChevronDown className={`w-4 h-4 transition-transform ${isCycleOpen ? 'rotate-180' : ''}`} />
                                     </button>
                                   </div>
-                                  <div className='grid grid-cols-2 md:grid-cols-4 lg:grid-cols-9 gap-2 text-xs mb-3'>
+                                  <div className='grid grid-cols-2 md:grid-cols-4 lg:grid-cols-10 gap-2 text-xs mb-3'>
                                     {[
                                       { label: 'Shares', value: cycle.shares_current },
                                       { label: 'Covered', value: cycle.shares_covered_by_calls },
@@ -1203,6 +1203,7 @@ const Portfolio = () => {
                                       { label: 'Realized P&L', value: fmt(cycle.realized_pnl), pnl: cycle.realized_pnl },
                                       { label: 'Unrealized P&L', value: cycle.unrealized_pnl != null ? fmt(cycle.unrealized_pnl) : '-', pnl: cycle.unrealized_pnl },
                                       { label: 'Rolls', value: cycle.number_of_rolls },
+                                      { label: 'Cycle ROI', value: (cycle.avg_cost > 0 && cycle.total_shares_entered > 0) ? ((cycle.total_premium_received / (cycle.avg_cost * cycle.total_shares_entered)) * 100).toFixed(1) + '%' : '-' },
                                     ].map(m => (
                                       <div key={m.label} className='bg-zinc-800/50 rounded p-2'>
                                         <div className='text-zinc-500 mb-0.5'>{m.label}</div>
@@ -1556,12 +1557,34 @@ const Portfolio = () => {
                   <span className="text-zinc-500">Shares:</span>
                   <span className="ml-2 text-white">{selectedTrade.shares || '-'}</span>
                 </div>
+                {(() => {
+                  const _optSells = (selectedTrade.transactions || []).filter(tx => tx.is_option && tx.transaction_type === 'Sell');
+                  const _totalWritten = _optSells.reduce((sum, tx) => {
+                    const qty = Math.abs(tx.quantity || 0);
+                    return sum + (qty >= 100 ? Math.round(qty / 100) : qty);
+                  }, 0);
+                  const _openContracts = selectedTrade.shares ? Math.round(selectedTrade.shares / 100) : (selectedTrade.contracts || null);
+                  const _showSplit = _totalWritten > 0 && _openContracts && _openContracts !== _totalWritten;
+                  return _showSplit ? (
+                    <>
+                      <div>
+                        <span className="text-zinc-500">Open Contracts:</span>
+                        <span className="ml-2 text-white">{_openContracts}</span>
+                      </div>
+                      <div>
+                        <span className="text-zinc-500">Total Written:</span>
+                        <span className="ml-2 text-white">{_totalWritten}</span>
+                      </div>
+                    </>
+                  ) : (
+                    <div>
+                      <span className="text-zinc-500">Contracts:</span>
+                      <span className="ml-2 text-white">{selectedTrade.contracts || '-'}</span>
+                    </div>
+                  );
+                })()}
                 <div>
-                  <span className="text-zinc-500">Contracts:</span>
-                  <span className="ml-2 text-white">{selectedTrade.contracts || '-'}</span>
-                </div>
-                <div>
-                  <span className="text-zinc-500">Option Strike:</span>
+                  <span className="text-zinc-500">Current Strike:</span>
                   <span className="ml-2 text-white">{selectedTrade.option_strike ? `$${selectedTrade.option_strike}` : '-'}</span>
                 </div>
                 <div>
@@ -1582,6 +1605,14 @@ const Portfolio = () => {
                     {selectedTrade.roi !== null ? formatPercent(selectedTrade.roi) : '-'}
                   </span>
                 </div>
+                {selectedTrade.premium_received > 0 && selectedTrade.entry_price > 0 && selectedTrade.shares > 0 && (
+                  <div>
+                    <span className="text-zinc-500">Yield on Cost:</span>
+                    <span className="ml-2 text-emerald-400">
+                      {((selectedTrade.premium_received / (selectedTrade.entry_price * selectedTrade.shares)) * 100).toFixed(1)}%
+                    </span>
+                  </div>
+                )}
               </div>
 
               {/* Trade Life Cycle */}
@@ -1727,136 +1758,134 @@ const Portfolio = () => {
                   );
                 }
 
-                // Build lifecycle steps from transactions
-                const steps = [];
-                const txs = [...selectedTrade.transactions].sort((a, b) =>
+                // Build lifecycle steps from transactions — show each option cycle
+                const allTxs = [...selectedTrade.transactions].sort((a, b) =>
                   (a.date || a.datetime || '').localeCompare(b.date || b.datetime || '')
                 );
 
-                // Group transactions into logical lifecycle stages
-                let openStep = null;
-                let rollSteps = [];
-                let closeStep = null;
+                const stockBuyTxns = allTxs.filter(tx => !tx.is_option && tx.transaction_type === 'Buy');
+                const optionSellTxns = allTxs.filter(tx => tx.is_option && tx.transaction_type === 'Sell');
+                const optionExpiryTxns = allTxs.filter(tx => tx.is_option &&
+                  ['Expiry', 'Expire', 'Expiration', 'Expired'].includes(tx.transaction_type));
+                const optionBuybackTxns = allTxs.filter(tx => tx.is_option && tx.transaction_type === 'Buy');
+                const assignmentTxns = allTxs.filter(tx => tx.transaction_type === 'Assignment');
 
-                txs.forEach(tx => {
-                  const type = (tx.transaction_type || '').toLowerCase();
-                  const desc = (tx.description || '').toLowerCase();
-                  const isOption = desc.includes('call') || desc.includes('put') ||
-                    tx.option_details || desc.match(/[cp]\d{6}/);
-                  const isRoll = desc.includes('roll') || type === 'rolled';
-                  const isExpire = type === 'expire' || type === 'expiration' || desc.includes('expir');
-                  const isAssign = type === 'assign' || type === 'assignment' || desc.includes('assign');
-                  const isClose = type === 'close' || desc.includes('closing') || isExpire || isAssign;
-                  const isBuy = type === 'buy' || type === 'buytooclose';
-                  const isSell = type === 'sell' || type === 'selltoopen';
+                const _today = new Date().toISOString().slice(0, 10);
+                const steps = [];
 
-                  if (!openStep && (isBuy || (isSell && !isOption))) {
-                    openStep = {
-                      label: 'Opened',
-                      date: tx.date || tx.datetime,
-                      desc: tx.description,
-                      amount: tx.net_amount,
-                      price: tx.price,
-                      qty: tx.quantity,
-                      color: 'emerald',
-                      icon: 'open',
-                    };
-                  } else if (isSell && isOption && !isRoll && !closeStep) {
-                    // Selling an option = opening a short call/put
-                    if (!openStep) {
-                      openStep = {
-                        label: 'Opened',
-                        date: tx.date || tx.datetime,
-                        desc: tx.description,
-                        amount: tx.net_amount,
-                        price: tx.price,
-                        qty: tx.quantity,
-                        color: 'emerald',
-                        icon: 'open',
-                      };
-                    }
-                  } else if (isRoll) {
-                    rollSteps.push({
-                      label: 'Rolled',
-                      date: tx.date || tx.datetime,
-                      desc: tx.description,
-                      amount: tx.net_amount,
-                      price: tx.price,
-                      color: 'blue',
-                      icon: 'roll',
-                    });
-                  } else if (isExpire) {
-                    closeStep = {
-                      label: 'Expired',
-                      date: tx.date || tx.datetime,
-                      desc: tx.description || 'Option expired worthless',
-                      amount: tx.net_amount,
-                      color: 'zinc',
-                      icon: 'expire',
-                    };
-                  } else if (isAssign) {
-                    closeStep = {
-                      label: 'Assigned',
-                      date: tx.date || tx.datetime,
-                      desc: tx.description || 'Option assigned',
-                      amount: tx.net_amount,
-                      color: 'amber',
-                      icon: 'assign',
-                    };
-                  } else if (isClose && isOption) {
-                    closeStep = {
-                      label: 'Closed',
-                      date: tx.date || tx.datetime,
-                      desc: tx.description,
-                      amount: tx.net_amount,
-                      price: tx.price,
-                      color: selectedTrade.realized_pnl >= 0 ? 'emerald' : 'red',
-                      icon: 'close',
-                    };
-                  }
-                });
-
-                // If trade is closed but no closeStep derived, add from trade fields
-                if (!closeStep && selectedTrade.status !== 'Open') {
-                  const statusLower = (selectedTrade.status || '').toLowerCase();
-                  closeStep = {
-                    label: selectedTrade.status,
-                    date: selectedTrade.date_closed,
-                    desc: selectedTrade.close_reason || `Trade ${selectedTrade.status.toLowerCase()}`,
-                    amount: selectedTrade.realized_pnl,
-                    color: statusLower === 'expired' ? 'zinc' : statusLower === 'assigned' ? 'amber' :
-                      (selectedTrade.realized_pnl >= 0 ? 'emerald' : 'red'),
-                    icon: 'close',
-                  };
-                }
-
-                // If openStep is still null, use trade fields
-                if (!openStep) {
-                  openStep = {
+                // Step 1: Stock purchase
+                if (stockBuyTxns.length > 0) {
+                  const totalSh = stockBuyTxns.reduce((s, t) => s + Math.abs(t.quantity || 0), 0);
+                  steps.push({
+                    label: 'Stock Bought',
+                    date: stockBuyTxns[0].date || stockBuyTxns[0].datetime,
+                    desc: `${totalSh} shares @ ${formatCurrency(stockBuyTxns[0].price)}`,
+                    amount: null,
+                    price: stockBuyTxns[0].price,
+                    color: 'emerald',
+                  });
+                } else if (optionSellTxns.length === 0) {
+                  // Fallback: no transactions to group
+                  steps.push({
                     label: 'Opened',
                     date: selectedTrade.date_opened,
-                    desc: `${selectedTrade.strategy_label || selectedTrade.strategy_type} opened`,
+                    desc: `${selectedTrade.strategy_label || selectedTrade.strategy_type || 'Trade'} opened`,
                     amount: null,
                     price: selectedTrade.entry_price,
                     color: 'emerald',
-                    icon: 'open',
-                  };
+                  });
                 }
 
-                const allSteps = [openStep, ...rollSteps];
-                // Add current open status if trade is still open
+                // Step 2+: One step per unique option contract (sell → expired/closed)
+                const _cycleMap = new Map();
+                optionSellTxns.forEach(tx => {
+                  const desc = tx.description || '';
+                  if (!_cycleMap.has(desc)) {
+                    _cycleMap.set(desc, {
+                      tx,
+                      totalPremium: 0,
+                      expiry: (tx.option_details || {}).expiry || '',
+                    });
+                  }
+                  _cycleMap.get(desc).totalPremium += Math.abs(tx.net_amount || 0);
+                });
+
+                const _usedIds = new Set();
+                [..._cycleMap.values()]
+                  .sort((a, b) => (a.tx.date || '').localeCompare(b.tx.date || ''))
+                  .forEach((cycle, idx, arr) => {
+                    const isLastCycle = idx === arr.length - 1;
+                    const contractKey = (cycle.tx.description || '').split(' ').slice(1, 4).join(' ');
+
+                    // Try to find explicit expiry or buyback for this contract
+                    const expEvent = optionExpiryTxns.find(
+                      e => !_usedIds.has(e.id) && (e.description || '').includes(contractKey)
+                    );
+                    if (expEvent) _usedIds.add(expEvent.id);
+
+                    const buybackEvent = optionBuybackTxns.find(
+                      e => !_usedIds.has(e.id) && (e.description || '').includes(contractKey)
+                    );
+                    if (buybackEvent) _usedIds.add(buybackEvent.id);
+
+                    // Infer expiry: if option expiry date < today and no explicit event
+                    const inferExpired = !expEvent && !buybackEvent && cycle.expiry && cycle.expiry < _today;
+
+                    steps.push({
+                      label: 'Sell Call',
+                      date: cycle.tx.date || cycle.tx.datetime,
+                      desc: cycle.tx.description,
+                      amount: cycle.totalPremium,
+                      color: 'violet',
+                    });
+
+                    if (expEvent || (inferExpired && !isLastCycle)) {
+                      steps.push({
+                        label: 'Expired',
+                        date: expEvent ? (expEvent.date || cycle.expiry) : cycle.expiry,
+                        desc: 'Worthless',
+                        amount: null,
+                        color: 'zinc',
+                      });
+                    } else if (buybackEvent) {
+                      steps.push({
+                        label: 'Closed',
+                        date: buybackEvent.date || buybackEvent.datetime,
+                        desc: `Bought back @ ${formatCurrency(buybackEvent.price)}`,
+                        amount: -Math.abs(buybackEvent.net_amount || 0),
+                        color: 'amber',
+                      });
+                    } else if (assignmentTxns.length > 0 && isLastCycle) {
+                      steps.push({
+                        label: 'Assigned',
+                        date: assignmentTxns[0].date,
+                        desc: 'Shares called away',
+                        amount: null,
+                        color: 'amber',
+                      });
+                    }
+                  });
+
+                // Final state
                 if (selectedTrade.status === 'Open') {
-                  allSteps.push({
+                  steps.push({
                     label: 'Active',
                     date: null,
                     desc: `DTE: ${selectedTrade.dte ?? '—'} | Unrealized: ${selectedTrade.unrealized_pnl != null ? (selectedTrade.unrealized_pnl >= 0 ? '+' : '') + '$' + Math.abs(selectedTrade.unrealized_pnl).toFixed(2) : '—'}`,
                     amount: selectedTrade.unrealized_pnl,
                     color: 'violet',
-                    icon: 'active',
                     current: true,
                   });
-                } else if (closeStep) {
-                  allSteps.push(closeStep);
+                } else if (steps.length > 0 && steps[steps.length - 1].label !== 'Assigned') {
+                  const statusLower = (selectedTrade.status || '').toLowerCase();
+                  steps.push({
+                    label: selectedTrade.status || 'Closed',
+                    date: selectedTrade.date_closed,
+                    desc: selectedTrade.close_reason || `Trade ${statusLower}`,
+                    amount: selectedTrade.realized_pnl,
+                    color: statusLower === 'expired' ? 'zinc' : statusLower === 'assigned' ? 'amber' :
+                      (selectedTrade.realized_pnl >= 0 ? 'emerald' : 'red'),
+                  });
                 }
 
                 const colorMap = {
@@ -1876,9 +1905,9 @@ const Portfolio = () => {
                     </h4>
                     <div className="bg-zinc-800/50 rounded-lg p-4">
                       <div className="flex items-start gap-0 overflow-x-auto pb-2">
-                        {allSteps.map((step, i) => {
+                        {steps.map((step, i) => {
                           const c = colorMap[step.color] || colorMap.zinc;
-                          const isLast = i === allSteps.length - 1;
+                          const isLast = i === steps.length - 1;
                           return (
                             <div key={i} className="flex items-start min-w-0 flex-shrink-0" style={{ maxWidth: '180px', minWidth: '120px' }}>
                               <div className="flex flex-col items-center w-full">
