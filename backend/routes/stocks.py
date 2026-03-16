@@ -404,13 +404,17 @@ async def get_stock_details(symbol: str, user: dict = Depends(get_current_user))
                         if len(result["news"]) >= 8:
                             break
                         # Only include articles where the exact symbol appears in entities
+                        # with sufficient relevance (not just a passing mention)
                         entities = article.get("entities", [])
                         sym_entity = next(
                             (e for e in entities if (e.get("symbol") or "").upper() == symbol.upper()),
                             None
                         )
-                        if not sym_entity and entities:
-                            continue  # Skip articles not directly about this symbol
+                        if not sym_entity:
+                            continue  # Skip articles that don't mention this symbol at all
+                        # Skip if the symbol is only peripherally mentioned (relevance < 0.3)
+                        if sym_entity.get("relevance_score", 1.0) < 0.3:
+                            continue
                         # Extract entity-level sentiment score for this symbol;
                         # fall back to average of all entity scores if symbol entity has none
                         sentiment_score = sym_entity.get("sentiment_score") if sym_entity else None

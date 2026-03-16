@@ -959,7 +959,7 @@ const PMCC = () => {
                 </div>
               ) : (
                 <div className="overflow-x-auto w-full">
-                  <table className="data-table text-xs w-full">
+                  <table className="data-table text-xs" style={{minWidth: '1100px'}}>
                     <thead>
                       <tr>
                         <SortHeader field="symbol" label="Symbol" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
@@ -982,8 +982,8 @@ const PMCC = () => {
                         const isExpanded = expandedRow === opp.symbol;
 
                         const cer = norm.capital_efficiency_ratio || 0;
-                        const cerColor = cer >= 1.40 ? 'text-emerald-400' : cer >= 1.20 ? 'text-yellow-400' : 'text-red-400';
-                        const cerIcon = cer >= 1.40 ? '🟢' : cer >= 1.20 ? '🟡' : '🔴';
+                        const cerColor = cer >= 4.0 ? 'text-emerald-400' : cer >= 2.5 ? 'text-yellow-400' : 'text-red-400';
+                        const cerIcon = cer >= 4.0 ? '🟢' : cer >= 2.5 ? '🟡' : '🔴';
 
                         const extPct = norm.leaps_extrinsic_percent || 0;
                         const extColor = extPct < 15 ? 'text-emerald-400' : extPct <= 25 ? 'text-yellow-400' : 'text-red-400';
