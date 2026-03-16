@@ -1354,7 +1354,11 @@ const Admin = () => {
                     </div>
                     <div className="flex items-center justify-between p-3 rounded-lg bg-zinc-800/50">
                       <span className="text-zinc-400">Price Source</span>
-                      <span className="text-white font-mono text-sm">{priceSource || 'N/A'}</span>
+                      <span className="text-white font-mono text-sm">
+                        {priceSource
+                          ? priceSource.replace(/yahoo[_-]?(live|finance)?/gi, 'Market Data').replace(/yahoo/gi, 'Market Data')
+                          : 'N/A'}
+                      </span>
                     </div>
                   </CardContent>
                 </Card>

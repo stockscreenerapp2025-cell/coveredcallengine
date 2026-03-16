@@ -74,7 +74,7 @@ async def get_stock_quote(symbol: str, user: dict = Depends(get_current_user)):
                 "change": result.get("change", 0),
                 "change_pct": result.get("change_pct", 0),
                 "close_date": result.get("close_date"),
-                "source": result.get("source", "yahoo"),
+                "source": result.get("source", "live"),
                 "is_live": True,
                 "open": result.get("open"),
                 "high": result.get("high"),
@@ -220,7 +220,7 @@ async def get_market_indices(user: dict = Depends(get_current_user)):
                 "change": round(float(change), 2),
                 "change_pct": round(float(change_pct), 2),
                 "close_date": close_date,
-                "source": "yahoo_finance"
+                "source": "live"
             }
         except Exception as e:
             logging.warning(f"Could not fetch index data for {symbol}: {e}")

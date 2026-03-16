@@ -361,7 +361,7 @@ const Simulator = () => {
         }
         return false;
       });
-      if (hasStale) handleUpdatePrices();
+      if (hasStale) handleUpdatePrices(true); // silent auto-refresh on load
     }
   }, [trades, loading, initialUpdateDone]);
 
@@ -559,15 +559,15 @@ const Simulator = () => {
     }
   };
 
-  const handleUpdatePrices = async () => {
+  const handleUpdatePrices = async (silent = false) => {
     setUpdating(true);
     try {
       const res = await simulatorApi.updatePrices();
-      toast.success(`Prices refreshed — ${res.data.updated ?? 0} trades updated`);
+      if (!silent) toast.success(`Prices refreshed — ${res.data.updated ?? 0} trades updated`);
       fetchTrades();
       fetchSummary();
     } catch (error) {
-      toast.error('Failed to update prices');
+      if (!silent) toast.error('Failed to update prices');
     } finally {
       setUpdating(false);
     }

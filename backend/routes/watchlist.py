@@ -188,7 +188,7 @@ async def _get_best_opportunity_live(symbol: str, stock_price: float = None) -> 
                     "iv_samples": iv_metrics.iv_samples if iv_metrics else 0,
                     # Liquidity
                     "open_interest": open_interest,
-                    "data_source": "yahoo_live"
+                    "data_source": "live"
                 }
         
         return best_opp
@@ -692,7 +692,7 @@ async def get_watchlist(
         # OPTIONAL: Live mode - fetch from Yahoo
         api_key = await get_massive_api_key()
         stock_data = await fetch_live_stock_quotes_batch(symbols, api_key)
-        data_source = "yahoo_live"
+        data_source = "live"
         stock_price_source = "LIVE_INTRADAY"
         live_data_used = True
         run_info = None
@@ -757,7 +757,7 @@ async def get_watchlist(
             "movement_pct": round(movement_pct, 2),
             "analyst_rating": price_data.get("analyst_rating"),
             "opportunity": opp,
-            "opportunity_source": ("yahoo_live" if use_live_prices else "eod_precomputed") if opp else None,
+            "opportunity_source": ("live" if use_live_prices else "eod_precomputed") if opp else None,
         }
 
         enriched = enrich_row(

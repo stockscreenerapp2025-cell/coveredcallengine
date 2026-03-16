@@ -2273,7 +2273,7 @@ async def compute_scan_results(
                         + (roi_per_cycle * 2)
                         + min(20, 5 * log1p(min(leap.get("oi", 0), short.get("oi", 0))))
                         - max(0, short["delta"] - 0.30) * 100
-                        - (short.get("spread_pct", 50.0) + leap.get("spread_pct", 50.0)) * 0.5
+                        - (short.get("spread_pct", 50.0) + leap.get("spread_pct", 50.0)) * 50
                     )), 1)
                 }
 
@@ -2295,9 +2295,8 @@ async def compute_scan_results(
         if len(opps_sorted) > 1:
             best["alternatives"] = [
                 {
-                    "short_strike": o.get("short_strike"),
-                    "short_expiry": o.get("short_expiry"),
-                    "short_dte": o.get("short_dte"),
+                    "strike": o.get("short_strike"),
+                    "expiry": o.get("short_expiry"),
                     "score": o.get("score"),
                     "roi_cycle": o.get("roi_cycle")
                 }

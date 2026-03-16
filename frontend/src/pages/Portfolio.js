@@ -1983,10 +1983,14 @@ const Portfolio = () => {
               {/* Close Trade */}
               {selectedTrade.status === 'Open' && (
                 <div className="pt-4 border-t border-zinc-800">
-                  <h4 className="text-sm font-medium text-zinc-400 mb-3 flex items-center gap-2">
+                  <h4 className="text-sm font-medium text-zinc-400 mb-1 flex items-center gap-2">
                     <XCircle className="w-4 h-4 text-red-400" />
                     Close Trade
                   </h4>
+                  <p className="text-xs text-zinc-500 mb-3">
+                    Manually mark this trade as closed. Enter the price at which you exited (sold stock or bought back the option).
+                    Realized P&L will be calculated as: <span className="text-zinc-400">(exit price − entry price) × shares + premium collected − fees</span>.
+                  </p>
                   <div className="flex items-center gap-3">
                     <div className="flex-1">
                       <Label className="text-zinc-400 text-xs mb-1 block">Close / Exit Price ($)</Label>
