@@ -182,13 +182,63 @@ const PMCC = () => {
     const syntheticStockCost = opp.synthetic_stock_cost || economics.synthetic_stock_cost ||
       (leapsStrike + leapsPremium);
 
-    // Max Return if Assigned = (Short Premium + max(0, Short Strike - Stock Price)) / Stock Price
-    // Same formula users know from covered calls — shows total return if short call is assigned
+    // Synthetic Premium % — how much more than stock price the synthetic costs
+    const syntheticPremiumPct = stockPrice > 0
+      ? ((syntheticStockCost - stockPrice) / stockPrice) * 100
+      : 0;
+
+    // Max Return if Assigned
     const shortPremiumPerShare = shortPremium < 10 ? shortPremium : shortPremium / 100;
     const upsideToStrike = shortStrike && stockPrice ? Math.max(0, shortStrike - stockPrice) : 0;
     const maxReturnPct = stockPrice > 0
       ? ((shortPremiumPerShare + upsideToStrike) / stockPrice) * 100
       : 0;
+
+    // Return on Capital (If Assigned)
+    const maxProfitDollar = strikeWidth > 0 ? (strikeWidth * 100) - netDebit : 0;
+    const returnOnCapital = netDebit > 0 ? (maxProfitDollar / netDebit) * 100 : 0;
+
+    // Adjusted Yield — penalise for high synthetic premium and low cap efficiency
+    const capEffRatioFinal = opp.capital_efficiency_ratio || economics.capital_efficiency_ratio ||
+      (netDebit > 0 ? stockEquivCost / netDebit : 0);
+    const capEffScore = capEffRatioFinal > 1.8 ? 1.0 : capEffRatioFinal >= 1.3 ? 0.5 : 0;
+    const synPenalty = syntheticPremiumPct < 2 ? 1.0 : syntheticPremiumPct <= 5 ? 0.7 : 0.4;
+    const annYield = opp.annualized_income_yield || annualizedRoi || 0;
+    const adjustedYield = annYield * capEffScore * synPenalty;
+
+    // Weighted PMCC Score (client-side, fixes zero-score bug)
+    const _capEffScore   = capEffRatioFinal > 1.8 ? 1.0 : capEffRatioFinal >= 1.3 ? 0.5 : 0;
+    const _synScore      = syntheticPremiumPct < 2 ? 1.0 : syntheticPremiumPct <= 5 ? 0.6 : 0;
+    const _incomeScore   = roiPerCycle > 5 ? 1.0 : roiPerCycle >= 3 ? 0.6 : 0.3;
+    const leapsDeltaVal  = leapsDelta || 0;
+    const _greeksScore   = leapsDeltaVal >= 0.8 && leapsDeltaVal <= 0.95 ? 1.0 : leapsDeltaVal >= 0.7 ? 0.6 : 0.3;
+    // Liquidity: use short OI / spread as proxy
+    const shortOI        = shortCall.open_interest || opp.short_oi || 0;
+    const _liqScore      = shortOI >= 500 ? 1.0 : shortOI >= 100 ? 0.6 : 0.3;
+    const computedScore  = Math.round(
+      (_capEffScore * 25) + (_synScore * 25) + (_incomeScore * 20) + (_greeksScore * 15) + (_liqScore * 15)
+    );
+    // Use backend score if valid (>0), otherwise use computed
+    const finalScore = (opp.pmcc_score || opp.score || 0) > 0
+      ? (opp.pmcc_score || opp.score)
+      : computedScore;
+
+    // Trade Verdict
+    const verdict = finalScore >= 75 ? '🟢 Strong' : finalScore >= 50 ? '🟡 Acceptable' : '🔴 Avoid';
+
+    // Why This Trade — top 3 drivers
+    const whyDrivers = [];
+    if (capEffRatioFinal > 1.8) whyDrivers.push({ icon: '✅', text: `Strong capital efficiency (${capEffRatioFinal.toFixed(2)}x)` });
+    else if (capEffRatioFinal >= 1.3) whyDrivers.push({ icon: '⚠️', text: `Moderate capital efficiency (${capEffRatioFinal.toFixed(2)}x)` });
+    else whyDrivers.push({ icon: '❌', text: `Poor capital efficiency (${capEffRatioFinal.toFixed(2)}x)` });
+
+    if (syntheticPremiumPct < 2) whyDrivers.push({ icon: '✅', text: `Low synthetic premium (${syntheticPremiumPct.toFixed(1)}%)` });
+    else if (syntheticPremiumPct <= 5) whyDrivers.push({ icon: '⚠️', text: `Moderate synthetic premium (${syntheticPremiumPct.toFixed(1)}%)` });
+    else whyDrivers.push({ icon: '❌', text: `High synthetic premium (${syntheticPremiumPct.toFixed(1)}%)` });
+
+    if (roiPerCycle > 5) whyDrivers.push({ icon: '✅', text: `Strong income (${roiPerCycle.toFixed(1)}% per cycle)` });
+    else if (roiPerCycle >= 3) whyDrivers.push({ icon: '⚠️', text: `Moderate income (${roiPerCycle.toFixed(1)}% per cycle)` });
+    else whyDrivers.push({ icon: '❌', text: `Low income (${roiPerCycle.toFixed(1)}% per cycle)` });
 
     return {
       ...opp,
@@ -231,7 +281,14 @@ const PMCC = () => {
       warning_badges: warningBadges,
       pmcc_score: pmccScore,
       synthetic_stock_cost: syntheticStockCost,
+      synthetic_premium_pct: syntheticPremiumPct,
       max_return_pct: maxReturnPct,
+      return_on_capital: returnOnCapital,
+      max_profit_dollar: maxProfitDollar,
+      adjusted_yield: adjustedYield,
+      pmcc_score: finalScore,
+      verdict,
+      why_drivers: whyDrivers,
     };
   };
 
@@ -982,8 +1039,10 @@ const PMCC = () => {
                         const isExpanded = expandedRow === opp.symbol;
 
                         const cer = norm.capital_efficiency_ratio || 0;
-                        const cerColor = cer >= 4.0 ? 'text-emerald-400' : cer >= 2.5 ? 'text-yellow-400' : 'text-red-400';
-                        const cerIcon = cer >= 4.0 ? '🟢' : cer >= 2.5 ? '🟡' : '🔴';
+                        const cerColor = cer > 1.8 ? 'text-emerald-400' : cer >= 1.3 ? 'text-yellow-400' : 'text-red-400';
+                        const cerIcon = cer > 1.8 ? '🟢' : cer >= 1.3 ? '🟡' : '🔴';
+                        const synthPct = norm.synthetic_premium_pct || 0;
+                        const synthColor = synthPct < 2 ? 'text-emerald-400' : synthPct <= 5 ? 'text-yellow-400' : 'text-red-400';
 
                         const extPct = norm.leaps_extrinsic_percent || 0;
                         const extColor = extPct < 15 ? 'text-emerald-400' : extPct <= 25 ? 'text-yellow-400' : 'text-red-400';
@@ -1099,6 +1158,18 @@ const PMCC = () => {
                             {isExpanded && (
                               <tr key={`details-${index}`} className="bg-zinc-900/60">
                                 <td colSpan={11} className="px-4 py-4">
+                                  {/* Verdict + Why This Trade banner */}
+                                  <div className="flex flex-wrap items-start gap-4 mb-4">
+                                    <div className={`px-4 py-2 rounded-lg border text-sm font-semibold ${norm.verdict?.startsWith('🟢') ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400' : norm.verdict?.startsWith('🟡') ? 'bg-yellow-500/10 border-yellow-500/30 text-yellow-400' : 'bg-red-500/10 border-red-500/30 text-red-400'}`}>
+                                      Trade Verdict: {norm.verdict} &nbsp;|&nbsp; Score: {norm.pmcc_score}
+                                    </div>
+                                    <div className="flex gap-2 flex-wrap">
+                                      {(norm.why_drivers || []).map((d, di) => (
+                                        <span key={di} className="text-xs bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-zinc-300">{d.icon} {d.text}</span>
+                                      ))}
+                                    </div>
+                                  </div>
+
                                   <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 text-xs">
                                     {/* Trade Structure */}
                                     <div className="bg-zinc-800/60 rounded-lg p-3 space-y-1">
@@ -1106,14 +1177,15 @@ const PMCC = () => {
                                       <div className="flex justify-between"><span className="text-zinc-500">Stock Price</span><span className="font-mono text-white">${opp.stock_price?.toFixed(2)}</span></div>
                                       <div className="flex justify-between"><span className="text-zinc-500">LEAPS Strike</span><span className="font-mono text-emerald-400">${norm.leaps_strike?.toFixed(0)}</span></div>
                                       <div className="flex justify-between"><span className="text-zinc-500">Short Strike</span><span className="font-mono text-cyan-400">${norm.short_strike?.toFixed(0)}</span></div>
-                                      <div className="flex justify-between"><span className="text-zinc-500">Net Debit/share</span><span className="font-mono text-white">${norm.net_debit ? (norm.net_debit / 100).toFixed(2) : '-'}</span></div>
+                                      <div className="flex justify-between"><span className="text-zinc-500">Net Debit / Share</span><span className="font-mono text-white">${norm.net_debit ? (norm.net_debit / 100).toFixed(2) : '-'}</span></div>
+                                      <div className="flex justify-between"><span className="text-zinc-500">Net Debit / Contract</span><span className="font-mono text-white">${norm.net_debit ? norm.net_debit.toLocaleString() : '-'}</span></div>
                                       <div className="flex justify-between"><span className="text-zinc-500">Width</span><span className="font-mono">${norm.strike_width?.toFixed(0)}</span></div>
                                     </div>
                                     {/* Capital Analysis */}
                                     <div className="bg-zinc-800/60 rounded-lg p-3 space-y-1">
                                       <p className="text-zinc-400 font-semibold uppercase tracking-wide text-[10px] mb-2">Capital Analysis</p>
-                                      <div className="flex justify-between"><span className="text-zinc-500">Stock Cost</span><span className="font-mono">${opp.stock_equivalent_cost?.toLocaleString() || (opp.stock_price * 100)?.toLocaleString()}</span></div>
-                                      <div className="flex justify-between"><span className="text-zinc-500">PMCC Cost</span><span className="font-mono text-red-400">${norm.net_debit ? norm.net_debit.toLocaleString() : '-'}</span></div>
+                                      <div className="flex justify-between"><span className="text-zinc-500">Stock Cost (100sh)</span><span className="font-mono">${opp.stock_equivalent_cost?.toLocaleString() || (opp.stock_price * 100)?.toLocaleString()}</span></div>
+                                      <div className="flex justify-between"><span className="text-zinc-500">PMCC Cost (1 contract)</span><span className="font-mono text-red-400">${norm.net_debit ? norm.net_debit.toLocaleString() : '-'}</span></div>
                                       <div className="flex justify-between"><span className="text-zinc-500">Capital Saved</span><span className="font-mono text-emerald-400">${norm.capital_saved_dollar?.toLocaleString() || '-'}</span></div>
                                       <div className="flex justify-between"><span className="text-zinc-500">Cap Efficiency</span><span className={`font-mono font-semibold ${cerColor}`}>{cerIcon} {cer?.toFixed(2)}x</span></div>
                                       <div className="flex justify-between"><span className="text-zinc-500">Capital Saved %</span><span className="font-mono text-emerald-400">{norm.capital_saved_percent?.toFixed(1)}%</span></div>
@@ -1124,32 +1196,35 @@ const PMCC = () => {
                                       <div className="flex justify-between"><span className="text-zinc-500">Delta</span><span className="font-mono">{norm.leaps_delta?.toFixed(2)}</span></div>
                                       <div className="flex justify-between"><span className="text-zinc-500">Extrinsic %</span><span className={`font-mono font-semibold ${extColor}`}>{extPct?.toFixed(1)}%</span></div>
                                       <div className="flex justify-between"><span className="text-zinc-500">DTE</span><span className="font-mono">{norm.leaps_dte}d</span></div>
-                                      <div className="flex justify-between"><span className="text-zinc-500">Ask</span><span className="font-mono">${norm.leaps_premium?.toFixed(2)}</span></div>
+                                      <div className="flex justify-between"><span className="text-zinc-500">Ask (per share)</span><span className="font-mono">${norm.leaps_premium?.toFixed(2)}</span></div>
                                       <div className="flex justify-between"><span className="text-zinc-500">Synthetic Cost</span><span className="font-mono">${norm.synthetic_stock_cost?.toFixed(2) || '-'}</span></div>
+                                      <div className="flex justify-between"><span className="text-zinc-500">Synthetic Premium %</span><span className={`font-mono font-semibold ${synthColor}`}>{synthPct?.toFixed(1)}%</span></div>
                                     </div>
                                     {/* Income Analysis */}
                                     <div className="bg-zinc-800/60 rounded-lg p-3 space-y-1">
                                       <p className="text-zinc-400 font-semibold uppercase tracking-wide text-[10px] mb-2">Income Analysis</p>
-                                      <div className="flex justify-between"><span className="text-zinc-500">Short Bid</span><span className="font-mono text-emerald-400">${norm.short_premium?.toFixed(2)}</span></div>
-                                      <div className="flex justify-between"><span className="text-zinc-500">ROI/Cycle</span><span className="font-mono font-semibold text-yellow-400">{norm.roi_per_cycle?.toFixed(2)}%</span></div>
+                                      <div className="flex justify-between"><span className="text-zinc-500">Short Bid (per share)</span><span className="font-mono text-emerald-400">${norm.short_premium?.toFixed(2)}</span></div>
+                                      <div className="flex justify-between"><span className="text-zinc-500">Short Premium (total)</span><span className="font-mono text-emerald-400">${norm.short_premium ? (norm.short_premium * 100).toFixed(0) : '-'}</span></div>
+                                      <div className="flex justify-between"><span className="text-zinc-500">ROI / Cycle</span><span className="font-mono font-semibold text-yellow-400">{norm.roi_per_cycle?.toFixed(2)}%</span></div>
                                       <div className="flex justify-between"><span className="text-zinc-500">Cycle Length</span><span className="font-mono">{norm.short_dte}d</span></div>
                                       <div className="flex justify-between"><span className="text-zinc-500">Ann. Yield</span><span className="font-mono text-emerald-400">{(opp.annualized_income_yield || norm.annualized_roi)?.toFixed(1)}%</span></div>
+                                      <div className="flex justify-between"><span className="text-zinc-500">Adjusted Yield</span><span className={`font-mono font-semibold ${(norm.adjusted_yield || 0) > 30 ? 'text-emerald-400' : (norm.adjusted_yield || 0) > 15 ? 'text-yellow-400' : 'text-red-400'}`}>{norm.adjusted_yield?.toFixed(1)}%</span></div>
                                     </div>
                                     {/* Payback & Risk */}
                                     <div className="bg-zinc-800/60 rounded-lg p-3 space-y-1">
                                       <p className="text-zinc-400 font-semibold uppercase tracking-wide text-[10px] mb-2">Payback & Risk</p>
-                                      <div className="flex justify-between"><span className="text-zinc-500">Payback Cycles</span><span className="font-mono">{norm.payback_cycles?.toFixed(1) || '-'}</span></div>
                                       <div className="flex justify-between"><span className="text-zinc-500">Payback Months</span><span className={`font-mono font-semibold ${pbColor}`}>{pbMonths?.toFixed(1)}mo</span></div>
                                       <div className="flex justify-between"><span className="text-zinc-500">Assignment Risk</span><span className={`font-semibold ${norm.assignment_risk === 'Low' ? 'text-emerald-400' : norm.assignment_risk === 'Medium' ? 'text-yellow-400' : 'text-red-400'}`}>{norm.assignment_risk}</span></div>
                                       <div className="flex justify-between"><span className="text-zinc-500">Short Delta</span><span className="font-mono">{norm.short_delta?.toFixed(2)}</span></div>
                                       <div className="flex justify-between"><span className="text-zinc-500">Breakeven</span><span className="font-mono">${norm.breakeven?.toFixed(2)}</span></div>
                                     </div>
-                                    {/* Max Profit */}
+                                    {/* If Assigned */}
                                     <div className="bg-zinc-800/60 rounded-lg p-3 space-y-1">
                                       <p className="text-zinc-400 font-semibold uppercase tracking-wide text-[10px] mb-2">If Assigned</p>
                                       <div className="flex justify-between"><span className="text-zinc-500">Max Spread Value</span><span className="font-mono">${norm.strike_width ? (norm.strike_width * 100)?.toLocaleString() : '-'}</span></div>
-                                      <div className="flex justify-between"><span className="text-zinc-500">Initial Capped P/L</span><span className={`font-mono font-semibold ${(norm.initial_capped_pl || 0) > 0 ? 'text-emerald-400' : 'text-red-400'}`}>${norm.initial_capped_pl?.toLocaleString() || '-'}</span></div>
-                                      <div className="flex justify-between"><span className="text-zinc-500">Net Debit Total</span><span className="font-mono text-red-400">${norm.net_debit ? (norm.net_debit * 100)?.toLocaleString() : '-'}</span></div>
+                                      <div className="flex justify-between"><span className="text-zinc-500">Max Profit ($)</span><span className={`font-mono font-semibold ${(norm.max_profit_dollar || 0) > 0 ? 'text-emerald-400' : 'text-red-400'}`}>${norm.max_profit_dollar?.toLocaleString() || '-'}</span></div>
+                                      <div className="flex justify-between"><span className="text-zinc-500">Return on Capital</span><span className={`font-mono font-semibold ${(norm.return_on_capital || 0) > 0 ? 'text-emerald-400' : 'text-red-400'}`}>{norm.return_on_capital?.toFixed(1)}%</span></div>
+                                      <div className="flex justify-between"><span className="text-zinc-500">PMCC Cost (1 contract)</span><span className="font-mono text-red-400">${norm.net_debit ? norm.net_debit.toLocaleString() : '-'}</span></div>
                                     </div>
                                   </div>
                                 </td>
