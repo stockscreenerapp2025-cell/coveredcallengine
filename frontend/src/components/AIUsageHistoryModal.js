@@ -33,7 +33,34 @@ const AIUsageHistoryModal = ({ open, onClose }) => {
   const fetchHistory = async () => {
     try {
       const response = await api.get('/ai-wallet/ledger?limit=100');
-      setEntries(response.data.entries || []);
+      const raw = response.data.entries || [];
+
+      // Collapse usage+reversal pairs into a single "Failed" row.
+      // A reversal is a system refund — pairing it with its usage avoids
+      // confusing duplicate entries in the history.
+      const collapsed = [];
+      const reversedIds = new Set();
+
+      raw.forEach((entry, i) => {
+        if (reversedIds.has(i)) return; // already consumed as part of a pair
+        if (entry.source === 'reversal') return; // lone reversal — skip
+
+        if (entry.source === 'usage') {
+          // Look ahead for a matching reversal (same action, within next 3 entries)
+          const matchIdx = raw.findIndex(
+            (r, j) => j > i && j <= i + 3 &&
+              r.source === 'reversal' && r.action === entry.action
+          );
+          if (matchIdx !== -1) {
+            reversedIds.add(matchIdx);
+            collapsed.push({ ...entry, _failed: true });
+            return;
+          }
+        }
+        collapsed.push(entry);
+      });
+
+      setEntries(collapsed);
     } catch (error) {
       console.error('Failed to fetch history:', error);
     } finally {
@@ -128,15 +155,19 @@ const AIUsageHistoryModal = ({ open, onClose }) => {
               {entries.map((entry, index) => (
                 <div
                   key={index}
-                  className="flex items-center gap-3 p-3 rounded-lg bg-zinc-800/50 border border-zinc-800 hover:border-zinc-700 transition-colors"
+                  className={`flex items-center gap-3 p-3 rounded-lg border transition-colors ${
+                    entry._failed
+                      ? 'bg-zinc-800/30 border-zinc-700/50 opacity-60'
+                      : 'bg-zinc-800/50 border-zinc-800 hover:border-zinc-700'
+                  }`}
                   data-testid={`history-entry-${index}`}
                 >
                   {/* Icon */}
                   <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${
+                    entry._failed ? 'bg-zinc-700' :
                     entry.source === 'usage' ? 'bg-red-500/20' :
                     entry.source === 'purchase' ? 'bg-amber-500/20' :
                     entry.source === 'grant' ? 'bg-emerald-500/20' :
-                    entry.source === 'reversal' ? 'bg-blue-500/20' :
                     'bg-zinc-700'
                   }`}>
                     {getSourceIcon(entry.source)}
@@ -145,12 +176,13 @@ const AIUsageHistoryModal = ({ open, onClose }) => {
                   {/* Details */}
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
-                      <span className="text-white text-sm font-medium truncate">
+                      <span className={`text-sm font-medium truncate ${entry._failed ? 'text-zinc-400' : 'text-white'}`}>
                         {formatAction(entry.action)}
                       </span>
-                      <Badge className={`text-xs ${getSourceBadge(entry.source)}`}>
-                        {getSourceLabel(entry.source)}
-                      </Badge>
+                      {entry._failed
+                        ? <Badge className="text-xs bg-zinc-700 text-zinc-400 border-zinc-600">Failed — No Charge</Badge>
+                        : <Badge className={`text-xs ${getSourceBadge(entry.source)}`}>{getSourceLabel(entry.source)}</Badge>
+                      }
                     </div>
                     <p className="text-zinc-500 text-xs">
                       {formatDate(entry.timestamp)}
@@ -159,17 +191,23 @@ const AIUsageHistoryModal = ({ open, onClose }) => {
 
                   {/* Token Amount */}
                   <div className="text-right">
-                    <div className={`font-medium ${
-                      entry.tokens_total > 0 ? 'text-emerald-400' : 'text-red-400'
-                    }`}>
-                      {entry.tokens_total > 0 ? '+' : ''}{entry.tokens_total.toLocaleString()}
-                    </div>
-                    {(entry.free_tokens !== 0 || entry.paid_tokens !== 0) && (
-                      <p className="text-zinc-500 text-xs">
-                        {entry.free_tokens !== 0 && `Free: ${entry.free_tokens}`}
-                        {entry.free_tokens !== 0 && entry.paid_tokens !== 0 && ' / '}
-                        {entry.paid_tokens !== 0 && `Paid: ${entry.paid_tokens}`}
-                      </p>
+                    {entry._failed ? (
+                      <div className="font-medium text-zinc-500">±0</div>
+                    ) : (
+                      <>
+                        <div className={`font-medium ${
+                          entry.tokens_total > 0 ? 'text-emerald-400' : 'text-red-400'
+                        }`}>
+                          {entry.tokens_total > 0 ? '+' : ''}{entry.tokens_total.toLocaleString()}
+                        </div>
+                        {(entry.free_tokens !== 0 || entry.paid_tokens !== 0) && (
+                          <p className="text-zinc-500 text-xs">
+                            {entry.free_tokens !== 0 && `Free: ${entry.free_tokens}`}
+                            {entry.free_tokens !== 0 && entry.paid_tokens !== 0 && ' / '}
+                            {entry.paid_tokens !== 0 && `Paid: ${entry.paid_tokens}`}
+                          </p>
+                        )}
+                      </>
                     )}
                   </div>
                 </div>

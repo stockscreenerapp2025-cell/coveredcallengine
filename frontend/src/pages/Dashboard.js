@@ -216,8 +216,18 @@ const Dashboard = () => {
   };
 
   // Prepare strategy distribution data for pie chart
+  const STRATEGY_LABELS = {
+    COVERED_CALL: 'Covered Call',
+    NAKED_PUT: 'Cash Secured Put',
+    PMCC: 'PMCC',
+    COLLAR: 'Collar',
+    STOCK: 'Stock',
+    ETF: 'ETF',
+    INDEX: 'Index',
+    OPTION: 'Option',
+  };
   const strategyData = ibkrSummary?.by_strategy ? Object.entries(ibkrSummary.by_strategy).map(([key, value]) => ({
-    name: key.replace('_', ' '),
+    name: STRATEGY_LABELS[key] || key.replace(/_/g, ' '),
     value: value.count,
     invested: value.invested,
     premium: value.premium,

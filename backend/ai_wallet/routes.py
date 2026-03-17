@@ -133,6 +133,7 @@ class PurchaseCreateBody(BaseModel):
 
 @ai_wallet_router.post("/purchase/create")
 async def create_purchase(
+    request: Request,
     body: PurchaseCreateBody,
     user: dict = Depends(get_current_user)
 ):
@@ -159,11 +160,10 @@ async def create_purchase(
     now = datetime.now(timezone.utc)
     purchase_id = str(uuid.uuid4())
     
-    # Get base URL for return/cancel
+    # Get base URL for return/cancel — use PUBLIC_APP_URL if set, else derive from request
     base_url = os.environ.get("PUBLIC_APP_URL", "")
     if not base_url:
-        # Try to construct from request or use default
-        base_url = os.environ.get("REACT_APP_BACKEND_URL", "https://localhost:3000")
+        base_url = f"{request.url.scheme}://{request.url.netloc}"
     
     return_url = body.return_url or f"{base_url}/ai-wallet?purchase=success&id={purchase_id}"
     cancel_url = body.cancel_url or f"{base_url}/ai-wallet?purchase=cancelled"
