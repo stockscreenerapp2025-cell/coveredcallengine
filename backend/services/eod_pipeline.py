@@ -1965,15 +1965,25 @@ async def compute_scan_results(
 
                 symbol_cc_opps.append(cc_opp)
 
-        # Pick best CC for this symbol (highest score) and stream-write it immediately
-        # This maintains the original 1-per-symbol behavior without accumulating a huge list
+        # Store best WEEKLY (7-14 DTE) and best MONTHLY (21-45 DTE) separately per symbol
+        # so the dashboard can populate both buckets independently.
         if symbol_cc_opps:
-            best_cc = max(symbol_cc_opps, key=lambda x: x["score"])
-            try:
-                await db.scan_results_cc.insert_one(best_cc)
-                cc_written_count += 1
-            except Exception as _cc_err:
-                logger.error(f"[EOD] CC insert error for {symbol}: {_cc_err}")
+            weekly_opps_sym = [o for o in symbol_cc_opps if 7 <= o["dte"] <= 14]
+            monthly_opps_sym = [o for o in symbol_cc_opps if 21 <= o["dte"] <= 45]
+            to_insert = []
+            if weekly_opps_sym:
+                to_insert.append(max(weekly_opps_sym, key=lambda x: x["score"]))
+            if monthly_opps_sym:
+                to_insert.append(max(monthly_opps_sym, key=lambda x: x["score"]))
+            # If neither weekly nor monthly (edge DTE), keep overall best
+            if not to_insert:
+                to_insert.append(max(symbol_cc_opps, key=lambda x: x["score"]))
+            for best_cc in to_insert:
+                try:
+                    await db.scan_results_cc.insert_one(best_cc)
+                    cc_written_count += 1
+                except Exception as _cc_err:
+                    logger.error(f"[EOD] CC insert error for {symbol}: {_cc_err}")
             symbol_cc_opps = []  # free memory
 
         # PMCC opportunities - only evaluate if symbol has 180+ DTE options

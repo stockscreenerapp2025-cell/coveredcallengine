@@ -1091,27 +1091,27 @@ const Dashboard = () => {
 
       {/* Data Source Notice - EOD Pipeline Status */}
       {opportunitiesInfo && (
-        <div className={`glass-card p-4 border-l-4 ${opportunitiesInfo?.data_source === 'eod_pipeline' && opportunitiesInfo?.run_info?.run_id
+        <div className={`glass-card p-4 border-l-4 ${opportunitiesInfo?.data_source?.startsWith('eod_pipeline') && opportunitiesInfo?.run_info?.run_id
             ? 'border-emerald-500'
             : 'border-yellow-500'
           }`}>
           <div className="flex items-center gap-3">
-            {opportunitiesInfo?.data_source === 'eod_pipeline' && opportunitiesInfo?.run_info?.run_id ? (
+            {opportunitiesInfo?.data_source?.startsWith('eod_pipeline') && opportunitiesInfo?.run_info?.run_id ? (
               <CheckCircle className="w-5 h-5 text-emerald-400" />
             ) : (
               <Activity className="w-5 h-5 text-yellow-400" />
             )}
             <div>
-              <div className={`text-sm font-medium ${opportunitiesInfo?.data_source === 'eod_pipeline' && opportunitiesInfo?.run_info?.run_id
+              <div className={`text-sm font-medium ${opportunitiesInfo?.data_source?.startsWith('eod_pipeline') && opportunitiesInfo?.run_info?.run_id
                   ? 'text-emerald-400'
                   : 'text-yellow-400'
                 }`}>
-                {opportunitiesInfo?.data_source === 'eod_pipeline' && opportunitiesInfo?.run_info?.run_id
+                {opportunitiesInfo?.data_source?.startsWith('eod_pipeline') && opportunitiesInfo?.run_info?.run_id
                   ? 'EOD Pre-computed Data'
                   : 'Using Mock Data'}
               </div>
               <div className="text-xs text-zinc-500">
-                {opportunitiesInfo?.data_source === 'eod_pipeline' && opportunitiesInfo?.run_info?.run_id
+                {opportunitiesInfo?.data_source?.startsWith('eod_pipeline') && opportunitiesInfo?.run_info?.run_id
                   ? `Run: ${opportunitiesInfo.run_info.run_id.substring(0, 20)}... • Last updated: ${opportunitiesInfo.run_info.completed_at ? new Date(opportunitiesInfo.run_info.completed_at).toLocaleString() : 'N/A'}`
                   : 'No EOD run available. Data may be stale or unavailable.'}
               </div>
