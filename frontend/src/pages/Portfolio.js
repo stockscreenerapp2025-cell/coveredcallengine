@@ -1555,12 +1555,16 @@ const Portfolio = () => {
 
       {/* Trade Detail Dialog */}
       <Dialog open={tradeDetailOpen} onOpenChange={setTradeDetailOpen}>
-        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto bg-zinc-900 border-zinc-800">
+        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto bg-zinc-900 border-zinc-800">
           <DialogHeader>
-            <DialogTitle className="text-xl flex items-center gap-3">
+            <DialogTitle className="text-lg flex items-center gap-2">
               <span className="text-white">{selectedTrade?.symbol}</span>
               <Badge className={STRATEGY_COLORS[selectedTrade?.strategy_type] || STRATEGY_COLORS.OTHER}>
-                {selectedTrade?.strategy_label || selectedTrade?.strategy_type}
+                {/* If stock trade has put options sold → show Cash Secured Put */}
+                {['STOCK', 'ETF', 'INDEX'].includes(selectedTrade?.strategy_type) &&
+                  (selectedTrade?.transactions || []).some(tx => tx.is_option && /\bP$/.test((tx.description || '').trim()))
+                  ? 'Cash Secured Put'
+                  : (selectedTrade?.strategy_label || selectedTrade?.strategy_type)}
               </Badge>
               <Badge className={STATUS_COLORS[selectedTrade?.status] || STATUS_COLORS.Open}>
                 {selectedTrade?.status}
@@ -1571,7 +1575,7 @@ const Portfolio = () => {
           {selectedTrade && (
             <div className="space-y-6">
               {/* Trade Summary */}
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <div className="grid grid-cols-4 gap-2">
                 <div className="bg-zinc-800/50 rounded-lg p-3">
                   <div className="text-xs text-zinc-500">Entry Price</div>
                   <div className="text-lg font-semibold text-white">{formatCurrency(selectedTrade.entry_price)}</div>
@@ -1593,7 +1597,7 @@ const Portfolio = () => {
               </div>
 
               {/* Trade Details */}
-              <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-sm">
+              <div className="grid grid-cols-2 gap-3 text-sm">
                 <div>
                   <span className="text-zinc-500">Account:</span>
                   <span className="ml-2 text-white">{selectedTrade.account}</span>
@@ -1898,12 +1902,14 @@ const Portfolio = () => {
                     // Infer expiry: if option expiry date < today and no explicit event
                     const inferExpired = !expEvent && !buybackEvent && cycle.expiry && cycle.expiry < _today;
 
+                    // Detect if this is a put option (description ends with ' P' or ' P ')
+                    const _isPut = /\bP$/.test((cycle.tx.description || '').trim());
                     steps.push({
-                      label: 'Sell Call',
+                      label: _isPut ? 'Sell Put' : 'Sell Call',
                       date: cycle.tx.date || cycle.tx.datetime,
                       desc: cycle.tx.description,
                       amount: cycle.totalPremium,
-                      color: 'violet',
+                      color: _isPut ? 'amber' : 'violet',
                     });
 
                     if (expEvent || (inferExpired && !isLastCycle)) {

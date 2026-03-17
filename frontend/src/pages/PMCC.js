@@ -202,7 +202,8 @@ const PMCC = () => {
     const capEffRatioFinal = opp.capital_efficiency_ratio || economics.capital_efficiency_ratio ||
       (netDebit > 0 ? stockEquivCost / netDebit : 0);
     const capEffScore = capEffRatioFinal > 1.8 ? 1.0 : capEffRatioFinal >= 1.3 ? 0.5 : 0;
-    const synPenalty = syntheticPremiumPct < 2 ? 1.0 : syntheticPremiumPct <= 5 ? 0.7 : 0.4;
+    // 4-tier penalty: <2% excellent, 2-5% OK, 5-7% moderate, >7% heavy
+    const synPenalty = syntheticPremiumPct < 2 ? 1.0 : syntheticPremiumPct <= 5 ? 0.6 : syntheticPremiumPct <= 7 ? 0.4 : 0.2;
     const annYield = opp.annualized_income_yield || annualizedRoi || 0;
     const adjustedYield = annYield * capEffScore * synPenalty;
 
@@ -219,12 +220,16 @@ const PMCC = () => {
       (_capEffScore * 25) + (_synScore * 25) + (_incomeScore * 20) + (_greeksScore * 15) + (_liqScore * 15)
     );
     // Use backend score if valid (>0), otherwise use computed
-    const finalScore = (opp.pmcc_score || opp.score || 0) > 0
+    const rawScore = (opp.pmcc_score || opp.score || 0) > 0
       ? (opp.pmcc_score || opp.score)
       : computedScore;
+    // MANDATORY: cap score at 50 when synthetic premium > 7% (overpriced LEAPS)
+    const finalScore = syntheticPremiumPct > 7 ? Math.min(rawScore, 50) : rawScore;
 
-    // Trade Verdict
-    const verdict = finalScore >= 75 ? '🟢 Strong' : finalScore >= 50 ? '🟡 Acceptable' : '🔴 Avoid';
+    // Trade Verdict — forced Avoid if synthetic premium > 7%
+    const verdict = syntheticPremiumPct > 7
+      ? '🔴 Avoid'
+      : finalScore >= 75 ? '🟢 Strong' : finalScore >= 50 ? '🟡 Acceptable' : '🔴 Avoid';
 
     // Why This Trade — top 3 drivers
     const whyDrivers = [];
@@ -363,6 +368,9 @@ const PMCC = () => {
     // ROI filters
     minRoiPerCycle: '',
     minAnnualizedRoi: '',
+    // Quality filters
+    maxSyntheticPremium: '',  // max synthetic premium % (≤5 recommended, >7 reject)
+    minCapEff: '',            // min capital efficiency ratio (≥1.3 recommended)
   });
 
   useEffect(() => {
@@ -468,6 +476,26 @@ const PMCC = () => {
       }
       opportunities = Object.values(symbolMap);
 
+      // Client-side quality filters: Synthetic Premium % and Capital Efficiency
+      if (filters.maxSyntheticPremium !== '') {
+        const maxSynth = parseFloat(filters.maxSyntheticPremium);
+        if (!isNaN(maxSynth)) {
+          opportunities = opportunities.filter(opp => {
+            const norm = normalizeOpp(opp);
+            return (norm.synthetic_premium_pct || 0) <= maxSynth;
+          });
+        }
+      }
+      if (filters.minCapEff !== '') {
+        const minCE = parseFloat(filters.minCapEff);
+        if (!isNaN(minCE)) {
+          opportunities = opportunities.filter(opp => {
+            const norm = normalizeOpp(opp);
+            return (norm.capital_efficiency_ratio || 0) >= minCE;
+          });
+        }
+      }
+
       if (!activeScanRef.current) {
         setOpportunities(opportunities);
         setApiInfo(response.data);
@@ -494,6 +522,8 @@ const PMCC = () => {
       maxShortDte: '',
       minRoiPerCycle: '',
       minAnnualizedRoi: '',
+      maxSyntheticPremium: '',
+      minCapEff: '',
     });
   };
 
@@ -781,7 +811,7 @@ const PMCC = () => {
               </div>
             </CardHeader>
             <CardContent className="space-y-2">
-              <Accordion type="multiple" defaultValue={["stock", "leaps", "short", "roi"]} className="w-full">
+              <Accordion type="multiple" defaultValue={["stock", "leaps", "short", "roi", "quality"]} className="w-full">
 
                 {/* Stock Price Filter */}
                 <AccordionItem value="stock" className="border-zinc-800">
@@ -959,6 +989,60 @@ const PMCC = () => {
                         placeholder="Min"
                       />
                     </div>
+                  </AccordionContent>
+                </AccordionItem>
+
+                {/* Quality Filters — Synthetic Premium & Cap Efficiency */}
+                <AccordionItem value="quality" className="border-zinc-800">
+                  <AccordionTrigger className="text-sm font-medium hover:no-underline">
+                    <div className="flex items-center gap-2">
+                      <Zap className="w-4 h-4 text-violet-400" />
+                      Quality Filters
+                    </div>
+                  </AccordionTrigger>
+                  <AccordionContent className="space-y-4 pt-2">
+
+                    {/* Synthetic Premium */}
+                    <div>
+                      <Label className="text-xs text-zinc-400">Max Synthetic Premium %</Label>
+                      <Input
+                        type="number"
+                        step="0.5"
+                        min="0"
+                        value={filters.maxSyntheticPremium}
+                        onChange={(e) => setFilters(f => ({ ...f, maxSyntheticPremium: e.target.value }))}
+                        className="input-dark mt-2"
+                        placeholder="e.g. 5"
+                      />
+                      <div className="mt-1 space-y-0.5">
+                        <p className="text-xs text-zinc-500">(LEAPS Strike + LEAPS Ask − Stock Price) / Stock Price</p>
+                        <div className="flex gap-3 text-[10px] mt-1">
+                          <span className="text-emerald-400">✅ ≤2% Excellent</span>
+                          <span className="text-yellow-400">⚠️ 2–5% OK</span>
+                          <span className="text-red-400">❌ &gt;7% Reject</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Capital Efficiency */}
+                    <div>
+                      <Label className="text-xs text-zinc-400">Min Capital Efficiency (×)</Label>
+                      <Input
+                        type="number"
+                        step="0.1"
+                        min="1"
+                        value={filters.minCapEff}
+                        onChange={(e) => setFilters(f => ({ ...f, minCapEff: e.target.value }))}
+                        className="input-dark mt-2"
+                        placeholder="e.g. 1.3"
+                      />
+                      <div className="flex gap-3 text-[10px] mt-1">
+                        <span className="text-emerald-400">🟢 &gt;1.8x Strong</span>
+                        <span className="text-yellow-400">🟡 1.3–1.8x OK</span>
+                        <span className="text-red-400">🔴 &lt;1.3x Poor</span>
+                      </div>
+                    </div>
+
                   </AccordionContent>
                 </AccordionItem>
 

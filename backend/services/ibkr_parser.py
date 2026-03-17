@@ -1502,6 +1502,9 @@ class IBKRParser:
                 return 'COLLAR'
             elif call_sells:
                 return 'COVERED_CALL'
+            elif put_sells:
+                # Stock held alongside put sells = Cash Secured Put / Wheel leg
+                return 'NAKED_PUT'
             else:
                 # Pure stock - check if ETF or Index
                 symbol = stock_txs[0].get('underlying_symbol', '') if stock_txs else ''
