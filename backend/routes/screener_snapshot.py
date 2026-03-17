@@ -2041,7 +2041,27 @@ async def get_dashboard_opportunities(
             monthly_cursor.to_list(length=20)
         )
         results = weekly_raw + monthly_raw
-        data_source = "eod_pipeline"
+
+        # If current run has no DTE-filtered results (e.g. ran during market hours
+        # with bid=0), fall back to the most recent run that actually has CC results
+        if not results:
+            logging.info(f"Dashboard: run {run_id} has no CC results in DTE 7-14/21-45, trying any DTE in current run first")
+            any_cursor = db.scan_results_cc.find(
+                {"run_id": run_id}, {"_id": 0}
+            ).sort("score", -1).limit(20)
+            results = await any_cursor.to_list(length=20)
+
+        if not results:
+            logging.info("Dashboard: current run has 0 CC results, searching previous runs")
+            prev_cursor = db.scan_results_cc.find(
+                {"run_id": {"$ne": run_id},
+                 "dte": {"$gte": WEEKLY_MIN_DTE, "$lte": MONTHLY_MAX_DTE}},
+                {"_id": 0}
+            ).sort("created_at", -1).limit(40)
+            results = await prev_cursor.to_list(length=40)
+            data_source = "eod_pipeline_prev_run" if results else "eod_pipeline"
+        else:
+            data_source = "eod_pipeline"
 
         # Get run info
         run_doc = await db.scan_runs.find_one({"run_id": run_id}, {"_id": 0})
