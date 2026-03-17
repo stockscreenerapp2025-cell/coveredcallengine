@@ -230,29 +230,41 @@ async def import_ibkr_csv(file: UploadFile = File(...), user: dict = Depends(get
     
     result = parse_ibkr_csv(decoded)
     imported_accounts = result.get('accounts', [])
-    
-    # Clear existing data for these accounts (overwrite behavior)
-    if imported_accounts:
-        await db.ibkr_transactions.delete_many({
-            "user_id": user['id'],
-            "account": {"$in": imported_accounts}
-        })
-        await db.ibkr_trades.delete_many({
-            "user_id": user['id'],
-            "account": {"$in": imported_accounts}
-        })
-    
-    # Store raw transactions
-    for tx in result.get('raw_transactions', []):
+    raw_transactions = result.get('raw_transactions', [])
+    trades = result.get('trades', [])
+
+    # Validate parse succeeded before touching existing data
+    if not imported_accounts:
+        raise HTTPException(status_code=400, detail="Could not parse IBKR CSV: no accounts found. Check the file format.")
+
+    # Build all docs in memory first — only clear old data after successful parse
+    tx_docs = []
+    for tx in raw_transactions:
         tx['user_id'] = user['id']
-        await db.ibkr_transactions.insert_one(tx)
-    
-    # Store parsed trades
-    for trade in result.get('trades', []):
+        tx_docs.append(tx)
+
+    trade_docs = []
+    for trade in trades:
         trade['user_id'] = user['id']
         trade_doc = {k: v for k, v in trade.items() if k != 'transactions'}
         trade_doc['transaction_ids'] = [t['id'] for t in trade.get('transactions', [])]
-        await db.ibkr_trades.insert_one(trade_doc)
+        trade_docs.append(trade_doc)
+
+    # Now safe to clear existing data (parse succeeded)
+    await db.ibkr_transactions.delete_many({
+        "user_id": user['id'],
+        "account": {"$in": imported_accounts}
+    })
+    await db.ibkr_trades.delete_many({
+        "user_id": user['id'],
+        "account": {"$in": imported_accounts}
+    })
+
+    # Insert new data
+    if tx_docs:
+        await db.ibkr_transactions.insert_many(tx_docs)
+    if trade_docs:
+        await db.ibkr_trades.insert_many(trade_docs)
     
     return {
         "message": f"Imported {len(result.get('trades', []))} trades from {len(imported_accounts)} accounts",

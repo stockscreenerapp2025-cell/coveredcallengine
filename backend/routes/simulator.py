@@ -1311,9 +1311,13 @@ async def get_simulator_summary(user: dict = Depends(get_current_user)):
     total_realized = sum((t.get("realized_pnl") or t.get("final_pnl") or 0) for t in closed_trades)
     total_unrealized = sum((t.get("unrealized_pnl") or 0) for t in active_trades)
     
-    # Win rate
-    winners = [t for t in closed_trades if (t.get("realized_pnl", 0) or t.get("final_pnl", 0)) > 0]
-    win_rate = (len(winners) / len(closed_trades) * 100) if closed_trades else 0
+    # Win rate — include open trades with positive unrealized P&L so it's not always 0
+    # when all trades are still open
+    closed_winners = [t for t in closed_trades if (t.get("realized_pnl", 0) or t.get("final_pnl", 0)) > 0]
+    open_winners = [t for t in active_trades if (t.get("unrealized_pnl") or 0) > 0]
+    all_evaluated = closed_trades + active_trades
+    all_winners = closed_winners + open_winners
+    win_rate = (len(all_winners) / len(all_evaluated) * 100) if all_evaluated else 0
     
     # Average ROI (closed trades only)
     rois = [t.get("roi_percent", 0) for t in closed_trades if t.get("roi_percent") is not None]

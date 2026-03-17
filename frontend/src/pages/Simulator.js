@@ -760,7 +760,7 @@ const Simulator = () => {
                   Avg Return
                 </div>
                 <div className="text-xl font-bold font-mono text-white">
-                  {formatCurrency(summary?.avg_return_per_trade || 0)}
+                  {(summary?.avg_return_per_trade || 0).toFixed(2)}%
                 </div>
               </CardContent>
             </Card>
