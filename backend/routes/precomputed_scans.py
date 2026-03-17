@@ -62,7 +62,15 @@ def sanitize_response(data: Dict) -> Dict:
 
 async def _get_latest_eod_run_id() -> Optional[str]:
     """Get the latest EOD pipeline run_id."""
-    # Try scan_runs first
+    # Try COMPLETED (uppercase) first — EOD pipeline stores this casing
+    latest_run = await db.scan_runs.find_one(
+        {"status": "COMPLETED"},
+        {"run_id": 1, "_id": 0},
+        sort=[("completed_at", -1)]
+    )
+    if latest_run and latest_run.get("run_id"):
+        return latest_run.get("run_id")
+    # Fallback: lowercase
     latest_run = await db.scan_runs.find_one(
         {"status": "completed"},
         {"run_id": 1, "_id": 0},
@@ -70,16 +78,17 @@ async def _get_latest_eod_run_id() -> Optional[str]:
     )
     if latest_run and latest_run.get("run_id"):
         return latest_run.get("run_id")
-    
-    # Fallback: get run_id from most recent scan_results_cc entry
+    # Last resort: get run_id from most recent scan_results_pmcc or scan_results_cc entry
+    latest_pmcc = await db.scan_results_pmcc.find_one(
+        {}, {"run_id": 1, "_id": 0}, sort=[("created_at", -1)]
+    )
+    if latest_pmcc and latest_pmcc.get("run_id"):
+        return latest_pmcc.get("run_id")
     latest_cc = await db.scan_results_cc.find_one(
-        {},
-        {"run_id": 1, "_id": 0},
-        sort=[("created_at", -1)]
+        {}, {"run_id": 1, "_id": 0}, sort=[("created_at", -1)]
     )
     if latest_cc and latest_cc.get("run_id"):
         return latest_cc.get("run_id")
-    
     return None
 
 async def _get_eod_cc_opportunities(
@@ -204,7 +213,7 @@ async def _get_eod_pmcc_opportunities(
     # If too few results, expand to the 5 most recent runs and deduplicate by symbol
     if len(results) < 20:
         recent_runs_cursor = db.scan_runs.find(
-            {"status": "completed"},
+            {"status": {"$in": ["COMPLETED", "completed"]}},
             {"run_id": 1, "_id": 0}
         ).sort("completed_at", -1).limit(5)
         recent_runs = await recent_runs_cursor.to_list(5)
@@ -474,7 +483,7 @@ async def get_available_scans(user: dict = Depends(get_current_user)):
     pmcc_run_ids = []
     if run_id:
         recent_cursor = db.scan_runs.find(
-            {"status": "completed"}, {"run_id": 1, "_id": 0}
+            {"status": {"$in": ["COMPLETED", "completed"]}}, {"run_id": 1, "_id": 0}
         ).sort("completed_at", -1).limit(5)
         recent_docs = await recent_cursor.to_list(5)
         pmcc_run_ids = list({r["run_id"] for r in recent_docs if r.get("run_id")})

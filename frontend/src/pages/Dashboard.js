@@ -779,7 +779,7 @@ const Dashboard = () => {
                     <div className="meta">
                       <span>{item.source}</span>
                       <span>•</span>
-                      <span>{item.time || item.published_at ? new Date(item.published_at).toLocaleDateString() : 'Recent'}</span>
+                      <span>{(() => { const d = new Date(item.published_at || item.time); return d instanceof Date && !isNaN(d) ? d.toLocaleDateString() : 'Recent'; })()}</span>
                       {(() => {
                         const s = item.sentiment || 'neutral';
                         const cls = s === 'positive' ? 'badge-success' : s === 'negative' ? 'badge-danger' : 'badge-info';

@@ -986,6 +986,18 @@ async def _get_cc_from_eod(
 
         results = await cursor.to_list(length=limit * 3)
 
+        # If current run has no CC results (e.g. pipeline ran during market hours with bid=0),
+        # fall back to most recent previous run that has results matching the same filters.
+        if not results:
+            prev_query = {k: v for k, v in query.items() if k != "run_id"}
+            prev_query["run_id"] = {"$ne": run_id}
+            prev_cursor = db.scan_results_cc.find(
+                prev_query, {"_id": 0}
+            ).sort("created_at", -1).limit(limit * 3)
+            results = await prev_cursor.to_list(length=limit * 3)
+            if results:
+                logging.info(f"CC screener: current run {run_id} has 0 results, fell back to previous run")
+
         # Recalculate DTE from expiry date (stored DTE may be stale if pipeline ran days ago)
         today = _today_date()
         for r in results:
