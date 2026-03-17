@@ -861,11 +861,30 @@ async def validate_eod_data(symbols: List[str], trade_date: str = None) -> Dict[
 async def _get_latest_eod_run_id() -> Optional[str]:
     """Get the latest completed EOD run_id from scan_runs collection."""
     try:
+        # Try COMPLETED (uppercase) first — EOD pipeline stores this
         latest = await db.scan_runs.find_one(
             {"status": "COMPLETED"},
             sort=[("completed_at", -1)]
         )
-        return latest.get("run_id") if latest else None
+        if latest and latest.get("run_id"):
+            return latest["run_id"]
+
+        # Fallback: try lowercase "completed" (alternate pipeline versions)
+        latest = await db.scan_runs.find_one(
+            {"status": "completed"},
+            sort=[("completed_at", -1)]
+        )
+        if latest and latest.get("run_id"):
+            return latest["run_id"]
+
+        # Last resort: get run_id directly from the most recent CC result
+        latest_cc = await db.scan_results_cc.find_one(
+            {}, {"run_id": 1, "_id": 0}, sort=[("created_at", -1)]
+        )
+        if latest_cc and latest_cc.get("run_id"):
+            return latest_cc["run_id"]
+
+        return None
     except Exception as e:
         logging.error(f"Failed to get latest EOD run: {e}")
         return None

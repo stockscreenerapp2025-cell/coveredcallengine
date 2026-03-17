@@ -2044,14 +2044,23 @@ async def compute_scan_results(
                         if oi < PMCC_MIN_LEAP_OI:
                             continue
 
-                        # Mid-based spread check
+                        # Mid-based spread check (filter gate only).
                         # At EOD, LEAP bids are often 0 (market makers retract).
-                        # Use prev_close as bid proxy so spread check is meaningful.
+                        # Use prev_close as bid proxy so the FILTER is meaningful,
+                        # but store actual-bid-based spread_pct for score calculation
+                        # (prevents negative spread_pct from inflating scores to 100).
                         effective_bid = bid if bid > 0 else (prev_close * 0.90 if prev_close > 0 else 0)
-                        leap_mid = (ask + effective_bid) / 2 if effective_bid > 0 else ask
-                        leap_spread_pct = ((ask - effective_bid) / leap_mid * 100) if leap_mid > 0 else 100.0
-                        if leap_spread_pct > PMCC_MAX_LEAP_SPREAD_PCT:
+                        leap_mid_filter = (ask + effective_bid) / 2 if effective_bid > 0 else ask
+                        leap_spread_pct_filter = ((ask - effective_bid) / leap_mid_filter * 100) if leap_mid_filter > 0 else 100.0
+                        if leap_spread_pct_filter > PMCC_MAX_LEAP_SPREAD_PCT:
                             continue
+
+                        # Score spread_pct: use actual bid (0 if EOD retracted → neutral for score)
+                        if bid > 0 and ask > 0:
+                            leap_mid_score = (ask + bid) / 2
+                            leap_spread_pct_score = ((ask - bid) / leap_mid_score * 100) if leap_mid_score > 0 else 0.0
+                        else:
+                            leap_spread_pct_score = 0.0  # EOD bid=0: no spread data, neutral
 
                         leaps_candidates.append({
                             "strike": strike,
@@ -2067,7 +2076,7 @@ async def compute_scan_results(
                             "delta": greeks["delta"],
                             "iv": iv,
                             "oi": oi,
-                            "spread_pct": round(leap_spread_pct, 2),
+                            "spread_pct": round(leap_spread_pct_score, 2),
                             "quality_flags": option_quality_flags
                         })
 
