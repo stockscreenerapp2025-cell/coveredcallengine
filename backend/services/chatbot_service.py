@@ -77,7 +77,7 @@ class ChatbotService:
             for m in messages:
                 role = "user" if m["role"] == "user" else "model"
                 contents.append({"role": role, "parts": [{"text": m["content"]}]})
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-04-17:generateContent?key={self.gemini_key}"
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={self.gemini_key}"
             payload = {
                 "system_instruction": {"parts": [{"text": CHATBOT_SYSTEM_PROMPT}]},
                 "contents": contents,
