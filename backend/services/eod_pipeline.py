@@ -2142,6 +2142,14 @@ async def compute_scan_results(
                 width = short["strike"] - leap["strike"]
                 max_profit = width - net_debit
 
+                # Synthetic premium % — cost of replicating stock via LEAPS vs owning stock
+                synthetic_cost = leap["strike"] + leap_ask
+                synthetic_premium_pct = ((synthetic_cost - stock_price) / stock_price * 100) if stock_price > 0 else 0
+
+                # Exclude trades where synthetic premium > 7% (misleading high-ROI filter)
+                if synthetic_premium_pct > 7.0:
+                    continue
+
                 # ROI basis = net_debit (capital at risk), not leap_ask
                 roi_per_cycle = (short_bid / net_debit * 100) if net_debit > 0 else 0
                 roi_annualized = min(
@@ -2240,6 +2248,8 @@ async def compute_scan_results(
                     # Economics
                     "net_debit": round(net_debit, 2),
                     "net_debit_total": round(net_debit * 100, 2),
+                    "synthetic_cost": round(synthetic_cost, 2),
+                    "synthetic_premium_pct": round(synthetic_premium_pct, 2),
                     "width": round(width, 2),
                     "max_profit": round(max_profit, 2),
                     "max_profit_total": round(max_profit * 100, 2),
@@ -2273,7 +2283,7 @@ async def compute_scan_results(
                         + (roi_per_cycle * 2)
                         + min(20, 5 * log1p(min(leap.get("oi", 0), short.get("oi", 0))))
                         - max(0, short["delta"] - 0.30) * 100
-                        - (short.get("spread_pct", 50.0) + leap.get("spread_pct", 50.0)) * 50
+                        - (short.get("spread_pct", 50.0) + leap.get("spread_pct", 50.0)) * 0.5
                     )), 1)
                 }
 

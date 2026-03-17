@@ -305,9 +305,21 @@ const Portfolio = () => {
     setGeneratingSuggestions(true);
     try {
       const res = await portfolioApi.generateAllSuggestions();
-      toast.success(res.data.message || 'AI suggestions generated');
-      // Refresh trades to show new suggestions
-      fetchTrades();
+      const { updated, errors } = res.data;
+      if (updated > 0) {
+        toast.success(res.data.message || `AI suggestions generated for ${updated} trades`);
+        fetchTrades();
+      } else if (errors && errors.length > 0) {
+        // Check if the error is about AI provider not configured
+        const firstErr = errors[0] || '';
+        if (firstErr.includes('No AI provider') || firstErr.includes('not configured')) {
+          toast.error('AI service is not configured on this server. Please contact support.');
+        } else {
+          toast.error(`AI suggestions failed: ${firstErr}`);
+        }
+      } else {
+        toast.error('No suggestions were generated. Check server logs for details.');
+      }
     } catch (error) {
       const detail = error?.response?.data?.detail;
       if (detail?.error_code === 'INSUFFICIENT_TOKENS') {

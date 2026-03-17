@@ -1025,10 +1025,12 @@ const PMCC = () => {
                         <th>Short Call</th>
                         <SortHeader field="net_debit" label="Net Debit" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
                         <SortHeader field="capital_efficiency_ratio" label="Cap Eff" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
+                        <th>Synth %</th>
                         <SortHeader field="roi_per_cycle" label="Income/Cycle" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
                         <SortHeader field="max_return_pct" label="Max Return" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
                         <SortHeader field="payback_months" label="Payback" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
                         <SortHeader field="score" label="Score" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
+                        <th>Verdict</th>
                         <th>Signal</th>
                         <th className="text-center w-px whitespace-nowrap">Action</th>
                       </tr>
@@ -1096,15 +1098,19 @@ const PMCC = () => {
                               <td className={`font-semibold ${cerColor}`}>
                                 {cerIcon} {cer?.toFixed(2)}x
                               </td>
+                              <td className={`font-semibold ${synthColor}`}>{synthPct?.toFixed(1)}%</td>
                               <td className="text-yellow-400 font-semibold">{norm.roi_per_cycle?.toFixed(1)}%</td>
                               <td className="text-emerald-400 font-semibold">
                                 {norm.max_return_pct > 0 ? `${norm.max_return_pct.toFixed(1)}%` : '-'}
                               </td>
                               <td className={`font-semibold ${pbColor}`}>{pbMonths > 0 ? `${pbMonths?.toFixed(1)}mo` : '-'}</td>
                               <td>
-                                <Badge className={`${norm.pmcc_score >= 70 ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' : norm.pmcc_score >= 50 ? 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30' : 'bg-violet-500/20 text-violet-400 border-violet-500/30'}`}>
+                                <Badge className={`${norm.pmcc_score >= 70 ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' : norm.pmcc_score >= 50 ? 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30' : 'bg-red-500/20 text-red-400 border-red-500/30'}`}>
                                   {norm.pmcc_score?.toFixed(0)}
                                 </Badge>
+                              </td>
+                              <td className={`text-xs font-semibold ${norm.verdict?.startsWith('🟢') ? 'text-emerald-400' : norm.verdict?.startsWith('🟡') ? 'text-yellow-400' : 'text-red-400'}`}>
+                                {norm.verdict?.split(' ').slice(0, 2).join(' ')}
                               </td>
                               <td>
                                 {(opp.analyst_rating_label || opp.analyst_rating) ? (

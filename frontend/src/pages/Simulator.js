@@ -348,22 +348,8 @@ const Simulator = () => {
     fetchSummary();
   }, [statusFilter, strategyFilter, pagination.page]);
   
-  // Auto-update prices on first load only if trades are stale (last update > 1 hour ago)
-  useEffect(() => {
-    if (!initialUpdateDone && trades.length > 0 && !loading) {
-      setInitialUpdateDone(true);
-      const oneHourAgo = Date.now() - 60 * 60 * 1000;
-      const hasStale = trades.some(t => {
-        if (!isLive(t.status)) return false;
-        if (!t.current_delta || t.current_delta === 0) {
-          const updatedAt = t.updated_at ? new Date(t.updated_at).getTime() : 0;
-          return updatedAt < oneHourAgo;
-        }
-        return false;
-      });
-      if (hasStale) handleUpdatePrices(true); // silent auto-refresh on load
-    }
-  }, [trades, loading, initialUpdateDone]);
+  // Disabled: auto price-update on load caused perceived "page restart" (table re-render after
+  // live Yahoo fetch completes). User can manually refresh prices with the Refresh button.
 
   useEffect(() => {
     if (activeTab === 'rules') {
@@ -1198,9 +1184,41 @@ const Simulator = () => {
               <div className="space-y-3">
                 {group.controls.map(ctrl => (
                   <div key={ctrl.key} className={`flex items-center justify-between p-3 rounded-lg ${c.bg} border ${c.row}`}>
-                    <div>
+                    <div className="flex-1">
                       <p className="text-sm text-zinc-200 font-medium">{ctrl.label}</p>
                       <p className="text-xs text-zinc-500 mt-0.5">{ctrl.desc}</p>
+                      {/* Delta threshold inputs shown when roll_delta_based is enabled */}
+                      {ctrl.key === 'roll_delta_based' && controls.roll_delta_based && (
+                        <div className="flex items-center gap-3 mt-2">
+                          <div className="flex items-center gap-1">
+                            <span className="text-xs text-zinc-400">Min δ:</span>
+                            <input
+                              type="number"
+                              step="0.05"
+                              min="0.10"
+                              max="0.90"
+                              value={controls.target_delta_min ?? 0.25}
+                              onChange={e => persistRuleConfig({ ...ruleConfig, controls: { ...controls, target_delta_min: parseFloat(e.target.value) } })}
+                              disabled={ruleSaving}
+                              className="w-16 text-xs bg-zinc-800 border border-zinc-600 rounded px-2 py-1 text-white"
+                            />
+                          </div>
+                          <div className="flex items-center gap-1">
+                            <span className="text-xs text-zinc-400">Max δ:</span>
+                            <input
+                              type="number"
+                              step="0.05"
+                              min="0.10"
+                              max="0.90"
+                              value={controls.target_delta_max ?? 0.35}
+                              onChange={e => persistRuleConfig({ ...ruleConfig, controls: { ...controls, target_delta_max: parseFloat(e.target.value) } })}
+                              disabled={ruleSaving}
+                              className="w-16 text-xs bg-zinc-800 border border-zinc-600 rounded px-2 py-1 text-white"
+                            />
+                          </div>
+                          <span className="text-xs text-zinc-500">Roll when δ outside this range</span>
+                        </div>
+                      )}
                     </div>
                     <Switch
                       checked={!!controls[ctrl.key]}

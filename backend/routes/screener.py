@@ -48,6 +48,7 @@ from services.data_provider import (
     fetch_options_chain,
     fetch_stock_quote,
     fetch_live_stock_quote,
+    fetch_live_stock_quotes_batch,
     is_market_closed as data_provider_market_closed,
     get_market_state,
     # PHASE 2: Import cache-first functions
@@ -379,6 +380,13 @@ async def screen_covered_calls(
         qt_docs = await qt_cursor.to_list(length=len(symbols_to_scan))
         quote_type_map = {d["symbol"]: (d.get("quote_type") or "").upper() for d in qt_docs}
 
+        # Pre-fetch all live quotes in parallel when market is open (avoids sequential calls per symbol)
+        live_quotes_map = {}
+        if use_live_price:
+            live_quotes_map = await fetch_live_stock_quotes_batch(
+                [s.upper() for s in symbols_to_scan], api_key
+            )
+
         scan_progress.set_stage(user_id, 1, "Scanning symbols", 20)
         _symbols_done = 0
 
@@ -404,14 +412,13 @@ async def screen_covered_calls(
                     continue
                 
                 # ========== MARKET-STATE AWARE UNDERLYING PRICE ==========
-                # During OPEN: Use live quote for consistency with live BID/ASK
+                # During OPEN: Use pre-fetched live quote for consistency with live BID/ASK
                 # During CLOSED: Use snapshot (previous close)
                 if use_live_price:
-                    live_quote = await fetch_live_stock_quote(symbol.upper(), api_key)
+                    live_quote = live_quotes_map.get(symbol.upper())
                     if live_quote and live_quote.get("price", 0) > 0:
                         underlying_price = live_quote["price"]
                     else:
-                        # Fallback to snapshot if live fails
                         underlying_price = stock_data["price"]
                 else:
                     underlying_price = stock_data["price"]
@@ -970,32 +977,39 @@ async def get_dashboard_opportunities(
         )
         
         cache_stats = {"hits": 0, "misses": 0, "symbols_processed": 0, "bid_rejected": 0}
-        
+
+        # Pre-fetch all live quotes in parallel when market is open (avoids 60 sequential calls)
+        live_quotes_map = {}
+        if use_live_price:
+            live_quotes_map = await fetch_live_stock_quotes_batch(
+                [s.upper() for s in symbols_to_scan[:60]], api_key
+            )
+
         for symbol in symbols_to_scan[:60]:  # Scan up to 60 symbols
             try:
                 # PHASE 2: Get stock data from snapshot cache
                 snapshot = snapshots.get(symbol.upper())
-                
+
                 if not snapshot or not snapshot.get("stock_data"):
                     rejected_symbols.append({"symbol": symbol, "reason": "No price data"})
                     continue
-                
+
                 # Track cache stats
                 cache_stats["symbols_processed"] += 1
                 if snapshot.get("from_cache"):
                     cache_stats["hits"] += 1
                 else:
                     cache_stats["misses"] += 1
-                
+
                 stock_data = snapshot["stock_data"]
-                
+
                 if not stock_data or stock_data.get("price", 0) == 0:
                     rejected_symbols.append({"symbol": symbol, "reason": "No price data"})
                     continue
-                
+
                 # ========== MARKET-STATE AWARE UNDERLYING PRICE ==========
                 if use_live_price:
-                    live_quote = await fetch_live_stock_quote(symbol.upper(), api_key)
+                    live_quote = live_quotes_map.get(symbol.upper())
                     if live_quote and live_quote.get("price", 0) > 0:
                         current_price = live_quote["price"]
                     else:
@@ -1431,7 +1445,14 @@ async def screen_pmcc(
         )
         
         cache_stats = {"hits": 0, "misses": 0, "symbols_processed": 0, "ask_rejected": 0, "bid_rejected": 0}
-        
+
+        # Pre-fetch all live quotes in parallel when market is open
+        live_quotes_map = {}
+        if use_live_price:
+            live_quotes_map = await fetch_live_stock_quotes_batch(
+                [s.upper() for s in symbols_to_scan], api_key
+            )
+
         for symbol in symbols_to_scan:
             try:
                 # Check if ETF (exempt from price filter in Phase 5)
@@ -1461,19 +1482,18 @@ async def screen_pmcc(
                 # During OPEN: Use live quote for consistency with live BID/ASK
                 # During CLOSED: Use snapshot (previous close)
                 if use_live_price:
-                    live_quote = await fetch_live_stock_quote(symbol.upper(), api_key)
+                    live_quote = live_quotes_map.get(symbol.upper())
                     if live_quote and live_quote.get("price", 0) > 0:
                         current_price = live_quote["price"]
                     else:
-                        # Fallback to snapshot if live fails
                         current_price = stock_data["price"]
                 else:
                     current_price = stock_data["price"]
-                
+
                 avg_volume = stock_data.get("avg_volume", 0) or 0
                 market_cap = stock_data.get("market_cap", 0) or 0
                 earnings_date = stock_data.get("earnings_date")
-                
+
                 # ========== PHASE 5: SYSTEM SCAN FILTERS ==========
                 if enforce_phase5:
                     # Filter 1: Price range $30-$90 (ETFs exempt)

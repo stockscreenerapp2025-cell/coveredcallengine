@@ -809,10 +809,18 @@ def _build_trade_context(trade: dict) -> str:
 @portfolio_router.post("/ibkr/generate-suggestions")
 async def generate_all_suggestions(user: dict = Depends(get_current_user)):
     """Generate AI suggestions for all open trades (uses AI tokens - one per trade)"""
+    import os
     from ai_wallet.ai_service import AIExecutionService
     from ai_wallet.wallet_service import WalletService
     from ai_wallet.config import AI_ACTION_COSTS
-    
+
+    # Pre-flight: require at least one AI key
+    if not os.environ.get("GEMINI_API_KEY") and not os.environ.get("OPENAI_API_KEY") and not os.environ.get("EMERGENT_LLM_KEY"):
+        raise HTTPException(
+            status_code=503,
+            detail="AI service is not configured on this server. Please contact support."
+        )
+
     logging.info(f"Generating suggestions for user {user['id']}")
     
     open_trades = await db.ibkr_trades.find(
