@@ -1562,7 +1562,9 @@ const Portfolio = () => {
               <Badge className={STRATEGY_COLORS[selectedTrade?.strategy_type] || STRATEGY_COLORS.OTHER}>
                 {/* If stock trade has put options sold → show Cash Secured Put */}
                 {['STOCK', 'ETF', 'INDEX'].includes(selectedTrade?.strategy_type) &&
-                  (selectedTrade?.transactions || []).some(tx => tx.is_option && /\bP$/.test((tx.description || '').trim()))
+                  (selectedTrade?.transactions || []).some(tx => tx.is_option && (
+                    tx.option_details?.option_type === 'Put' || /\bP$/.test((tx.description || '').trim())
+                  ))
                   ? 'Cash Secured Put'
                   : (selectedTrade?.strategy_label || selectedTrade?.strategy_type)}
               </Badge>
@@ -1902,8 +1904,8 @@ const Portfolio = () => {
                     // Infer expiry: if option expiry date < today and no explicit event
                     const inferExpired = !expEvent && !buybackEvent && cycle.expiry && cycle.expiry < _today;
 
-                    // Detect if this is a put option (description ends with ' P' or ' P ')
-                    const _isPut = /\bP$/.test((cycle.tx.description || '').trim());
+                    // Detect if this is a put option via option_details (reliable) or description fallback
+                    const _isPut = cycle.tx.option_details?.option_type === 'Put' || /\bP$/.test((cycle.tx.description || '').trim());
                     steps.push({
                       label: _isPut ? 'Sell Put' : 'Sell Call',
                       date: cycle.tx.date || cycle.tx.datetime,

@@ -143,15 +143,30 @@ class AIExecutionService:
             # Use Gemini (free) if key configured, else fall back to OpenAI
             if self.gemini_key:
                 gemini_model = "gemini-2.0-flash"
-                response_text = await _call_gemini(
-                    prompt=prompt,
-                    system_message=system_message,
-                    api_key=self.gemini_key,
-                    model=gemini_model,
-                    max_tokens=max_tokens,
-                    temperature=temperature
-                )
-                logger.info(f"[AI] Used Gemini ({gemini_model}) for action={action}")
+                try:
+                    response_text = await _call_gemini(
+                        prompt=prompt,
+                        system_message=system_message,
+                        api_key=self.gemini_key,
+                        model=gemini_model,
+                        max_tokens=max_tokens,
+                        temperature=temperature
+                    )
+                    logger.info(f"[AI] Used Gemini ({gemini_model}) for action={action}")
+                except RuntimeError as gemini_err:
+                    if "429" in str(gemini_err) and self.openai_key:
+                        logger.warning(f"Gemini quota exceeded (429), falling back to OpenAI for action={action}")
+                        response_text = await _call_openai(
+                            prompt=prompt,
+                            system_message=system_message,
+                            api_key=self.openai_key,
+                            model=model,
+                            max_tokens=max_tokens,
+                            temperature=temperature
+                        )
+                        logger.info(f"[AI] Fallback: Used OpenAI ({model}) for action={action}")
+                    else:
+                        raise
             elif self.openai_key:
                 response_text = await _call_openai(
                     prompt=prompt,

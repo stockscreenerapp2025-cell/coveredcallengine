@@ -1501,7 +1501,7 @@ def validate_pmcc_structure(
         flags.append(f"FAIL_LIQUIDITY_LEAP_OI_{leap_oi}")
         return False, flags
 
-    # HARD RULE: LEAP spread <= 5%
+    # HARD RULE: LEAP spread <= threshold (skip when bid=0, EOD bids retract)
     if leap_bid and leap_bid > 0:
         leap_mid = (leap_ask + leap_bid) / 2
         leap_spread_pct = ((leap_ask - leap_bid) /
@@ -1509,6 +1509,7 @@ def validate_pmcc_structure(
         if leap_spread_pct > PMCC_MAX_LEAP_SPREAD_PCT:
             flags.append(f"FAIL_LIQUIDITY_LEAP_SPREAD_{leap_spread_pct:.1f}%")
             return False, flags
+    # bid=0 at EOD is normal for LEAPS — skip spread check, OI gate is sufficient
 
     # ================================================================
     # SHORT VALIDATION (HARD RULES)
@@ -2044,8 +2045,11 @@ async def compute_scan_results(
                             continue
 
                         # Mid-based spread check
-                        leap_mid = (ask + bid) / 2 if bid > 0 else ask
-                        leap_spread_pct = ((ask - bid) / leap_mid * 100) if leap_mid > 0 else 100.0
+                        # At EOD, LEAP bids are often 0 (market makers retract).
+                        # Use prev_close as bid proxy so spread check is meaningful.
+                        effective_bid = bid if bid > 0 else (prev_close * 0.90 if prev_close > 0 else 0)
+                        leap_mid = (ask + effective_bid) / 2 if effective_bid > 0 else ask
+                        leap_spread_pct = ((ask - effective_bid) / leap_mid * 100) if leap_mid > 0 else 100.0
                         if leap_spread_pct > PMCC_MAX_LEAP_SPREAD_PCT:
                             continue
 
