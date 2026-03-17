@@ -897,11 +897,12 @@ class LifecycleEngine:
         for cycle_id in matched.linked_cycle_ids:
             cycle = self.cycles.get(cycle_id)
             if cycle:
-                # If no stock was acquired the cycle closes; put premium is the realized P&L.
+                # If no stock was acquired the cycle closes.
+                # realized_pnl from the expired put is computed in _build_output via option_pnl
+                # to avoid double-counting — do NOT add it here.
                 if not cycle.lots:
                     cycle.status = "Closed by Share Sale"  # treat as closed
                     cycle.closed_date = date_str
-                    cycle.realized_pnl += cycle.total_premium_received - cycle.total_premium_paid
                 else:
                     cycle.status = "Open - Uncovered"
 
@@ -1332,7 +1333,8 @@ class LifecycleEngine:
                     if cycle and not cycle.lots:
                         cycle.status = "Closed by Share Sale"
                         cycle.closed_date = opt.expiry
-                        cycle.realized_pnl += cycle.total_premium_received - cycle.total_premium_paid
+                        # realized_pnl from this expired put is computed in _build_output
+                        # via option_pnl — do NOT add it here to avoid double-counting.
 
     def _recalculate_cycle_costs(self, cycle: TradeCycle):
         """Recompute avg_cost and effective_avg_cost from lots."""

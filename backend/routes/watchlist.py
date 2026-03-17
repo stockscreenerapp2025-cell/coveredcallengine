@@ -607,6 +607,14 @@ async def _get_best_opportunity_eod(symbol: str, run_id: str = None) -> dict:
             )
         )
 
+        # Fallback: symbol not in current run (e.g. AAPL wasn't scanned today)
+        # Use the most recent CC result for this symbol across any run
+        if not cc_opp:
+            cc_opp = await db.scan_results_cc.find_one(
+                {"symbol": symbol},
+                {"_id": 0},
+                sort=[("created_at", -1)]
+            )
         if not cc_opp:
             return None
 
