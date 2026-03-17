@@ -223,11 +223,12 @@ const PMCC = () => {
     const rawScore = (opp.pmcc_score || opp.score || 0) > 0
       ? (opp.pmcc_score || opp.score)
       : computedScore;
-    // MANDATORY: cap score at 50 when synthetic premium > 7% (overpriced LEAPS)
-    const finalScore = syntheticPremiumPct > 7 ? Math.min(rawScore, 50) : rawScore;
+    // MANDATORY: cap score at 50 when synthetic premium > 7% OR cap efficiency < 1.3x
+    const poorCapEff = capEffRatioFinal > 0 && capEffRatioFinal < 1.3;
+    const finalScore = (syntheticPremiumPct > 7 || poorCapEff) ? Math.min(rawScore, 50) : rawScore;
 
-    // Trade Verdict — forced Avoid if synthetic premium > 7%
-    const verdict = syntheticPremiumPct > 7
+    // Trade Verdict — forced Avoid if synthetic premium > 7% or cap efficiency < 1.3x
+    const verdict = (syntheticPremiumPct > 7 || poorCapEff)
       ? '🔴 Avoid'
       : finalScore >= 75 ? '🟢 Strong' : finalScore >= 50 ? '🟡 Acceptable' : '🔴 Avoid';
 
