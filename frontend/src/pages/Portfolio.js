@@ -1446,7 +1446,9 @@ const Portfolio = () => {
                         </TableCell>
                         <TableCell>
                           <Badge className={STRATEGY_COLORS[trade.strategy_type] || STRATEGY_COLORS.OTHER}>
-                            {trade.strategy_label || trade.strategy_type}
+                            {trade.strategy_type === 'NAKED_PUT'
+                              ? 'Cash Secured Put'
+                              : (trade.strategy_label || trade.strategy_type)}
                           </Badge>
                         </TableCell>
                         <TableCell>
@@ -1555,7 +1557,7 @@ const Portfolio = () => {
 
       {/* Trade Detail Dialog */}
       <Dialog open={tradeDetailOpen} onOpenChange={setTradeDetailOpen}>
-        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto bg-zinc-900 border-zinc-800">
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto bg-zinc-900 border-zinc-800">
           <DialogHeader>
             <DialogTitle className="text-lg flex items-center gap-2">
               <span className="text-white">{selectedTrade?.symbol}</span>
@@ -1575,9 +1577,9 @@ const Portfolio = () => {
           </DialogHeader>
 
           {selectedTrade && (
-            <div className="space-y-6">
+            <div className="space-y-4">
               {/* Trade Summary */}
-              <div className="grid grid-cols-4 gap-2">
+              <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-4">
                 <div className="bg-zinc-800/50 rounded-lg p-3">
                   <div className="text-xs text-zinc-500">Entry Price</div>
                   <div className="text-lg font-semibold text-white">{formatCurrency(selectedTrade.entry_price)}</div>
@@ -1599,7 +1601,7 @@ const Portfolio = () => {
               </div>
 
               {/* Trade Details */}
-              <div className="grid grid-cols-2 gap-3 text-sm">
+              <div className="grid grid-cols-2 gap-1.5 text-sm">
                 <div>
                   <span className="text-zinc-500">Account:</span>
                   <span className="ml-2 text-white">{selectedTrade.account}</span>
@@ -1846,15 +1848,22 @@ const Portfolio = () => {
                 const _today = new Date().toISOString().slice(0, 10);
                 const steps = [];
 
-                // Step 1: Stock purchase
-                if (stockBuyTxns.length > 0) {
-                  const totalSh = stockBuyTxns.reduce((s, t) => s + Math.abs(t.quantity || 0), 0);
+                // Step 1: Stock purchase — only if shares were bought BEFORE any put/call was sold
+                // (assignment-forced buys come AFTER put sells and should NOT appear as "Stock Bought")
+                const firstOptSellDate = optionSellTxns.length > 0
+                  ? (optionSellTxns.sort((a, b) => (a.date || '').localeCompare(b.date || ''))[0].date || '')
+                  : '';
+                const earlyStockBuys = firstOptSellDate
+                  ? stockBuyTxns.filter(tx => (tx.date || tx.datetime || '') < firstOptSellDate)
+                  : stockBuyTxns;
+                if (earlyStockBuys.length > 0) {
+                  const totalSh = earlyStockBuys.reduce((s, t) => s + Math.abs(t.quantity || 0), 0);
                   steps.push({
                     label: 'Stock Bought',
-                    date: stockBuyTxns[0].date || stockBuyTxns[0].datetime,
-                    desc: `${totalSh} shares @ ${formatCurrency(stockBuyTxns[0].price)}`,
+                    date: earlyStockBuys[0].date || earlyStockBuys[0].datetime,
+                    desc: `${totalSh} shares @ ${formatCurrency(earlyStockBuys[0].price)}`,
                     amount: null,
-                    price: stockBuyTxns[0].price,
+                    price: earlyStockBuys[0].price,
                     color: 'emerald',
                   });
                 } else if (optionSellTxns.length === 0) {

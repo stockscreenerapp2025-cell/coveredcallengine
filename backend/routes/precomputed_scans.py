@@ -212,12 +212,21 @@ async def _get_eod_pmcc_opportunities(
 
     # If too few results, expand to the 5 most recent runs and deduplicate by symbol
     if len(results) < 20:
-        recent_runs_cursor = db.scan_runs.find(
-            {"status": {"$in": ["COMPLETED", "completed"]}},
-            {"run_id": 1, "_id": 0}
-        ).sort("completed_at", -1).limit(5)
-        recent_runs = await recent_runs_cursor.to_list(5)
-        all_run_ids = list({r["run_id"] for r in recent_runs if r.get("run_id")})
+        # Get run_ids from scan_results_pmcc directly (more reliable than scan_runs)
+        recent_pmcc_docs = await db.scan_results_pmcc.find(
+            {}, {"run_id": 1, "_id": 0}
+        ).sort("created_at", -1).limit(500).to_list(500)
+        all_run_ids = list(dict.fromkeys(
+            r["run_id"] for r in recent_pmcc_docs if r.get("run_id")
+        ))[:5]  # keep only 5 most recent unique run_ids
+        if not all_run_ids:
+            # fallback to scan_runs if scan_results_pmcc has no run_ids
+            recent_runs_cursor = db.scan_runs.find(
+                {"status": {"$in": ["COMPLETED", "completed"]}},
+                {"run_id": 1, "_id": 0}
+            ).sort("completed_at", -1).limit(5)
+            recent_runs = await recent_runs_cursor.to_list(5)
+            all_run_ids = list({r["run_id"] for r in recent_runs if r.get("run_id")})
         if len(all_run_ids) > 1:
             all_results = await _fetch_for_runs(all_run_ids)
             # Deduplicate by (symbol, expiry, strike) — prefer newest run per key
