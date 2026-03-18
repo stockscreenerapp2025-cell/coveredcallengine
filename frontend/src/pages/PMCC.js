@@ -182,27 +182,41 @@ const PMCC = () => {
     const syntheticStockCost = opp.synthetic_stock_cost || economics.synthetic_stock_cost ||
       (leapsStrike + leapsPremium);
 
-    // Synthetic Premium % — how much more than stock price the synthetic costs
+    // Gross Synthetic Premium % — LEAPS cost vs stock price (no credit)
     const syntheticPremiumPct = stockPrice > 0
       ? ((syntheticStockCost - stockPrice) / stockPrice) * 100
       : 0;
 
-    // Max Return if Assigned
+    // Net Synthetic Premium % — after short call premium credit (decision metric)
     const shortPremiumPerShare = shortPremium < 10 ? shortPremium : shortPremium / 100;
-    const upsideToStrike = shortStrike && stockPrice ? Math.max(0, shortStrike - stockPrice) : 0;
-    const maxReturnPct = stockPrice > 0
-      ? ((shortPremiumPerShare + upsideToStrike) / stockPrice) * 100
+    const netDebitPerShare = leapsPremium - shortPremiumPerShare;
+    const netSyntheticCost = leapsStrike + netDebitPerShare;
+    const netSyntheticPremiumPct = stockPrice > 0
+      ? ((netSyntheticCost - stockPrice) / stockPrice) * 100
       : 0;
 
-    // Return on Capital (If Assigned)
+    // LEAPS Extrinsic % — computed client-side (DB value often 0 at EOD)
+    const leapsIntrinsicValue = Math.max(0, stockPrice - leapsStrike);
+    const leapsExtrinsicValue = Math.max(0, leapsPremium - leapsIntrinsicValue);
+    const leapsExtrinsicPctCalc = leapsPremium > 0
+      ? (leapsExtrinsicValue / leapsPremium) * 100
+      : 0;
+
+    // Max Return if Assigned = Return on Capital (max profit / PMCC cost)
     const maxProfitDollar = strikeWidth > 0 ? (strikeWidth * 100) - netDebit : 0;
     const returnOnCapital = netDebit > 0 ? (maxProfitDollar / netDebit) * 100 : 0;
+    const maxReturnPct = returnOnCapital; // aligned: max return on PMCC capital
 
-    // Adjusted Yield — penalise for high synthetic premium and low cap efficiency
+    // Capital Saved % — always recompute for consistency
+    const capitalSavedPctCalc = stockEquivCost > 0
+      ? ((stockEquivCost - netDebit) / stockEquivCost) * 100
+      : 0;
+
+    // Adjusted Yield — penalise for high gross synthetic premium and low cap efficiency
     const capEffRatioFinal = opp.capital_efficiency_ratio || economics.capital_efficiency_ratio ||
       (netDebit > 0 ? stockEquivCost / netDebit : 0);
     const capEffScore = capEffRatioFinal > 1.8 ? 1.0 : capEffRatioFinal >= 1.3 ? 0.5 : 0;
-    // 4-tier penalty: <2% excellent, 2-5% OK, 5-7% moderate, >7% heavy
+    // 4-tier penalty on GROSS synth: <2% full, 2-5% OK, 5-7% moderate, >7% heavy
     const synPenalty = syntheticPremiumPct < 2 ? 1.0 : syntheticPremiumPct <= 5 ? 0.6 : syntheticPremiumPct <= 7 ? 0.4 : 0.2;
     const annYield = opp.annualized_income_yield || annualizedRoi || 0;
     const adjustedYield = annYield * capEffScore * synPenalty;
@@ -238,9 +252,9 @@ const PMCC = () => {
     else if (capEffRatioFinal >= 1.3) whyDrivers.push({ icon: '⚠️', text: `Moderate capital efficiency (${capEffRatioFinal.toFixed(2)}x)` });
     else whyDrivers.push({ icon: '❌', text: `Poor capital efficiency (${capEffRatioFinal.toFixed(2)}x)` });
 
-    if (syntheticPremiumPct < 2) whyDrivers.push({ icon: '✅', text: `Low synthetic premium (${syntheticPremiumPct.toFixed(1)}%)` });
-    else if (syntheticPremiumPct <= 5) whyDrivers.push({ icon: '⚠️', text: `Moderate synthetic premium (${syntheticPremiumPct.toFixed(1)}%)` });
-    else whyDrivers.push({ icon: '❌', text: `High synthetic premium (${syntheticPremiumPct.toFixed(1)}%)` });
+    if (netSyntheticPremiumPct < 2) whyDrivers.push({ icon: '✅', text: `Low net synthetic premium (${netSyntheticPremiumPct.toFixed(1)}%)` });
+    else if (netSyntheticPremiumPct <= 5) whyDrivers.push({ icon: '⚠️', text: `Moderate LEAPS premium (Gross: ${syntheticPremiumPct.toFixed(1)}% / Net: ${netSyntheticPremiumPct.toFixed(1)}%)` });
+    else whyDrivers.push({ icon: '❌', text: `High net synthetic premium (${netSyntheticPremiumPct.toFixed(1)}%)` });
 
     if (roiPerCycle > 5) whyDrivers.push({ icon: '✅', text: `Strong income (${roiPerCycle.toFixed(1)}% per cycle)` });
     else if (roiPerCycle >= 3) whyDrivers.push({ icon: '⚠️', text: `Moderate income (${roiPerCycle.toFixed(1)}% per cycle)` });
@@ -279,8 +293,9 @@ const PMCC = () => {
       // Extended pmcc_scoring fields
       capital_efficiency_ratio: capEffRatio,
       capital_saved_dollar: capitalSavedDollar,
-      capital_saved_percent: capitalSavedPct,
-      leaps_extrinsic_percent: leapsExtrinsicPct,
+      capital_saved_percent: capitalSavedPctCalc,
+      leaps_extrinsic_percent: leapsExtrinsicPctCalc,
+      net_synthetic_premium_pct: netSyntheticPremiumPct,
       payback_months: paybackMonths,
       initial_capped_pl: initialCappedPl,
       assignment_risk: assignmentRisk,
@@ -1128,7 +1143,8 @@ const PMCC = () => {
                         const cer = norm.capital_efficiency_ratio || 0;
                         const cerColor = cer > 1.8 ? 'text-emerald-400' : cer >= 1.3 ? 'text-yellow-400' : 'text-red-400';
                         const cerIcon = cer > 1.8 ? '🟢' : cer >= 1.3 ? '🟡' : '🔴';
-                        const synthPct = norm.synthetic_premium_pct || 0;
+                        const synthPct = norm.net_synthetic_premium_pct ?? norm.synthetic_premium_pct ?? 0; // show NET in top row
+                        const grossSynthPct = norm.synthetic_premium_pct || 0;
                         const synthColor = synthPct < 2 ? 'text-emerald-400' : synthPct <= 5 ? 'text-yellow-400' : 'text-red-400';
 
                         const extPct = norm.leaps_extrinsic_percent || 0;
@@ -1297,7 +1313,8 @@ const PMCC = () => {
                                       <div className="flex justify-between"><span className="text-zinc-500">DTE</span><span className="font-mono">{norm.leaps_dte}d</span></div>
                                       <div className="flex justify-between"><span className="text-zinc-500">Ask (per share)</span><span className="font-mono">${norm.leaps_premium?.toFixed(2)}</span></div>
                                       <div className="flex justify-between"><span className="text-zinc-500">Synthetic Cost</span><span className="font-mono">${norm.synthetic_stock_cost?.toFixed(2) || '-'}</span></div>
-                                      <div className="flex justify-between"><span className="text-zinc-500">Synthetic Premium %</span><span className={`font-mono font-semibold ${synthColor}`}>{synthPct?.toFixed(1)}%</span></div>
+                                      <div className="flex justify-between"><span className="text-zinc-500">Gross Synth Premium</span><span className={`font-mono font-semibold ${grossSynthPct < 2 ? 'text-emerald-400' : grossSynthPct <= 5 ? 'text-yellow-400' : 'text-red-400'}`}>{grossSynthPct?.toFixed(1)}%</span></div>
+                                      <div className="flex justify-between items-center"><span className="text-zinc-500">Net Synth Premium ⭐</span><span className={`font-mono font-semibold ${synthPct < 2 ? 'text-emerald-400' : synthPct <= 5 ? 'text-yellow-400' : 'text-red-400'}`}>{synthPct?.toFixed(1)}%</span></div>
                                     </div>
                                     {/* Income Analysis */}
                                     <div className="bg-zinc-800/60 rounded-lg p-3 space-y-1">
