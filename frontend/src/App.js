@@ -19,6 +19,7 @@ import Privacy from "./pages/Privacy";
 import AcceptInvitation from "./pages/AcceptInvitation";
 import AIWallet from "./pages/AIWallet";
 import PayPalSuccess from "./pages/PayPalSuccess";
+import Help from "./pages/Help";
 import Layout from "./components/Layout";
 import "@/App.css";
 
@@ -168,6 +169,14 @@ function App() {
             </ProtectedRoute>
           } />
           
+          <Route path="/help" element={
+            <ProtectedRoute>
+              <Layout>
+                <Help />
+              </Layout>
+            </ProtectedRoute>
+          } />
+
           {/* Public pages */}
           <Route path="/terms" element={<Terms />} />
           <Route path="/privacy" element={<Privacy />} />
