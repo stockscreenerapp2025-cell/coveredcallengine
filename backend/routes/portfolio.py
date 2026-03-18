@@ -867,8 +867,22 @@ async def generate_all_suggestions(user: dict = Depends(get_current_user)):
     total_tokens_used = 0
     errors = []
     
+    skipped_cached = 0
     for trade in open_trades:
         try:
+            # Skip if suggestion was generated within the last 24 hours
+            suggestion_updated = trade.get("suggestion_updated")
+            if suggestion_updated and trade.get("ai_suggestion"):
+                try:
+                    from datetime import timezone as _tz
+                    last_updated = datetime.fromisoformat(suggestion_updated.replace("Z", "+00:00"))
+                    age_hours = (datetime.now(_tz.utc) - last_updated).total_seconds() / 3600
+                    if age_hours < 24:
+                        skipped_cached += 1
+                        continue
+                except Exception:
+                    pass  # If parsing fails, regenerate
+
             trade_context = _build_trade_context(trade)
             result = await ai_service.execute_trade_suggestion(
                 user_id=user["id"],
@@ -911,9 +925,12 @@ async def generate_all_suggestions(user: dict = Depends(get_current_user)):
             errors.append(f"{trade.get('symbol')}: {str(e)}")
             continue
     
+    newly_generated = updated
+    total_with_suggestions = updated + skipped_cached
     return {
-        "message": f"Generated suggestions for {updated} of {len(open_trades)} trades", 
+        "message": f"Generated {newly_generated} new suggestion(s), {skipped_cached} already up to date",
         "updated": updated,
+        "skipped_cached": skipped_cached,
         "tokens_used": total_tokens_used,
         "errors": errors if errors else None
     }

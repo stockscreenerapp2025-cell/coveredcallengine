@@ -305,8 +305,8 @@ const Portfolio = () => {
     setGeneratingSuggestions(true);
     try {
       const res = await portfolioApi.generateAllSuggestions();
-      const { updated, errors } = res.data;
-      if (updated > 0) {
+      const { updated, skipped_cached, errors } = res.data;
+      if (updated > 0 || skipped_cached > 0) {
         toast.success(res.data.message || `AI suggestions generated for ${updated} trades`);
         fetchTrades();
       } else if (errors && errors.length > 0) {
