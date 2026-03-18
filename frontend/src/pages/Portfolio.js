@@ -314,6 +314,8 @@ const Portfolio = () => {
         const firstErr = errors[0] || '';
         if (firstErr.includes('No AI provider') || firstErr.includes('not configured')) {
           toast.error('AI service is not configured on this server. Please contact support.');
+        } else if (firstErr.includes('temporarily busy') || firstErr.includes('tokens have not been charged')) {
+          toast.error('AI is temporarily busy. Please try again in a few minutes. Your tokens have not been charged.');
         } else {
           toast.error(`AI suggestions failed: ${firstErr}`);
         }

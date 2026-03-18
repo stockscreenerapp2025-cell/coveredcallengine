@@ -877,8 +877,11 @@ async def generate_all_suggestions(user: dict = Depends(get_current_user)):
             
             if not result["success"]:
                 if result.get("error_code") == "INSUFFICIENT_TOKENS":
-                    # Stop processing - no more tokens
                     errors.append(f"Insufficient tokens after {updated} trades")
+                    break
+                if result.get("error_code") == "QUOTA_EXCEEDED":
+                    # All AI providers at quota — stop immediately, no point trying remaining trades
+                    errors.append("AI is temporarily busy. Please try again in a few minutes. Your tokens have not been charged.")
                     break
                 errors.append(f"{trade.get('symbol')}: {result.get('error', 'Unknown error')}")
                 continue
