@@ -145,8 +145,8 @@ class AIExecutionService:
             import asyncio
             GEMINI_MODELS = [
                 "gemini-2.0-flash",       # Best quality, 15 RPM
-                "gemini-1.5-flash",       # Fallback model, separate quota
-                "gemini-1.5-flash-8b",    # Lightest model, highest limits
+                "gemini-2.0-flash-lite",  # Lighter, separate quota pool
+                "gemini-2.0-flash-exp",   # Experimental channel, additional quota
             ]
             response_text = None
             if self.gemini_key:
