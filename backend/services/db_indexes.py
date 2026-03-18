@@ -116,5 +116,31 @@ async def create_all_indexes(db) -> Dict[str, Any]:
         results["us_symbol_master"] = f"ERROR: {e}"
         logger.error(f"Index creation failed for us_symbol_master: {e}")
     
+    # simulator_trades (no indexes = full collection scan per user)
+    try:
+        await db.simulator_trades.create_index([("user_id", 1), ("created_at", -1)], background=True)
+        await db.simulator_trades.create_index([("user_id", 1), ("status", 1)], background=True)
+        await db.simulator_trades.create_index([("user_id", 1), ("symbol", 1)], background=True)
+        await db.simulator_trades.create_index([("user_id", 1), ("strategy_type", 1)], background=True)
+        results["simulator_trades"] = "OK"
+    except Exception as e:
+        results["simulator_trades"] = f"ERROR: {e}"
+        logger.error(f"Index creation failed for simulator_trades: {e}")
+
+    # simulator_rules + configs
+    try:
+        await db.simulator_rules.create_index([("user_id", 1), ("strategy_type", 1)], background=True)
+        await db.simulator_rule_configs.create_index([("user_id", 1)], unique=True, background=True)
+        results["simulator_rules"] = "OK"
+    except Exception as e:
+        results["simulator_rules"] = f"ERROR: {e}"
+
+    # symbol_enrichment (used by enrich_row per-trade — needs symbol index)
+    try:
+        await db.symbol_enrichment.create_index([("symbol", 1)], unique=True, background=True)
+        results["symbol_enrichment"] = "OK"
+    except Exception as e:
+        results["symbol_enrichment"] = f"ERROR: {e}"
+
     logger.info(f"Index creation complete: {results}")
     return results

@@ -694,17 +694,23 @@ async def get_simulator_trades(
         else:
             trade["p_l"] = trade.get("realized_pnl") or trade.get("final_pnl", 0)
 
-    # ========== ENRICHMENT: IV Rank + Analyst Data (LAST STEP) ==========
-    for trade in trades:
-        sym = trade.get("symbol", "")
-        if sym:
-            enrich_row(
-                sym, trade,
-                stock_price=trade.get("current_underlying_price") or trade.get("entry_underlying_price"),
-                expiry=trade.get("short_call_expiry"),
-                iv=trade.get("short_call_iv")
-            )
-            strip_enrichment_debug(trade, include_debug=debug_enrichment)
+    # ========== ENRICHMENT: Only enrich OPEN trades, batch by unique symbol ==========
+    # Closed/assigned/expired trades don't need live enrichment (no current option data)
+    open_trades = [t for t in trades if t.get("status") in ("open", "rolled", "active")]
+    if open_trades:
+        seen_symbols = set()
+        for trade in open_trades:
+            sym = trade.get("symbol", "")
+            if sym and sym not in seen_symbols:
+                seen_symbols.add(sym)
+                enrich_row(
+                    sym, trade,
+                    stock_price=trade.get("current_underlying_price") or trade.get("entry_underlying_price"),
+                    expiry=trade.get("short_call_expiry"),
+                    iv=trade.get("short_call_iv"),
+                    skip_iv_rank=True  # IV rank not critical for simulator list view
+                )
+                strip_enrichment_debug(trade, include_debug=debug_enrichment)
 
     return {
         "trades": trades,

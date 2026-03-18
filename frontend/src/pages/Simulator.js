@@ -342,6 +342,7 @@ const Simulator = () => {
   const [evaluating, setEvaluating] = useState(false);
   const [evaluationResults, setEvaluationResults] = useState(null);
   const [evalResultsOpen, setEvalResultsOpen] = useState(false);
+  const [activeRuleStrategies, setActiveRuleStrategies] = useState(['cc', 'wheel', 'pmcc', 'defensive']);
   
   // Action Logs state
   const [actionLogs, setActionLogs] = useState([]);
@@ -1322,71 +1323,119 @@ const Simulator = () => {
         </Button>
       </div>
 
-      {/* Section 3: Optional Controls — one card per strategy */}
-      {strategyGroups.map(group => {
-        const c = colorMap[group.color];
+      {/* Strategy Filter + Reset Defaults */}
+      {(() => {
+        const allStrategyKeys = ['cc', 'wheel', 'pmcc', 'defensive'];
+        const toggleRuleStrategy = (key) => setActiveRuleStrategies(prev =>
+          prev.includes(key) ? (prev.length > 1 ? prev.filter(k => k !== key) : prev) : [...prev, key]
+        );
+        const rc = ruleConfig?.controls || {};
+        const conflictWarnings = [];
+        if (rc.avoid_early_close && rc.roll_delta_based)
+          conflictWarnings.push('Avoid Early Close + Roll Based on Delta may conflict — delta trigger could force an early close');
+        if (rc.roll_itm_near_expiry && rc.avoid_early_close)
+          conflictWarnings.push('Roll ITM Near Expiry + Avoid Early Close — rolling early contradicts holding early');
+        if (rc.target_delta_min != null && rc.target_delta_max != null && rc.target_delta_min >= rc.target_delta_max)
+          conflictWarnings.push('Min delta must be less than Max delta');
+        const handleResetDefaults = () => persistRuleConfig({
+          ...ruleConfig,
+          controls: {
+            avoid_early_close: false, brokerage_aware_hold: true, roll_itm_near_expiry: true,
+            roll_delta_based: false, market_aware_roll_suggestion: false, roll_before_assignment: false,
+            manage_short_call_only: false, target_delta_min: 0.25, target_delta_max: 0.35,
+            close_at_capture_pct: 80, roll_dte_trigger: 21, hard_roll_dte: 7,
+            no_debit_roll: true, avoid_assignment: true,
+          }
+        });
         return (
-          <Card key={group.key} className={`glass-card ${c.border}`}>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm flex items-center gap-2">
-                <Settings className={`w-4 h-4 ${c.header}`} />
-                <span className={c.header}>{group.label}</span>
-                <span className="text-zinc-400 font-normal">— {group.title}</span>
-              </CardTitle>
-              <p className="text-xs text-zinc-500 mt-1">{group.desc}</p>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-3">
-                {group.controls.map(ctrl => (
-                  <div key={ctrl.key} className={`flex items-center justify-between p-3 rounded-lg ${c.bg} border ${c.row}`}>
-                    <div className="flex-1">
-                      <p className="text-sm text-zinc-200 font-medium">{ctrl.label}</p>
-                      <p className="text-xs text-zinc-500 mt-0.5">{ctrl.desc}</p>
-                      {/* Delta threshold inputs shown when roll_delta_based is enabled */}
-                      {ctrl.key === 'roll_delta_based' && controls.roll_delta_based && (
-                        <div className="flex items-center gap-3 mt-2">
-                          <div className="flex items-center gap-1">
-                            <span className="text-xs text-zinc-400">Min δ:</span>
-                            <input
-                              type="number"
-                              step="0.05"
-                              min="0.10"
-                              max="0.90"
-                              value={controls.target_delta_min ?? 0.25}
-                              onChange={e => persistRuleConfig({ ...ruleConfig, controls: { ...controls, target_delta_min: parseFloat(e.target.value) } })}
-                              disabled={ruleSaving}
-                              className="w-16 text-xs bg-zinc-800 border border-zinc-600 rounded px-2 py-1 text-white"
-                            />
-                          </div>
-                          <div className="flex items-center gap-1">
-                            <span className="text-xs text-zinc-400">Max δ:</span>
-                            <input
-                              type="number"
-                              step="0.05"
-                              min="0.10"
-                              max="0.90"
-                              value={controls.target_delta_max ?? 0.35}
-                              onChange={e => persistRuleConfig({ ...ruleConfig, controls: { ...controls, target_delta_max: parseFloat(e.target.value) } })}
-                              disabled={ruleSaving}
-                              className="w-16 text-xs bg-zinc-800 border border-zinc-600 rounded px-2 py-1 text-white"
-                            />
-                          </div>
-                          <span className="text-xs text-zinc-500">Roll when δ outside this range</span>
-                        </div>
-                      )}
-                    </div>
-                    <Switch
-                      checked={!!controls[ctrl.key]}
-                      onCheckedChange={() => handleToggleOptionalControl(ctrl.key)}
-                      disabled={ruleSaving}
-                    />
-                  </div>
+          <div className="space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-3 p-4 rounded-lg bg-zinc-800/50 border border-zinc-700/50">
+              <div className="flex flex-wrap gap-2 items-center">
+                <span className="text-xs text-zinc-400 font-medium">Show rules for:</span>
+                {allStrategyKeys.map(key => (
+                  <button key={key} onClick={() => toggleRuleStrategy(key)}
+                    className={`text-xs px-3 py-1 rounded border font-semibold transition-all ${
+                      activeRuleStrategies.includes(key)
+                        ? 'bg-violet-600 text-white border-violet-500'
+                        : 'bg-zinc-800 text-zinc-500 border-zinc-700'
+                    }`}
+                  >{key.toUpperCase()}</button>
                 ))}
               </div>
-            </CardContent>
-          </Card>
+              <button onClick={handleResetDefaults}
+                className="text-xs px-3 py-1.5 rounded border border-zinc-600 text-zinc-400 hover:text-white hover:border-zinc-400 transition-all"
+              >Reset to Defaults</button>
+            </div>
+            {conflictWarnings.length > 0 && (
+              <div className="p-3 rounded-lg bg-amber-900/30 border border-amber-500/40 space-y-1">
+                <div className="text-xs font-semibold text-amber-400 mb-1">⚠ Rule Conflicts Detected</div>
+                {conflictWarnings.map((w, i) => (
+                  <div key={i} className="text-xs text-amber-300">• {w}</div>
+                ))}
+              </div>
+            )}
+
+            {/* Section 3: Optional Controls — filtered by strategy */}
+                  {strategyGroups.filter(g => activeRuleStrategies.includes(g.key)).map(group => {
+              const cm = colorMap[group.color];
+              return (
+                <Card key={group.key} className={`glass-card ${cm.border}`}>
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-sm flex items-center gap-2">
+                      <Settings className={`w-4 h-4 ${cm.header}`} />
+                      <span className={cm.header}>{group.label}</span>
+                      <span className="text-zinc-400 font-normal">— {group.title}</span>
+                    </CardTitle>
+                    <p className="text-xs text-zinc-500 mt-1">{group.desc}</p>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-3">
+                      {group.controls.map(ctrl => (
+                        <div key={ctrl.key} className={`flex items-center justify-between p-3 rounded-lg ${cm.bg} border ${cm.row}`}>
+                          <div className="flex-1">
+                            <p className="text-sm text-zinc-200 font-medium">{ctrl.label}</p>
+                            <p className="text-xs text-zinc-500 mt-0.5">{ctrl.desc}</p>
+                            {ctrl.key === 'roll_delta_based' && controls.roll_delta_based && (
+                              <div className="flex items-center gap-3 mt-2">
+                                <div className="flex items-center gap-1">
+                                  <span className="text-xs text-zinc-400">Min δ:</span>
+                                  <input
+                                    type="number" step="0.05" min="0.10" max="0.90"
+                                    value={controls.target_delta_min ?? 0.25}
+                                    onChange={e => persistRuleConfig({ ...ruleConfig, controls: { ...controls, target_delta_min: parseFloat(e.target.value) } })}
+                                    disabled={ruleSaving}
+                                    className="w-16 text-xs bg-zinc-800 border border-zinc-600 rounded px-2 py-1 text-white"
+                                  />
+                                </div>
+                                <div className="flex items-center gap-1">
+                                  <span className="text-xs text-zinc-400">Max δ:</span>
+                                  <input
+                                    type="number" step="0.05" min="0.10" max="0.90"
+                                    value={controls.target_delta_max ?? 0.35}
+                                    onChange={e => persistRuleConfig({ ...ruleConfig, controls: { ...controls, target_delta_max: parseFloat(e.target.value) } })}
+                                    disabled={ruleSaving}
+                                    className="w-16 text-xs bg-zinc-800 border border-zinc-600 rounded px-2 py-1 text-white"
+                                  />
+                                </div>
+                                <span className="text-xs text-zinc-500">Roll when δ outside this range</span>
+                              </div>
+                            )}
+                          </div>
+                          <Switch
+                            checked={!!controls[ctrl.key]}
+                            onCheckedChange={() => handleToggleOptionalControl(ctrl.key)}
+                            disabled={ruleSaving}
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+              );
+            })}
+          </div>
         );
-      })}
+      })()}
 
       {/* Section 4: Alerts */}
       <Card className="glass-card border-amber-500/20">
