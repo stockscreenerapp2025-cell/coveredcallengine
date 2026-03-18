@@ -183,7 +183,12 @@ class AIExecutionService:
                         raise
 
             if response_text is None:
-                # All providers at quota — friendly message, no token charge
+                # All providers at quota — reverse tokens so user is not charged
+                await self.guard.reverse_on_failure(
+                    user_id=user_id,
+                    result=guard_result,
+                    reason="AI providers at quota — no charge"
+                )
                 await self.guard.release(user_id, guard_result.request_id)
                 return {
                     "success": False,
