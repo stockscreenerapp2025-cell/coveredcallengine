@@ -1557,7 +1557,7 @@ const Portfolio = () => {
 
       {/* Trade Detail Dialog */}
       <Dialog open={tradeDetailOpen} onOpenChange={setTradeDetailOpen}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto bg-zinc-900 border-zinc-800">
+        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto bg-zinc-900 border-zinc-800">
           <DialogHeader>
             <DialogTitle className="text-lg flex items-center gap-2">
               <span className="text-white">{selectedTrade?.symbol}</span>
@@ -1701,8 +1701,23 @@ const Portfolio = () => {
                   const steps = [];
                   const tradeType = selectedTrade.strategy_type || '';
 
-                  // Step 1: Stock bought (if applicable)
-                  if (selectedTrade.stock_price || selectedTrade.entry_price) {
+                  // Step 1: CSP starts with Put Sold; CC/stock starts with Stock Bought; PMCC starts with LEAPS Bought
+                  const isCspTrade = tradeType === 'NAKED_PUT' ||
+                    (selectedTrade.strategy_label || '').toLowerCase().includes('cash secured') ||
+                    (selectedTrade.strategy_label || '').toLowerCase().includes('csp');
+
+                  if (isCspTrade) {
+                    // Cash Secured Put: first step is selling the put
+                    steps.push({
+                      label: 'Put Sold',
+                      date: selectedTrade.date_opened,
+                      desc: `Strike $${selectedTrade.option_strike || selectedTrade.entry_price} exp ${formatDate(selectedTrade.option_expiry)}`,
+                      amount: selectedTrade.premium_received ? Math.abs(selectedTrade.premium_received) : null,
+                      price: selectedTrade.entry_price,
+                      color: 'amber',
+                      icon: 'sell',
+                    });
+                  } else if (selectedTrade.stock_price || (!selectedTrade.leaps_cost && selectedTrade.entry_price)) {
                     steps.push({
                       label: 'Stock Bought',
                       date: selectedTrade.stock_date || selectedTrade.date_opened,
@@ -1724,8 +1739,8 @@ const Portfolio = () => {
                     });
                   }
 
-                  // Step 2: Option sold
-                  if (selectedTrade.premium_received || selectedTrade.option_strike) {
+                  // Step 2: Option sold (skip for CSP — already added as Put Sold in step 1)
+                  if (!isCspTrade && (selectedTrade.premium_received || selectedTrade.option_strike)) {
                     const optionDate = selectedTrade.option_date || selectedTrade.date_opened;
                     steps.push({
                       label: tradeType === 'PMCC' ? 'Short Call Sold' : 'Call Sold',
@@ -1790,40 +1805,29 @@ const Portfolio = () => {
                         Trade Life Cycle
                       </h4>
                       <div className="bg-zinc-800/50 rounded-lg p-4">
-                        <div className="flex items-start gap-0 overflow-x-auto pb-2">
+                        <div className="flex flex-wrap gap-1.5">
                           {steps.map((step, i) => {
                             const c = colorMap[step.color] || colorMap.zinc;
-                            const isLast = i === steps.length - 1;
                             return (
-                              <div key={i} className="flex items-start min-w-0 flex-shrink-0" style={{ maxWidth: '180px', minWidth: '120px' }}>
-                                <div className="flex flex-col items-center w-full">
-                                  <div className={`w-full border rounded-lg p-2.5 ${c.border} bg-zinc-900/60 mx-1`}>
-                                    <div className={`text-xs font-semibold ${c.text} mb-0.5 flex items-center gap-1`}>
-                                      <span className={`inline-block w-2 h-2 rounded-full ${c.dot} ${step.current ? 'animate-pulse' : ''}`} />
-                                      {step.label}
-                                    </div>
-                                    {step.date && (
-                                      <div className="text-[10px] text-zinc-500 mb-1">{formatDate(step.date)}</div>
-                                    )}
-                                    {step.price != null && (
-                                      <div className="text-[10px] text-zinc-400">@ {formatCurrency(step.price)}</div>
-                                    )}
-                                    {step.amount != null && (
-                                      <div className={`text-[11px] font-medium ${step.amount >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                                        {step.amount >= 0 ? '+' : ''}{formatCurrency(step.amount)}
-                                      </div>
-                                    )}
-                                    <div className="text-[10px] text-zinc-500 mt-0.5 truncate" title={step.desc}>
-                                      {step.desc?.length > 35 ? step.desc.slice(0, 35) + '…' : step.desc}
-                                    </div>
-                                  </div>
+                              <div key={i} className={`border rounded-lg p-2 ${c.border} bg-zinc-900/60`} style={{ minWidth: '90px', maxWidth: '130px' }}>
+                                <div className={`text-xs font-semibold ${c.text} mb-0.5 flex items-center gap-1`}>
+                                  <span className={`inline-block w-2 h-2 rounded-full flex-shrink-0 ${c.dot} ${step.current ? 'animate-pulse' : ''}`} />
+                                  {step.label}
                                 </div>
-                                {!isLast && (
-                                  <div className="flex items-center mt-5 mx-0.5 flex-shrink-0">
-                                    <div className={`h-0.5 w-6 ${c.line}`} />
-                                    <div className="text-zinc-600" style={{ fontSize: 10 }}>›</div>
+                                {step.date && (
+                                  <div className="text-[10px] text-zinc-500 mb-0.5">{formatDate(step.date)}</div>
+                                )}
+                                {step.price != null && (
+                                  <div className="text-[10px] text-zinc-400">@ {formatCurrency(step.price)}</div>
+                                )}
+                                {step.amount != null && (
+                                  <div className={`text-[11px] font-medium ${step.amount >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                                    {step.amount >= 0 ? '+' : ''}{formatCurrency(step.amount)}
                                   </div>
                                 )}
+                                <div className="text-[10px] text-zinc-500 mt-0.5 truncate" title={step.desc}>
+                                  {step.desc?.length > 28 ? step.desc.slice(0, 28) + '…' : step.desc}
+                                </div>
                               </div>
                             );
                           })}
@@ -1988,44 +1992,29 @@ const Portfolio = () => {
                       Trade Life Cycle
                     </h4>
                     <div className="bg-zinc-800/50 rounded-lg p-4">
-                      <div className="flex items-start gap-0 overflow-x-auto pb-2">
+                      <div className="flex flex-wrap gap-1.5">
                         {steps.map((step, i) => {
                           const c = colorMap[step.color] || colorMap.zinc;
-                          const isLast = i === steps.length - 1;
                           return (
-                            <div key={i} className="flex items-start min-w-0 flex-shrink-0" style={{ maxWidth: '180px', minWidth: '120px' }}>
-                              <div className="flex flex-col items-center w-full">
-                                {/* Step header */}
-                                <div className={`w-full border rounded-lg p-2.5 ${c.border} bg-zinc-900/60 mx-1`}>
-                                  <div className={`text-xs font-semibold ${c.text} mb-0.5 flex items-center gap-1`}>
-                                    <span className={`inline-block w-2 h-2 rounded-full ${c.dot} ${step.current ? 'animate-pulse' : ''}`} />
-                                    {step.label}
-                                  </div>
-                                  {step.date && (
-                                    <div className="text-[10px] text-zinc-500 mb-1">
-                                      {formatDate(step.date)}
-                                    </div>
-                                  )}
-                                  {step.price != null && (
-                                    <div className="text-[10px] text-zinc-400">@ {formatCurrency(step.price)}</div>
-                                  )}
-                                  {step.amount != null && (
-                                    <div className={`text-[11px] font-medium ${step.amount >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                                      {step.amount >= 0 ? '+' : ''}{formatCurrency(step.amount)}
-                                    </div>
-                                  )}
-                                  <div className="text-[10px] text-zinc-500 mt-0.5 truncate" title={step.desc}>
-                                    {step.desc?.length > 35 ? step.desc.slice(0, 35) + '…' : step.desc}
-                                  </div>
-                                </div>
+                            <div key={i} className={`border rounded-lg p-2 ${c.border} bg-zinc-900/60`} style={{ minWidth: '90px', maxWidth: '130px' }}>
+                              <div className={`text-xs font-semibold ${c.text} mb-0.5 flex items-center gap-1`}>
+                                <span className={`inline-block w-2 h-2 rounded-full flex-shrink-0 ${c.dot} ${step.current ? 'animate-pulse' : ''}`} />
+                                {step.label}
                               </div>
-                              {/* Connector line */}
-                              {!isLast && (
-                                <div className="flex items-center mt-5 mx-0.5 flex-shrink-0">
-                                  <div className={`h-0.5 w-6 ${c.line}`} />
-                                  <div className={`text-zinc-600`} style={{ fontSize: 10 }}>›</div>
+                              {step.date && (
+                                <div className="text-[10px] text-zinc-500 mb-0.5">{formatDate(step.date)}</div>
+                              )}
+                              {step.price != null && (
+                                <div className="text-[10px] text-zinc-400">@ {formatCurrency(step.price)}</div>
+                              )}
+                              {step.amount != null && (
+                                <div className={`text-[11px] font-medium ${step.amount >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                                  {step.amount >= 0 ? '+' : ''}{formatCurrency(step.amount)}
                                 </div>
                               )}
+                              <div className="text-[10px] text-zinc-500 mt-0.5 truncate" title={step.desc}>
+                                {step.desc?.length > 28 ? step.desc.slice(0, 28) + '…' : step.desc}
+                              </div>
                             </div>
                           );
                         })}

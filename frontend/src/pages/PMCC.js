@@ -1284,7 +1284,15 @@ const PMCC = () => {
                                     {/* LEAPS Quality */}
                                     <div className="bg-zinc-800/60 rounded-lg p-3 space-y-1">
                                       <p className="text-zinc-400 font-semibold uppercase tracking-wide text-[10px] mb-2">LEAPS Quality</p>
-                                      <div className="flex justify-between"><span className="text-zinc-500">Delta</span><span className="font-mono">{norm.leaps_delta?.toFixed(2)}</span></div>
+                                      <div className="flex justify-between items-center">
+                                        <span className="text-zinc-500">Delta</span>
+                                        <span className="font-mono flex items-center gap-1">
+                                          {norm.leaps_delta?.toFixed(2)}
+                                          {(norm.leaps_delta || 0) < 0.80 && (norm.leaps_delta || 0) > 0 && (
+                                            <span className="text-yellow-400 text-[10px] font-normal">⚠️ Not deep ITM</span>
+                                          )}
+                                        </span>
+                                      </div>
                                       <div className="flex justify-between"><span className="text-zinc-500">Extrinsic %</span><span className={`font-mono font-semibold ${extColor}`}>{extPct?.toFixed(1)}%</span></div>
                                       <div className="flex justify-between"><span className="text-zinc-500">DTE</span><span className="font-mono">{norm.leaps_dte}d</span></div>
                                       <div className="flex justify-between"><span className="text-zinc-500">Ask (per share)</span><span className="font-mono">${norm.leaps_premium?.toFixed(2)}</span></div>
