@@ -63,6 +63,9 @@ const STRATEGY_COLORS = {
   'ETF': 'bg-cyan-500/20 text-cyan-400 border-cyan-500/30',
   'INDEX': 'bg-purple-500/20 text-purple-400 border-purple-500/30',
   'COVERED_CALL': 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30',
+  'WHEEL': 'bg-amber-500/20 text-amber-400 border-amber-500/30',
+  'CC': 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30',
+  'CSP': 'bg-blue-500/20 text-blue-400 border-blue-500/30',
   'PMCC': 'bg-violet-500/20 text-violet-400 border-violet-500/30',
   'NAKED_PUT': 'bg-amber-500/20 text-amber-400 border-amber-500/30',
   'NAKED_CALL': 'bg-red-500/20 text-red-400 border-red-500/30',
@@ -1448,8 +1451,11 @@ const Portfolio = () => {
                         </TableCell>
                         <TableCell>
                           <Badge className={STRATEGY_COLORS[trade.strategy_type] || STRATEGY_COLORS.OTHER}>
-                            {trade.strategy_type === 'NAKED_PUT'
-                              ? 'Cash Secured Put'
+                            {trade.strategy_type === 'NAKED_PUT' ? 'Cash Secured Put'
+                              : trade.strategy_type === 'COVERED_CALL' ? 'Covered Call'
+                              : trade.strategy_type === 'CC' ? 'Covered Call'
+                              : trade.strategy_type === 'WHEEL' ? 'Wheel'
+                              : trade.strategy_type === 'CSP' ? 'Cash Secured Put'
                               : (trade.strategy_label || trade.strategy_type)}
                           </Badge>
                         </TableCell>

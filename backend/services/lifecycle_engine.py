@@ -530,7 +530,10 @@ class LifecycleEngine:
     # ------------------------------------------------------------------
 
     def _handle_buy_stock(self, event: dict):
-        """Rule 1 & 2: New stock acquisition creates a new ShareLot and TradeCycle."""
+        """Rule 1 & 2: New stock acquisition creates a new ShareLot and TradeCycle.
+        Capital continuity: if an active cycle with shares already exists for this symbol,
+        add the new lot to that cycle instead of fragmenting into a new one.
+        """
         symbol = event["symbol"]
         shares = abs(event["quantity"])
         price = event["price"]
@@ -549,6 +552,25 @@ class LifecycleEngine:
             entry_type="BUY",
             source_trade_ids=[trade_id],
         )
+
+        # Capital continuity: reuse existing open cycle that already holds shares
+        existing = next(
+            (c for c in self.cycles.values()
+             if c.symbol == symbol and not c.closed_date and c.shares_current > 0),
+            None,
+        )
+        if existing:
+            existing.lots.append(lot_id)
+            existing.total_shares_entered += shares
+            existing.shares_current += shares
+            existing.uncovered_shares += shares
+            existing.total_stock_cost += shares * price
+            if existing.strategy not in ("WHEEL", "CC"):
+                existing.strategy = "WHEEL"
+            self._recalculate_cycle_costs(existing)
+            lot.linked_cycle_id = existing.cycle_id
+            self.lots[lot_id] = lot
+            return
 
         cycle_id = self._new_cycle_id(symbol, "CC")
         cycle = TradeCycle(
@@ -818,14 +840,22 @@ class LifecycleEngine:
         date_str = event["date"]
         trade_id = event["id"]
 
-        # Determine which cycle this put belongs to (or create CSP cycle)
+        # Determine which cycle this put belongs to (or create CSP cycle).
+        # Capital continuity: if we already hold shares in an active cycle, attach
+        # this put there (Wheel income) rather than spawning a new CSP cycle.
         open_uncovered = [
             c for c in self.cycles.values()
-            if c.symbol == symbol and c.status in ("Open - Uncovered", "Open - Put Entry Active")
+            if c.symbol == symbol and not c.closed_date
+            and (
+                c.status in ("Open - Uncovered", "Open - Put Entry Active", "Open - Covered Call Active")
+                or c.shares_current > 0
+            )
         ]
 
         if open_uncovered:
-            cycle_id = open_uncovered[-1].cycle_id
+            # Prefer cycle with shares; fall back to latest by position
+            with_shares = [c for c in open_uncovered if c.shares_current > 0]
+            cycle_id = (with_shares or open_uncovered)[-1].cycle_id
         else:
             cycle_id = self._new_cycle_id(symbol, "CSP")
             cycle = TradeCycle(
@@ -956,9 +986,20 @@ class LifecycleEngine:
             source_trade_ids=[trade_id],
         )
 
-        # Reuse the existing CSP cycle if there is one, otherwise create CC cycle
-        if linked_put_cycle_ids:
-            cycle_id = linked_put_cycle_ids[0]
+        # Reuse the existing cycle: prefer the cycle linked to the matched put;
+        # if none, fall back to any active cycle with shares (capital continuity).
+        target_cycle_id = linked_put_cycle_ids[0] if linked_put_cycle_ids else None
+        if not target_cycle_id:
+            existing_with_shares = next(
+                (c for c in self.cycles.values()
+                 if c.symbol == symbol and not c.closed_date and c.shares_current > 0),
+                None,
+            )
+            if existing_with_shares:
+                target_cycle_id = existing_with_shares.cycle_id
+
+        if target_cycle_id:
+            cycle_id = target_cycle_id
             cycle = self.cycles.get(cycle_id)
             if cycle:
                 cycle.lots.append(lot_id)
