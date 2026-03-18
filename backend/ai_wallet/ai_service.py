@@ -140,38 +140,47 @@ class AIExecutionService:
             }
         
         try:
-            # Provider chain: Gemini (free, 1500/day) → Groq (free, 14400/day) → friendly message
+            # Provider chain — all use same GEMINI_API_KEY, no new accounts needed:
+            # gemini-2.0-flash → gemini-1.5-flash → gemini-1.5-flash-8b → friendly message
+            import asyncio
+            GEMINI_MODELS = [
+                "gemini-2.0-flash",       # Best quality, 15 RPM
+                "gemini-1.5-flash",       # Fallback model, separate quota
+                "gemini-1.5-flash-8b",    # Lightest model, highest limits
+            ]
             response_text = None
             if self.gemini_key:
-                try:
-                    response_text = await _call_gemini(
-                        prompt=prompt, system_message=system_message,
-                        api_key=self.gemini_key, model="gemini-2.0-flash",
-                        max_tokens=max_tokens, temperature=temperature
-                    )
-                    logger.info(f"[AI] Used Gemini for action={action}")
-                except RuntimeError as gemini_err:
-                    if "429" in str(gemini_err):
-                        logger.warning(f"[AI] Gemini quota hit, trying Groq for action={action}")
-                    else:
-                        raise
+                for attempt_model in GEMINI_MODELS:
+                    try:
+                        response_text = await _call_gemini(
+                            prompt=prompt, system_message=system_message,
+                            api_key=self.gemini_key, model=attempt_model,
+                            max_tokens=max_tokens, temperature=temperature
+                        )
+                        logger.info(f"[AI] Used Gemini model={attempt_model} for action={action}")
+                        break
+                    except RuntimeError as gemini_err:
+                        if "429" in str(gemini_err):
+                            logger.warning(f"[AI] {attempt_model} quota hit, trying next model")
+                            await asyncio.sleep(1)  # brief pause before next model
+                        else:
+                            raise
 
             if response_text is None and self.groq_key:
+                # Optional Groq fallback if GROQ_API_KEY is set
                 try:
                     response_text = await _call_groq(
                         prompt=prompt, system_message=system_message,
                         api_key=self.groq_key, model="llama-3.3-70b-versatile",
                         max_tokens=max_tokens, temperature=temperature
                     )
-                    logger.info(f"[AI] Used Groq (Llama 3.3 70B) for action={action}")
+                    logger.info(f"[AI] Used Groq fallback for action={action}")
                 except RuntimeError as groq_err:
-                    if "429" in str(groq_err):
-                        logger.warning(f"[AI] Groq quota also hit for action={action}")
-                    else:
+                    if "429" not in str(groq_err):
                         raise
 
             if response_text is None:
-                # Both providers at quota — return friendly message, no token charge
+                # All providers at quota — friendly message, no token charge
                 await self.guard.release(user_id, guard_result.request_id)
                 return {
                     "success": False,
@@ -183,8 +192,8 @@ class AIExecutionService:
                     "quota_exceeded": True,
                 }
 
-            if not self.gemini_key and not self.groq_key:
-                raise RuntimeError("No AI provider configured. Set GEMINI_API_KEY or GROQ_API_KEY in .env")
+            if not self.gemini_key:
+                raise RuntimeError("No AI provider configured. Set GEMINI_API_KEY in .env")
             
             # Release guard (successful execution)
             await self.guard.release(user_id, guard_result.request_id)
