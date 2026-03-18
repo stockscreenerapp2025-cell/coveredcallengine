@@ -3322,13 +3322,15 @@ async def manage_trade(
 
     balance_after = debit_result.remaining_balance
 
-    # ── 5. Generate recommendation ───────────────────────────────────────────
+    # ── 5. Load user rule config and generate recommendation ─────────────────
+    rule_config = await db.simulator_rule_configs.find_one({"user_id": user_id}, {"_id": 0}) or {}
     try:
         recommendation = await generate_recommendation(
             trade=trade,
             current_price=current_price,
             options_chain=chain,
-            goals=goals
+            goals=goals,
+            rule_config=rule_config
         )
     except Exception as e:
         # Refund on failure

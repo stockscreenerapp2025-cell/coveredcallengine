@@ -113,13 +113,15 @@ const OPERATORS = [
 ];
 
 const ManageGoalsForm = ({ onRun, loading, walletBalance }) => {
-  const [goals, setGoals] = useState({});
   const canRun = walletBalance === null || walletBalance >= 5;
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-      <div style={{ background: '#0f172a', borderRadius: '8px', padding: '14px', fontSize: '13px', color: '#94a3b8' }}>
-        AI will analyze this trade and recommend an action: hold, roll, close, or let expire.
-        Cost: <span style={{ color: '#a855f7', fontWeight: 600 }}>5 credits</span>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+      <div style={{ background: '#0f172a', borderRadius: '8px', padding: '14px', fontSize: '13px', color: '#94a3b8', lineHeight: 1.6 }}>
+        AI will analyze this trade against your <strong style={{ color: '#a855f7' }}>configured rules</strong> and recommend
+        the best action: hold, roll, close, or let expire — with full reasoning.
+        <div style={{ marginTop: '8px', color: '#64748b', fontSize: '12px' }}>
+          Cost: <span style={{ color: '#a855f7', fontWeight: 600 }}>5 credits</span>
+        </div>
       </div>
       {!canRun && (
         <div style={{ background: '#7f1d1d', border: '1px solid #dc2626', borderRadius: '8px', padding: '10px', fontSize: '13px', color: '#fca5a5' }}>
@@ -127,15 +129,16 @@ const ManageGoalsForm = ({ onRun, loading, walletBalance }) => {
         </div>
       )}
       <button
-        onClick={() => onRun(goals)}
+        onClick={() => onRun({})}
         disabled={loading || !canRun}
         style={{
-          background: canRun ? '#7c3aed' : '#374151', color: 'white', border: 'none',
-          borderRadius: '8px', padding: '12px', fontSize: '14px', fontWeight: '600',
+          background: canRun ? 'linear-gradient(135deg, #7c3aed, #a855f7)' : '#374151',
+          color: 'white', border: 'none', borderRadius: '8px', padding: '14px',
+          fontSize: '14px', fontWeight: '600',
           cursor: canRun ? 'pointer' : 'not-allowed', opacity: loading ? 0.7 : 1
         }}
       >
-        {loading ? '⚙️ Analyzing...' : '🤖 Run AI Analysis (5 credits)'}
+        {loading ? '⚙️ Analyzing trade...' : 'Analyze with AI (5 credits)'}
       </button>
     </div>
   );
@@ -143,39 +146,167 @@ const ManageGoalsForm = ({ onRun, loading, walletBalance }) => {
 
 const RecommendationCard = ({ result, onApply, onDismiss, applyLoading }) => {
   const rec = result?.recommendation || {};
-  const actionColors = { hold: '#16a34a', roll: '#7c3aed', close: '#dc2626', expire: '#0284c7' };
-  const color = actionColors[rec.action] || '#6b7280';
+  const m   = rec.metrics || {};
+  const [selectedAction, setSelectedAction] = useState(rec.action || 'hold');
+
+  const actionColors = {
+    hold: '#16a34a', roll: '#7c3aed', close: '#dc2626',
+    expire_and_write: '#0284c7', assign: '#f59e0b', dca: '#06b6d4'
+  };
+  const primaryColor = actionColors[rec.action] || '#6b7280';
+  const actionLabels = {
+    hold: 'HOLD', roll: 'ROLL', close: 'CLOSE', assign: 'ASSIGN',
+    expire_and_write: 'WRITE NEXT', dca: 'DCA'
+  };
+
+  const confColor = rec.confidence >= 80 ? '#16a34a' : rec.confidence >= 60 ? '#f59e0b' : '#ef4444';
+  const reasoning = Array.isArray(rec.reasoning) ? rec.reasoning
+    : rec.reason ? [rec.reason] : ['No reasoning provided.'];
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-      <div style={{ background: '#0f172a', borderRadius: '8px', padding: '16px', border: `1px solid ${color}` }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '10px' }}>
-          <span style={{ background: color, color: 'white', borderRadius: '6px', padding: '4px 12px', fontWeight: '700', fontSize: '14px', textTransform: 'uppercase' }}>
-            {rec.action || 'N/A'}
-          </span>
-          <span style={{ fontSize: '13px', color: '#94a3b8' }}>Confidence: {rec.confidence ?? '—'}</span>
+
+      {/* Section 1 — Metrics snapshot */}
+      {m.stock_price && (
+        <div style={{ background: '#0f172a', borderRadius: '8px', padding: '14px' }}>
+          <div style={{ fontSize: '11px', color: '#64748b', marginBottom: '10px', fontWeight: '600', letterSpacing: '0.05em' }}>
+            TRADE HEALTH SNAPSHOT
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '10px' }}>
+            {[
+              ['Stock Price', `$${m.stock_price}`],
+              ['Strike', `$${m.strike}`],
+              ['Distance', `${m.in_the_money ? '⚠ ' : ''}${Math.abs(m.distance_to_strike_pct)}% ${m.in_the_money ? 'ITM' : 'OTM'}`],
+              ['Breakeven', `$${m.breakeven}`],
+              ['DTE', `${m.dte}d`],
+              ['Capture', `${m.premium_capture_pct}%`],
+            ].map(([label, val]) => (
+              <div key={label} style={{ textAlign: 'center' }}>
+                <div style={{ fontSize: '10px', color: '#64748b', marginBottom: '2px' }}>{label}</div>
+                <div style={{ fontSize: '13px', fontWeight: '600', color: m.in_the_money && label === 'Distance' ? '#ef4444' : '#e2e8f0' }}>{val}</div>
+              </div>
+            ))}
+          </div>
         </div>
-        <p style={{ margin: 0, fontSize: '14px', color: '#e2e8f0', lineHeight: 1.6 }}>{rec.reason || rec.reasoning || 'No reasoning provided.'}</p>
-        {rec.roll_to_strike && (
-          <div style={{ marginTop: '10px', fontSize: '13px', color: '#a855f7' }}>
-            Roll to strike: <strong>${rec.roll_to_strike}</strong>
-            {rec.roll_to_expiry && <> · Expiry: <strong>{rec.roll_to_expiry}</strong></>}
+      )}
+
+      {/* Section 2 — AI Decision with reasoning */}
+      <div style={{ background: '#0f172a', borderRadius: '8px', padding: '16px', border: `1px solid ${primaryColor}` }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '12px' }}>
+          <span style={{
+            background: primaryColor, color: 'white', borderRadius: '6px',
+            padding: '4px 14px', fontWeight: '700', fontSize: '13px'
+          }}>
+            {actionLabels[rec.action] || (rec.action || 'N/A').toUpperCase()}
+          </span>
+          <span style={{ fontSize: '12px', color: confColor, fontWeight: '600' }}>
+            Confidence: {rec.confidence ?? '—'}%
+          </span>
+          {rec.rule_applied && (
+            <span style={{ fontSize: '11px', color: '#94a3b8', background: '#1e293b', borderRadius: '4px', padding: '2px 8px' }}>
+              {rec.rule_applied}
+            </span>
+          )}
+        </div>
+
+        {/* Reasoning bullets */}
+        <ul style={{ margin: 0, paddingLeft: '16px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+          {reasoning.map((r, i) => (
+            <li key={i} style={{ fontSize: '13px', color: '#e2e8f0', lineHeight: 1.5 }}>{r}</li>
+          ))}
+        </ul>
+
+        {/* Confidence basis */}
+        {rec.confidence_basis?.length > 0 && (
+          <div style={{ marginTop: '10px', borderTop: '1px solid #1e293b', paddingTop: '10px' }}>
+            <div style={{ fontSize: '11px', color: '#64748b', marginBottom: '6px' }}>Based on:</div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+              {rec.confidence_basis.map((b, i) => (
+                <span key={i} style={{ fontSize: '11px', color: '#94a3b8', background: '#1e293b', borderRadius: '4px', padding: '2px 8px' }}>{b}</span>
+              ))}
+            </div>
           </div>
         )}
       </div>
+
+      {/* Section 3 — Alternative actions */}
+      {rec.actions?.length > 1 && (
+        <div style={{ background: '#0f172a', borderRadius: '8px', padding: '14px' }}>
+          <div style={{ fontSize: '11px', color: '#64748b', marginBottom: '10px', fontWeight: '600', letterSpacing: '0.05em' }}>
+            AVAILABLE ACTIONS
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            {rec.actions.map((act, i) => (
+              <div
+                key={i}
+                onClick={() => setSelectedAction(act.type)}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: '10px',
+                  padding: '10px 12px', borderRadius: '8px', cursor: 'pointer',
+                  border: `1px solid ${selectedAction === act.type ? (actionColors[act.type] || '#7c3aed') : '#334155'}`,
+                  background: selectedAction === act.type ? 'rgba(124,58,237,0.1)' : '#0d1117',
+                  transition: 'all 0.15s'
+                }}
+              >
+                <div style={{
+                  width: '14px', height: '14px', borderRadius: '50%',
+                  border: `2px solid ${actionColors[act.type] || '#6b7280'}`,
+                  background: selectedAction === act.type ? (actionColors[act.type] || '#7c3aed') : 'transparent',
+                  flexShrink: 0
+                }} />
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: '13px', fontWeight: '600', color: '#e2e8f0', display: 'flex', gap: '6px', alignItems: 'center' }}>
+                    {act.label}
+                    {act.primary && <span style={{ fontSize: '10px', background: primaryColor, color: 'white', borderRadius: '4px', padding: '1px 6px' }}>Recommended</span>}
+                  </div>
+                  <div style={{ fontSize: '11px', color: '#64748b', marginTop: '2px' }}>{act.description}</div>
+                </div>
+                {act.impact && (
+                  <div style={{ fontSize: '11px', color: '#94a3b8', whiteSpace: 'nowrap' }}>{act.impact}</div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Warnings */}
+      {rec.warnings?.length > 0 && (
+        <div style={{ background: '#451a03', border: '1px solid #92400e', borderRadius: '8px', padding: '10px 14px' }}>
+          {rec.warnings.map((w, i) => (
+            <div key={i} style={{ fontSize: '12px', color: '#fbbf24' }}>⚠ {w}</div>
+          ))}
+        </div>
+      )}
+
+      {/* Section 4 — Action buttons */}
       <div style={{ display: 'flex', gap: '10px' }}>
         <button
-          onClick={onApply}
+          onClick={() => onApply(selectedAction)}
           disabled={applyLoading}
-          style={{ flex: 1, background: '#7c3aed', color: 'white', border: 'none', borderRadius: '8px', padding: '10px', fontWeight: '600', cursor: 'pointer', opacity: applyLoading ? 0.7 : 1 }}
+          style={{
+            flex: 1, background: actionColors[selectedAction] || '#7c3aed',
+            color: 'white', border: 'none', borderRadius: '8px', padding: '12px',
+            fontWeight: '600', cursor: 'pointer', fontSize: '14px',
+            opacity: applyLoading ? 0.7 : 1
+          }}
         >
-          {applyLoading ? 'Applying...' : '✅ Apply'}
+          {applyLoading ? 'Executing...' : `Execute: ${(rec.actions?.find(a => a.type === selectedAction)?.label || selectedAction).toUpperCase()}`}
         </button>
         <button
           onClick={onDismiss}
-          style={{ flex: 1, background: '#1e293b', color: '#94a3b8', border: '1px solid #334155', borderRadius: '8px', padding: '10px', cursor: 'pointer' }}
+          style={{
+            flex: 0.4, background: '#1e293b', color: '#94a3b8',
+            border: '1px solid #334155', borderRadius: '8px', padding: '12px', cursor: 'pointer'
+          }}
         >
-          Dismiss
+          Close Panel
         </button>
+      </div>
+
+      {/* Execution note */}
+      <div style={{ fontSize: '11px', color: '#475569', textAlign: 'center' }}>
+        Execute will simulate the selected action and update trade lifecycle tracking.
       </div>
     </div>
   );
@@ -928,9 +1059,10 @@ const Simulator = () => {
                       <th className="pb-3 font-medium">IV</th>
                       <th className="pb-3 font-medium">IV Rank</th>
                       <th className="pb-3 font-medium">OI</th>
-                      <th className="pb-3 font-medium">Prem %</th>
+                      <th className="pb-3 font-medium">Prem Yield</th>
                       <th className="pb-3 font-medium">P/L</th>
                       <th className="pb-3 font-medium">ROI</th>
+                      <th className="pb-3 font-medium">Quality</th>
                       <th className="pb-3 font-medium">Actions</th>
                     </tr>
                   </thead>
@@ -975,26 +1107,35 @@ const Simulator = () => {
                           {isLive(trade.status) ? `${trade.dte_remaining}d` : '-'}
                         </td>
                         <td className="text-cyan-400 font-mono">
-                          {trade.current_delta?.toFixed(2) || trade.short_call_delta?.toFixed(2) || '-'}
+                          {!isLive(trade.status) ? <span className="text-zinc-600">—</span>
+                            : (trade.current_delta?.toFixed(2) || trade.short_call_delta?.toFixed(2) || '—')}
                         </td>
                         <td className="text-violet-400 font-mono">
-                          {/* IV display: short_call_iv stored as decimal, scan_parameters.iv_pct as percentage */}
-                          {trade.scan_parameters?.iv_pct 
+                          {trade.scan_parameters?.iv_pct
                             ? `${trade.scan_parameters.iv_pct.toFixed(1)}%`
-                            : trade.short_call_iv 
+                            : trade.short_call_iv
                               ? `${(trade.short_call_iv * 100).toFixed(1)}%`
                               : trade.implied_volatility
                                 ? `${trade.implied_volatility.toFixed(1)}%`
-                                : '-'}
+                                : '—'}
                         </td>
                         <td className="text-amber-400 font-mono">
-                          {trade.iv_rank ? `${trade.iv_rank.toFixed(0)}%` : (trade.scan_parameters?.iv_rank ? `${trade.scan_parameters.iv_rank.toFixed(0)}%` : '-')}
+                          {(() => {
+                            const ivr = trade.iv_rank ?? trade.scan_parameters?.iv_rank;
+                            // Only show if explicitly fetched (not defaulted to 100)
+                            return (ivr != null && ivr > 0 && ivr < 100) ? `${ivr.toFixed(0)}%` : '—';
+                          })()}
                         </td>
                         <td className="text-zinc-400 font-mono">
-                          {trade.open_interest ? trade.open_interest.toLocaleString() : (trade.scan_parameters?.open_interest ? trade.scan_parameters.open_interest.toLocaleString() : '-')}
+                          {trade.open_interest ? trade.open_interest.toLocaleString() : (trade.scan_parameters?.open_interest ? trade.scan_parameters.open_interest.toLocaleString() : '—')}
                         </td>
-                        <td className={`font-mono ${(trade.premium_capture_pct || 0) >= 50 ? 'text-emerald-400' : 'text-zinc-400'}`}>
-                          {trade.premium_capture_pct?.toFixed(0) || 0}%
+                        <td className={`font-mono ${(trade.premium_capture_pct || 0) >= 75 ? 'text-emerald-400' : (trade.premium_capture_pct || 0) >= 40 ? 'text-zinc-300' : 'text-zinc-500'}`}>
+                          {(() => {
+                            // Premium Yield = premium received / capital deployed
+                            const cap = trade.capital_deployed || (trade.entry_underlying_price * 100 * (trade.contracts || 1));
+                            const prem = trade.premium_received_total || (trade.short_call_premium * 100 * (trade.contracts || 1));
+                            return cap > 0 ? `${((prem / cap) * 100).toFixed(1)}%` : `${trade.premium_capture_pct?.toFixed(0) || 0}%`;
+                          })()}
                         </td>
                         <td className={`font-mono ${
                           isLive(trade.status) 
@@ -1015,6 +1156,20 @@ const Simulator = () => {
                             ? formatPercent(trade.capital_deployed > 0 ? (trade.unrealized_pnl / trade.capital_deployed * 100) : 0)
                             : formatPercent(trade.roi_percent)
                           }
+                        </td>
+                        <td>
+                          {(() => {
+                            const roi = isLive(trade.status)
+                              ? (trade.capital_deployed > 0 ? (trade.unrealized_pnl / trade.capital_deployed * 100) : 0)
+                              : (trade.roi_percent || 0);
+                            const dte = trade.dte_remaining || 1;
+                            const annROI = roi / dte * 365;
+                            const pnl = isLive(trade.status) ? trade.unrealized_pnl : trade.final_pnl;
+                            if (pnl < 0) return <span className="text-xs text-red-400 font-medium">Losing</span>;
+                            if (annROI > 20) return <span className="text-xs text-emerald-400 font-medium">High Yield</span>;
+                            if (annROI > 10) return <span className="text-xs text-blue-400 font-medium">Good Income</span>;
+                            return <span className="text-xs text-zinc-500 font-medium">Low Return</span>;
+                          })()}
                         </td>
                         <td>
                           {isLive(trade.status) && (
@@ -2428,19 +2583,27 @@ const Simulator = () => {
               display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '10px',
               marginBottom: '20px', background: '#0f172a', borderRadius: '8px', padding: '14px'
             }}>
-              {[
-                ['Short Strike', `$${manageTrade.short_call_strike ?? '—'}`],
-                ['Unrealized P/L', `$${manageTrade.unrealized_pnl?.toFixed(2) ?? '0.00'}`],
-                ['Premium Capture', `${manageTrade.premium_capture_pct?.toFixed(0) ?? '0'}%`],
-                ['Delta', manageTrade.current_delta?.toFixed(2) ?? '—'],
-                ['IV', manageTrade.current_iv ? `${(manageTrade.current_iv * 100).toFixed(1)}%` : '—'],
-                ['Status', manageTrade.status]
-              ].map(([label, val]) => (
-                <div key={label} style={{ textAlign: 'center' }}>
-                  <div style={{ fontSize: '11px', color: '#64748b', marginBottom: '3px' }}>{label}</div>
-                  <div style={{ fontSize: '14px', fontWeight: '600' }}>{val}</div>
-                </div>
-              ))}
+              {(() => {
+                const stock = manageTrade.current_underlying_price || manageTrade.entry_underlying_price || 0;
+                const strike = manageTrade.short_call_strike || 0;
+                const distPct = stock > 0 ? (((strike - stock) / stock) * 100).toFixed(1) : '—';
+                const itm = stock >= strike;
+                const premPerShare = manageTrade.short_call_premium || 0;
+                const be = stock > 0 ? (manageTrade.entry_underlying_price - premPerShare).toFixed(2) : '—';
+                return [
+                  ['Stock Price', `$${stock?.toFixed(2) || '—'}`],
+                  ['Strike', `$${strike || '—'}`],
+                  ['Distance', distPct !== '—' ? `${Math.abs(distPct)}% ${itm ? '⚠ ITM' : 'OTM'}` : '—'],
+                  ['Breakeven', be !== '—' ? `$${be}` : '—'],
+                  ['Capture', `${manageTrade.premium_capture_pct?.toFixed(0) ?? '0'}%`],
+                  ['Delta', manageTrade.current_delta?.toFixed(2) ?? '—'],
+                ].map(([label, val]) => (
+                  <div key={label} style={{ textAlign: 'center' }}>
+                    <div style={{ fontSize: '11px', color: '#64748b', marginBottom: '3px' }}>{label}</div>
+                    <div style={{ fontSize: '13px', fontWeight: '600', color: label === 'Distance' && itm ? '#ef4444' : '#e2e8f0' }}>{val}</div>
+                  </div>
+                ));
+              })()}
             </div>
 
             {/* Goals config */}
