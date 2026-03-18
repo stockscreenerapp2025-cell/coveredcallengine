@@ -144,9 +144,9 @@ class AIExecutionService:
             # gemini-2.0-flash → gemini-1.5-flash → gemini-1.5-flash-8b → friendly message
             import asyncio
             GEMINI_MODELS = [
-                "gemini-2.0-flash",       # Best quality, 15 RPM
-                "gemini-2.0-flash-lite",  # Lighter, separate quota pool
-                "gemini-1.5-pro",         # Fallback, independent quota
+                "gemini-2.0-flash",       # Best quality, 15 RPM, 1500 RPD
+                "gemini-2.0-flash-lite",  # Lighter, 30 RPM, 1500 RPD
+                "gemini-1.5-flash-8b",    # Smallest, 30 RPM, 1500 RPD, own quota
             ]
             response_text = None
             if self.gemini_key:
