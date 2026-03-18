@@ -146,7 +146,7 @@ class AIExecutionService:
             GEMINI_MODELS = [
                 "gemini-2.0-flash",       # Best quality, 15 RPM
                 "gemini-2.0-flash-lite",  # Lighter, separate quota pool
-                "gemini-2.0-flash-exp",   # Experimental channel, additional quota
+                "gemini-1.5-pro",         # Fallback, independent quota
             ]
             response_text = None
             if self.gemini_key:
@@ -160,9 +160,12 @@ class AIExecutionService:
                         logger.info(f"[AI] Used Gemini model={attempt_model} for action={action}")
                         break
                     except RuntimeError as gemini_err:
-                        if "429" in str(gemini_err):
+                        err_str = str(gemini_err)
+                        if "429" in err_str:
                             logger.warning(f"[AI] {attempt_model} quota hit, trying next model")
-                            await asyncio.sleep(1)  # brief pause before next model
+                            await asyncio.sleep(1)
+                        elif "404" in err_str or "NOT_FOUND" in err_str:
+                            logger.warning(f"[AI] {attempt_model} not available, trying next model")
                         else:
                             raise
 
