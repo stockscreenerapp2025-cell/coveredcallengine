@@ -2173,6 +2173,19 @@ async def compute_scan_results(
                 if synthetic_premium_pct > 7.0:
                     continue
 
+                # Sanity: negative synth% means LEAPS priced below intrinsic — bad data
+                if synthetic_premium_pct < -5.0:
+                    continue
+
+                # Sanity: short strike must be within 2x of stock price — filters bad Yahoo data
+                if short["strike"] > stock_price * 2.0:
+                    continue
+
+                # Sanity: max return cap — anything over 300% indicates bad data
+                max_profit_check = (short["strike"] - leap["strike"]) - net_debit
+                if net_debit > 0 and (max_profit_check / net_debit * 100) > 300:
+                    continue
+
                 # ROI basis = net_debit (capital at risk), not leap_ask
                 roi_per_cycle = (short_bid / net_debit * 100) if net_debit > 0 else 0
                 roi_annualized = min(
