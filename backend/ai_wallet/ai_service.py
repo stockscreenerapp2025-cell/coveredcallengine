@@ -187,7 +187,8 @@ class AIExecutionService:
                 await self.guard.release(user_id, guard_result.request_id)
                 return {
                     "success": False,
-                    "response": "AI is temporarily busy. Please try again in a few minutes. Your tokens have not been charged.",
+                    "error": "AI is temporarily busy. Please try again in a few minutes. Your tokens have not been charged.",
+                    "error_code": "QUOTA_EXCEEDED",
                     "tokens_used": 0,
                     "free_tokens_used": 0,
                     "paid_tokens_used": 0,
