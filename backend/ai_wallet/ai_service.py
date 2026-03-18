@@ -57,10 +57,10 @@ async def _call_gemini(prompt: str, system_message: str, api_key: str,
         return data["candidates"][0]["content"]["parts"][0]["text"]
 
 
-async def _call_openai(prompt: str, system_message: str, api_key: str,
-                       model: str = "gpt-4o-mini", max_tokens: int = 1000,
-                       temperature: float = 0.7) -> str:
-    """Call OpenAI API directly."""
+async def _call_groq(prompt: str, system_message: str, api_key: str,
+                     model: str = "llama-3.3-70b-versatile", max_tokens: int = 1000,
+                     temperature: float = 0.7) -> str:
+    """Call Groq API (free tier: 30 RPM, 14,400 RPD). OpenAI-compatible."""
     import httpx
     headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
     payload = {
@@ -73,27 +73,27 @@ async def _call_openai(prompt: str, system_message: str, api_key: str,
         "temperature": temperature
     }
     async with httpx.AsyncClient(timeout=30.0) as client:
-        resp = await client.post("https://api.openai.com/v1/chat/completions",
+        resp = await client.post("https://api.groq.com/openai/v1/chat/completions",
                                  json=payload, headers=headers)
         if resp.status_code != 200:
-            raise RuntimeError(f"OpenAI API error {resp.status_code}: {resp.text[:300]}")
+            raise RuntimeError(f"Groq API error {resp.status_code}: {resp.text[:300]}")
         return resp.json()["choices"][0]["message"]["content"]
 
 
 class AIExecutionService:
     """
     Centralized AI execution service with token management.
-    Uses Google Gemini (free) when GEMINI_API_KEY is set,
-    falls back to OpenAI when OPENAI_API_KEY is set.
+    Provider chain (all free): Gemini → Groq → friendly quota message.
+    Set GEMINI_API_KEY and GROQ_API_KEY in .env for full coverage.
     """
 
     def __init__(self, db):
         self.db = db
         self.guard = AIGuard(db)
         self.gemini_key = os.environ.get('GEMINI_API_KEY', '')
-        self.openai_key = os.environ.get('OPENAI_API_KEY', os.environ.get('EMERGENT_LLM_KEY', ''))
-        # Legacy field kept for compatibility
-        self.api_key = self.openai_key
+        self.groq_key = os.environ.get('GROQ_API_KEY', '')
+        # Legacy — kept for compatibility only, not used for AI calls
+        self.api_key = ''
     
     async def execute(
         self,
@@ -140,37 +140,51 @@ class AIExecutionService:
             }
         
         try:
-            # Use Gemini as sole AI provider — no OpenAI fallback
+            # Provider chain: Gemini (free, 1500/day) → Groq (free, 14400/day) → friendly message
+            response_text = None
             if self.gemini_key:
-                gemini_model = "gemini-2.0-flash"
                 try:
                     response_text = await _call_gemini(
-                        prompt=prompt,
-                        system_message=system_message,
-                        api_key=self.gemini_key,
-                        model=gemini_model,
-                        max_tokens=max_tokens,
-                        temperature=temperature
+                        prompt=prompt, system_message=system_message,
+                        api_key=self.gemini_key, model="gemini-2.0-flash",
+                        max_tokens=max_tokens, temperature=temperature
                     )
-                    logger.info(f"[AI] Used Gemini ({gemini_model}) for action={action}")
+                    logger.info(f"[AI] Used Gemini for action={action}")
                 except RuntimeError as gemini_err:
                     if "429" in str(gemini_err):
-                        # Quota exceeded — return friendly message, do NOT charge tokens
-                        logger.warning(f"Gemini quota exceeded (429) for action={action}, returning friendly message")
-                        await self.guard.release(user_id, guard_result.request_id)
-                        return {
-                            "success": False,
-                            "response": "AI quota temporarily exceeded. Please try again in a few minutes. Your tokens have not been charged.",
-                            "tokens_used": 0,
-                            "free_tokens_used": 0,
-                            "paid_tokens_used": 0,
-                            "remaining_balance": guard_result.remaining_balance,
-                            "quota_exceeded": True,
-                        }
+                        logger.warning(f"[AI] Gemini quota hit, trying Groq for action={action}")
                     else:
                         raise
-            else:
-                raise RuntimeError("No AI provider configured. Set GEMINI_API_KEY in .env")
+
+            if response_text is None and self.groq_key:
+                try:
+                    response_text = await _call_groq(
+                        prompt=prompt, system_message=system_message,
+                        api_key=self.groq_key, model="llama-3.3-70b-versatile",
+                        max_tokens=max_tokens, temperature=temperature
+                    )
+                    logger.info(f"[AI] Used Groq (Llama 3.3 70B) for action={action}")
+                except RuntimeError as groq_err:
+                    if "429" in str(groq_err):
+                        logger.warning(f"[AI] Groq quota also hit for action={action}")
+                    else:
+                        raise
+
+            if response_text is None:
+                # Both providers at quota — return friendly message, no token charge
+                await self.guard.release(user_id, guard_result.request_id)
+                return {
+                    "success": False,
+                    "response": "AI is temporarily busy. Please try again in a few minutes. Your tokens have not been charged.",
+                    "tokens_used": 0,
+                    "free_tokens_used": 0,
+                    "paid_tokens_used": 0,
+                    "remaining_balance": guard_result.remaining_balance,
+                    "quota_exceeded": True,
+                }
+
+            if not self.gemini_key and not self.groq_key:
+                raise RuntimeError("No AI provider configured. Set GEMINI_API_KEY or GROQ_API_KEY in .env")
             
             # Release guard (successful execution)
             await self.guard.release(user_id, guard_result.request_id)
