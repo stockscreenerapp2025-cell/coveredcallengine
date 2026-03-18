@@ -516,7 +516,22 @@ const Simulator = () => {
         page: pagination.page,
         limit: 20
       });
-      setTrades(res.data.trades || []);
+      const rawTrades = res.data.trades || [];
+      const computeAnnROI = (t) => {
+        const live = ['open', 'rolled', 'active'].includes(t.status);
+        const roi = live
+          ? (t.capital_deployed > 0 ? (t.unrealized_pnl / t.capital_deployed * 100) : 0)
+          : (t.roi_percent ?? (t.capital_deployed > 0 ? ((t.final_pnl || 0) / t.capital_deployed * 100) : 0));
+        const dte = t.dte_remaining || t.days_held || 30;
+        return roi / dte * 365;
+      };
+      const statusPriority = (s) => ['open', 'rolled', 'active'].includes(s) ? 0 : 1;
+      rawTrades.sort((a, b) => {
+        const sp = statusPriority(a.status) - statusPriority(b.status);
+        if (sp !== 0) return sp;
+        return computeAnnROI(b) - computeAnnROI(a);
+      });
+      setTrades(rawTrades);
       setPagination(prev => ({
         ...prev,
         pages: res.data.pages || 1,
@@ -1060,6 +1075,9 @@ const Simulator = () => {
                       <th className="pb-3 font-medium">IV</th>
                       <th className="pb-3 font-medium">IV Rank</th>
                       <th className="pb-3 font-medium">OI</th>
+                      <th className="pb-3 font-medium">Capital Used</th>
+                      <th className="pb-3 font-medium">Stock P/L</th>
+                      <th className="pb-3 font-medium">Prem Earned</th>
                       <th className="pb-3 font-medium">Prem Yield</th>
                       <th className="pb-3 font-medium">P/L</th>
                       <th className="pb-3 font-medium">ROI</th>
@@ -1130,6 +1148,22 @@ const Simulator = () => {
                         <td className="text-zinc-400 font-mono">
                           {trade.open_interest ? trade.open_interest.toLocaleString() : (trade.scan_parameters?.open_interest ? trade.scan_parameters.open_interest.toLocaleString() : '—')}
                         </td>
+                        <td className="text-zinc-300 font-mono">
+                          {trade.capital_deployed ? formatCurrency(trade.capital_deployed) : '—'}
+                        </td>
+                        <td className={`font-mono ${
+                          (() => {
+                            const stockPL = (trade.current_underlying_price - trade.entry_underlying_price) * 100 * (trade.contracts || 1);
+                            return stockPL >= 0 ? 'text-emerald-400' : 'text-red-400';
+                          })()
+                        }`}>
+                          {trade.entry_underlying_price && trade.current_underlying_price
+                            ? formatCurrency((trade.current_underlying_price - trade.entry_underlying_price) * 100 * (trade.contracts || 1))
+                            : '—'}
+                        </td>
+                        <td className="text-violet-400 font-mono">
+                          {trade.premium_received ? formatCurrency(trade.premium_received) : '—'}
+                        </td>
                         <td className={`font-mono ${(trade.premium_capture_pct || 0) >= 75 ? 'text-emerald-400' : (trade.premium_capture_pct || 0) >= 40 ? 'text-zinc-300' : 'text-zinc-500'}`}>
                           {(() => {
                             // Premium Yield = premium received / capital deployed
@@ -1151,19 +1185,19 @@ const Simulator = () => {
                         <td className={`font-mono ${
                           isLive(trade.status)
                             ? ((trade.unrealized_pnl / trade.capital_deployed * 100) >= 0 ? 'text-emerald-400' : 'text-red-400')
-                            : (trade.roi_percent >= 0 ? 'text-emerald-400' : 'text-red-400')
+                            : (((trade.roi_percent ?? (trade.capital_deployed > 0 ? trade.final_pnl / trade.capital_deployed * 100 : 0)) >= 0) ? 'text-emerald-400' : 'text-red-400')
                         }`}>
                           {isLive(trade.status)
                             ? formatPercent(trade.capital_deployed > 0 ? (trade.unrealized_pnl / trade.capital_deployed * 100) : 0)
-                            : formatPercent(trade.roi_percent)
+                            : formatPercent(trade.roi_percent ?? (trade.capital_deployed > 0 ? trade.final_pnl / trade.capital_deployed * 100 : null))
                           }
                         </td>
                         <td>
                           {(() => {
                             const roi = isLive(trade.status)
                               ? (trade.capital_deployed > 0 ? (trade.unrealized_pnl / trade.capital_deployed * 100) : 0)
-                              : (trade.roi_percent || 0);
-                            const dte = trade.dte_remaining || 1;
+                              : (trade.roi_percent ?? (trade.capital_deployed > 0 ? (trade.final_pnl / trade.capital_deployed * 100) : 0));
+                            const dte = trade.dte_remaining || trade.days_held || 30;
                             const annROI = roi / dte * 365;
                             const pnl = isLive(trade.status) ? trade.unrealized_pnl : trade.final_pnl;
                             if (pnl < 0) return <span className="text-xs text-red-400 font-medium">Losing</span>;

@@ -1184,6 +1184,8 @@ async def update_simulator_prices(user: dict = Depends(get_current_user)):
             update_doc["final_pnl"] = round(final, 2)
             update_doc["realized_pnl"] = round(final, 2)
             update_doc["close_date"] = now.strftime("%Y-%m-%d")
+            cap = trade.get("capital_deployed", 0)
+            update_doc["roi_percent"] = round((final / cap) * 100, 2) if cap and cap > 0 else 0
 
         await db.simulator_trades.update_one({"id": trade["id"]}, {"$set": update_doc})
         updated_count += 1

@@ -1848,6 +1848,7 @@ const Admin = () => {
           {/* Sub-tabs */}
           <Tabs value={emailSubTab} onValueChange={setEmailSubTab}>
             <TabsList className="bg-zinc-800/50">
+              <TabsTrigger value="sequence">Sequence</TabsTrigger>
               <TabsTrigger value="templates">Templates</TabsTrigger>
               <TabsTrigger value="rules">Automation Rules</TabsTrigger>
               <TabsTrigger value="broadcast" onClick={async () => { try { const r = await api.get('/admin/users', { params: { limit: 1 } }); setBroadcastPreviewCount(r.data.total ?? null); } catch {} }}>Broadcast</TabsTrigger>
@@ -2110,6 +2111,82 @@ const Admin = () => {
                           </div>
                         );
                       })}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            {/* Email Sequence */}
+            <TabsContent value="sequence" className="mt-4">
+              <Card className="glass-card">
+                <CardHeader>
+                  <CardTitle className="text-lg">Onboarding Email Sequence</CardTitle>
+                  <CardDescription>Configure the order and timing of automated onboarding emails. Drag to reorder or edit the delay days directly.</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  {emailLoading ? (
+                    <div className="space-y-3">{[...Array(4)].map((_, i) => <div key={i} className="h-20 bg-zinc-800 rounded-lg animate-pulse" />)}</div>
+                  ) : emailTemplates.length === 0 ? (
+                    <p className="text-zinc-500 text-center py-4">No templates — go to Templates tab to load them</p>
+                  ) : (
+                    <div className="space-y-3">
+                      <p className="text-xs text-zinc-500 mb-2">Emails are sent in order of delay days after signup. Edit the day number to change timing.</p>
+                      {[...emailTemplates]
+                        .sort((a, b) => (a.delay_days ?? 999) - (b.delay_days ?? 999))
+                        .map((tpl, idx) => {
+                          const tid = tpl.key || tpl.id;
+                          return (
+                            <div key={tid} className={`p-4 rounded-lg border flex items-center gap-4 transition-all ${tpl.enabled ? 'bg-zinc-800/50 border-zinc-700/50' : 'bg-zinc-900/50 border-zinc-800/30 opacity-60'}`}>
+                              <div className="flex items-center justify-center w-8 h-8 rounded-full bg-violet-600/20 text-violet-400 text-sm font-bold flex-shrink-0">
+                                {idx + 1}
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <p className="font-medium text-white truncate">{tpl.name}</p>
+                                <p className="text-xs text-zinc-500 truncate">{tpl.subject}</p>
+                              </div>
+                              <div className="flex items-center gap-2 flex-shrink-0">
+                                <span className="text-xs text-zinc-400">Day</span>
+                                <input
+                                  type="number"
+                                  min="0"
+                                  max="365"
+                                  defaultValue={tpl.delay_days ?? 0}
+                                  onBlur={async (e) => {
+                                    const newDay = parseInt(e.target.value, 10);
+                                    if (!isNaN(newDay) && newDay !== tpl.delay_days) {
+                                      try {
+                                        await api.put(`/admin/email-automation/templates/${tid}`, null, { params: { delay_days: newDay } });
+                                        fetchEmailTemplates();
+                                        toast.success(`${tpl.name} updated to Day ${newDay}`);
+                                      } catch { toast.error('Failed to update delay'); }
+                                    }
+                                  }}
+                                  className="w-14 text-center text-sm bg-zinc-700 border border-zinc-600 rounded px-2 py-1 text-white focus:outline-none focus:border-violet-500"
+                                />
+                              </div>
+                              <div className="flex items-center gap-2 flex-shrink-0">
+                                <span className="text-xs text-zinc-400">{tpl.enabled ? 'On' : 'Off'}</span>
+                                <button
+                                  onClick={async () => {
+                                    try {
+                                      await api.put(`/admin/email-automation/templates/${tid}`, null, { params: { enabled: !tpl.enabled } });
+                                      fetchEmailTemplates();
+                                    } catch { toast.error('Failed to toggle'); }
+                                  }}
+                                  className={`relative w-10 h-5 rounded-full transition-colors ${tpl.enabled ? 'bg-emerald-500' : 'bg-zinc-600'}`}
+                                >
+                                  <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-transform ${tpl.enabled ? 'translate-x-5' : 'translate-x-0.5'}`} />
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      <div className="mt-4 p-3 rounded-lg bg-zinc-900/50 border border-zinc-800">
+                        <p className="text-xs text-zinc-500">
+                          <span className="text-zinc-400 font-medium">How it works:</span> When a new user signs up, the sequence scheduler checks every 2 minutes and sends each enabled email after the specified number of days since signup. Day 0 = immediate.
+                        </p>
+                      </div>
                     </div>
                   )}
                 </CardContent>

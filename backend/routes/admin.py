@@ -733,13 +733,14 @@ async def update_email_template(
     subject: Optional[str] = None,
     html: Optional[str] = None,
     enabled: Optional[bool] = None,
+    delay_days: Optional[int] = None,
     admin: dict = Depends(get_admin_user)
 ):
     """Update an email template"""
     from services.email_automation import EmailAutomationService
-    
+
     email_automation = EmailAutomationService(db)
-    
+
     updates = {}
     if name is not None:
         updates["name"] = name
@@ -749,6 +750,8 @@ async def update_email_template(
         updates["html"] = html
     if enabled is not None:
         updates["enabled"] = enabled
+    if delay_days is not None:
+        updates["delay_days"] = delay_days
     
     if not updates:
         raise HTTPException(status_code=400, detail="No updates provided")
