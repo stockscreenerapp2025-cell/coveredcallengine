@@ -180,9 +180,9 @@ CC_MANUAL_MIN_PRICE = 15.0      # Lower bound for manual
 CC_MANUAL_MAX_PRICE = 500.0     # Upper bound for manual
 
 # DTE Ranges per CCE Master Architecture
-WEEKLY_MIN_DTE = 7
-WEEKLY_MAX_DTE = 14
-MONTHLY_MIN_DTE = 21
+WEEKLY_MIN_DTE = 5
+WEEKLY_MAX_DTE = 10
+MONTHLY_MIN_DTE = 14
 MONTHLY_MAX_DTE = 45
 
 # Earnings exclusion window (days before and after)
@@ -2038,15 +2038,13 @@ async def get_dashboard_opportunities(
     
     if run_id:
         # Query weekly and monthly SEPARATELY so each bucket is always populated
-        # regardless of relative score ranking across DTE groups
-        weekly_cursor = db.scan_results_cc.find(
-            {"run_id": run_id, "dte": {"$gte": WEEKLY_MIN_DTE, "$lte": WEEKLY_MAX_DTE}},
-            {"_id": 0}
-        ).sort("score", -1).limit(20)
-        monthly_cursor = db.scan_results_cc.find(
-            {"run_id": run_id, "dte": {"$gte": MONTHLY_MIN_DTE, "$lte": MONTHLY_MAX_DTE}},
-            {"_id": 0}
-        ).sort("score", -1).limit(20)
+        # Criteria: price $20-$200, above SMA50 and SMA200, DTE in range
+        price_filter = {"stock_price": {"$gte": 20, "$lte": 200}}
+        sma_filter = {"above_sma50": True, "above_sma200": True}
+        weekly_query = {"run_id": run_id, "dte": {"$gte": WEEKLY_MIN_DTE, "$lte": WEEKLY_MAX_DTE}, **price_filter}
+        monthly_query = {"run_id": run_id, "dte": {"$gte": MONTHLY_MIN_DTE, "$lte": MONTHLY_MAX_DTE}, **price_filter}
+        weekly_cursor = db.scan_results_cc.find(weekly_query, {"_id": 0}).sort("score", -1).limit(50)
+        monthly_cursor = db.scan_results_cc.find(monthly_query, {"_id": 0}).sort("score", -1).limit(50)
 
         weekly_raw, monthly_raw = await asyncio.gather(
             weekly_cursor.to_list(length=20),
@@ -2100,9 +2098,18 @@ async def get_dashboard_opportunities(
             else:
                 monthly_opps.append(transformed)
 
-    # Sort each by score descending
-    weekly_opps.sort(key=lambda x: x.get("score", 0), reverse=True)
-    monthly_opps.sort(key=lambda x: x.get("score", 0), reverse=True)
+    # Apply SMA50 + SMA200 filter — only exclude if field is present and fails (not if absent)
+    weekly_opps = [o for o in weekly_opps if o.get("above_sma50") is not False and o.get("above_sma200") is not False]
+    monthly_opps = [o for o in monthly_opps if o.get("above_sma50") is not False and o.get("above_sma200") is not False]
+
+    # Sort by combined ROI + AI Score (equal weight)
+    def _top10_rank(o):
+        roi = o.get("roi_pct") or o.get("premium_yield_pct") or 0
+        score = o.get("score") or o.get("ai_score") or 0
+        return roi * 0.5 + score * 0.5
+
+    weekly_opps.sort(key=_top10_rank, reverse=True)
+    monthly_opps.sort(key=_top10_rank, reverse=True)
 
     # Take top 5 from each
     top_weekly = weekly_opps[:5]

@@ -838,39 +838,46 @@ const StockDetailModal = ({ symbol, isOpen, onClose, scanData = null }) => {
                     <CardContent>
                       {sentimentData ? (
                         <div className="space-y-3">
-                          <div className="flex items-center justify-between">
-                            <div>
-                              <div className="text-xs text-zinc-500 mb-1">Overall Sentiment</div>
-                              <Badge className={`text-sm ${
-                                sentimentData.overall_sentiment === 'Positive'
-                                  ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30'
-                                  : sentimentData.overall_sentiment === 'Negative'
-                                    ? 'bg-red-500/20 text-red-400 border-red-500/30'
-                                    : 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30'
-                              }`}>
-                                {sentimentData.overall_sentiment}
-                              </Badge>
-                              {sentimentData.source && (
-                                <div className="text-[10px] text-zinc-600 mt-1">via {sentimentData.source}</div>
-                              )}
-                            </div>
-                            <div className="text-right">
-                              <div className="text-xs text-zinc-500 mb-1">Sentiment Score</div>
-                              <div className={`text-2xl font-bold ${
-                                sentimentData.overall_sentiment === 'Positive' ? 'text-emerald-400' :
-                                sentimentData.overall_sentiment === 'Negative' ? 'text-red-400' : 'text-yellow-400'
-                              }`}>
-                                {sentimentData.sentiment_score !== undefined
-                                  ? (sentimentData.sentiment_score >= 0 ? '+' : '') + sentimentData.sentiment_score.toFixed(2)
-                                  : sentimentData.overall_score}
-                              </div>
-                              {sentimentData.confidence !== undefined && (
-                                <div className="text-[10px] text-zinc-600">
-                                  confidence: {Math.round(sentimentData.confidence * 100)}%
+                          {(() => {
+                            const score = sentimentData.sentiment_score ?? 0;
+                            const conf = sentimentData.confidence ?? 0;
+                            const confPct = Math.round(conf * 100);
+                            // Map score to label
+                            const biasLabel = score > 0.3 ? 'Bullish' : score > 0.1 ? 'Slightly Bullish' : score < -0.3 ? 'Bearish' : score < -0.1 ? 'Slightly Bearish' : 'Neutral';
+                            const biasColor = score > 0.1 ? 'text-emerald-400' : score < -0.1 ? 'text-red-400' : 'text-yellow-400';
+                            const biasBg = score > 0.1 ? 'bg-emerald-500/20 border-emerald-500/30' : score < -0.1 ? 'bg-red-500/20 border-red-500/30' : 'bg-yellow-500/20 border-yellow-500/30';
+                            // Map confidence to label
+                            const confLabel = confPct >= 70 ? 'High' : confPct >= 40 ? 'Medium' : 'Low';
+                            const confColor = confPct >= 70 ? 'text-emerald-400' : confPct >= 40 ? 'text-yellow-400' : 'text-zinc-400';
+                            const confIcon = confPct >= 70 ? '' : confPct >= 40 ? '' : '⚠️';
+                            // Signal strength
+                            const signalStrength = confPct < 40 ? 'Weak Signal' : Math.abs(score) < 0.1 ? 'No Clear Bias' : 'Actionable';
+                            // Strategy context for CC/PMCC
+                            const strategyNote = biasLabel === 'Neutral' || biasLabel === 'Slightly Bullish'
+                              ? 'Suitable for income strategies (CC / PMCC)'
+                              : biasLabel === 'Bullish'
+                              ? 'Bullish — consider direction before capping upside with calls'
+                              : 'Bearish — caution with covered calls';
+                            return (
+                              <div className="space-y-2">
+                                <div className="flex items-center justify-between">
+                                  <div>
+                                    <div className="text-xs text-zinc-500 mb-1">Sentiment</div>
+                                    <Badge className={`text-sm ${biasBg} ${biasColor}`}>{biasLabel}</Badge>
+                                  </div>
+                                  <div className="text-right">
+                                    <div className="text-xs text-zinc-500 mb-1">Signal Strength</div>
+                                    <div className={`text-sm font-semibold ${confColor}`}>{confIcon} {signalStrength}</div>
+                                    <div className="text-[10px] text-zinc-500">Confidence: {confLabel} ({confPct}%)</div>
+                                  </div>
                                 </div>
-                              )}
-                            </div>
-                          </div>
+                                <div className="text-[10px] text-zinc-500 bg-zinc-900/50 rounded px-2 py-1.5 space-y-0.5">
+                                  <div><span className="text-zinc-400">Market Bias:</span> {Math.abs(score) < 0.1 ? 'No clear directional sentiment' : biasLabel}</div>
+                                  <div><span className="text-zinc-400">Strategy Context:</span> {strategyNote}</div>
+                                </div>
+                              </div>
+                            );
+                          })()}
                           {sentimentData.summary && (
                             <p className="text-xs text-zinc-400 italic">{sentimentData.summary}</p>
                           )}

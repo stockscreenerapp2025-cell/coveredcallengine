@@ -105,16 +105,13 @@ async def _get_eod_cc_opportunities(
     # Build query based on risk profile scoring thresholds
     query = {"run_id": run_id}
     
-    # Risk profile determines score thresholds
+    # Risk profile determines score thresholds — score already encodes delta quality
     if risk_profile == "conservative":
         query["score"] = {"$gte": 70}
-        query["delta"] = {"$lte": 0.35}  # Lower delta = more conservative
     elif risk_profile == "balanced":
         query["score"] = {"$gte": 50}
-        query["delta"] = {"$gte": 0.25, "$lte": 0.45}
     elif risk_profile == "aggressive":
         query["score"] = {"$gte": 40}
-        query["delta"] = {"$gte": 0.35}
     
     if min_score > 0:
         query["score"] = {"$gte": min_score}
@@ -458,26 +455,17 @@ async def get_available_scans(user: dict = Depends(get_current_user)):
                 "completed_at": run_doc.get("completed_at")
             }
     
-    # Compute CC counts using SAME filtering logic as detail endpoint
+    # Compute CC counts — score encodes delta quality, no redundant delta filter
     cc_counts = {}
     if run_id:
-        # Conservative: score >= 70, delta <= 0.35
         cc_counts["conservative"] = await db.scan_results_cc.count_documents({
-            "run_id": run_id,
-            "score": {"$gte": 70},
-            "delta": {"$lte": 0.35}
+            "run_id": run_id, "score": {"$gte": 70}
         })
-        # Balanced: score >= 50, delta 0.25-0.45
         cc_counts["balanced"] = await db.scan_results_cc.count_documents({
-            "run_id": run_id,
-            "score": {"$gte": 50},
-            "delta": {"$gte": 0.25, "$lte": 0.45}
+            "run_id": run_id, "score": {"$gte": 50}
         })
-        # Aggressive: score >= 40, delta >= 0.35
         cc_counts["aggressive"] = await db.scan_results_cc.count_documents({
-            "run_id": run_id,
-            "score": {"$gte": 40},
-            "delta": {"$gte": 0.35}
+            "run_id": run_id, "score": {"$gte": 40}
         })
     
     # Compute PMCC counts using IDENTICAL filtering logic as _get_eod_pmcc_opportunities.

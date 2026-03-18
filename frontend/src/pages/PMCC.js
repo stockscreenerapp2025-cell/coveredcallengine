@@ -596,7 +596,30 @@ const PMCC = () => {
     }
   };
 
+  // Verdict group helper for default sorting
+  const verdictGroup = (opp) => {
+    const synPct = opp.synthetic_premium_pct || 0;
+    const capEff = opp.capital_efficiency_ratio || 0;
+    const score = opp.pmcc_score || opp.score || 0;
+    if (synPct > 7 || (capEff > 0 && capEff < 1.3)) return 3; // Avoid
+    if (score >= 75) return 1; // Strong
+    if (score >= 50) return 2; // Acceptable
+    return 3; // Avoid
+  };
+
   const sortedOpportunities = [...opportunities].sort((a, b) => {
+    // Default sort: Verdict group → Score → Net Synth → Max Return → Payback
+    if (sortField === 'score') {
+      const gA = verdictGroup(a), gB = verdictGroup(b);
+      if (gA !== gB) return gA - gB;
+      const scoreA = a.pmcc_score || a.score || 0;
+      const scoreB = b.pmcc_score || b.score || 0;
+      if (scoreB !== scoreA) return scoreB - scoreA;
+      const synthA = a.synthetic_premium_pct || 0;
+      const synthB = b.synthetic_premium_pct || 0;
+      if (synthA !== synthB) return synthA - synthB;
+      return (b.max_return_pct || 0) - (a.max_return_pct || 0);
+    }
     const aVal = a[sortField] || 0;
     const bVal = b[sortField] || 0;
     return sortDirection === 'asc' ? aVal - bVal : bVal - aVal;
@@ -1131,7 +1154,10 @@ const PMCC = () => {
                         <SortHeader field="payback_months" label="Payback" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
                         <SortHeader field="score" label="Score" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
                         <th>Verdict</th>
-                        <th>Signal</th>
+                        <th>
+                          <div>Analyst Rating</div>
+                          <div className="text-[9px] font-normal text-zinc-500 normal-case">Stock view only</div>
+                        </th>
                         <th className="text-center w-px whitespace-nowrap">Action</th>
                       </tr>
                     </thead>
@@ -1142,7 +1168,7 @@ const PMCC = () => {
 
                         const cer = norm.capital_efficiency_ratio || 0;
                         const cerColor = cer > 1.8 ? 'text-emerald-400' : cer >= 1.3 ? 'text-yellow-400' : 'text-red-400';
-                        const cerIcon = cer > 1.8 ? '🟢' : cer >= 1.3 ? '🟡' : '🔴';
+                        // cerIcon removed — color alone conveys quality
                         const synthPct = norm.net_synthetic_premium_pct ?? norm.synthetic_premium_pct ?? 0; // show NET in top row
                         const grossSynthPct = norm.synthetic_premium_pct || 0;
                         const synthColor = synthPct < 2 ? 'text-emerald-400' : synthPct <= 5 ? 'text-yellow-400' : 'text-red-400';
@@ -1197,7 +1223,7 @@ const PMCC = () => {
                               </td>
                               <td className="text-white font-mono">${norm.net_debit?.toLocaleString()}</td>
                               <td className={`font-semibold ${cerColor}`}>
-                                {cerIcon} {cer?.toFixed(2)}x
+                                {cer?.toFixed(2)}x
                               </td>
                               <td className={`font-semibold ${synthColor}`}>{synthPct?.toFixed(1)}%</td>
                               <td className="text-yellow-400 font-semibold">{norm.roi_per_cycle?.toFixed(1)}%</td>
@@ -1214,21 +1240,29 @@ const PMCC = () => {
                                 {norm.verdict?.split(' ').slice(0, 2).join(' ')}
                               </td>
                               <td>
-                                {(opp.analyst_rating_label || opp.analyst_rating) ? (
-                                  <Badge className={`text-xs ${
-                                    (opp.analyst_rating_label || opp.analyst_rating) === 'Strong Buy'
-                                      ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30'
-                                      : (opp.analyst_rating_label || opp.analyst_rating) === 'Buy'
-                                        ? 'bg-green-500/20 text-green-400 border-green-500/30'
-                                        : (opp.analyst_rating_label || opp.analyst_rating) === 'Hold'
-                                          ? 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30'
+                                {(() => {
+                                  const rating = opp.analyst_rating_label || opp.analyst_rating;
+                                  const isGoodStock = rating === 'Strong Buy' || rating === 'Buy';
+                                  const isAvoid = norm.verdict?.includes('Avoid');
+                                  const isStrong = norm.verdict?.startsWith('🟢');
+                                  let interp = null;
+                                  if (isGoodStock && isAvoid) interp = { text: 'Good stock, poor PMCC setup', color: 'text-yellow-500' };
+                                  else if (isGoodStock && isStrong) interp = { text: 'Strong candidate', color: 'text-emerald-400' };
+                                  else if (!isGoodStock && isAvoid) interp = { text: 'Weak setup, skip', color: 'text-red-400' };
+                                  return (
+                                    <div className="space-y-1">
+                                      {rating ? (
+                                        <Badge className={`text-xs ${
+                                          rating === 'Strong Buy' ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30'
+                                          : rating === 'Buy' ? 'bg-green-500/20 text-green-400 border-green-500/30'
+                                          : rating === 'Hold' ? 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30'
                                           : 'bg-red-500/20 text-red-400 border-red-500/30'
-                                  }`}>
-                                    {opp.analyst_rating_label || opp.analyst_rating}
-                                  </Badge>
-                                ) : (
-                                  <span className="text-zinc-600 text-xs">N/A</span>
-                                )}
+                                        }`}>{rating}</Badge>
+                                      ) : <span className="text-zinc-600 text-xs">N/A</span>}
+                                      {interp && <div className={`text-[9px] ${interp.color}`}>{interp.text}</div>}
+                                    </div>
+                                  );
+                                })()}
                               </td>
                               <td className="text-center">
                                 <div className="flex gap-1 justify-center">
@@ -1294,7 +1328,7 @@ const PMCC = () => {
                                       <div className="flex justify-between"><span className="text-zinc-500">Stock Cost (100sh)</span><span className="font-mono">${opp.stock_equivalent_cost?.toLocaleString() || (opp.stock_price * 100)?.toLocaleString()}</span></div>
                                       <div className="flex justify-between"><span className="text-zinc-500">PMCC Cost (1 contract)</span><span className="font-mono text-red-400">${norm.net_debit ? norm.net_debit.toLocaleString() : '-'}</span></div>
                                       <div className="flex justify-between"><span className="text-zinc-500">Capital Saved</span><span className="font-mono text-emerald-400">${norm.capital_saved_dollar?.toLocaleString() || '-'}</span></div>
-                                      <div className="flex justify-between"><span className="text-zinc-500">Cap Efficiency</span><span className={`font-mono font-semibold ${cerColor}`}>{cerIcon} {cer?.toFixed(2)}x</span></div>
+                                      <div className="flex justify-between"><span className="text-zinc-500">Cap Efficiency</span><span className={`font-mono font-semibold ${cerColor}`}>{cer?.toFixed(2)}x</span></div>
                                       <div className="flex justify-between"><span className="text-zinc-500">Capital Saved %</span><span className="font-mono text-emerald-400">{norm.capital_saved_percent?.toFixed(1)}%</span></div>
                                     </div>
                                     {/* LEAPS Quality */}
@@ -1314,7 +1348,7 @@ const PMCC = () => {
                                       <div className="flex justify-between"><span className="text-zinc-500">Ask (per share)</span><span className="font-mono">${norm.leaps_premium?.toFixed(2)}</span></div>
                                       <div className="flex justify-between"><span className="text-zinc-500">Synthetic Cost</span><span className="font-mono">${norm.synthetic_stock_cost?.toFixed(2) || '-'}</span></div>
                                       <div className="flex justify-between"><span className="text-zinc-500">Gross Synth Premium</span><span className={`font-mono font-semibold ${grossSynthPct < 2 ? 'text-emerald-400' : grossSynthPct <= 5 ? 'text-yellow-400' : 'text-red-400'}`}>{grossSynthPct?.toFixed(1)}%</span></div>
-                                      <div className="flex justify-between items-center"><span className="text-zinc-500">Net Synth Premium ⭐</span><span className={`font-mono font-semibold ${synthPct < 2 ? 'text-emerald-400' : synthPct <= 5 ? 'text-yellow-400' : 'text-red-400'}`}>{synthPct?.toFixed(1)}%</span></div>
+                                      <div className="flex justify-between items-center"><span className="text-zinc-500">Net Synth Premium</span><span className={`font-mono font-semibold ${synthPct < 2 ? 'text-emerald-400' : synthPct <= 5 ? 'text-yellow-400' : 'text-red-400'}`}>{synthPct?.toFixed(1)}%</span></div>
                                     </div>
                                     {/* Income Analysis */}
                                     <div className="bg-zinc-800/60 rounded-lg p-3 space-y-1">
