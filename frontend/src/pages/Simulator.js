@@ -520,7 +520,16 @@ const Simulator = () => {
       const computeAnnROI = (t) => {
         const live = ['open', 'rolled', 'active'].includes(t.status);
         const cap = t.capital_deployed || (t.entry_underlying_price * 100 * (t.contracts || 1));
-        const pnl = live ? t.unrealized_pnl : (t.final_pnl || 0);
+        let pnl;
+        if (live) {
+          pnl = t.unrealized_pnl;
+        } else if (t.final_pnl != null) {
+          pnl = t.final_pnl;
+        } else if (t.status === 'assigned') {
+          pnl = ((t.short_call_strike - t.entry_underlying_price) * 100 * (t.contracts || 1)) + (t.premium_collected || 0);
+        } else {
+          pnl = 0;
+        }
         const roi = t.roi_percent ?? (cap > 0 ? pnl / cap * 100 : 0);
         const dte = t.dte_remaining || t.days_held || 30;
         return roi / dte * 365;
@@ -1185,25 +1194,52 @@ const Simulator = () => {
                         <td className={`font-mono ${
                           (() => {
                             const cap = trade.capital_deployed || (trade.entry_underlying_price * 100 * (trade.contracts || 1));
-                            const pnl = isLive(trade.status) ? trade.unrealized_pnl : (trade.final_pnl || 0);
+                            let pnl;
+                            if (isLive(trade.status)) {
+                              pnl = trade.unrealized_pnl;
+                            } else if (trade.final_pnl != null) {
+                              pnl = trade.final_pnl;
+                            } else if (trade.status === 'assigned') {
+                              // CC assigned: stock called away at strike + premium kept
+                              pnl = ((trade.short_call_strike - trade.entry_underlying_price) * 100 * (trade.contracts || 1)) + (trade.premium_collected || 0);
+                            } else {
+                              pnl = 0;
+                            }
                             const roi = trade.roi_percent ?? (cap > 0 ? pnl / cap * 100 : 0);
                             return roi >= 0 ? 'text-emerald-400' : 'text-red-400';
                           })()
                         }`}>
                           {(() => {
                             const cap = trade.capital_deployed || (trade.entry_underlying_price * 100 * (trade.contracts || 1));
-                            const pnl = isLive(trade.status) ? trade.unrealized_pnl : (trade.final_pnl || 0);
+                            let pnl;
+                            if (isLive(trade.status)) {
+                              pnl = trade.unrealized_pnl;
+                            } else if (trade.final_pnl != null) {
+                              pnl = trade.final_pnl;
+                            } else if (trade.status === 'assigned') {
+                              pnl = ((trade.short_call_strike - trade.entry_underlying_price) * 100 * (trade.contracts || 1)) + (trade.premium_collected || 0);
+                            } else {
+                              pnl = 0;
+                            }
                             return formatPercent(trade.roi_percent ?? (cap > 0 ? pnl / cap * 100 : 0));
                           })()}
                         </td>
                         <td>
                           {(() => {
-                            const roi = isLive(trade.status)
-                              ? (trade.capital_deployed > 0 ? (trade.unrealized_pnl / trade.capital_deployed * 100) : 0)
-                              : (trade.roi_percent ?? (trade.capital_deployed > 0 ? (trade.final_pnl / trade.capital_deployed * 100) : 0));
+                            const cap = trade.capital_deployed || (trade.entry_underlying_price * 100 * (trade.contracts || 1));
+                            let pnl;
+                            if (isLive(trade.status)) {
+                              pnl = trade.unrealized_pnl;
+                            } else if (trade.final_pnl != null) {
+                              pnl = trade.final_pnl;
+                            } else if (trade.status === 'assigned') {
+                              pnl = ((trade.short_call_strike - trade.entry_underlying_price) * 100 * (trade.contracts || 1)) + (trade.premium_collected || 0);
+                            } else {
+                              pnl = 0;
+                            }
+                            const roi = trade.roi_percent ?? (cap > 0 ? pnl / cap * 100 : 0);
                             const dte = trade.dte_remaining || trade.days_held || 30;
                             const annROI = roi / dte * 365;
-                            const pnl = isLive(trade.status) ? trade.unrealized_pnl : trade.final_pnl;
                             if (pnl < 0) return <span className="text-xs text-red-400 font-medium">Losing</span>;
                             if (annROI > 20) return <span className="text-xs text-emerald-400 font-medium">High Yield</span>;
                             if (annROI > 10) return <span className="text-xs text-blue-400 font-medium">Good Income</span>;
