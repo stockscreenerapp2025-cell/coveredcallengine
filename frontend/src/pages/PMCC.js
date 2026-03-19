@@ -1310,70 +1310,82 @@ const PMCC = () => {
                                     </div>
                                   </div>
 
-                                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 text-xs">
+                                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 text-xs">
                                     {/* Trade Structure */}
-                                    <div className="bg-zinc-800/60 rounded-lg p-3 space-y-1">
-                                      <p className="text-zinc-400 font-semibold uppercase tracking-wide text-[10px] mb-2">Trade Structure</p>
-                                      <div className="flex justify-between"><span className="text-zinc-500">Stock Price</span><span className="font-mono text-white">${opp.stock_price?.toFixed(2)}</span></div>
-                                      <div className="flex justify-between"><span className="text-zinc-500">LEAPS Strike</span><span className="font-mono text-emerald-400">${norm.leaps_strike?.toFixed(0)}</span></div>
-                                      <div className="flex justify-between"><span className="text-zinc-500">Short Strike</span><span className="font-mono text-cyan-400">${norm.short_strike?.toFixed(0)}</span></div>
-                                      <div className="flex justify-between"><span className="text-zinc-500">Net Debit / Share</span><span className="font-mono text-white">${norm.net_debit ? (norm.net_debit / 100).toFixed(2) : '-'}</span></div>
-                                      <div className="flex justify-between"><span className="text-zinc-500">Net Debit / Contract</span><span className="font-mono text-white">${norm.net_debit ? norm.net_debit.toLocaleString() : '-'}</span></div>
-                                      <div className="flex justify-between"><span className="text-zinc-500">Width</span><span className="font-mono">${norm.strike_width?.toFixed(0)}</span></div>
+                                    <div className="bg-zinc-900 border border-zinc-700 rounded-lg overflow-hidden">
+                                      <p className="bg-black text-zinc-200 font-bold uppercase tracking-wide text-[11px] px-3 py-2 border-b border-zinc-700">Trade Structure</p>
+                                      <div className="p-3 space-y-1.5">
+                                        <div className="flex justify-between gap-4"><span className="text-zinc-500 whitespace-nowrap">Stock Price</span><span className="font-mono text-white">${opp.stock_price?.toFixed(2)}</span></div>
+                                        <div className="flex justify-between gap-4"><span className="text-zinc-500 whitespace-nowrap">LEAPS Strike</span><span className="font-mono text-emerald-400">${norm.leaps_strike?.toFixed(0)}</span></div>
+                                        <div className="flex justify-between gap-4"><span className="text-zinc-500 whitespace-nowrap">Short Strike</span><span className="font-mono text-cyan-400">${norm.short_strike?.toFixed(0)}</span></div>
+                                        <div className="flex justify-between gap-4"><span className="text-zinc-500 whitespace-nowrap">Net Debit/Share</span><span className="font-mono text-white">${norm.net_debit ? (norm.net_debit / 100).toFixed(2) : '-'}</span></div>
+                                        <div className="flex justify-between gap-4"><span className="text-zinc-500 whitespace-nowrap">Net Debit/Contract</span><span className="font-mono text-white">${norm.net_debit ? norm.net_debit.toLocaleString() : '-'}</span></div>
+                                        <div className="flex justify-between gap-4"><span className="text-zinc-500 whitespace-nowrap">Width</span><span className="font-mono">${norm.strike_width?.toFixed(0)}</span></div>
+                                      </div>
                                     </div>
                                     {/* Capital Analysis */}
-                                    <div className="bg-zinc-800/60 rounded-lg p-3 space-y-1">
-                                      <p className="text-zinc-400 font-semibold uppercase tracking-wide text-[10px] mb-2">Capital Analysis</p>
-                                      <div className="flex justify-between"><span className="text-zinc-500">Stock Cost (100sh)</span><span className="font-mono">${opp.stock_equivalent_cost?.toLocaleString() || (opp.stock_price * 100)?.toLocaleString()}</span></div>
-                                      <div className="flex justify-between"><span className="text-zinc-500">PMCC Cost (1 contract)</span><span className="font-mono text-red-400">${norm.net_debit ? norm.net_debit.toLocaleString() : '-'}</span></div>
-                                      <div className="flex justify-between"><span className="text-zinc-500">Capital Saved</span><span className="font-mono text-emerald-400">${norm.capital_saved_dollar?.toLocaleString() || '-'}</span></div>
-                                      <div className="flex justify-between"><span className="text-zinc-500">Cap Efficiency</span><span className={`font-mono font-semibold ${cerColor}`}>{cer?.toFixed(2)}x</span></div>
-                                      <div className="flex justify-between"><span className="text-zinc-500">Capital Saved %</span><span className="font-mono text-emerald-400">{norm.capital_saved_percent?.toFixed(1)}%</span></div>
+                                    <div className="bg-zinc-900 border border-zinc-700 rounded-lg overflow-hidden">
+                                      <p className="bg-black text-zinc-200 font-bold uppercase tracking-wide text-[11px] px-3 py-2 border-b border-zinc-700">Capital Analysis</p>
+                                      <div className="p-3 space-y-1.5">
+                                        <div className="flex justify-between gap-4"><span className="text-zinc-500 whitespace-nowrap">Stock Cost (100sh)</span><span className="font-mono">${opp.stock_equivalent_cost?.toLocaleString() || (opp.stock_price * 100)?.toLocaleString()}</span></div>
+                                        <div className="flex justify-between gap-4"><span className="text-zinc-500 whitespace-nowrap">PMCC Cost</span><span className="font-mono text-red-400">${norm.net_debit ? norm.net_debit.toLocaleString() : '-'}</span></div>
+                                        <div className="flex justify-between gap-4"><span className="text-zinc-500 whitespace-nowrap">Capital Saved</span><span className="font-mono text-emerald-400">${norm.capital_saved_dollar?.toLocaleString() || '-'}</span></div>
+                                        <div className="flex justify-between gap-4"><span className="text-zinc-500 whitespace-nowrap">Cap Efficiency</span><span className={`font-mono font-semibold ${cerColor}`}>{cer?.toFixed(2)}x</span></div>
+                                        <div className="flex justify-between gap-4"><span className="text-zinc-500 whitespace-nowrap">Capital Saved %</span><span className="font-mono text-emerald-400">{norm.capital_saved_percent?.toFixed(1)}%</span></div>
+                                      </div>
                                     </div>
                                     {/* LEAPS Quality */}
-                                    <div className="bg-zinc-800/60 rounded-lg p-3 space-y-1">
-                                      <p className="text-zinc-400 font-semibold uppercase tracking-wide text-[10px] mb-2">LEAPS Quality</p>
-                                      <div className="flex justify-between items-center">
-                                        <span className="text-zinc-500">Delta</span>
-                                        <span className="font-mono flex items-center gap-1">
-                                          {norm.leaps_delta?.toFixed(2)}
-                                          {(norm.leaps_delta || 0) < 0.80 && (norm.leaps_delta || 0) > 0 && (
-                                            <span className="text-yellow-400 text-[10px] font-normal">⚠️ Not deep ITM</span>
-                                          )}
-                                        </span>
+                                    <div className="bg-zinc-900 border border-zinc-700 rounded-lg overflow-hidden">
+                                      <p className="bg-black text-zinc-200 font-bold uppercase tracking-wide text-[11px] px-3 py-2 border-b border-zinc-700">LEAPS Quality</p>
+                                      <div className="p-3 space-y-1.5">
+                                        <div className="flex justify-between gap-4 items-center">
+                                          <span className="text-zinc-500 whitespace-nowrap">Delta</span>
+                                          <span className="font-mono flex items-center gap-1">
+                                            {norm.leaps_delta?.toFixed(2)}
+                                            {(norm.leaps_delta || 0) < 0.80 && (norm.leaps_delta || 0) > 0 && (
+                                              <span className="text-yellow-400 text-[9px]">⚠ Not deep ITM</span>
+                                            )}
+                                          </span>
+                                        </div>
+                                        <div className="flex justify-between gap-4"><span className="text-zinc-500 whitespace-nowrap">Extrinsic %</span><span className={`font-mono font-semibold ${extColor}`}>{extPct?.toFixed(1)}%</span></div>
+                                        <div className="flex justify-between gap-4"><span className="text-zinc-500 whitespace-nowrap">DTE</span><span className="font-mono">{norm.leaps_dte}d</span></div>
+                                        <div className="flex justify-between gap-4"><span className="text-zinc-500 whitespace-nowrap">Ask (per share)</span><span className="font-mono">${norm.leaps_premium?.toFixed(2)}</span></div>
+                                        <div className="flex justify-between gap-4"><span className="text-zinc-500 whitespace-nowrap">Synthetic Cost</span><span className="font-mono">${norm.synthetic_stock_cost?.toFixed(2) || '-'}</span></div>
+                                        <div className="flex justify-between gap-4"><span className="text-zinc-500 whitespace-nowrap">Gross Synth %</span><span className={`font-mono font-semibold ${grossSynthPct < 2 ? 'text-emerald-400' : grossSynthPct <= 5 ? 'text-yellow-400' : 'text-red-400'}`}>{grossSynthPct?.toFixed(1)}%</span></div>
+                                        <div className="flex justify-between gap-4"><span className="text-zinc-500 whitespace-nowrap">Net Synth %</span><span className={`font-mono font-semibold ${synthPct < 2 ? 'text-emerald-400' : synthPct <= 5 ? 'text-yellow-400' : 'text-red-400'}`}>{synthPct?.toFixed(1)}%</span></div>
                                       </div>
-                                      <div className="flex justify-between"><span className="text-zinc-500">Extrinsic %</span><span className={`font-mono font-semibold ${extColor}`}>{extPct?.toFixed(1)}%</span></div>
-                                      <div className="flex justify-between"><span className="text-zinc-500">DTE</span><span className="font-mono">{norm.leaps_dte}d</span></div>
-                                      <div className="flex justify-between"><span className="text-zinc-500">Ask (per share)</span><span className="font-mono">${norm.leaps_premium?.toFixed(2)}</span></div>
-                                      <div className="flex justify-between"><span className="text-zinc-500">Synthetic Cost</span><span className="font-mono">${norm.synthetic_stock_cost?.toFixed(2) || '-'}</span></div>
-                                      <div className="flex justify-between"><span className="text-zinc-500">Gross Synth Premium</span><span className={`font-mono font-semibold ${grossSynthPct < 2 ? 'text-emerald-400' : grossSynthPct <= 5 ? 'text-yellow-400' : 'text-red-400'}`}>{grossSynthPct?.toFixed(1)}%</span></div>
-                                      <div className="flex justify-between items-center"><span className="text-zinc-500">Net Synth Premium</span><span className={`font-mono font-semibold ${synthPct < 2 ? 'text-emerald-400' : synthPct <= 5 ? 'text-yellow-400' : 'text-red-400'}`}>{synthPct?.toFixed(1)}%</span></div>
                                     </div>
                                     {/* Income Analysis */}
-                                    <div className="bg-zinc-800/60 rounded-lg p-3 space-y-1">
-                                      <p className="text-zinc-400 font-semibold uppercase tracking-wide text-[10px] mb-2">Income Analysis</p>
-                                      <div className="flex justify-between"><span className="text-zinc-500">Short Bid (per share)</span><span className="font-mono text-emerald-400">${norm.short_premium?.toFixed(2)}</span></div>
-                                      <div className="flex justify-between"><span className="text-zinc-500">Short Premium (total)</span><span className="font-mono text-emerald-400">${norm.short_premium ? (norm.short_premium * 100).toFixed(0) : '-'}</span></div>
-                                      <div className="flex justify-between"><span className="text-zinc-500">ROI / Cycle</span><span className="font-mono font-semibold text-yellow-400">{norm.roi_per_cycle?.toFixed(2)}%</span></div>
-                                      <div className="flex justify-between"><span className="text-zinc-500">Cycle Length</span><span className="font-mono">{norm.short_dte}d</span></div>
-                                      <div className="flex justify-between"><span className="text-zinc-500">Ann. Yield</span><span className="font-mono text-emerald-400">{(opp.annualized_income_yield || norm.annualized_roi)?.toFixed(1)}%</span></div>
-                                      <div className="flex justify-between"><span className="text-zinc-500">Adjusted Yield</span><span className={`font-mono font-semibold ${(norm.adjusted_yield || 0) > 30 ? 'text-emerald-400' : (norm.adjusted_yield || 0) > 15 ? 'text-yellow-400' : 'text-red-400'}`}>{norm.adjusted_yield?.toFixed(1)}%</span></div>
+                                    <div className="bg-zinc-900 border border-zinc-700 rounded-lg overflow-hidden">
+                                      <p className="bg-black text-zinc-200 font-bold uppercase tracking-wide text-[11px] px-3 py-2 border-b border-zinc-700">Income Analysis</p>
+                                      <div className="p-3 space-y-1.5">
+                                        <div className="flex justify-between gap-4"><span className="text-zinc-500 whitespace-nowrap">Short Bid/Share</span><span className="font-mono text-emerald-400">${norm.short_premium?.toFixed(2)}</span></div>
+                                        <div className="flex justify-between gap-4"><span className="text-zinc-500 whitespace-nowrap">Short Premium</span><span className="font-mono text-emerald-400">${norm.short_premium ? (norm.short_premium * 100).toFixed(0) : '-'}</span></div>
+                                        <div className="flex justify-between gap-4"><span className="text-zinc-500 whitespace-nowrap">ROI / Cycle</span><span className="font-mono font-semibold text-yellow-400">{norm.roi_per_cycle?.toFixed(2)}%</span></div>
+                                        <div className="flex justify-between gap-4"><span className="text-zinc-500 whitespace-nowrap">Cycle Length</span><span className="font-mono">{norm.short_dte}d</span></div>
+                                        <div className="flex justify-between gap-4"><span className="text-zinc-500 whitespace-nowrap">Ann. Yield</span><span className="font-mono text-emerald-400">{(opp.annualized_income_yield || norm.annualized_roi)?.toFixed(1)}%</span></div>
+                                        <div className="flex justify-between gap-4"><span className="text-zinc-500 whitespace-nowrap">Adjusted Yield</span><span className={`font-mono font-semibold ${(norm.adjusted_yield || 0) > 30 ? 'text-emerald-400' : (norm.adjusted_yield || 0) > 15 ? 'text-yellow-400' : 'text-red-400'}`}>{norm.adjusted_yield?.toFixed(1)}%</span></div>
+                                      </div>
                                     </div>
                                     {/* Payback & Risk */}
-                                    <div className="bg-zinc-800/60 rounded-lg p-3 space-y-1">
-                                      <p className="text-zinc-400 font-semibold uppercase tracking-wide text-[10px] mb-2">Payback & Risk</p>
-                                      <div className="flex justify-between"><span className="text-zinc-500">Payback Months</span><span className={`font-mono font-semibold ${pbColor}`}>{pbMonths?.toFixed(1)}mo</span></div>
-                                      <div className="flex justify-between"><span className="text-zinc-500">Assignment Risk</span><span className={`font-semibold ${norm.assignment_risk === 'Low' ? 'text-emerald-400' : norm.assignment_risk === 'Medium' ? 'text-yellow-400' : 'text-red-400'}`}>{norm.assignment_risk}</span></div>
-                                      <div className="flex justify-between"><span className="text-zinc-500">Short Delta</span><span className="font-mono">{norm.short_delta?.toFixed(2)}</span></div>
-                                      <div className="flex justify-between"><span className="text-zinc-500">Breakeven</span><span className="font-mono">${norm.breakeven?.toFixed(2)}</span></div>
+                                    <div className="bg-zinc-900 border border-zinc-700 rounded-lg overflow-hidden">
+                                      <p className="bg-black text-zinc-200 font-bold uppercase tracking-wide text-[11px] px-3 py-2 border-b border-zinc-700">Payback & Risk</p>
+                                      <div className="p-3 space-y-1.5">
+                                        <div className="flex justify-between gap-4"><span className="text-zinc-500 whitespace-nowrap">Payback Months</span><span className={`font-mono font-semibold ${pbColor}`}>{pbMonths?.toFixed(1)}mo</span></div>
+                                        <div className="flex justify-between gap-4"><span className="text-zinc-500 whitespace-nowrap">Assignment Risk</span><span className={`font-semibold ${norm.assignment_risk === 'Low' ? 'text-emerald-400' : norm.assignment_risk === 'Medium' ? 'text-yellow-400' : 'text-red-400'}`}>{norm.assignment_risk}</span></div>
+                                        <div className="flex justify-between gap-4"><span className="text-zinc-500 whitespace-nowrap">Short Delta</span><span className="font-mono">{norm.short_delta?.toFixed(2)}</span></div>
+                                        <div className="flex justify-between gap-4"><span className="text-zinc-500 whitespace-nowrap">Breakeven</span><span className="font-mono">${norm.breakeven?.toFixed(2)}</span></div>
+                                      </div>
                                     </div>
                                     {/* If Assigned */}
-                                    <div className="bg-zinc-800/60 rounded-lg p-3 space-y-1">
-                                      <p className="text-zinc-400 font-semibold uppercase tracking-wide text-[10px] mb-2">If Assigned</p>
-                                      <div className="flex justify-between"><span className="text-zinc-500">Max Spread Value</span><span className="font-mono">${norm.strike_width ? (norm.strike_width * 100)?.toLocaleString() : '-'}</span></div>
-                                      <div className="flex justify-between"><span className="text-zinc-500">Max Profit ($)</span><span className={`font-mono font-semibold ${(norm.max_profit_dollar || 0) > 0 ? 'text-emerald-400' : 'text-red-400'}`}>${norm.max_profit_dollar?.toLocaleString() || '-'}</span></div>
-                                      <div className="flex justify-between"><span className="text-zinc-500">Return on Capital</span><span className={`font-mono font-semibold ${(norm.return_on_capital || 0) > 0 ? 'text-emerald-400' : 'text-red-400'}`}>{norm.return_on_capital?.toFixed(1)}%</span></div>
-                                      <div className="flex justify-between"><span className="text-zinc-500">PMCC Cost (1 contract)</span><span className="font-mono text-red-400">${norm.net_debit ? norm.net_debit.toLocaleString() : '-'}</span></div>
+                                    <div className="bg-zinc-900 border border-zinc-700 rounded-lg overflow-hidden">
+                                      <p className="bg-black text-zinc-200 font-bold uppercase tracking-wide text-[11px] px-3 py-2 border-b border-zinc-700">If Assigned</p>
+                                      <div className="p-3 space-y-1.5">
+                                        <div className="flex justify-between gap-4"><span className="text-zinc-500 whitespace-nowrap">Max Spread Value</span><span className="font-mono">${norm.strike_width ? (norm.strike_width * 100)?.toLocaleString() : '-'}</span></div>
+                                        <div className="flex justify-between gap-4"><span className="text-zinc-500 whitespace-nowrap">Max Profit ($)</span><span className={`font-mono font-semibold ${(norm.max_profit_dollar || 0) > 0 ? 'text-emerald-400' : 'text-red-400'}`}>${norm.max_profit_dollar?.toLocaleString() || '-'}</span></div>
+                                        <div className="flex justify-between gap-4"><span className="text-zinc-500 whitespace-nowrap">Return on Capital</span><span className={`font-mono font-semibold ${(norm.return_on_capital || 0) > 0 ? 'text-emerald-400' : 'text-red-400'}`}>{norm.return_on_capital?.toFixed(1)}%</span></div>
+                                        <div className="flex justify-between gap-4"><span className="text-zinc-500 whitespace-nowrap">PMCC Cost</span><span className="font-mono text-red-400">${norm.net_debit ? norm.net_debit.toLocaleString() : '-'}</span></div>
+                                      </div>
                                     </div>
                                   </div>
                                 </td>
