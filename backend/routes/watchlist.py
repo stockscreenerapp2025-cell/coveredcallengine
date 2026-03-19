@@ -658,6 +658,8 @@ async def _get_best_opportunity_eod(symbol: str, run_id: str = None) -> dict:
 
 
 def _require_standard_or_above(user: dict):
+    if user.get("is_admin") or user.get("role") in ("admin", "tester"):
+        return
     plan = (user.get("subscription") or {}).get("plan_id", "basic").lower()
     if plan == "basic":
         raise HTTPException(status_code=403, detail="Watchlist is available on Standard and Premium plans. Please upgrade your plan.")
