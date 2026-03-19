@@ -1153,7 +1153,7 @@ const PMCC = () => {
                         <SortHeader field="max_return_pct" label="Max Return" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
                         <SortHeader field="payback_months" label="Payback" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
                         <SortHeader field="score" label="Score" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
-                        <th>Verdict</th>
+                        <th>PMCC Verdict</th>
                         <th>
                           <div>Analyst Rating</div>
                           <div className="text-[9px] font-normal text-zinc-500 normal-case">Stock view only</div>
@@ -1237,7 +1237,7 @@ const PMCC = () => {
                                 </Badge>
                               </td>
                               <td className={`text-xs font-semibold ${norm.verdict?.startsWith('🟢') ? 'text-emerald-400' : norm.verdict?.startsWith('🟡') ? 'text-yellow-400' : 'text-red-400'}`}>
-                                {norm.verdict?.split(' ').slice(0, 2).join(' ')}
+                                {norm.verdict?.replace(/^[🟢🟡🔴]\s*/, '')}
                               </td>
                               <td>
                                 {(() => {
@@ -1259,7 +1259,6 @@ const PMCC = () => {
                                           : 'bg-red-500/20 text-red-400 border-red-500/30'
                                         }`}>{rating}</Badge>
                                       ) : <span className="text-zinc-600 text-xs">N/A</span>}
-                                      {interp && <div className={`text-[9px] ${interp.color}`}>{interp.text}</div>}
                                     </div>
                                   );
                                 })()}
