@@ -132,7 +132,7 @@ const Admin = () => {
   const [triggerTypes, setTriggerTypes] = useState([]);
   const [actionTypes, setActionTypes] = useState([]);
   const [broadcastData, setBroadcastData] = useState({
-    template_key: 'announcement',
+    template_key: 'welcome',
     subject_override: '',
     announcement_title: '',
     announcement_content: '',
@@ -459,7 +459,7 @@ const Admin = () => {
       };
       const response = await api.post('/admin/email-automation/broadcast', null, { params });
       toast.success(`Broadcast sent to ${response.data.sent} / ${response.data.total} users (${response.data.failed} failed)`);
-      setBroadcastData({ template_key: 'announcement', subject_override: '', announcement_title: '', announcement_content: '', update_title: '', update_content: '', recipient_filter: 'all' });
+      setBroadcastData({ template_key: 'welcome', subject_override: '', announcement_title: '', announcement_content: '', update_title: '', update_content: '', recipient_filter: 'all' });
       setBroadcastPreviewCount(null);
       fetchEmailLogs();
       fetchEmailStats();
@@ -1955,14 +1955,14 @@ const Admin = () => {
                         onChange={(e) => setBroadcastData(d => ({ ...d, template_key: e.target.value }))}
                         className="w-full mt-1 px-3 py-2 rounded-lg bg-zinc-800/50 border border-zinc-700 text-white focus:outline-none focus:border-violet-500"
                       >
-                        {emailTemplates.length > 0 ? emailTemplates.map(t => (
-                          <option key={t.key || t.template_key} value={t.key || t.template_key}>
-                            {t.name || t.key || t.template_key}
-                          </option>
-                        )) : (
+                        {emailTemplates.length > 0 ? emailTemplates
+                          .filter(t => !['announcement', 'system_update'].includes(t.key || t.template_key))
+                          .map(t => (
+                            <option key={t.key || t.template_key} value={t.key || t.template_key}>
+                              {t.name || t.key || t.template_key}
+                            </option>
+                          )) : (
                           <>
-                            <option value="announcement">Announcement</option>
-                            <option value="system_update">System Update</option>
                             <option value="welcome">Welcome – Free Trial</option>
                             <option value="getting_started">Getting Started</option>
                             <option value="feature_highlight">Feature Highlight – Scanner</option>
