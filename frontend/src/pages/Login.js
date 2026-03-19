@@ -128,12 +128,6 @@ const Login = () => {
             </Button>
           </form>
 
-          <div className="mt-6 text-center">
-            <span className="text-zinc-500">Don't have an account? </span>
-            <Link to="/register" className="text-violet-400 hover:text-violet-300" data-testid="register-link">
-              Sign up
-            </Link>
-          </div>
         </div>
       </div>
     </div>
