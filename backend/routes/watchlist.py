@@ -657,12 +657,19 @@ async def _get_best_opportunity_eod(symbol: str, run_id: str = None) -> dict:
         return None
 
 
+def _require_standard_or_above(user: dict):
+    plan = (user.get("subscription") or {}).get("plan_id", "basic").lower()
+    if plan == "basic":
+        raise HTTPException(status_code=403, detail="Watchlist is available on Standard and Premium plans. Please upgrade your plan.")
+
+
 @watchlist_router.get("/")
 async def get_watchlist(
     use_live_prices: bool = Query(False, description="Use LIVE intraday prices instead of EOD (default: EOD)"),
     debug_enrichment: bool = Query(False, description="Include enrichment debug info"),
     user: dict = Depends(get_current_user)
 ):
+    _require_standard_or_above(user)
     """
     Get user's watchlist with current prices and opportunities.
     
@@ -790,6 +797,7 @@ async def get_watchlist(
 @watchlist_router.post("/")
 async def add_to_watchlist(item: WatchlistItemCreate, user: dict = Depends(get_current_user)):
     """Add a symbol to user's watchlist with current price"""
+    _require_standard_or_above(user)
     get_massive_api_key, _ = _get_server_functions()
     
     symbol = item.symbol.upper()

@@ -48,6 +48,7 @@ import { toast } from 'sonner';
 const Watchlist = () => {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [upgradeRequired, setUpgradeRequired] = useState(false);
   const [addDialogOpen, setAddDialogOpen] = useState(false);
   const [newItem, setNewItem] = useState({
     symbol: '',
@@ -66,8 +67,12 @@ const Watchlist = () => {
       const data = response.data;
       setItems(Array.isArray(data) ? data : (data?.items || []));
     } catch (error) {
-      console.error('Watchlist fetch error:', error);
-      toast.error('Failed to load watchlist');
+      if (error?.response?.status === 403) {
+        setUpgradeRequired(true);
+      } else {
+        console.error('Watchlist fetch error:', error);
+        toast.error('Failed to load watchlist');
+      }
     } finally {
       setLoading(false);
     }
@@ -169,6 +174,25 @@ const Watchlist = () => {
     if (score >= 40) return 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/30';
     return 'bg-zinc-700 text-zinc-300';
   };
+
+  if (upgradeRequired) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[60vh] space-y-6 text-center">
+        <div className="w-16 h-16 rounded-full bg-violet-500/20 flex items-center justify-center">
+          <Star className="w-8 h-8 text-violet-400" />
+        </div>
+        <div>
+          <h2 className="text-2xl font-bold text-white mb-2">Watchlist is a Standard Feature</h2>
+          <p className="text-zinc-400 max-w-md">
+            Upgrade to Standard or Premium to unlock the Powerful Watch List with AI Features — track your favourite stocks, get live alerts and AI-powered opportunities.
+          </p>
+        </div>
+        <a href="/pricing" className="inline-flex items-center gap-2 bg-violet-600 hover:bg-violet-700 text-white font-semibold px-6 py-3 rounded-lg transition-colors">
+          Upgrade Now
+        </a>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6" data-testid="watchlist-page">

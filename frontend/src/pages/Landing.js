@@ -160,7 +160,6 @@ const Landing = () => {
         'Covered Call Scans',
         'Real Market Data',
         'TradingView Integration',
-        'Powerful Watch List with AI Features',
         'Key Technical Indicators',
         'Portfolio Tracker',
         'Cancel any time',
@@ -180,6 +179,7 @@ const Landing = () => {
       features: [
         'Everything in Basic',
         'PMCC Strategy Scanner',
+        'Powerful Watch List with AI Features',
         'Dedicated Support'
       ],
       icon: Zap,
