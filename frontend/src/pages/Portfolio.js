@@ -1482,7 +1482,7 @@ const Portfolio = () => {
                         <TableCell className="text-zinc-300">{formatDate(trade.date_opened)}</TableCell>
                         <TableCell className="text-zinc-300">{formatDate(trade.date_closed) || '-'}</TableCell>
                         <TableCell className="text-zinc-400">
-                          {trade.status === 'Closed' ? '-' : trade.dte > 0 ? trade.dte : trade.dte === 0 ? <span className="text-orange-400 text-xs">Exp</span> : '-'}
+                          {trade.status === 'Closed' ? '-' : trade.dte > 0 ? `${trade.dte}d` : trade.dte === 0 ? <span className="text-orange-400 text-xs font-bold">0d</span> : '-'}
                         </TableCell>
                         <TableCell className="text-right text-zinc-300">{trade.shares || '-'}</TableCell>
                         <TableCell className="text-right text-zinc-300">{trade.entry_price ? formatCurrency(trade.entry_price) : '-'}</TableCell>
