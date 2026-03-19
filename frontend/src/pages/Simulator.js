@@ -1104,7 +1104,7 @@ const Simulator = () => {
                         </td>
                         <td>
                           <Badge className={STRATEGY_COLORS[trade.strategy_type]}>
-                            {{ covered_call: 'CC', pmcc: 'PMCC', wheel: 'WHEEL', defensive: 'DEF' }[trade.strategy_type] || (trade.strategy_type || '').toUpperCase()}
+                            {{ covered_call: 'CC', pmcc: 'PMCC', wheel: 'CSP', defensive: 'COLLAR' }[trade.strategy_type] || (trade.strategy_type || '').toUpperCase()}
                           </Badge>
                         </td>
                         <td>
@@ -1283,46 +1283,52 @@ const Simulator = () => {
         key: 'cc', label: 'CC', title: 'Covered Call Rules', color: 'emerald',
         desc: 'Applied to trades with strategy type CC',
         controls: [
-          { key: 'avoid_early_close',           label: 'Avoid Early Close',            desc: 'Hold the short call even if profitable early — wait for time decay' },
-          { key: 'brokerage_aware_hold',         label: 'Brokerage-Aware Hold',         desc: 'Skip action if brokerage fees would wipe out the gain' },
-          { key: 'roll_itm_near_expiry',         label: 'Roll ITM Near Expiry',         desc: 'Roll to next cycle when the call goes deep ITM close to expiry' },
+          { key: 'profit_taking',                label: 'Take Profit Early',            desc: 'Close position when premium captured reaches the threshold (e.g. 60%). Increases cycle yield by redeploying capital sooner.', hasThreshold: true, thresholdKey: 'profit_taking_pct', thresholdMin: 40, thresholdMax: 90, thresholdDefault: 60, thresholdLabel: 'Close at % captured' },
           { key: 'roll_delta_based',             label: 'Roll Based on Delta',          desc: 'Roll when delta exceeds the configured threshold' },
-          { key: 'market_aware_roll_suggestion', label: 'Market-Aware Roll Suggestion', desc: 'Factor in market conditions before suggesting a roll' },
+          { key: 'roll_itm_near_expiry',         label: 'Roll ITM Near Expiry',         desc: 'Roll to next cycle when the call goes deep ITM close to expiry' },
+          { key: 'brokerage_aware_hold',         label: 'Brokerage-Aware Hold',         desc: 'Skip action if brokerage fees would wipe out the gain' },
+          { key: 'market_aware_roll_suggestion', label: 'Market-Aware Roll Suggestion', desc: 'Factor in market conditions — does not override delta or ITM rules' },
+          { key: 'avoid_early_close',            label: 'Hold for Theta (Avoid Early Close)', desc: 'CC: Hold the short call for full time decay — disables profit taking rule above' },
         ],
       },
       {
-        key: 'wheel', label: 'WHEEL', title: 'Wheel Strategy Rules', color: 'sky',
-        desc: 'Applied to trades with strategy type Wheel (CSP → Assignment → CC)',
+        key: 'wheel', label: 'CSP', title: 'Cash Secured Put (Wheel) Rules', color: 'sky',
+        desc: 'Applied to trades with strategy type Wheel / Cash Secured Put',
         controls: [
-          { key: 'avoid_early_close',           label: 'Avoid Early Close',            desc: 'Hold the short put/call even if profitable early' },
+          { key: 'csp_profit_taking',            label: 'Take Profit Early',            desc: 'Close put when premium captured reaches threshold — redeploy and sell again sooner.', hasThreshold: true, thresholdKey: 'csp_profit_taking_pct', thresholdMin: 40, thresholdMax: 90, thresholdDefault: 60, thresholdLabel: 'Close at % captured' },
+          { key: 'csp_roll_delta_based',         label: 'Roll Based on Delta',          desc: 'Roll put when delta exceeds threshold (e.g. 0.60) — high assignment risk signal', hasThreshold: true, thresholdKey: 'csp_delta_threshold', thresholdMin: 0.40, thresholdMax: 0.90, thresholdDefault: 0.60, thresholdStep: 0.05, thresholdLabel: 'Delta threshold' },
+          { key: 'csp_roll_itm_near_expiry',     label: 'Roll ITM Near Expiry',         desc: 'Roll put to next cycle when it goes ITM close to expiry — protects against deep loss' },
           { key: 'brokerage_aware_hold',         label: 'Brokerage-Aware Hold',         desc: 'Skip action if brokerage fees would wipe out the gain' },
-          { key: 'roll_before_assignment',       label: 'Roll Put Before Assignment',   desc: 'Roll the short put to avoid taking stock assignment' },
-          { key: 'roll_itm_near_expiry',         label: 'Roll ITM Near Expiry',         desc: 'Roll to next cycle when the option goes ITM near expiry' },
-          { key: 'roll_delta_based',             label: 'Roll Based on Delta',          desc: 'Roll when delta exceeds the configured threshold' },
+          { key: 'roll_before_assignment',       label: 'Roll Put Before Assignment',   desc: 'Roll the short put to avoid stock assignment (disable for true Wheel strategy)' },
           { key: 'market_aware_roll_suggestion', label: 'Market-Aware Roll Suggestion', desc: 'Factor in market conditions before suggesting a roll' },
+          { key: 'avoid_early_close',            label: 'Hold for Full Cycle (Avoid Early Close)', desc: 'CSP: Hold put until near expiry — disables profit taking. Use only if targeting assignment.' },
         ],
       },
       {
         key: 'pmcc', label: 'PMCC', title: "Poor Man's Covered Call Rules", color: 'violet',
         desc: 'Applied to trades with strategy type PMCC',
         controls: [
-          { key: 'manage_short_call_only',       label: 'Manage Short Call Only',       desc: 'Keep the LEAP untouched — only manage the short call leg' },
-          { key: 'roll_before_assignment',       label: 'Roll Before Assignment',       desc: 'Roll the short call before it can be assigned, protecting the LEAP' },
-          { key: 'roll_itm_near_expiry',         label: 'Roll ITM Near Expiry',         desc: 'Roll to next cycle when the short call goes ITM near expiry' },
-          { key: 'roll_delta_based',             label: 'Roll Based on Delta',          desc: 'Roll when short call delta exceeds the configured threshold' },
-          { key: 'market_aware_roll_suggestion', label: 'Market-Aware Roll Suggestion', desc: 'Factor in market conditions before suggesting a roll' },
+          { key: 'manage_short_call_only',         label: 'Manage Short Call Only',         desc: 'Keep the LEAP untouched — only manage the short call leg' },
+          { key: 'roll_before_assignment',         label: 'Roll Before Assignment (CRITICAL)', desc: 'Roll short call before assignment — critical for PMCC since no actual shares held' },
+          { key: 'roll_delta_based',               label: 'Roll Based on Delta',            desc: 'Roll when short call delta exceeds threshold', hasThreshold: true },
+          { key: 'pmcc_extrinsic_protection',      label: 'Extrinsic Value Protection',     desc: 'Do NOT roll if extrinsic value > threshold — prevents rolling too early during strong moves', hasThreshold: true, thresholdKey: 'pmcc_extrinsic_pct', thresholdMin: 10, thresholdMax: 50, thresholdDefault: 25, thresholdStep: 5, thresholdLabel: 'Min extrinsic % to block roll' },
+          { key: 'roll_itm_near_expiry',           label: 'Roll ITM Near Expiry',           desc: 'Roll to next cycle when the short call goes ITM near expiry' },
+          { key: 'pmcc_profit_taking',             label: 'Take Profit Early (Short Call)',  desc: 'Close short call when premium captured reaches threshold — redeploy at new strike', hasThreshold: true, thresholdKey: 'pmcc_profit_taking_pct', thresholdMin: 50, thresholdMax: 90, thresholdDefault: 75, thresholdStep: 5, thresholdLabel: 'Close at % captured' },
+          { key: 'market_aware_roll_suggestion',   label: 'Market-Aware Roll Suggestion',   desc: 'Factor in market conditions — does not override assignment or delta rules' },
         ],
       },
       {
-        key: 'defensive', label: 'DEFENSIVE', title: 'Defensive / Collar Rules', color: 'amber',
-        desc: 'Applied to trades with strategy type Defensive or Collar',
+        key: 'defensive', label: 'COLLAR', title: 'Collar / Defensive Rules', color: 'amber',
+        desc: 'Applied to trades with strategy type Collar or Defensive',
         controls: [
-          { key: 'avoid_early_close',           label: 'Avoid Early Close',            desc: 'Hold positions even if profitable early — prioritise protection' },
-          { key: 'brokerage_aware_hold',         label: 'Brokerage-Aware Hold',         desc: 'Skip action if brokerage fees would wipe out the gain' },
-          { key: 'manage_short_call_only',       label: 'Manage Short Call Only',       desc: 'Keep the protective put intact — only manage the short call' },
-          { key: 'roll_itm_near_expiry',         label: 'Roll ITM Near Expiry',         desc: 'Roll to next cycle when the call goes ITM near expiry' },
-          { key: 'roll_delta_based',             label: 'Roll Based on Delta',          desc: 'Roll when delta exceeds the configured threshold' },
-          { key: 'market_aware_roll_suggestion', label: 'Market-Aware Roll Suggestion', desc: 'Factor in market conditions before suggesting a roll' },
+          { key: 'collar_profit_taking',         label: 'Take Profit Early (Short Call)', desc: 'Close short call when premium captured reaches threshold — redeploy at higher strike', hasThreshold: true, thresholdKey: 'collar_profit_taking_pct', thresholdMin: 40, thresholdMax: 90, thresholdDefault: 55, thresholdStep: 5, thresholdLabel: 'Close at % captured' },
+          { key: 'manage_short_call_only',       label: 'Manage Short Call Only',         desc: 'Keep the protective put intact — never close the put, only manage the short call' },
+          { key: 'roll_delta_based',             label: 'Roll Based on Delta',            desc: 'Roll short call when delta exceeds threshold' },
+          { key: 'roll_itm_near_expiry',         label: 'Roll ITM Near Expiry',           desc: 'Roll short call to next cycle when it goes ITM near expiry' },
+          { key: 'collar_put_renewal_alert',     label: 'Put Renewal Reminder',           desc: 'Alert when the protective put is within 30 days of expiry — time to roll or renew it' },
+          { key: 'brokerage_aware_hold',         label: 'Brokerage-Aware Hold',           desc: 'Skip action if brokerage fees would wipe out the gain' },
+          { key: 'market_aware_roll_suggestion', label: 'Market-Aware Roll Suggestion',   desc: 'Factor in market conditions before suggesting a roll' },
+          { key: 'collar_maintain_structure',    label: 'Maintain Protection (Hold Unless Risk Triggers)', desc: 'Collar-specific: hold the full structure unless delta, ITM, or expiry rules are triggered. Different from PMCC theta hold.' },
         ],
       },
     ];
@@ -1365,20 +1371,46 @@ const Simulator = () => {
         );
         const rc = ruleConfig?.controls || {};
         const conflictWarnings = [];
-        if (rc.avoid_early_close && rc.roll_delta_based)
-          conflictWarnings.push('Avoid Early Close + Roll Based on Delta may conflict — delta trigger could force an early close');
-        if (rc.roll_itm_near_expiry && rc.avoid_early_close)
-          conflictWarnings.push('Roll ITM Near Expiry + Avoid Early Close — rolling early contradicts holding early');
+        // Only warn about Avoid Early Close conflicts when it is explicitly ON
+        if (rc.avoid_early_close === true && rc.profit_taking === true)
+          conflictWarnings.push('Avoid Early Close + Take Profit Early conflict — disable one. Avoid Early Close overrides profit taking.');
+        if (rc.avoid_early_close === true && rc.csp_profit_taking === true)
+          conflictWarnings.push('Avoid Early Close + CSP Profit Taking conflict — disable one.');
+        if (rc.avoid_early_close === true && rc.collar_profit_taking === true)
+          conflictWarnings.push('Avoid Early Close + Collar Profit Taking conflict — disable one.');
+        // Delta range validation
         if (rc.target_delta_min != null && rc.target_delta_max != null && rc.target_delta_min >= rc.target_delta_max)
           conflictWarnings.push('Min delta must be less than Max delta');
         const handleResetDefaults = () => persistRuleConfig({
           ...ruleConfig,
           controls: {
-            avoid_early_close: false, brokerage_aware_hold: true, roll_itm_near_expiry: true,
-            roll_delta_based: false, market_aware_roll_suggestion: false, roll_before_assignment: false,
-            manage_short_call_only: false, target_delta_min: 0.25, target_delta_max: 0.35,
+            // CC defaults — avoid_early_close OFF (profit taking is active)
+            profit_taking: true, profit_taking_pct: 60,
+            avoid_early_close: false, brokerage_aware_hold: true,
+            roll_itm_near_expiry: true, roll_delta_based: true,
+            market_aware_roll_suggestion: true,
+            target_delta_min: 0.25, target_delta_max: 0.40,
+            // CSP/Wheel defaults
+            roll_before_assignment: false,
+            csp_profit_taking: true, csp_profit_taking_pct: 60,
+            csp_roll_itm_near_expiry: true, csp_roll_delta_based: true,
+            csp_delta_threshold: 0.60,
+            // PMCC defaults
+            manage_short_call_only: true,
+            pmcc_extrinsic_protection: true, pmcc_extrinsic_pct: 25,
+            pmcc_profit_taking: true, pmcc_profit_taking_pct: 75,
+            // Collar defaults — no "avoid_early_close", use collar-specific maintain structure
+            collar_profit_taking: true, collar_profit_taking_pct: 55,
+            collar_put_renewal_alert: true,
+            collar_maintain_structure: true,
+            collar_delta_min: 0.20, collar_delta_max: 0.30,
+            // Shared
             close_at_capture_pct: 80, roll_dte_trigger: 21, hard_roll_dte: 7,
             no_debit_roll: true, avoid_assignment: true,
+          },
+          alerts: {
+            assignment_risk_alert: true,
+            assignment_imminent_alert: true,
           }
         });
         return (
@@ -1429,6 +1461,95 @@ const Simulator = () => {
                           <div className="flex-1">
                             <p className="text-sm text-zinc-200 font-medium">{ctrl.label}</p>
                             <p className="text-xs text-zinc-500 mt-0.5">{ctrl.desc}</p>
+                            {ctrl.key === 'profit_taking' && controls.profit_taking && (
+                              <div className="flex items-center gap-3 mt-2">
+                                <div className="flex items-center gap-1">
+                                  <span className="text-xs text-zinc-400">Close at:</span>
+                                  <input
+                                    type="number" step="5" min="40" max="90"
+                                    value={controls.profit_taking_pct ?? 60}
+                                    onChange={e => persistRuleConfig({ ...ruleConfig, controls: { ...controls, profit_taking_pct: parseFloat(e.target.value) } })}
+                                    disabled={ruleSaving}
+                                    className="w-16 text-xs bg-zinc-800 border border-zinc-600 rounded px-2 py-1 text-white"
+                                  />
+                                  <span className="text-xs text-zinc-400">% premium captured</span>
+                                </div>
+                              </div>
+                            )}
+                            {ctrl.key === 'csp_profit_taking' && controls.csp_profit_taking && (
+                              <div className="flex items-center gap-3 mt-2">
+                                <div className="flex items-center gap-1">
+                                  <span className="text-xs text-zinc-400">Close at:</span>
+                                  <input
+                                    type="number" step="5" min="40" max="90"
+                                    value={controls.csp_profit_taking_pct ?? 60}
+                                    onChange={e => persistRuleConfig({ ...ruleConfig, controls: { ...controls, csp_profit_taking_pct: parseFloat(e.target.value) } })}
+                                    disabled={ruleSaving}
+                                    className="w-16 text-xs bg-zinc-800 border border-zinc-600 rounded px-2 py-1 text-white"
+                                  />
+                                  <span className="text-xs text-zinc-400">% premium captured</span>
+                                </div>
+                              </div>
+                            )}
+                            {ctrl.key === 'csp_roll_delta_based' && controls.csp_roll_delta_based && (
+                              <div className="flex items-center gap-3 mt-2">
+                                <div className="flex items-center gap-1">
+                                  <span className="text-xs text-zinc-400">Roll when δ &gt;:</span>
+                                  <input
+                                    type="number" step="0.05" min="0.40" max="0.90"
+                                    value={controls.csp_delta_threshold ?? 0.60}
+                                    onChange={e => persistRuleConfig({ ...ruleConfig, controls: { ...controls, csp_delta_threshold: parseFloat(e.target.value) } })}
+                                    disabled={ruleSaving}
+                                    className="w-16 text-xs bg-zinc-800 border border-zinc-600 rounded px-2 py-1 text-white"
+                                  />
+                                </div>
+                              </div>
+                            )}
+                            {ctrl.key === 'pmcc_extrinsic_protection' && controls.pmcc_extrinsic_protection && (
+                              <div className="flex items-center gap-3 mt-2">
+                                <div className="flex items-center gap-1">
+                                  <span className="text-xs text-zinc-400">Block roll if extrinsic &gt;:</span>
+                                  <input
+                                    type="number" step="5" min="10" max="50"
+                                    value={controls.pmcc_extrinsic_pct ?? 25}
+                                    onChange={e => persistRuleConfig({ ...ruleConfig, controls: { ...controls, pmcc_extrinsic_pct: parseFloat(e.target.value) } })}
+                                    disabled={ruleSaving}
+                                    className="w-16 text-xs bg-zinc-800 border border-zinc-600 rounded px-2 py-1 text-white"
+                                  />
+                                  <span className="text-xs text-zinc-400">% of option price</span>
+                                </div>
+                              </div>
+                            )}
+                            {ctrl.key === 'pmcc_profit_taking' && controls.pmcc_profit_taking && (
+                              <div className="flex items-center gap-3 mt-2">
+                                <div className="flex items-center gap-1">
+                                  <span className="text-xs text-zinc-400">Close at:</span>
+                                  <input
+                                    type="number" step="5" min="50" max="90"
+                                    value={controls.pmcc_profit_taking_pct ?? 75}
+                                    onChange={e => persistRuleConfig({ ...ruleConfig, controls: { ...controls, pmcc_profit_taking_pct: parseFloat(e.target.value) } })}
+                                    disabled={ruleSaving}
+                                    className="w-16 text-xs bg-zinc-800 border border-zinc-600 rounded px-2 py-1 text-white"
+                                  />
+                                  <span className="text-xs text-zinc-400">% premium captured</span>
+                                </div>
+                              </div>
+                            )}
+                            {ctrl.key === 'collar_profit_taking' && controls.collar_profit_taking && (
+                              <div className="flex items-center gap-3 mt-2">
+                                <div className="flex items-center gap-1">
+                                  <span className="text-xs text-zinc-400">Close at:</span>
+                                  <input
+                                    type="number" step="5" min="40" max="90"
+                                    value={controls.collar_profit_taking_pct ?? 55}
+                                    onChange={e => persistRuleConfig({ ...ruleConfig, controls: { ...controls, collar_profit_taking_pct: parseFloat(e.target.value) } })}
+                                    disabled={ruleSaving}
+                                    className="w-16 text-xs bg-zinc-800 border border-zinc-600 rounded px-2 py-1 text-white"
+                                  />
+                                  <span className="text-xs text-zinc-400">% premium captured</span>
+                                </div>
+                              </div>
+                            )}
                             {ctrl.key === 'roll_delta_based' && controls.roll_delta_based && (
                               <div className="flex items-center gap-3 mt-2">
                                 <div className="flex items-center gap-1">
@@ -1546,7 +1667,7 @@ const Simulator = () => {
                         </Badge>
                         {rule.strategy_type && (
                           <Badge className={STRATEGY_COLORS[rule.strategy_type]}>
-                            {{ covered_call: 'CC Only', pmcc: 'PMCC Only', wheel: 'WHEEL Only', defensive: 'DEF Only' }[rule.strategy_type] || (rule.strategy_type || '').toUpperCase()}
+                            {{ covered_call: 'CC Only', pmcc: 'PMCC Only', wheel: 'CSP Only', defensive: 'COLLAR Only' }[rule.strategy_type] || (rule.strategy_type || '').toUpperCase()}
                           </Badge>
                         )}
                       </div>
@@ -1610,7 +1731,7 @@ const Simulator = () => {
                     <div className="flex items-center gap-2 text-sm">
                       <span className="font-semibold text-white">{log.symbol}</span>
                       <Badge className={STRATEGY_COLORS[log.strategy_type]} variant="outline">
-                        {{ covered_call: 'CC', pmcc: 'PMCC', wheel: 'WHEEL', defensive: 'DEF' }[log.strategy_type] || (log.strategy_type || '').toUpperCase()}
+                        {{ covered_call: 'CC', pmcc: 'PMCC', wheel: 'CSP', defensive: 'COLLAR' }[log.strategy_type] || (log.strategy_type || '').toUpperCase()}
                       </Badge>
                       {log.rule_name && (
                         <span className="text-xs text-violet-400">via &quot;{log.rule_name}&quot;</span>
@@ -2582,7 +2703,7 @@ const Simulator = () => {
                       <div className="flex items-center gap-2 mb-2">
                         <span className="font-semibold text-white">{result.symbol}</span>
                         <Badge className={STRATEGY_COLORS[result.strategy]}>
-                          {{ covered_call: 'CC', pmcc: 'PMCC', wheel: 'WHEEL', defensive: 'DEF' }[result.strategy] || (result.strategy || '').toUpperCase()}
+                          {{ covered_call: 'CC', pmcc: 'PMCC', wheel: 'CSP', defensive: 'COLLAR' }[result.strategy] || (result.strategy || '').toUpperCase()}
                         </Badge>
                         {result.decision && (
                           <Badge className={

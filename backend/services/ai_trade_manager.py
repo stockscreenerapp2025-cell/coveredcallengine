@@ -68,7 +68,11 @@ async def generate_recommendation(
 
     # Hard rules
     avoid_assignment   = summary.get("avoid_assignment", DEFAULT_AVOID_ASSIGNMENT)
-    close_capture_pct  = float(controls.get("close_at_capture_pct", DEFAULT_CLOSE_CAPTURE_PCT))
+    # Profit taking: use profit_taking_pct if profit_taking toggle is ON, else fall back to close_at_capture_pct
+    profit_taking_on   = bool(controls.get("profit_taking", True))
+    avoid_early_close  = bool(controls.get("avoid_early_close", False))
+    _profit_pct        = float(controls.get("profit_taking_pct", 60.0)) if profit_taking_on else float(controls.get("close_at_capture_pct", DEFAULT_CLOSE_CAPTURE_PCT))
+    close_capture_pct  = _profit_pct if (profit_taking_on and not avoid_early_close) else DEFAULT_CLOSE_CAPTURE_PCT
     roll_dte_trigger   = int(controls.get("roll_dte_trigger", DEFAULT_ROLL_DTE))
     hard_roll_dte      = int(controls.get("hard_roll_dte", DEFAULT_HARD_ROLL_DTE))
     no_debit_roll      = bool(controls.get("no_debit_roll", True))
