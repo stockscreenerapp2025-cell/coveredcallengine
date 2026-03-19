@@ -93,7 +93,7 @@ const Pricing = () => {
         'Covered Call Scans',
         'Real Market Data',
         'TradingView Integration',
-        'Charts',
+        'Powerful Watch List with AI Features',
         'Key Technical Indicators',
         'Portfolio Tracker',
         'Cancel any time',
@@ -113,7 +113,6 @@ const Pricing = () => {
       features: [
         'Everything in Basic',
         'PMCC Strategy Scanner',
-        'Powerful Watch List with AI Features',
         'Dedicated Support'
       ],
       monthlyLinkKey: 'standard_monthly_link',
@@ -292,7 +291,7 @@ const Pricing = () => {
                     className={`w-full ${acceptedTerms[plan.id] ? colors.button : 'bg-zinc-700 cursor-not-allowed'} text-white font-medium py-6`}
                     data-testid={`subscribe-btn-${plan.id}`}
                   >
-                    {subscribing === plan.id ? 'Redirecting to PayPal...' : 'GET STARTED'}
+                    {subscribing === plan.id ? 'Redirecting to PayPal...' : 'SUBSCRIBE'}
                     {acceptedTerms[plan.id] && subscribing !== plan.id && <ExternalLink className="w-4 h-4 ml-2" />}
                   </Button>
                 </div>

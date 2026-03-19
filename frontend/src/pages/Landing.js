@@ -160,7 +160,7 @@ const Landing = () => {
         'Covered Call Scans',
         'Real Market Data',
         'TradingView Integration',
-        'Charts',
+        'Powerful Watch List with AI Features',
         'Key Technical Indicators',
         'Portfolio Tracker',
         'Cancel any time',
@@ -168,7 +168,7 @@ const Landing = () => {
       ],
       icon: Clock,
       color: 'emerald',
-      buttonText: 'GET STARTED'
+      buttonText: 'SUBSCRIBE'
     },
     {
       id: 'standard',
@@ -180,12 +180,11 @@ const Landing = () => {
       features: [
         'Everything in Basic',
         'PMCC Strategy Scanner',
-        'Powerful Watch List with AI Features',
         'Dedicated Support'
       ],
       icon: Zap,
       color: 'violet',
-      buttonText: 'GET STARTED'
+      buttonText: 'SUBSCRIBE'
     },
     {
       id: 'premium',
@@ -202,7 +201,7 @@ const Landing = () => {
       ],
       icon: Crown,
       color: 'amber',
-      buttonText: 'GET STARTED'
+      buttonText: 'SUBSCRIBE'
     }
   ];
 
