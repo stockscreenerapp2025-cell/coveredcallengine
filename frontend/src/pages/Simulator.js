@@ -1418,14 +1418,14 @@ const Simulator = () => {
             <div className="flex flex-wrap items-center justify-between gap-3 p-4 rounded-lg bg-zinc-800/50 border border-zinc-700/50">
               <div className="flex flex-wrap gap-2 items-center">
                 <span className="text-xs text-zinc-400 font-medium">Show rules for:</span>
-                {allStrategyKeys.map(key => (
-                  <button key={key} onClick={() => toggleRuleStrategy(key)}
+                {strategyGroups.map(group => (
+                  <button key={group.key} onClick={() => toggleRuleStrategy(group.key)}
                     className={`text-xs px-3 py-1 rounded border font-semibold transition-all ${
-                      activeRuleStrategies.includes(key)
+                      activeRuleStrategies.includes(group.key)
                         ? 'bg-violet-600 text-white border-violet-500'
                         : 'bg-zinc-800 text-zinc-500 border-zinc-700'
                     }`}
-                  >{key.toUpperCase()}</button>
+                  >{group.label}</button>
                 ))}
               </div>
               <button onClick={handleResetDefaults}
