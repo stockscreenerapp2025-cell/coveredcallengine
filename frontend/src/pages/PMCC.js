@@ -1237,7 +1237,7 @@ const PMCC = () => {
                                 </Badge>
                               </td>
                               <td className={`text-xs font-semibold ${norm.verdict?.startsWith('🟢') ? 'text-emerald-400' : norm.verdict?.startsWith('🟡') ? 'text-yellow-400' : 'text-red-400'}`}>
-                                {norm.verdict?.replace(/^[🟢🟡🔴]\s*/, '')}
+                                {norm.verdict?.replace(/^[\u{1F7E2}\u{1F7E1}\u{1F534}◇◆⬤●]\s*/u, '')}
                               </td>
                               <td>
                                 {(() => {
@@ -1301,7 +1301,7 @@ const PMCC = () => {
                                   {/* Verdict + Why This Trade banner */}
                                   <div className="flex flex-wrap items-start gap-4 mb-4">
                                     <div className={`px-4 py-2 rounded-lg border text-sm font-semibold ${norm.verdict?.startsWith('🟢') ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400' : norm.verdict?.startsWith('🟡') ? 'bg-yellow-500/10 border-yellow-500/30 text-yellow-400' : 'bg-red-500/10 border-red-500/30 text-red-400'}`}>
-                                      Trade Verdict: {norm.verdict} &nbsp;|&nbsp; Score: {norm.pmcc_score}
+                                      Trade Verdict: {norm.verdict?.replace(/^[\u{1F7E2}\u{1F7E1}\u{1F534}◇◆⬤●]\s*/u, '')} &nbsp;|&nbsp; Score: {norm.pmcc_score}
                                     </div>
                                     <div className="flex gap-2 flex-wrap">
                                       {(norm.why_drivers || []).map((d, di) => (
@@ -1310,7 +1310,7 @@ const PMCC = () => {
                                     </div>
                                   </div>
 
-                                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 text-xs">
+                                  <div className="grid grid-cols-2 md:grid-cols-3 gap-3 text-xs">
                                     {/* Trade Structure */}
                                     <div className="bg-zinc-900 border border-zinc-700 rounded-lg overflow-hidden">
                                       <p className="bg-black text-zinc-200 font-bold uppercase tracking-wide text-[11px] px-3 py-2 border-b border-zinc-700">Trade Structure</p>
