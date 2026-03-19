@@ -1423,7 +1423,9 @@ const Portfolio = () => {
                       <TableHead className="text-zinc-400 text-right">Current</TableHead>
                       <TableHead className="text-zinc-400 text-right">Unrealized</TableHead>
                       <TableHead className="text-zinc-400 text-right">Realized</TableHead>
-                      <TableHead className="text-zinc-400 text-right">Net ROI</TableHead>
+                      <TableHead className="text-zinc-400 text-right">
+                        <span title="ROI = (Premium Received + Stock P&L) ÷ Capital Invested × 100. Capital = Entry Price × Shares.">Net ROI ⓘ</span>
+                      </TableHead>
                       <TableHead className="text-zinc-400 w-12"></TableHead>
                     </TableRow>
                   </TableHeader>
@@ -1479,11 +1481,20 @@ const Portfolio = () => {
                         </TableCell>
                         <TableCell className="text-zinc-300">{formatDate(trade.date_opened)}</TableCell>
                         <TableCell className="text-zinc-300">{formatDate(trade.date_closed) || '-'}</TableCell>
-                        <TableCell className="text-zinc-400">{trade.dte ?? '-'}</TableCell>
+                        <TableCell className="text-zinc-400">
+                          {trade.status === 'Closed' ? '-' : trade.dte > 0 ? trade.dte : trade.dte === 0 ? <span className="text-orange-400 text-xs">Exp</span> : '-'}
+                        </TableCell>
                         <TableCell className="text-right text-zinc-300">{trade.shares || '-'}</TableCell>
                         <TableCell className="text-right text-zinc-300">{trade.entry_price ? formatCurrency(trade.entry_price) : '-'}</TableCell>
                         <TableCell className="text-right text-emerald-400">{trade.premium_received ? formatCurrency(trade.premium_received) : '-'}</TableCell>
-                        <TableCell className="text-right text-zinc-300">{trade.break_even ? formatCurrency(trade.break_even) : '-'}</TableCell>
+                        <TableCell className="text-right text-zinc-300">
+                          {(() => {
+                            const be = trade.break_even || (trade.entry_price && trade.premium_received && trade.shares
+                              ? trade.entry_price - (trade.premium_received / trade.shares)
+                              : null);
+                            return trade.status === 'Open' && be ? formatCurrency(be) : '-';
+                          })()}
+                        </TableCell>
                         <TableCell className="text-right text-zinc-300">
                           {trade.status === 'Open' && trade.current_price ? formatCurrency(trade.current_price) : '-'}
                         </TableCell>
