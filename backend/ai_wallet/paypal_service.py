@@ -33,38 +33,76 @@ logger = logging.getLogger(__name__)
 
 class PayPalTokenService:
     """PayPal service for token pack purchases."""
-    
+
     def __init__(self, db):
         self.db = db
         self._access_token = None
         self._token_expires = None
-    
+        self._resolved_env = None        # cached after first DB lookup
+        self._resolved_client_id = None
+        self._resolved_client_secret = None
+        self._resolved_webhook_id = None
+
+    async def resolve_env(self) -> str:
+        """
+        Resolve PayPal config from Admin DB settings first,
+        falling back to PAYPAL_ENV / PAYPAL_CLIENT_ID / PAYPAL_SECRET env vars.
+        Admin panel Sandbox/Live toggle and credentials control AI Wallet too.
+        """
+        if self._resolved_env:
+            return self._resolved_env
+        try:
+            paypal_settings = await self.db.admin_settings.find_one(
+                {"type": "paypal_settings"}, {"_id": 0}
+            )
+            if paypal_settings:
+                mode = paypal_settings.get("mode")
+                if mode in ("sandbox", "live"):
+                    self._resolved_env = mode
+                db_client_id = paypal_settings.get("client_id", "")
+                db_client_secret = paypal_settings.get("client_secret", "")
+                db_webhook_id = paypal_settings.get("webhook_id", "")
+                if db_client_id:
+                    self._resolved_client_id = db_client_id
+                if db_client_secret:
+                    self._resolved_client_secret = db_client_secret
+                if db_webhook_id:
+                    self._resolved_webhook_id = db_webhook_id
+        except Exception:
+            pass
+        if not self._resolved_env:
+            self._resolved_env = os.environ.get("PAYPAL_ENV", "sandbox")
+        return self._resolved_env
+
     @property
     def env(self) -> str:
-        """Get current PayPal environment (sandbox/live)."""
-        return os.environ.get("PAYPAL_ENV", "sandbox")
-    
+        """Synchronous env — returns cached value or env var fallback."""
+        return self._resolved_env or os.environ.get("PAYPAL_ENV", "sandbox")
+
     @property
     def api_base(self) -> str:
         """Get API base URL for current environment."""
         return PAYPAL_CONFIG[self.env]["api_base"]
-    
+
     @property
     def client_id(self) -> str:
-        return os.environ.get("PAYPAL_CLIENT_ID", "")
-    
+        return self._resolved_client_id or os.environ.get("PAYPAL_CLIENT_ID", "")
+
     @property
     def client_secret(self) -> str:
-        return os.environ.get("PAYPAL_SECRET", "")
-    
+        return self._resolved_client_secret or os.environ.get("PAYPAL_SECRET", "")
+
     @property
     def webhook_id(self) -> str:
-        return os.environ.get("PAYPAL_WEBHOOK_ID", "")
+        return self._resolved_webhook_id or os.environ.get("PAYPAL_WEBHOOK_ID", "")
     
     async def get_access_token(self) -> str:
         """Get or refresh OAuth access token."""
+        # Resolve env from Admin DB (sandbox/live toggle) on first call
+        await self.resolve_env()
+
         now = datetime.now(timezone.utc)
-        
+
         # Check if we have a valid cached token
         if self._access_token and self._token_expires and now < self._token_expires:
             return self._access_token
