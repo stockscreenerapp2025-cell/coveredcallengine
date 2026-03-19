@@ -519,9 +519,9 @@ const Simulator = () => {
       const rawTrades = res.data.trades || [];
       const computeAnnROI = (t) => {
         const live = ['open', 'rolled', 'active'].includes(t.status);
-        const roi = live
-          ? (t.capital_deployed > 0 ? (t.unrealized_pnl / t.capital_deployed * 100) : 0)
-          : (t.roi_percent ?? (t.capital_deployed > 0 ? ((t.final_pnl || 0) / t.capital_deployed * 100) : 0));
+        const cap = t.capital_deployed || (t.entry_underlying_price * 100 * (t.contracts || 1));
+        const pnl = live ? t.unrealized_pnl : (t.final_pnl || 0);
+        const roi = t.roi_percent ?? (cap > 0 ? pnl / cap * 100 : 0);
         const dte = t.dte_remaining || t.days_held || 30;
         return roi / dte * 365;
       };
@@ -1173,24 +1173,28 @@ const Simulator = () => {
                           })()}
                         </td>
                         <td className={`font-mono ${
-                          isLive(trade.status) 
+                          isLive(trade.status)
                             ? (trade.unrealized_pnl >= 0 ? 'text-emerald-400' : 'text-red-400')
-                            : (trade.final_pnl >= 0 ? 'text-emerald-400' : 'text-red-400')
+                            : ((trade.final_pnl || 0) >= 0 ? 'text-emerald-400' : 'text-red-400')
                         }`}>
-                          {isLive(trade.status) 
+                          {isLive(trade.status)
                             ? formatCurrency(trade.unrealized_pnl)
-                            : formatCurrency(trade.final_pnl)
+                            : formatCurrency(trade.final_pnl || 0)
                           }
                         </td>
                         <td className={`font-mono ${
-                          isLive(trade.status)
-                            ? ((trade.unrealized_pnl / trade.capital_deployed * 100) >= 0 ? 'text-emerald-400' : 'text-red-400')
-                            : (((trade.roi_percent ?? (trade.capital_deployed > 0 ? trade.final_pnl / trade.capital_deployed * 100 : 0)) >= 0) ? 'text-emerald-400' : 'text-red-400')
+                          (() => {
+                            const cap = trade.capital_deployed || (trade.entry_underlying_price * 100 * (trade.contracts || 1));
+                            const pnl = isLive(trade.status) ? trade.unrealized_pnl : (trade.final_pnl || 0);
+                            const roi = trade.roi_percent ?? (cap > 0 ? pnl / cap * 100 : 0);
+                            return roi >= 0 ? 'text-emerald-400' : 'text-red-400';
+                          })()
                         }`}>
-                          {isLive(trade.status)
-                            ? formatPercent(trade.capital_deployed > 0 ? (trade.unrealized_pnl / trade.capital_deployed * 100) : 0)
-                            : formatPercent(trade.roi_percent ?? (trade.capital_deployed > 0 ? trade.final_pnl / trade.capital_deployed * 100 : null))
-                          }
+                          {(() => {
+                            const cap = trade.capital_deployed || (trade.entry_underlying_price * 100 * (trade.contracts || 1));
+                            const pnl = isLive(trade.status) ? trade.unrealized_pnl : (trade.final_pnl || 0);
+                            return formatPercent(trade.roi_percent ?? (cap > 0 ? pnl / cap * 100 : 0));
+                          })()}
                         </td>
                         <td>
                           {(() => {
