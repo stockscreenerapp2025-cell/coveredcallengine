@@ -131,15 +131,6 @@ const StockDetailModal = ({ symbol, isOpen, onClose, scanData = null }) => {
     try {
       const response = await stocksApi.getDetails(symbol);
       setStockData(response.data);
-      // Auto-analyze sentiment if news is available
-      if (response.data?.news?.length > 0) {
-        try {
-          const sentRes = await newsApi.analyzeSentiment(response.data.news);
-          setSentimentData(sentRes.data);
-        } catch (e) {
-          console.error('Auto sentiment analysis failed', e);
-        }
-      }
     } catch (error) {
       console.error('Failed to fetch stock details:', error);
     } finally {
