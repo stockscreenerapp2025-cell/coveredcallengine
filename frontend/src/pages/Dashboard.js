@@ -841,7 +841,7 @@ const Dashboard = () => {
             </div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="data-table w-max min-w-full">
+              <table className="data-table" style={{width: 'max-content', minWidth: '100%'}}>
                 <thead>
                   <tr>
                     <th>Symbol</th>
@@ -973,21 +973,23 @@ const Dashboard = () => {
                             <span className="text-zinc-600 text-xs">N/A</span>
                           )}
                         </td>
-                        <td style={{textAlign: 'center', whiteSpace: 'nowrap'}}>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setSimulateOpp(opp);
-                              setSimulateModalOpen(true);
-                            }}
-                            className="bg-violet-500/10 border-violet-500/30 text-violet-400 hover:bg-violet-500/20 hover:text-violet-300 mx-auto"
-                            data-testid={`dashboard-simulate-btn-${opp.symbol}`}
-                          >
-                            <Play className="w-3 h-3 mr-1" />
-                            Simulate
-                          </Button>
+                        <td>
+                          <div style={{display:'flex', justifyContent:'center'}}>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setSimulateOpp(opp);
+                                setSimulateModalOpen(true);
+                              }}
+                              className="bg-violet-500/10 border-violet-500/30 text-violet-400 hover:bg-violet-500/20 hover:text-violet-300"
+                              data-testid={`dashboard-simulate-btn-${opp.symbol}`}
+                            >
+                              <Play className="w-3 h-3 mr-1" />
+                              Simulate
+                            </Button>
+                          </div>
                         </td>
                           </tr>
                         </React.Fragment>
