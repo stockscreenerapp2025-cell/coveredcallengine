@@ -721,6 +721,73 @@ async def get_simulator_trades(
     }
 
 
+@simulator_router.get("/trades/health")
+async def get_trades_health(user: dict = Depends(get_current_user)):
+    """
+    Trade Health endpoint — returns computed P/L, capture%, yield%, ROI, DTE, delta
+    for all active (open/rolled) trades. Powers the Analyzer Trade Health table.
+    """
+    trades = await db.simulator_trades.find(
+        {"user_id": user["id"], "status": {"$in": ["open", "rolled"]}},
+        {"_id": 0}
+    ).to_list(1000)
+
+    rows = []
+    for t in trades:
+        entry_spot      = t.get("entry_spot") or t.get("entry_underlying_price") or 0
+        entry_short_bid = t.get("entry_short_bid") or t.get("short_call_premium") or 0
+        entry_long_ask  = t.get("entry_long_ask") or t.get("leaps_premium") or 0
+        strategy        = t.get("strategy_type", "covered_call")
+        contracts       = t.get("contracts", 1)
+
+        # yield_pct — entry premium / entry spot
+        yield_pct = round(entry_short_bid / entry_spot * 100, 2) if entry_spot > 0 else 0
+
+        # Prefer real-mark values stored by update-prices; fall back to BS-derived
+        capture_pct = t.get("capture_pct") or t.get("premium_capture_pct") or 0
+        total_pl    = t.get("total_pl")          # None if marks were missing
+        roi_pct     = t.get("roi_pct")           # None if marks were missing
+        data_quality = t.get("data_quality")
+
+        # If total_pl never computed (trade added before new code), fall back to unrealized_pnl
+        if total_pl is None and data_quality != "missing_option_mark":
+            total_pl = t.get("unrealized_pnl")
+            if total_pl is not None:
+                if strategy in ("covered_call", "wheel", "defensive"):
+                    capital = entry_spot * 100 * contracts
+                    roi_pct = round(total_pl / capital * 100, 2) if capital > 0 else None
+                else:
+                    net_debit = (entry_long_ask - entry_short_bid) * 100 * contracts
+                    roi_pct = round(total_pl / net_debit * 100, 2) if net_debit > 0 else None
+                data_quality = "bs_estimate"
+
+        rows.append({
+            "trade_id":     t.get("id"),
+            "symbol":       t.get("symbol"),
+            "strategy":     strategy,
+            "status":       t.get("status"),
+            "contracts":    contracts,
+            "dte":          t.get("dte_remaining"),
+            "delta":        t.get("current_delta"),
+            "iv_pct":       round((t.get("short_call_iv") or 0) * 100, 1),
+            "entry_spot":   entry_spot,
+            "entry_short_bid": entry_short_bid,
+            "short_mark":   t.get("short_mark"),
+            "long_mark":    t.get("long_mark"),
+            "yield_pct":    yield_pct,
+            "capture_pct":  round(capture_pct, 1),
+            "total_pl":     total_pl,
+            "roi_pct":      roi_pct,
+            "data_quality": data_quality,
+            "last_updated": t.get("last_updated"),
+        })
+
+    # Sort: by total_pl ascending (worst performers first)
+    rows.sort(key=lambda r: (r["total_pl"] is None, r["total_pl"] or 0))
+
+    return {"trades": rows, "total": len(rows)}
+
+
 @simulator_router.get("/trades/{trade_id}")
 async def get_simulator_trade_detail(trade_id: str, user: dict = Depends(get_current_user)):
     """Get detailed view of a single simulator trade"""
@@ -1221,73 +1288,6 @@ async def update_simulator_prices(user: dict = Depends(get_current_user)):
         "rules_triggered": rules_triggered,
         "prices": price_cache
     }
-
-
-@simulator_router.get("/trades/health")
-async def get_trades_health(user: dict = Depends(get_current_user)):
-    """
-    Trade Health endpoint — returns computed P/L, capture%, yield%, ROI, DTE, delta
-    for all active (open/rolled) trades. Powers the Analyzer Trade Health table.
-    """
-    trades = await db.simulator_trades.find(
-        {"user_id": user["id"], "status": {"$in": ["open", "rolled"]}},
-        {"_id": 0}
-    ).to_list(1000)
-
-    rows = []
-    for t in trades:
-        entry_spot      = t.get("entry_spot") or t.get("entry_underlying_price") or 0
-        entry_short_bid = t.get("entry_short_bid") or t.get("short_call_premium") or 0
-        entry_long_ask  = t.get("entry_long_ask") or t.get("leaps_premium") or 0
-        strategy        = t.get("strategy_type", "covered_call")
-        contracts       = t.get("contracts", 1)
-
-        # yield_pct — entry premium / entry spot
-        yield_pct = round(entry_short_bid / entry_spot * 100, 2) if entry_spot > 0 else 0
-
-        # Prefer real-mark values stored by update-prices; fall back to BS-derived
-        capture_pct = t.get("capture_pct") or t.get("premium_capture_pct") or 0
-        total_pl    = t.get("total_pl")          # None if marks were missing
-        roi_pct     = t.get("roi_pct")           # None if marks were missing
-        data_quality = t.get("data_quality")
-
-        # If total_pl never computed (trade added before new code), fall back to unrealized_pnl
-        if total_pl is None and data_quality != "missing_option_mark":
-            total_pl = t.get("unrealized_pnl")
-            if total_pl is not None:
-                if strategy in ("covered_call", "wheel", "defensive"):
-                    capital = entry_spot * 100 * contracts
-                    roi_pct = round(total_pl / capital * 100, 2) if capital > 0 else None
-                else:
-                    net_debit = (entry_long_ask - entry_short_bid) * 100 * contracts
-                    roi_pct = round(total_pl / net_debit * 100, 2) if net_debit > 0 else None
-                data_quality = "bs_estimate"
-
-        rows.append({
-            "trade_id":     t.get("id"),
-            "symbol":       t.get("symbol"),
-            "strategy":     strategy,
-            "status":       t.get("status"),
-            "contracts":    contracts,
-            "dte":          t.get("dte_remaining"),
-            "delta":        t.get("current_delta"),
-            "iv_pct":       round((t.get("short_call_iv") or 0) * 100, 1),
-            "entry_spot":   entry_spot,
-            "entry_short_bid": entry_short_bid,
-            "short_mark":   t.get("short_mark"),
-            "long_mark":    t.get("long_mark"),
-            "yield_pct":    yield_pct,
-            "capture_pct":  round(capture_pct, 1),
-            "total_pl":     total_pl,
-            "roi_pct":      roi_pct,
-            "data_quality": data_quality,
-            "last_updated": t.get("last_updated"),
-        })
-
-    # Sort: by total_pl ascending (worst performers first)
-    rows.sort(key=lambda r: (r["total_pl"] is None, r["total_pl"] or 0))
-
-    return {"trades": rows, "total": len(rows)}
 
 
 @simulator_router.get("/summary")

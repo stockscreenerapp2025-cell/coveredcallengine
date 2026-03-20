@@ -2348,7 +2348,7 @@ const Simulator = () => {
                   <ResponsiveContainer width="100%" height="100%">
                     <BarChart data={d.map(s => ({ name: s.strategy_label, Realized: s.realized_pnl, Unrealized: s.unrealized_pnl }))} layout="vertical">
                       <CartesianGrid strokeDasharray="3 3" stroke="#333" />
-                      <XAxis type="number" stroke="#555" fontSize={10} tickFormatter={(v) => `$${(v/1000).toFixed(0)}k`} />
+                      <XAxis type="number" stroke="#555" fontSize={10} tickFormatter={(v) => Math.abs(v) >= 1000 ? `$${(v/1000).toFixed(1)}k` : `$${v.toFixed(0)}`} />
                       <YAxis type="category" dataKey="name" stroke="#555" fontSize={10} width={95} />
                       <Tooltip contentStyle={{ background: '#18181b', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px' }} formatter={(v) => formatCurrency(v)} />
                       <Bar dataKey="Realized" fill="#10b981" name="Realized (locked)" radius={[0, 4, 4, 0]} />
