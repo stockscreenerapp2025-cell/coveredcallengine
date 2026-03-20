@@ -83,14 +83,33 @@ const CHART_COLORS = {
 };
 
 const ACTION_COLORS = {
-  'opened': 'bg-blue-500/20 text-blue-400',
-  'closed': 'bg-zinc-500/20 text-zinc-400',
-  'rolled': 'bg-violet-500/20 text-violet-400',
-  'rolled_open': 'bg-cyan-500/20 text-cyan-400',
-  'rule_closed': 'bg-amber-500/20 text-amber-400',
-  'rule_alert': 'bg-yellow-500/20 text-yellow-400',
-  'expired': 'bg-emerald-500/20 text-emerald-400',
-  'assigned': 'bg-red-500/20 text-red-400'
+  'opened':       'bg-blue-500/20 text-blue-400',
+  'closed':       'bg-zinc-500/20 text-zinc-400',
+  'close':        'bg-zinc-500/20 text-zinc-400',
+  'rolled':       'bg-violet-500/20 text-violet-400',
+  'rolled_open':  'bg-cyan-500/20 text-cyan-400',
+  'roll_out':     'bg-cyan-500/20 text-cyan-400',
+  'roll_up':      'bg-purple-500/20 text-purple-400',
+  'rule_closed':  'bg-amber-500/20 text-amber-400',
+  'rule_alert':   'bg-yellow-500/20 text-yellow-400',
+  'alert':        'bg-orange-500/20 text-orange-400',
+  'expired':      'bg-emerald-500/20 text-emerald-400',
+  'assigned':     'bg-red-500/20 text-red-400',
+};
+
+const ACTION_LABELS = {
+  'opened':       'Trade Added',
+  'closed':       'Trade Closed',
+  'close':        'Closed by Rule',
+  'rolled':       'Trade Rolled',
+  'rolled_open':  'Rolled (Open)',
+  'roll_out':     'Roll Out',
+  'roll_up':      'Roll Up',
+  'rule_closed':  'Rule Closed',
+  'rule_alert':   'Rule Alert',
+  'alert':        'Alert',
+  'expired':      'Expired',
+  'assigned':     'Assigned',
 };
 
 const CONDITION_FIELDS = [
@@ -1759,31 +1778,59 @@ const Simulator = () => {
             </div>
           ) : (
             <div className="space-y-2">
-              {actionLogs.map((log, idx) => (
-                <div 
-                  key={idx}
-                  className="flex items-start gap-3 p-3 bg-zinc-800/30 rounded-lg"
-                >
-                  <Badge className={ACTION_COLORS[log.action] || 'bg-zinc-500/20 text-zinc-400'}>
-                    {log.action}
-                  </Badge>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 text-sm">
-                      <span className="font-semibold text-white">{log.symbol}</span>
-                      <Badge className={STRATEGY_COLORS[log.strategy_type]} variant="outline">
-                        {{ covered_call: 'CC', pmcc: 'PMCC', wheel: 'CSP', defensive: 'COLLAR' }[log.strategy_type] || (log.strategy_type || '').toUpperCase()}
-                      </Badge>
-                      {log.rule_name && (
-                        <span className="text-xs text-violet-400">via &quot;{log.rule_name}&quot;</span>
+              {actionLogs.map((log, idx) => {
+                const actionKey = log.action || '';
+                const actionLabel = ACTION_LABELS[actionKey] || (actionKey ? actionKey.replace(/_/g, ' ') : 'System Event');
+                const actionColor = ACTION_COLORS[actionKey] || 'bg-zinc-700/50 text-zinc-400';
+                const description = log.details || log.message || '';
+                const snap = log.trade_snapshot || {};
+                return (
+                  <div
+                    key={idx}
+                    className="flex items-start gap-3 p-3 bg-zinc-800/30 rounded-lg hover:bg-zinc-800/50 transition-colors"
+                  >
+                    <Badge className={`${actionColor} whitespace-nowrap text-xs`}>
+                      {actionLabel}
+                    </Badge>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 text-sm flex-wrap">
+                        <span className="font-semibold text-white">{log.symbol || snap.symbol || '—'}</span>
+                        <Badge className={STRATEGY_COLORS[log.strategy_type || snap.strategy_type]} variant="outline">
+                          {{ covered_call: 'CC', pmcc: 'PMCC', wheel: 'CSP', defensive: 'COLLAR' }[log.strategy_type || snap.strategy_type] || (log.strategy_type || snap.strategy_type || '').toUpperCase()}
+                        </Badge>
+                        {log.rule_name && (
+                          <span className="text-xs text-violet-400">via &quot;{log.rule_name}&quot;</span>
+                        )}
+                      </div>
+                      {description && (
+                        <p className="text-xs text-zinc-400 mt-1">{description}</p>
+                      )}
+                      {/* Trade context chips */}
+                      {(snap.dte_remaining != null || snap.current_delta != null || snap.premium_capture_pct != null) && (
+                        <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+                          {snap.dte_remaining != null && (
+                            <span className="text-xs bg-zinc-700/50 text-zinc-400 px-1.5 py-0.5 rounded">DTE {snap.dte_remaining}d</span>
+                          )}
+                          {snap.current_delta != null && (
+                            <span className="text-xs bg-zinc-700/50 text-zinc-400 px-1.5 py-0.5 rounded">δ {snap.current_delta.toFixed(2)}</span>
+                          )}
+                          {snap.premium_capture_pct != null && (
+                            <span className="text-xs bg-zinc-700/50 text-zinc-400 px-1.5 py-0.5 rounded">{snap.premium_capture_pct.toFixed(0)}% captured</span>
+                          )}
+                          {snap.unrealized_pnl != null && (
+                            <span className={`text-xs px-1.5 py-0.5 rounded ${snap.unrealized_pnl >= 0 ? 'bg-emerald-500/10 text-emerald-400' : 'bg-red-500/10 text-red-400'}`}>
+                              P/L {snap.unrealized_pnl >= 0 ? '+' : ''}${snap.unrealized_pnl.toFixed(0)}
+                            </span>
+                          )}
+                        </div>
                       )}
                     </div>
-                    <p className="text-xs text-zinc-400 mt-1">{log.details}</p>
+                    <span className="text-xs text-zinc-500 whitespace-nowrap">
+                      {formatDateTime(log.timestamp)}
+                    </span>
                   </div>
-                  <span className="text-xs text-zinc-500 whitespace-nowrap">
-                    {formatDateTime(log.timestamp)}
-                  </span>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
 
