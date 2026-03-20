@@ -848,15 +848,15 @@ const Dashboard = () => {
                     <th>Price</th>
                     <th>Strike</th>
                     <th>Type</th>
-                    <th>DTE</th>
+                    <th className="text-xs w-12">DTE</th>
                     <th>Premium</th>
-                    <th>ROI</th>
-                    <th>ROI Ann.</th>
+                    <th className="text-xs w-14">ROI</th>
+                    <th className="text-xs w-16">ROI Ann.</th>
                     <th>Max Return</th>
-                    <th>Delta</th>
-                    <th>IV</th>
-                    <th>IV Rank</th>
-                    <th>OI</th>
+                    <th className="text-xs w-14">Delta</th>
+                    <th className="text-xs w-14">IV</th>
+                    <th className="text-xs w-16">IV Rank</th>
+                    <th className="text-xs w-14">OI</th>
                     <th>AI Score</th>
                     <th>Analyst</th>
                     <th className="text-center">Action</th>
@@ -926,15 +926,15 @@ const Dashboard = () => {
                             {isWeekly ? 'Weekly' : 'Monthly'}
                           </Badge>
                         </td>
-                        <td className={isWeekly ? 'text-cyan-300' : 'text-violet-300'}>{opp.dte}d</td>
+                        <td className={`text-xs ${isWeekly ? 'text-cyan-300' : 'text-violet-300'}`}>{opp.dte}d</td>
                         <td className="text-emerald-400">${opp.premium?.toFixed(2)}</td>
-                        <td className="text-cyan-400 font-medium">{opp.roi_pct?.toFixed(2) || opp.premium_yield?.toFixed(2)}%</td>
-                        <td className="text-amber-400 text-sm">{opp.roi_annualized ? `${opp.roi_annualized.toFixed(0)}%` : '-'}</td>
-                        <td className="text-purple-400 text-sm font-medium">
+                        <td className="text-cyan-400 font-medium text-xs">{opp.roi_pct?.toFixed(2) || opp.premium_yield?.toFixed(2)}%</td>
+                        <td className="text-amber-400 text-xs">{opp.roi_annualized ? `${opp.roi_annualized.toFixed(0)}%` : '-'}</td>
+                        <td className="text-purple-400 text-xs font-medium">
                           {opp.stock_price > 0 ? `${(((opp.premium || 0) + Math.max(0, (opp.strike || 0) - opp.stock_price)) / opp.stock_price * 100).toFixed(2)}%` : '-'}
                         </td>
-                        <td>{opp.delta?.toFixed(2)}</td>
-                        <td>{opp.iv_pct ? `${opp.iv_pct.toFixed(1)}%` : (opp.iv ? `${(opp.iv * 100).toFixed(1)}%` : '-')}</td>
+                        <td className="text-xs">{opp.delta?.toFixed(2)}</td>
+                        <td className="text-xs">{opp.iv_pct ? `${opp.iv_pct.toFixed(1)}%` : (opp.iv ? `${(opp.iv * 100).toFixed(1)}%` : '-')}</td>
                         <td>
                           <TooltipProvider>
                             <ShadcnTooltip>
@@ -951,7 +951,7 @@ const Dashboard = () => {
                             </ShadcnTooltip>
                           </TooltipProvider>
                         </td>
-                        <td className="text-zinc-400">{opp.open_interest ? opp.open_interest.toLocaleString() : '-'}</td>
+                        <td className="text-zinc-400 text-xs">{opp.open_interest ? opp.open_interest.toLocaleString() : '-'}</td>
                         <td>
                           <Badge className={`${opp.score >= 70 ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' : opp.score >= 50 ? 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30' : 'bg-cyan-500/20 text-cyan-400 border-cyan-500/30'}`}>
                             {opp.score?.toFixed(0)}
@@ -973,21 +973,23 @@ const Dashboard = () => {
                             <span className="text-zinc-600 text-xs">N/A</span>
                           )}
                         </td>
-                        <td className="text-center">
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setSimulateOpp(opp);
-                              setSimulateModalOpen(true);
-                            }}
-                            className="bg-violet-500/10 border-violet-500/30 text-violet-400 hover:bg-violet-500/20 hover:text-violet-300"
-                            data-testid={`dashboard-simulate-btn-${opp.symbol}`}
-                          >
-                            <Play className="w-3 h-3 mr-1" />
-                            Simulate
-                          </Button>
+                        <td>
+                          <div className="flex justify-center">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setSimulateOpp(opp);
+                                setSimulateModalOpen(true);
+                              }}
+                              className="bg-violet-500/10 border-violet-500/30 text-violet-400 hover:bg-violet-500/20 hover:text-violet-300"
+                              data-testid={`dashboard-simulate-btn-${opp.symbol}`}
+                            >
+                              <Play className="w-3 h-3 mr-1" />
+                              Simulate
+                            </Button>
+                          </div>
                         </td>
                           </tr>
                         </React.Fragment>
