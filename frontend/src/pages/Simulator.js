@@ -2025,7 +2025,9 @@ const Simulator = () => {
 
     // Derived values
     const openPremium = a ? Math.max(0, (a.net_premium_collected || 0) - (a.net_premium_kept || 0)) : 0;
-    const openDrawdown = a ? Math.min(0, a.unrealized_pnl || 0) : 0;
+    const openDrawdown = b?.open_drawdown ?? 0;
+    const worstDrawdown = b?.worst_drawdown ?? 0;
+    const worstDrawdownSymbol = b?.worst_drawdown_symbol ?? null;
     const assignmentRiskCount = b?.assignment_exposure ?? 0;
     const concentrationRisk = b ? (b.largest_position_weight > 40 ? 'High' : b.largest_position_weight > 25 ? 'Medium' : 'Low') : '—';
     const concentrationColor = b ? (b.largest_position_weight > 40 ? 'text-red-400' : b.largest_position_weight > 25 ? 'text-amber-400' : 'text-emerald-400') : 'text-zinc-400';
@@ -2124,37 +2126,34 @@ const Simulator = () => {
                 <div className="text-xs text-zinc-500 uppercase tracking-wider mb-2">Premium Income Engine</div>
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                   <MetricCard
-                    label="Premium Collected"
+                    label="Gross Premium Sold"
                     value={formatCurrency(a.net_premium_collected)}
-                    sub="All premium sold across trades"
+                    sub="Total premium collected across all trades"
                     color="text-emerald-400"
-                    tooltip="All premium sold across trades"
+                    tooltip="Total premium collected across all trades. Includes both locked and at-risk premium."
                   />
                   <MetricCard
-                    label="Premium Kept"
+                    label="Realized Premium (Kept)"
                     value={formatCurrency(a.net_premium_kept)}
-                    sub="Closed premium retained after buybacks"
+                    sub="Locked in — closed positions only"
                     color="text-emerald-400"
-                    tooltip="Closed premium retained after buybacks"
+                    tooltip="Premium fully locked in from closed trades after buyback costs."
                   />
                   <MetricCard
-                    label="Open Premium"
+                    label="Open Premium (At Risk)"
                     value={formatCurrency(openPremium)}
-                    sub="Premium still at risk in open positions"
+                    sub="Still at risk in open positions"
                     color="text-amber-400"
-                    tooltip="Premium still at risk in open positions"
+                    tooltip="Open premium can reduce if positions move against you. Not yet locked in."
                   />
                 </div>
               </div>
               {/* P/L row */}
               <div>
                 <div className="text-xs text-zinc-500 uppercase tracking-wider mb-2">Realized vs Unrealized</div>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                   <MetricCard label="Realized P/L" value={formatCurrency(a.realized_pnl)} sub="Locked — closed trades" color={a.realized_pnl >= 0 ? 'text-emerald-400' : 'text-red-400'} />
-                  <MetricCard label="Unrealized P/L" value={formatCurrency(a.unrealized_pnl)} sub="Temporary — open positions" color={a.unrealized_pnl >= 0 ? 'text-blue-400' : 'text-amber-400'} />
-                  {openDrawdown < 0 && (
-                    <MetricCard label="Open Drawdown" value={formatCurrency(openDrawdown)} sub="Position under pressure" color="text-amber-400" tooltip="Unrealized loss in open positions. Premium income is still working." />
-                  )}
+                  <MetricCard label="Open P/L (mark-to-market)" value={formatCurrency(a.unrealized_pnl)} sub="Temporary — open positions" color={a.unrealized_pnl >= 0 ? 'text-blue-400' : 'text-amber-400'} tooltip="Mark-to-market estimate. Changes daily with price moves. Not yet realized." />
                   <MetricCard label="Total P/L" value={formatCurrency(a.total_pnl)} sub="Realized + unrealized" color={a.total_pnl >= 0 ? 'text-emerald-400' : 'text-red-400'} />
                 </div>
               </div>
@@ -2162,8 +2161,25 @@ const Simulator = () => {
               <div>
                 <div className="text-xs text-zinc-500 uppercase tracking-wider mb-2">Efficiency</div>
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                  <MetricCard label="ROI on Capital" value={`${a.roi_on_peak_capital}%`} sub="Realized ÷ peak deployed" color={a.roi_on_peak_capital >= 0 ? 'text-emerald-400' : 'text-red-400'} />
-                  <MetricCard label="Avg Trade Return" value={`${a.avg_closed_trade_return_pct}%`} sub="Per closed trade" color={a.avg_closed_trade_return_pct >= 0 ? 'text-emerald-400' : 'text-amber-400'} />
+                  <div className="p-3 bg-zinc-800/50 rounded-lg">
+                    <div className="text-xs text-zinc-500 mb-1">ROI on Capital</div>
+                    <div className={`text-xl font-bold ${a.roi_on_peak_capital >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>{a.roi_on_peak_capital}%</div>
+                    <div className="text-xs text-zinc-600">Realized only ÷ peak deployed</div>
+                    {a.total_roi != null && (
+                      <div className={`text-xs mt-1 font-medium ${a.total_roi >= 0 ? 'text-blue-400' : 'text-amber-400'}`}>
+                        Total (incl. open): {a.total_roi}%
+                      </div>
+                    )}
+                  </div>
+                  {a.closed_count >= 5 ? (
+                    <MetricCard label="Avg Trade Return" value={`${a.avg_closed_trade_return_pct}%`} sub="Per closed trade" color={a.avg_closed_trade_return_pct >= 0 ? 'text-emerald-400' : 'text-amber-400'} />
+                  ) : (
+                    <div className="p-3 bg-zinc-800/50 rounded-lg">
+                      <div className="text-xs text-zinc-500 mb-1">Avg Trade Return</div>
+                      <div className="text-sm text-zinc-600 mt-2">Need 5+ closed trades</div>
+                      <div className="text-xs text-zinc-700">{a.closed_count} closed so far</div>
+                    </div>
+                  )}
                   <MetricCard label="Avg Hold Days" value={`${a.avg_hold_days}d`} sub="Closed trades" color="text-zinc-300" />
                 </div>
               </div>
@@ -2194,7 +2210,14 @@ const Simulator = () => {
                   <div className={`text-xl font-bold ${openDrawdown < 0 ? 'text-amber-400' : 'text-emerald-400'}`}>
                     {openDrawdown < 0 ? formatCurrency(openDrawdown) : 'None'}
                   </div>
-                  <div className="text-xs text-zinc-600">{openDrawdown < 0 ? 'Position under pressure' : 'All positions healthy'}</div>
+                  <div className="text-xs text-zinc-600">
+                    {openDrawdown < 0
+                      ? `${b.open_drawdown_count} position${b.open_drawdown_count !== 1 ? 's' : ''} underwater`
+                      : 'All positions healthy'}
+                  </div>
+                  {worstDrawdown < 0 && worstDrawdownSymbol && (
+                    <div className="text-xs text-amber-500 mt-1">Worst: {worstDrawdownSymbol} {formatCurrency(worstDrawdown)}</div>
+                  )}
                 </div>
                 <div className="p-3 bg-zinc-800/50 rounded-lg">
                   <div className="text-xs text-zinc-500 mb-1">Concentration Risk</div>
@@ -2206,7 +2229,15 @@ const Simulator = () => {
                   <div className={`text-xl font-bold ${b.trades_needing_action > 0 ? 'text-red-400' : 'text-emerald-400'}`}>
                     {b.trades_needing_action}
                   </div>
-                  <div className="text-xs text-zinc-600">DTE ≤ 14 or δ ≥ 0.50</div>
+                  {b.trades_needing_action > 0 ? (
+                    <div className="text-xs text-zinc-600 space-y-0.5 mt-1">
+                      {b.near_expiry_count > 0 && <div>{b.near_expiry_count} near expiry</div>}
+                      {b.high_delta_count > 0 && <div>{b.high_delta_count} high delta</div>}
+                      {b.both_count > 0 && <div>{b.both_count} both</div>}
+                    </div>
+                  ) : (
+                    <div className="text-xs text-zinc-600">All positions healthy</div>
+                  )}
                 </div>
               </div>
             </CardContent>
@@ -2255,7 +2286,7 @@ const Simulator = () => {
                             <td className={`py-2.5 text-right font-mono ${(row.dte ?? 99) <= 7 ? 'text-red-400' : (row.dte ?? 99) <= 14 ? 'text-amber-400' : 'text-zinc-300'}`}>
                               {row.dte != null ? `${row.dte}d` : '—'}
                             </td>
-                            <td className={`py-2.5 text-right font-mono ${(row.delta ?? 0) >= 0.50 ? 'text-red-400' : (row.delta ?? 0) >= 0.35 ? 'text-amber-400' : 'text-emerald-400'}`}>
+                            <td className={`py-2.5 text-right font-mono ${(row.delta ?? 0) >= 0.60 ? 'text-red-400' : (row.delta ?? 0) >= 0.40 ? 'text-amber-400' : 'text-zinc-400'}`}>
                               {row.delta != null ? row.delta.toFixed(2) : '—'}
                             </td>
                             <td className="py-2.5 text-right font-mono text-zinc-300">
@@ -2352,14 +2383,14 @@ const Simulator = () => {
                       <YAxis type="category" dataKey="name" stroke="#555" fontSize={10} width={95} />
                       <Tooltip contentStyle={{ background: '#18181b', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px' }} formatter={(v) => formatCurrency(v)} />
                       <Bar dataKey="Realized" fill="#10b981" name="Realized (locked)" radius={[0, 4, 4, 0]} />
-                      <Bar dataKey="Unrealized" fill="#6366f1" name="Unrealized (open)" radius={[0, 4, 4, 0]} />
+                      <Bar dataKey="Unrealized" fill="#6366f1" name="Open P/L (mark-to-market)" radius={[0, 4, 4, 0]} />
                       <Legend wrapperStyle={{ fontSize: '11px', color: '#71717a' }} />
                     </BarChart>
                   </ResponsiveContainer>
                 </div>
                 <div className="flex items-center gap-4 mt-2 text-xs text-zinc-500">
                   <span className="flex items-center gap-1"><span className="w-3 h-2 bg-emerald-500 rounded inline-block" /> Realized — locked in</span>
-                  <span className="flex items-center gap-1"><span className="w-3 h-2 bg-indigo-500 rounded inline-block" /> Unrealized — temporary</span>
+                  <span className="flex items-center gap-1"><span className="w-3 h-2 bg-indigo-500 rounded inline-block" /> Open P/L — mark-to-market</span>
                 </div>
               </CardContent>
             </Card>
@@ -2415,7 +2446,7 @@ const Simulator = () => {
                     <th className="py-2 text-right">Capture%</th>
                     <th className="py-2 text-right">P/L</th>
                     <th className="py-2 text-right">ROI%</th>
-                    <th className="py-2 text-center">Quality</th>
+                    <th className="py-2 text-center">Pricing Source</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -2445,11 +2476,11 @@ const Simulator = () => {
                         </td>
                         <td className="py-2.5 text-center">
                           {row.data_quality === 'missing_option_mark' ? (
-                            <Badge className="bg-orange-500/20 text-orange-400 border-orange-500/30 text-xs">No Mark</Badge>
+                            <Badge className="bg-orange-500/20 text-orange-400 border-orange-500/30 text-xs">Model</Badge>
                           ) : row.data_quality === 'bs_estimate' ? (
-                            <Badge className="bg-zinc-500/20 text-zinc-400 border-zinc-500/30 text-xs">Est.</Badge>
+                            <Badge className="bg-zinc-500/20 text-zinc-400 border-zinc-500/30 text-xs">Model</Badge>
                           ) : (
-                            <Badge className="bg-emerald-500/20 text-emerald-400 border-emerald-500/30 text-xs">Live</Badge>
+                            <Badge className="bg-emerald-500/20 text-emerald-400 border-emerald-500/30 text-xs">Market</Badge>
                           )}
                         </td>
                       </tr>
@@ -2458,7 +2489,7 @@ const Simulator = () => {
                 </tbody>
               </table>
               <p className="text-xs text-zinc-600 mt-3">
-                Live = real bid/ask marks • Est. = Black-Scholes estimate • No Mark = option chain unavailable. Click <b>Refresh Prices</b> above to update.
+                Market = real bid/ask marks • Model = Black-Scholes estimate. Click <b>Refresh Prices</b> above to update to live market data.
               </p>
             </div>
           )}

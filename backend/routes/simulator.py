@@ -749,8 +749,8 @@ async def get_trades_health(user: dict = Depends(get_current_user)):
         roi_pct     = t.get("roi_pct")           # None if marks were missing
         data_quality = t.get("data_quality")
 
-        # If total_pl never computed (trade added before new code), fall back to unrealized_pnl
-        if total_pl is None and data_quality != "missing_option_mark":
+        # Fall back to BS-based unrealized_pnl when real marks unavailable
+        if total_pl is None:
             total_pl = t.get("unrealized_pnl")
             if total_pl is not None:
                 if strategy in ("covered_call", "wheel", "defensive"):
@@ -759,7 +759,8 @@ async def get_trades_health(user: dict = Depends(get_current_user)):
                 else:
                     net_debit = (entry_long_ask - entry_short_bid) * 100 * contracts
                     roi_pct = round(total_pl / net_debit * 100, 2) if net_debit > 0 else None
-                data_quality = "bs_estimate"
+                if data_quality == "missing_option_mark":
+                    data_quality = "bs_estimate"
 
         rows.append({
             "trade_id":     t.get("id"),
@@ -2740,6 +2741,8 @@ async def get_analyzer_metrics(
                 pass
     avg_hold_days = sum(hold_days_list) / len(hold_days_list) if hold_days_list else 0
 
+    total_roi = round((total_pnl / peak_capital_hist * 100), 2) if peak_capital_hist > 0 else 0
+
     section_a = {
         "total_pnl": round(total_pnl, 2),
         "realized_pnl": round(realized_pnl, 2),
@@ -2747,6 +2750,7 @@ async def get_analyzer_metrics(
         "net_premium_collected": round(net_premium_collected, 2),
         "net_premium_kept": round(net_premium_kept, 2),
         "roi_on_peak_capital": round(roi_on_peak, 2),
+        "total_roi": total_roi,
         "avg_closed_trade_return_pct": round(avg_closed_trade_return_pct, 2),
         "avg_hold_days": round(avg_hold_days, 1),
         "total_trades": len(all_trades),
@@ -2780,6 +2784,18 @@ async def get_analyzer_metrics(
 
     trades_needing_action = len([t for t in open_trades if _needs_action(t)])
 
+    # Open Drawdown: sum only negative individual unrealized P/Ls
+    open_drawdown = sum(min(0, t.get("unrealized_pnl") or 0) for t in open_trades)
+    open_drawdown_count = sum(1 for t in open_trades if (t.get("unrealized_pnl") or 0) < 0)
+    worst_trade = min(open_trades, key=lambda t: t.get("unrealized_pnl") or 0, default=None)
+    worst_drawdown = (worst_trade.get("unrealized_pnl") or 0) if worst_trade else 0
+    worst_drawdown_symbol = worst_trade.get("symbol") if worst_trade and worst_drawdown < 0 else None
+
+    # Needs management breakdown
+    near_expiry_trades = [t for t in open_trades if _get_dte(t) <= 14 and (t.get("current_delta") or 0) < 0.50]
+    high_delta_trades = [t for t in open_trades if (t.get("current_delta") or 0) >= 0.50 and _get_dte(t) > 14]
+    both_trades = [t for t in open_trades if _get_dte(t) <= 14 and (t.get("current_delta") or 0) >= 0.50]
+
     section_b = {
         "current_capital_at_risk": round(current_capital_at_risk, 2),
         "peak_capital_at_risk": round(peak_capital_hist, 2),
@@ -2787,6 +2803,13 @@ async def get_analyzer_metrics(
         "assignment_exposure_pct": round(assignment_exposure_pct, 1),
         "largest_position_weight": round(largest_position_weight, 1),
         "trades_needing_action": trades_needing_action,
+        "near_expiry_count": len(near_expiry_trades),
+        "high_delta_count": len(high_delta_trades),
+        "both_count": len(both_trades),
+        "open_drawdown": round(open_drawdown, 2),
+        "open_drawdown_count": open_drawdown_count,
+        "worst_drawdown": round(worst_drawdown, 2),
+        "worst_drawdown_symbol": worst_drawdown_symbol,
         "total_open": len(open_trades),
     }
 
