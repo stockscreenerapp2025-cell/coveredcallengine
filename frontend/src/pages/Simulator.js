@@ -2297,24 +2297,20 @@ const Simulator = () => {
                     <thead>
                       <tr className="text-left text-zinc-500 border-b border-zinc-800 text-xs uppercase tracking-wider">
                         <th className="pb-2">Strategy</th>
-                        <th className="pb-2 text-right">Positions</th>
-                        <th className="pb-2 text-right">Premium Collected</th>
                         <th className="pb-2 text-right">Avg Hold</th>
                         <th className="pb-2 text-right">Assignment Risk</th>
                         <th className="pb-2 text-right">Realized P/L</th>
                         <th className="pb-2 text-right">Unrealized P/L</th>
+                        <th className="pb-2 text-right">Total P/L</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {d.map((s, idx) => (
+                      {d.map((s, idx) => {
+                        const totalPL = (s.realized_pnl || 0) + (s.unrealized_pnl || 0);
+                        return (
                         <tr key={idx} className="border-b border-zinc-800/50 hover:bg-zinc-800/20">
                           <td className="py-3 font-semibold text-white">{s.strategy_label}</td>
-                          <td className="py-3 text-right text-zinc-300">
-                            <span className="text-white font-medium">{(s.open_count ?? 0) + (s.closed_count ?? 0)}</span>
-                            <span className="text-zinc-500 text-xs ml-1">({s.open_count ?? 0} open · {s.closed_count ?? 0} closed)</span>
-                          </td>
-                          <td className="py-3 text-right font-mono text-emerald-400">{formatCurrency(s.premium_collected ?? s.realized_pnl ?? 0)}</td>
-                          <td className="py-3 text-right text-zinc-300">{s.avg_hold_days}d</td>
+                          <td className="py-3 text-right text-zinc-300">{s.avg_hold_days ?? 0}d</td>
                           <td className={`py-3 text-right font-mono ${s.assignment_rate > 30 ? 'text-amber-400' : 'text-zinc-400'}`}>
                             {s.assignment_rate != null ? `${s.assignment_rate}%` : '—'}
                           </td>
@@ -2324,8 +2320,12 @@ const Simulator = () => {
                           <td className={`py-3 text-right font-mono text-sm ${s.unrealized_pnl >= 0 ? 'text-blue-400' : 'text-amber-400'}`}>
                             {formatCurrency(s.unrealized_pnl)}
                           </td>
+                          <td className={`py-3 text-right font-mono font-bold ${totalPL >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                            {formatCurrency(totalPL)}
+                          </td>
                         </tr>
-                      ))}
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>
