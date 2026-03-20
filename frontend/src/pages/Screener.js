@@ -1441,7 +1441,7 @@ const Screener = () => {
                             <span className="text-zinc-600 text-xs">N/A</span>
                           )}
                         </td>
-                        <td className="text-center">
+                        <td style={{textAlign: 'center'}}>
                           <Button
                             size="sm"
                             variant="outline"

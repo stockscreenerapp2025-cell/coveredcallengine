@@ -848,15 +848,15 @@ const Dashboard = () => {
                     <th>Price</th>
                     <th>Strike</th>
                     <th>Type</th>
-                    <th className="text-xs w-12">DTE</th>
+                    <th className="text-xs">DTE</th>
                     <th>Premium</th>
-                    <th className="text-xs w-14">ROI</th>
-                    <th className="text-xs w-16">ROI Ann.</th>
+                    <th className="text-xs">ROI</th>
+                    <th className="text-xs">ROI Ann.</th>
                     <th>Max Return</th>
-                    <th className="text-xs w-14">Delta</th>
-                    <th className="text-xs w-14">IV</th>
-                    <th className="text-xs w-16">IV Rank</th>
-                    <th className="text-xs w-14">OI</th>
+                    <th className="text-xs">Delta</th>
+                    <th className="text-xs">IV</th>
+                    <th className="text-xs">IV Rank</th>
+                    <th className="text-xs">OI</th>
                     <th>AI Score</th>
                     <th>Analyst</th>
                     <th className="text-center">Action</th>
@@ -973,23 +973,21 @@ const Dashboard = () => {
                             <span className="text-zinc-600 text-xs">N/A</span>
                           )}
                         </td>
-                        <td>
-                          <div className="flex justify-center">
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setSimulateOpp(opp);
-                                setSimulateModalOpen(true);
-                              }}
-                              className="bg-violet-500/10 border-violet-500/30 text-violet-400 hover:bg-violet-500/20 hover:text-violet-300"
-                              data-testid={`dashboard-simulate-btn-${opp.symbol}`}
-                            >
-                              <Play className="w-3 h-3 mr-1" />
-                              Simulate
-                            </Button>
-                          </div>
+                        <td style={{textAlign: 'center'}}>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSimulateOpp(opp);
+                              setSimulateModalOpen(true);
+                            }}
+                            className="bg-violet-500/10 border-violet-500/30 text-violet-400 hover:bg-violet-500/20 hover:text-violet-300"
+                            data-testid={`dashboard-simulate-btn-${opp.symbol}`}
+                          >
+                            <Play className="w-3 h-3 mr-1" />
+                            Simulate
+                          </Button>
                         </td>
                           </tr>
                         </React.Fragment>
