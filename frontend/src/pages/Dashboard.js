@@ -841,22 +841,22 @@ const Dashboard = () => {
             </div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="data-table" style={{width: 'max-content', minWidth: '100%'}}>
+              <table className="data-table">
                 <thead>
                   <tr>
                     <th>Symbol</th>
                     <th>Price</th>
                     <th>Strike</th>
                     <th>Type</th>
-                    <th className="text-xs">DTE</th>
+                    <th>DTE</th>
                     <th>Premium</th>
-                    <th className="text-xs">ROI</th>
-                    <th className="text-xs">ROI Ann.</th>
+                    <th>ROI</th>
+                    <th>ROI Ann.</th>
                     <th>Max Return</th>
-                    <th className="text-xs">Delta</th>
-                    <th className="text-xs">IV</th>
-                    <th className="text-xs">IV Rank</th>
-                    <th className="text-xs">OI</th>
+                    <th>Delta</th>
+                    <th>IV</th>
+                    <th>IV Rank</th>
+                    <th>OI</th>
                     <th>AI Score</th>
                     <th>Analyst</th>
                     <th className="text-center">Action</th>
@@ -926,15 +926,15 @@ const Dashboard = () => {
                             {isWeekly ? 'Weekly' : 'Monthly'}
                           </Badge>
                         </td>
-                        <td className={`text-xs ${isWeekly ? 'text-cyan-300' : 'text-violet-300'}`}>{opp.dte}d</td>
+                        <td className={isWeekly ? 'text-cyan-300' : 'text-violet-300'}>{opp.dte}d</td>
                         <td className="text-emerald-400">${opp.premium?.toFixed(2)}</td>
-                        <td className="text-cyan-400 font-medium text-xs">{opp.roi_pct?.toFixed(2) || opp.premium_yield?.toFixed(2)}%</td>
-                        <td className="text-amber-400 text-xs">{opp.roi_annualized ? `${opp.roi_annualized.toFixed(0)}%` : '-'}</td>
-                        <td className="text-purple-400 text-xs font-medium">
+                        <td className="text-cyan-400 font-medium">{opp.roi_pct?.toFixed(2) || opp.premium_yield?.toFixed(2)}%</td>
+                        <td className="text-amber-400">{opp.roi_annualized ? `${opp.roi_annualized.toFixed(0)}%` : '-'}</td>
+                        <td className="text-purple-400 font-medium">
                           {opp.stock_price > 0 ? `${(((opp.premium || 0) + Math.max(0, (opp.strike || 0) - opp.stock_price)) / opp.stock_price * 100).toFixed(2)}%` : '-'}
                         </td>
-                        <td className="text-xs">{opp.delta?.toFixed(2)}</td>
-                        <td className="text-xs">{opp.iv_pct ? `${opp.iv_pct.toFixed(1)}%` : (opp.iv ? `${(opp.iv * 100).toFixed(1)}%` : '-')}</td>
+                        <td>{opp.delta?.toFixed(2)}</td>
+                        <td>{opp.iv_pct ? `${opp.iv_pct.toFixed(1)}%` : (opp.iv ? `${(opp.iv * 100).toFixed(1)}%` : '-')}</td>
                         <td>
                           <TooltipProvider>
                             <ShadcnTooltip>
@@ -951,7 +951,7 @@ const Dashboard = () => {
                             </ShadcnTooltip>
                           </TooltipProvider>
                         </td>
-                        <td className="text-zinc-400 text-xs">{opp.open_interest ? opp.open_interest.toLocaleString() : '-'}</td>
+                        <td className="text-zinc-400">{opp.open_interest ? opp.open_interest.toLocaleString() : '-'}</td>
                         <td>
                           <Badge className={`${opp.score >= 70 ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' : opp.score >= 50 ? 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30' : 'bg-cyan-500/20 text-cyan-400 border-cyan-500/30'}`}>
                             {opp.score?.toFixed(0)}
