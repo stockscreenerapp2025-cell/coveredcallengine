@@ -809,26 +809,35 @@ async def add_to_watchlist(item: WatchlistItemCreate, user: dict = Depends(get_c
     if existing:
         raise HTTPException(status_code=400, detail="Symbol already in watchlist")
     
-    # Get current price (Yahoo primary)
-    api_key = await get_massive_api_key()
-    stock_data = await fetch_stock_quote(symbol, api_key)
-    price_when_added = stock_data.get("price", 0) if stock_data else 0
-    
     doc = {
         "id": str(uuid.uuid4()),
         "user_id": user["id"],
         "symbol": symbol,
         "target_price": item.target_price,
-        "price_when_added": price_when_added,
+        "price_when_added": 0,
         "notes": item.notes,
         "added_at": datetime.now(timezone.utc).isoformat()
     }
     await db.watchlist.insert_one(doc)
-    
+
+    # Fetch price in background so the response is instant
+    async def _update_price_bg(doc_id: str, sym: str):
+        try:
+            api_key = await get_massive_api_key()
+            stock_data = await fetch_stock_quote(sym, api_key)
+            price = stock_data.get("price", 0) if stock_data else 0
+            if price:
+                await db.watchlist.update_one({"id": doc_id}, {"$set": {"price_when_added": price}})
+        except Exception:
+            pass
+
+    import asyncio
+    asyncio.create_task(_update_price_bg(doc["id"], symbol))
+
     return {
         "id": doc["id"],
         "symbol": symbol,
-        "price_when_added": price_when_added,
+        "price_when_added": 0,
         "message": "Added to watchlist"
     }
 
