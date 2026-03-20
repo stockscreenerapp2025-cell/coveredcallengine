@@ -2000,47 +2000,54 @@ const Simulator = () => {
     const e = analyzerData?.section_e_advanced;
     const sq = analyzerData?.sample_quality || {};
 
-    const MetricCard = ({ label, value, sub, color = 'text-white', badge }) => (
-      <div className="p-3 bg-zinc-800/50 rounded-lg">
-        <div className="text-xs text-zinc-500 mb-1 flex items-center gap-1">{label}{badge && <span className="ml-1 px-1 py-0.5 text-[10px] bg-zinc-700 text-zinc-400 rounded">{badge}</span>}</div>
+    const MetricCard = ({ label, value, sub, color = 'text-white', tooltip }) => (
+      <div className="p-3 bg-zinc-800/50 rounded-lg" title={tooltip || ''}>
+        <div className="text-xs text-zinc-500 mb-1 flex items-center gap-1">
+          {label}
+          {tooltip && <span className="text-zinc-600 cursor-help" title={tooltip}>ⓘ</span>}
+        </div>
         <div className={`text-xl font-bold ${color}`}>{value ?? '—'}</div>
         {sub && <div className="text-xs text-zinc-600 mt-0.5">{sub}</div>}
       </div>
     );
 
-    const actionLevelStyle = (level) => {
-      if (level === 'danger') return 'bg-red-500/20 text-red-400 border-red-500/30';
-      if (level === 'warning') return 'bg-amber-500/20 text-amber-400 border-amber-500/30';
-      if (level === 'info') return 'bg-blue-500/20 text-blue-400 border-blue-500/30';
-      return 'bg-zinc-700/50 text-zinc-400 border-zinc-600/30';
+    // Smart action label system
+    const getActionLabel = (row) => {
+      const delta = row.delta ?? 0;
+      const dte = row.dte ?? 99;
+      const capture = row.capture_pct ?? 0;
+      if (delta >= 0.50)              return { label: '🔴 Roll or manage risk',    cls: 'bg-red-500/20 text-red-400 border-red-500/30' };
+      if (capture >= 90)              return { label: '⚪ Close (cycle complete)',  cls: 'bg-zinc-700/50 text-zinc-300 border-zinc-600/30' };
+      if (dte <= 7 && capture >= 70)  return { label: '🟢 Close near target',      cls: 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' };
+      if (capture < 50 && dte <= 14)  return { label: '🟡 Roll candidate',         cls: 'bg-amber-500/20 text-amber-400 border-amber-500/30' };
+      return                                 { label: '⚪ Monitor',                cls: 'bg-zinc-700/50 text-zinc-400 border-zinc-600/30' };
     };
 
-    const scoreColor = (s) => s >= 70 ? 'text-emerald-400' : s >= 45 ? 'text-amber-400' : 'text-red-400';
+    // Derived values
+    const openPremium = a ? Math.max(0, (a.net_premium_collected || 0) - (a.net_premium_kept || 0)) : 0;
+    const openDrawdown = a ? Math.min(0, a.unrealized_pnl || 0) : 0;
+    const assignmentRiskCount = b?.assignment_exposure ?? 0;
+    const concentrationRisk = b ? (b.largest_position_weight > 40 ? 'High' : b.largest_position_weight > 25 ? 'Medium' : 'Low') : '—';
+    const concentrationColor = b ? (b.largest_position_weight > 40 ? 'text-red-400' : b.largest_position_weight > 25 ? 'text-amber-400' : 'text-emerald-400') : 'text-zinc-400';
 
-    const GatedMetric = ({ label, value, gated, badge }) => (
-      <div className="p-3 bg-zinc-800/50 rounded-lg">
-        <div className="text-xs text-zinc-500 mb-1 flex items-center gap-1">
-          {label}
-          {badge && <span className="ml-1 px-1 py-0.5 text-[10px] bg-zinc-700 text-zinc-400 rounded">{badge}</span>}
-        </div>
-        {gated ? (
-          <div className="text-sm text-zinc-500 italic">Low sample</div>
-        ) : (
-          <div className="text-xl font-bold text-white">{value ?? '—'}</div>
-        )}
-      </div>
-    );
+    // Smart warnings
+    const warnings = [];
+    if (sq.closed_trade_count != null && sq.closed_trade_count < 3) warnings.push(`Only ${sq.closed_trade_count} closed trade${sq.closed_trade_count !== 1 ? 's' : ''} — metrics may not be statistically reliable`);
+    if (assignmentRiskCount > 0) warnings.push(`${assignmentRiskCount} position${assignmentRiskCount !== 1 ? 's' : ''} at high assignment risk (Δ > 0.50)`);
+    const expiringCount = c.filter(r => (r.dte ?? 99) <= 7).length;
+    if (expiringCount > 0) warnings.push(`${expiringCount} trade${expiringCount !== 1 ? 's' : ''} expiring within 7 days`);
 
     return (
     <div className="space-y-6" data-testid="analyzer-page">
-      {/* Header */}
+
+      {/* ── HEADER BAR ── */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h2 className="text-xl font-semibold text-white flex items-center gap-2">
             <BarChart3 className="w-5 h-5 text-cyan-400" />
             Analyzer
           </h2>
-          <p className="text-zinc-400 text-sm mt-1">Trade management dashboard &amp; strategy knowledge base</p>
+          <p className="text-zinc-500 text-xs mt-0.5">Track income, risk, and trade management — not just P/L</p>
         </div>
         <div className="flex flex-wrap gap-2">
           <Select value={analyticsStrategy || "all"} onValueChange={(v) => setAnalyticsStrategy(v === "all" ? "" : v)}>
@@ -2051,8 +2058,8 @@ const Simulator = () => {
               <SelectItem value="all">All Strategies</SelectItem>
               <SelectItem value="covered_call">Covered Call</SelectItem>
               <SelectItem value="pmcc">PMCC</SelectItem>
-              <SelectItem value="wheel">Wheel</SelectItem>
-              <SelectItem value="defensive">Defensive</SelectItem>
+              <SelectItem value="wheel">CSP</SelectItem>
+              <SelectItem value="defensive">Collar</SelectItem>
             </SelectContent>
           </Select>
           <Select value={analyzerSymbol || "all"} onValueChange={(v) => setAnalyzerSymbol(v === "all" ? "" : v)}>
@@ -2083,16 +2090,6 @@ const Simulator = () => {
         </div>
       </div>
 
-      {/* Sample quality warning */}
-      {sq.warnings?.length > 0 && (
-        <div className="flex items-center gap-2 text-xs text-amber-400 bg-amber-500/10 border border-amber-500/20 rounded-lg px-3 py-2">
-          <AlertTriangle className="w-3 h-3 flex-shrink-0" />
-          {sq.closed_trade_count < 5
-            ? `Only ${sq.closed_trade_count} closed trades — some metrics need 5+ to display accurately.`
-            : `${sq.closed_trade_count} closed trades, ${sq.days_of_history} days of history — advanced metrics need 10+ trades and 90+ days.`}
-        </div>
-      )}
-
       {analyzerLoading ? (
         <div className="space-y-4">
           {Array(4).fill(0).map((_, i) => <Skeleton key={i} className="h-32 w-full" />)}
@@ -2111,53 +2108,101 @@ const Simulator = () => {
         </Card>
       ) : (
         <>
-          {/* ── Section A: Performance Summary ── */}
+          {/* ── 1. PERFORMANCE SNAPSHOT ── */}
           <Card className="glass-card border-blue-500/20">
             <CardHeader className="pb-2">
               <CardTitle className="text-sm flex items-center gap-2">
                 <DollarSign className="w-4 h-4 text-blue-400" />
-                <span className="text-blue-400">Performance Summary</span>
-                <span className="text-zinc-500 font-normal">— What did I make?</span>
+                <span className="text-blue-400">Performance Snapshot</span>
+                <span className="text-zinc-500 font-normal">— How much am I making vs carrying?</span>
                 <span className="ml-auto text-xs text-zinc-600">{a.total_trades} trades · {a.open_count} open · {a.closed_count} closed</span>
               </CardTitle>
             </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-4 gap-3">
-                <MetricCard label="Total P/L" value={formatCurrency(a.total_pnl)} sub="Realized + unrealized" color={a.total_pnl >= 0 ? 'text-emerald-400' : 'text-red-400'} />
-                <MetricCard label="Realized P/L" value={formatCurrency(a.realized_pnl)} sub="Closed trades only" color={a.realized_pnl >= 0 ? 'text-emerald-400' : 'text-red-400'} />
-                <MetricCard label="Unrealized P/L" value={formatCurrency(a.unrealized_pnl)} sub="Open trades estimate" badge="Open-trade est." color={a.unrealized_pnl >= 0 ? 'text-emerald-400' : 'text-red-400'} />
-                <MetricCard label="Net Premium Collected" value={formatCurrency(a.net_premium_collected)} sub="All strategies" />
-                <MetricCard label="Net Premium Kept" value={formatCurrency(a.net_premium_kept)} sub="After buybacks" color="text-emerald-400" />
-                <MetricCard label="ROI on Peak Capital" value={`${a.roi_on_peak_capital}%`} sub="Realized ÷ peak deployed" color={a.roi_on_peak_capital >= 0 ? 'text-emerald-400' : 'text-red-400'} />
-                <MetricCard label="Avg Trade Return" value={`${a.avg_closed_trade_return_pct}%`} sub="Per closed trade" color={a.avg_closed_trade_return_pct >= 0 ? 'text-emerald-400' : 'text-amber-400'} />
-                <MetricCard label="Avg Hold Days" value={`${a.avg_hold_days}d`} sub="Closed trades" color="text-zinc-300" />
+            <CardContent className="space-y-4">
+              {/* Premium income row */}
+              <div>
+                <div className="text-xs text-zinc-500 uppercase tracking-wider mb-2">Premium Income Engine</div>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                  <MetricCard
+                    label="Premium Collected"
+                    value={formatCurrency(a.net_premium_collected)}
+                    sub="All premium sold across trades"
+                    color="text-emerald-400"
+                    tooltip="All premium sold across trades"
+                  />
+                  <MetricCard
+                    label="Premium Kept"
+                    value={formatCurrency(a.net_premium_kept)}
+                    sub="Closed premium retained after buybacks"
+                    color="text-emerald-400"
+                    tooltip="Closed premium retained after buybacks"
+                  />
+                  <MetricCard
+                    label="Open Premium"
+                    value={formatCurrency(openPremium)}
+                    sub="Premium still at risk in open positions"
+                    color="text-amber-400"
+                    tooltip="Premium still at risk in open positions"
+                  />
+                </div>
+              </div>
+              {/* P/L row */}
+              <div>
+                <div className="text-xs text-zinc-500 uppercase tracking-wider mb-2">Realized vs Unrealized</div>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  <MetricCard label="Realized P/L" value={formatCurrency(a.realized_pnl)} sub="Locked — closed trades" color={a.realized_pnl >= 0 ? 'text-emerald-400' : 'text-red-400'} />
+                  <MetricCard label="Unrealized P/L" value={formatCurrency(a.unrealized_pnl)} sub="Temporary — open positions" color={a.unrealized_pnl >= 0 ? 'text-blue-400' : 'text-amber-400'} />
+                  {openDrawdown < 0 && (
+                    <MetricCard label="Open Drawdown" value={formatCurrency(openDrawdown)} sub="Position under pressure" color="text-amber-400" tooltip="Unrealized loss in open positions. Premium income is still working." />
+                  )}
+                  <MetricCard label="Total P/L" value={formatCurrency(a.total_pnl)} sub="Realized + unrealized" color={a.total_pnl >= 0 ? 'text-emerald-400' : 'text-red-400'} />
+                </div>
+              </div>
+              {/* Efficiency row */}
+              <div>
+                <div className="text-xs text-zinc-500 uppercase tracking-wider mb-2">Efficiency</div>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                  <MetricCard label="ROI on Capital" value={`${a.roi_on_peak_capital}%`} sub="Realized ÷ peak deployed" color={a.roi_on_peak_capital >= 0 ? 'text-emerald-400' : 'text-red-400'} />
+                  <MetricCard label="Avg Trade Return" value={`${a.avg_closed_trade_return_pct}%`} sub="Per closed trade" color={a.avg_closed_trade_return_pct >= 0 ? 'text-emerald-400' : 'text-amber-400'} />
+                  <MetricCard label="Avg Hold Days" value={`${a.avg_hold_days}d`} sub="Closed trades" color="text-zinc-300" />
+                </div>
               </div>
             </CardContent>
           </Card>
 
-          {/* ── Section B: Open Risk ── */}
+          {/* ── 2. RISK & EXPOSURE ── */}
           <Card className="glass-card border-amber-500/20">
             <CardHeader className="pb-2">
               <CardTitle className="text-sm flex items-center gap-2">
                 <ShieldAlert className="w-4 h-4 text-amber-400" />
-                <span className="text-amber-400">Open Risk</span>
-                <span className="text-zinc-500 font-normal">— Where is my capital exposed?</span>
+                <span className="text-amber-400">Risk & Exposure</span>
+                <span className="text-zinc-500 font-normal">— Where can things go wrong?</span>
               </CardTitle>
             </CardHeader>
             <CardContent>
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
-                <MetricCard label="Capital at Risk" value={formatCurrency(b.current_capital_at_risk)} sub="Current open positions" />
-                <MetricCard label="Peak Capital" value={formatCurrency(b.peak_capital_at_risk)} sub="Historical high" />
+                <MetricCard label="Capital at Risk" value={formatCurrency(b.current_capital_at_risk)} sub="Current open positions" color="text-zinc-200" />
                 <div className="p-3 bg-zinc-800/50 rounded-lg">
-                  <div className="text-xs text-zinc-500 mb-1">Assignment Exposure</div>
-                  <div className={`text-xl font-bold ${b.assignment_exposure > 0 ? 'text-amber-400' : 'text-zinc-300'}`}>
-                    {b.assignment_exposure} pos
+                  <div className="text-xs text-zinc-500 mb-1">Assignment Risk</div>
+                  <div className={`text-xl font-bold ${assignmentRiskCount > 0 ? 'text-red-400' : 'text-emerald-400'}`}>
+                    {assignmentRiskCount} {assignmentRiskCount === 1 ? 'position' : 'positions'}
                   </div>
-                  <div className="text-xs text-zinc-600">{b.assignment_exposure_pct}% of open (δ ≥ 0.50)</div>
+                  <div className="text-xs text-zinc-600">Delta ≥ 0.50</div>
                 </div>
-                <MetricCard label="Largest Position" value={`${b.largest_position_weight}%`} sub="Of total open capital" color={b.largest_position_weight > 40 ? 'text-amber-400' : 'text-zinc-300'} />
                 <div className="p-3 bg-zinc-800/50 rounded-lg">
-                  <div className="text-xs text-zinc-500 mb-1">Trades Needing Action</div>
+                  <div className="text-xs text-zinc-500 mb-1">Open Drawdown</div>
+                  <div className={`text-xl font-bold ${openDrawdown < 0 ? 'text-amber-400' : 'text-emerald-400'}`}>
+                    {openDrawdown < 0 ? formatCurrency(openDrawdown) : 'None'}
+                  </div>
+                  <div className="text-xs text-zinc-600">{openDrawdown < 0 ? 'Position under pressure' : 'All positions healthy'}</div>
+                </div>
+                <div className="p-3 bg-zinc-800/50 rounded-lg">
+                  <div className="text-xs text-zinc-500 mb-1">Concentration Risk</div>
+                  <div className={`text-xl font-bold ${concentrationColor}`}>{concentrationRisk}</div>
+                  <div className="text-xs text-zinc-600">Largest position: {b.largest_position_weight}% of capital</div>
+                </div>
+                <div className="p-3 bg-zinc-800/50 rounded-lg">
+                  <div className="text-xs text-zinc-500 mb-1">Needs Management</div>
                   <div className={`text-xl font-bold ${b.trades_needing_action > 0 ? 'text-red-400' : 'text-emerald-400'}`}>
                     {b.trades_needing_action}
                   </div>
@@ -2167,7 +2212,7 @@ const Simulator = () => {
             </CardContent>
           </Card>
 
-          {/* ── Section C: Action Queue ── */}
+          {/* ── 3. ACTION QUEUE (PRIMARY) ── */}
           <Card className="glass-card border-rose-500/20">
             <CardHeader className="pb-2">
               <CardTitle className="text-sm flex items-center gap-2">
@@ -2191,39 +2236,42 @@ const Simulator = () => {
                         <th className="pb-2 text-right">DTE</th>
                         <th className="pb-2 text-right">Delta</th>
                         <th className="pb-2 text-right">Capture</th>
-                        <th className="pb-2 text-right">Unreal P/L</th>
-                        <th className="pb-2">Suggested Action</th>
+                        <th className="pb-2 text-right">Unrealized P/L</th>
+                        <th className="pb-2 pl-3">Recommended Action</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {c.map((row, idx) => (
-                        <tr key={row.trade_id || idx} className="border-b border-zinc-800/50 hover:bg-zinc-700/20">
-                          <td className="py-2.5 font-semibold text-white">{row.symbol}</td>
-                          <td className="py-2.5">
-                            <Badge className={row.strategy === 'pmcc' ? 'bg-violet-500/20 text-violet-400 border-violet-500/30 text-xs' : 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30 text-xs'}>
-                              {row.strategy === 'pmcc' ? 'PMCC' : 'CC'}
-                            </Badge>
-                          </td>
-                          <td className="py-2.5 text-right font-mono text-zinc-300">{row.strike ? `$${row.strike}` : '—'}</td>
-                          <td className={`py-2.5 text-right font-mono ${(row.dte ?? 99) <= 7 ? 'text-red-400' : (row.dte ?? 99) <= 14 ? 'text-amber-400' : 'text-zinc-300'}`}>
-                            {row.dte != null ? `${row.dte}d` : '—'}
-                          </td>
-                          <td className={`py-2.5 text-right font-mono ${(row.delta ?? 0) >= 0.50 ? 'text-red-400' : (row.delta ?? 0) >= 0.35 ? 'text-amber-400' : 'text-emerald-400'}`}>
-                            {row.delta != null ? row.delta.toFixed(2) : '—'}
-                          </td>
-                          <td className="py-2.5 text-right font-mono text-zinc-300">
-                            {row.capture_pct != null ? `${row.capture_pct.toFixed(0)}%` : '—'}
-                          </td>
-                          <td className={`py-2.5 text-right font-mono ${(row.unrealized_pnl ?? 0) >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                            {row.unrealized_pnl != null ? formatCurrency(row.unrealized_pnl) : '—'}
-                          </td>
-                          <td className="py-2.5">
-                            <Badge className={`text-xs border ${actionLevelStyle(row.action_level)}`}>
-                              {row.suggested_action}
-                            </Badge>
-                          </td>
-                        </tr>
-                      ))}
+                      {c.map((row, idx) => {
+                        const action = getActionLabel(row);
+                        return (
+                          <tr key={row.trade_id || idx} className="border-b border-zinc-800/50 hover:bg-zinc-700/20">
+                            <td className="py-2.5 font-semibold text-white">{row.symbol}</td>
+                            <td className="py-2.5">
+                              <Badge className={row.strategy === 'pmcc' ? 'bg-violet-500/20 text-violet-400 border-violet-500/30 text-xs' : 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30 text-xs'}>
+                                {row.strategy === 'pmcc' ? 'PMCC' : 'CC'}
+                              </Badge>
+                            </td>
+                            <td className="py-2.5 text-right font-mono text-zinc-300">{row.strike ? `$${row.strike}` : '—'}</td>
+                            <td className={`py-2.5 text-right font-mono ${(row.dte ?? 99) <= 7 ? 'text-red-400' : (row.dte ?? 99) <= 14 ? 'text-amber-400' : 'text-zinc-300'}`}>
+                              {row.dte != null ? `${row.dte}d` : '—'}
+                            </td>
+                            <td className={`py-2.5 text-right font-mono ${(row.delta ?? 0) >= 0.50 ? 'text-red-400' : (row.delta ?? 0) >= 0.35 ? 'text-amber-400' : 'text-emerald-400'}`}>
+                              {row.delta != null ? row.delta.toFixed(2) : '—'}
+                            </td>
+                            <td className="py-2.5 text-right font-mono text-zinc-300">
+                              {row.capture_pct != null ? `${row.capture_pct.toFixed(0)}%` : '—'}
+                            </td>
+                            <td className={`py-2.5 text-right font-mono ${(row.unrealized_pnl ?? 0) >= 0 ? 'text-emerald-400' : 'text-amber-400'}`}>
+                              {row.unrealized_pnl != null ? formatCurrency(row.unrealized_pnl) : '—'}
+                            </td>
+                            <td className="py-2.5 pl-3">
+                              <span className={`text-xs px-2 py-1 rounded-full border font-medium ${action.cls}`}>
+                                {action.label}
+                              </span>
+                            </td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>
@@ -2231,13 +2279,13 @@ const Simulator = () => {
             </CardContent>
           </Card>
 
-          {/* ── Section D: Strategy Quality ── */}
+          {/* ── 4. STRATEGY SNAPSHOT ── */}
           <Card className="glass-card border-emerald-500/20">
             <CardHeader className="pb-2">
               <CardTitle className="text-sm flex items-center gap-2">
                 <Activity className="w-4 h-4 text-emerald-400" />
-                <span className="text-emerald-400">Strategy Quality</span>
-                <span className="text-zinc-500 font-normal">— Is the logic working?</span>
+                <span className="text-emerald-400">Strategy Snapshot</span>
+                <span className="text-zinc-500 font-normal">— How is each strategy performing?</span>
               </CardTitle>
             </CardHeader>
             <CardContent>
@@ -2249,41 +2297,31 @@ const Simulator = () => {
                     <thead>
                       <tr className="text-left text-zinc-500 border-b border-zinc-800 text-xs uppercase tracking-wider">
                         <th className="pb-2">Strategy</th>
-                        <th className="pb-2 text-right">Score</th>
-                        <th className="pb-2 text-right">Win Rate</th>
+                        <th className="pb-2 text-right">Positions</th>
+                        <th className="pb-2 text-right">Premium Collected</th>
                         <th className="pb-2 text-right">Avg Hold</th>
-                        <th className="pb-2 text-right">Profit Factor</th>
-                        <th className="pb-2 text-right">Roll Success</th>
-                        <th className="pb-2 text-right">Assignment Rate</th>
+                        <th className="pb-2 text-right">Assignment Risk</th>
                         <th className="pb-2 text-right">Realized P/L</th>
-                        <th className="pb-2 text-right">Unrealized</th>
+                        <th className="pb-2 text-right">Unrealized P/L</th>
                       </tr>
                     </thead>
                     <tbody>
                       {d.map((s, idx) => (
-                        <tr key={idx} className="border-b border-zinc-800/50">
+                        <tr key={idx} className="border-b border-zinc-800/50 hover:bg-zinc-800/20">
                           <td className="py-3 font-semibold text-white">{s.strategy_label}</td>
-                          <td className="py-3 text-right">
-                            <span className={`font-bold ${scoreColor(s.strategy_score)}`}>{s.strategy_score}</span>
-                            <span className="text-zinc-600 text-xs">/100</span>
-                          </td>
-                          <td className={`py-3 text-right ${s.win_rate >= 50 ? 'text-emerald-400' : 'text-amber-400'}`}>
-                            {s.sample_ok ? `${s.win_rate}%` : <span className="text-zinc-500 text-xs italic">Low sample</span>}
-                          </td>
-                          <td className="py-3 text-right text-zinc-300">{s.avg_hold_days}d</td>
-                          <td className={`py-3 text-right font-mono ${s.profit_factor != null ? (s.profit_factor >= 1.5 ? 'text-emerald-400' : s.profit_factor >= 1 ? 'text-amber-400' : 'text-red-400') : 'text-zinc-500'}`}>
-                            {s.sample_ok ? (s.profit_factor != null ? s.profit_factor : '—') : <span className="text-xs italic">Low sample</span>}
-                          </td>
                           <td className="py-3 text-right text-zinc-300">
-                            {s.roll_success_rate != null ? `${s.roll_success_rate}%` : '—'}
+                            <span className="text-white font-medium">{(s.open_count ?? 0) + (s.closed_count ?? 0)}</span>
+                            <span className="text-zinc-500 text-xs ml-1">({s.open_count ?? 0} open · {s.closed_count ?? 0} closed)</span>
                           </td>
-                          <td className={`py-3 text-right ${s.assignment_rate > 30 ? 'text-amber-400' : 'text-zinc-300'}`}>
-                            {s.assignment_rate}%
+                          <td className="py-3 text-right font-mono text-emerald-400">{formatCurrency(s.premium_collected ?? s.realized_pnl ?? 0)}</td>
+                          <td className="py-3 text-right text-zinc-300">{s.avg_hold_days}d</td>
+                          <td className={`py-3 text-right font-mono ${s.assignment_rate > 30 ? 'text-amber-400' : 'text-zinc-400'}`}>
+                            {s.assignment_rate != null ? `${s.assignment_rate}%` : '—'}
                           </td>
-                          <td className={`py-3 text-right ${s.realized_pnl >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                          <td className={`py-3 text-right font-mono font-medium ${s.realized_pnl >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
                             {formatCurrency(s.realized_pnl)}
                           </td>
-                          <td className={`py-3 text-right text-xs ${s.unrealized_pnl >= 0 ? 'text-emerald-400/70' : 'text-red-400/70'}`}>
+                          <td className={`py-3 text-right font-mono text-sm ${s.unrealized_pnl >= 0 ? 'text-blue-400' : 'text-amber-400'}`}>
                             {formatCurrency(s.unrealized_pnl)}
                           </td>
                         </tr>
@@ -2292,50 +2330,51 @@ const Simulator = () => {
                   </table>
                 </div>
               )}
-              {/* P/L chart */}
-              {d.length > 0 && (
-                <div className="mt-4 pt-4 border-t border-zinc-800">
-                  <div className="text-xs text-zinc-500 mb-2">P/L by Strategy</div>
-                  <div className="h-28">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <BarChart data={d.map(s => ({ name: s.strategy_label, Realized: s.realized_pnl, Unrealized: s.unrealized_pnl }))} layout="vertical">
-                        <CartesianGrid strokeDasharray="3 3" stroke="#333" />
-                        <XAxis type="number" stroke="#666" fontSize={10} tickFormatter={(v) => `$${(v/1000).toFixed(0)}k`} />
-                        <YAxis type="category" dataKey="name" stroke="#666" fontSize={10} width={90} />
-                        <Tooltip contentStyle={{ background: '#18181b', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px' }} formatter={(v) => formatCurrency(v)} />
-                        <Bar dataKey="Realized" fill="#10b981" radius={[0, 4, 4, 0]} />
-                        <Bar dataKey="Unrealized" fill="#6366f1" radius={[0, 4, 4, 0]} />
-                        <Legend wrapperStyle={{ fontSize: '11px', color: '#71717a' }} />
-                      </BarChart>
-                    </ResponsiveContainer>
-                  </div>
-                </div>
-              )}
             </CardContent>
           </Card>
 
-          {/* ── Section E: Advanced Metrics ── */}
-          {e && (
-            <Card className="glass-card border-violet-500/20">
+          {/* ── 5. P/L VISUAL ── */}
+          {d.length > 0 && (
+            <Card className="glass-card border-zinc-700/50">
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm flex items-center gap-2">
-                  <TrendingUp className="w-4 h-4 text-violet-400" />
-                  <span className="text-violet-400">Advanced Metrics</span>
-                  <Badge className="bg-violet-500/20 text-violet-400 border-violet-500/30 text-[10px] ml-1">Advanced</Badge>
-                  <span className="text-zinc-500 font-normal ml-1">— Requires 5–10+ closed trades</span>
+                  <BarChart3 className="w-4 h-4 text-zinc-400" />
+                  <span className="text-zinc-300">P/L Visual</span>
+                  <span className="text-zinc-500 font-normal">— Realized vs Unrealized by strategy</span>
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
-                  <GatedMetric label="Win Rate" value={`${e.win_rate}%`} gated={e.win_rate_gated} badge="5+ trades" />
-                  <GatedMetric label="Profit Factor" value={e.profit_factor} gated={e.profit_factor_gated} badge="5+ trades" />
-                  <GatedMetric label="Max Drawdown" value={e.max_drawdown != null ? formatCurrency(e.max_drawdown) : '—'} gated={e.max_drawdown_gated} badge="5+ trades" />
-                  <GatedMetric label="Time-Weighted Return" value={e.time_weighted_return != null ? `${e.time_weighted_return}% ann.` : '—'} gated={e.twr_gated} badge="10+ trades · 90d" />
-                  <MetricCard label="Avg Winning Trade" value={formatCurrency(e.avg_win)} color="text-emerald-400" />
-                  <MetricCard label="Avg Losing Trade" value={formatCurrency(e.avg_loss)} color="text-red-400" />
+                <div className="h-32">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={d.map(s => ({ name: s.strategy_label, Realized: s.realized_pnl, Unrealized: s.unrealized_pnl }))} layout="vertical">
+                      <CartesianGrid strokeDasharray="3 3" stroke="#333" />
+                      <XAxis type="number" stroke="#555" fontSize={10} tickFormatter={(v) => `$${(v/1000).toFixed(0)}k`} />
+                      <YAxis type="category" dataKey="name" stroke="#555" fontSize={10} width={95} />
+                      <Tooltip contentStyle={{ background: '#18181b', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px' }} formatter={(v) => formatCurrency(v)} />
+                      <Bar dataKey="Realized" fill="#10b981" name="Realized (locked)" radius={[0, 4, 4, 0]} />
+                      <Bar dataKey="Unrealized" fill="#6366f1" name="Unrealized (open)" radius={[0, 4, 4, 0]} />
+                      <Legend wrapperStyle={{ fontSize: '11px', color: '#71717a' }} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+                <div className="flex items-center gap-4 mt-2 text-xs text-zinc-500">
+                  <span className="flex items-center gap-1"><span className="w-3 h-2 bg-emerald-500 rounded inline-block" /> Realized — locked in</span>
+                  <span className="flex items-center gap-1"><span className="w-3 h-2 bg-indigo-500 rounded inline-block" /> Unrealized — temporary</span>
                 </div>
               </CardContent>
             </Card>
+          )}
+
+          {/* ── 6. SMART WARNINGS ── */}
+          {warnings.length > 0 && (
+            <div className="space-y-2">
+              {warnings.map((w, i) => (
+                <div key={i} className="flex items-center gap-2 text-xs text-amber-400 bg-amber-500/10 border border-amber-500/20 rounded-lg px-3 py-2">
+                  <AlertTriangle className="w-3 h-3 flex-shrink-0" />
+                  {w}
+                </div>
+              ))}
+            </div>
           )}
         </>
       )}

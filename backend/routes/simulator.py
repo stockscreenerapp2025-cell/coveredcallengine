@@ -708,7 +708,8 @@ async def get_simulator_trades(
                     stock_price=trade.get("current_underlying_price") or trade.get("entry_underlying_price"),
                     expiry=trade.get("short_call_expiry"),
                     iv=trade.get("short_call_iv"),
-                    skip_iv_rank=True  # IV rank not critical for simulator list view
+                    skip_iv_rank=True,   # IV rank not critical for simulator list view
+                    skip_analyst=True    # Simulator table doesn't show analyst data — skip live fetch
                 )
                 strip_enrichment_debug(trade, include_debug=debug_enrichment)
 
