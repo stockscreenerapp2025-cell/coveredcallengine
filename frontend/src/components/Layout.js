@@ -19,7 +19,8 @@ import {
   Headphones,
   Coins,
   Lock,
-  BookOpen
+  BookOpen,
+  User
 } from 'lucide-react';
 import {
   DropdownMenu,
@@ -67,6 +68,7 @@ const Layout = ({ children }) => {
       { path: '/watchlist',  pageKey: 'watchlist',  icon: <BookmarkPlus className="w-5 h-5" />,     label: 'Watchlist' },
       { path: '/ai-wallet',  pageKey: 'ai-wallet',  icon: <Coins className="w-5 h-5" />,            label: 'AI Wallet' },
       { path: '/help',       pageKey: 'help',       icon: <BookOpen className="w-5 h-5" />,          label: 'Help' },
+      { path: '/account',                           icon: <User className="w-5 h-5" />,              label: 'Account' },
     );
     
     // Only full admins see the Admin panel

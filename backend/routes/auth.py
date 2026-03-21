@@ -157,6 +157,41 @@ async def get_me(user: dict = Depends(get_current_user)):
     )
 
 
+@auth_router.post("/me/cancel-subscription")
+async def cancel_my_subscription(user: dict = Depends(get_current_user)):
+    """Allow user to cancel their own subscription (stops future renewals, keeps access until period end)"""
+    from database import db as _db
+    sub = user.get("subscription", {})
+    status = sub.get("status")
+
+    if status in ("cancelled", "expired", "none"):
+        raise HTTPException(status_code=400, detail="No active subscription to cancel.")
+
+    now = datetime.now(timezone.utc)
+    await _db.users.update_one(
+        {"id": user["id"]},
+        {"$set": {
+            "subscription.status": "cancelled",
+            "subscription.cancelled_at": now.isoformat(),
+            "subscription.cancellation_reason": "User self-cancelled",
+            "updated_at": now.isoformat()
+        }}
+    )
+
+    await _db.audit_logs.insert_one({
+        "action": "user_self_cancelled",
+        "user_id": user["id"],
+        "email": user.get("email"),
+        "timestamp": now.isoformat()
+    })
+
+    return {
+        "success": True,
+        "message": "Your subscription has been cancelled. You keep full access until your current billing period ends.",
+        "access_until": sub.get("current_period_end") or sub.get("trial_end")
+    }
+
+
 class ForgotPasswordRequest(BaseModel):
     email: EmailStr
 

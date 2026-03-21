@@ -20,6 +20,7 @@ import AcceptInvitation from "./pages/AcceptInvitation";
 import AIWallet from "./pages/AIWallet";
 import PayPalSuccess from "./pages/PayPalSuccess";
 import Help from "./pages/Help";
+import AccountSettings from "./pages/AccountSettings";
 import Layout from "./components/Layout";
 import "@/App.css";
 
@@ -169,6 +170,14 @@ function App() {
             </ProtectedRoute>
           } />
           
+          <Route path="/account" element={
+            <ProtectedRoute>
+              <Layout>
+                <AccountSettings />
+              </Layout>
+            </ProtectedRoute>
+          } />
+
           <Route path="/help" element={
             <ProtectedRoute>
               <Layout>

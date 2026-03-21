@@ -713,7 +713,7 @@ const sections = [
       },
       {
         q: 'Can I cancel anytime?',
-        a: 'Yes. You can cancel future renewals anytime from your account settings.',
+        a: 'Yes. Go to Account Settings (bottom of the left sidebar) → click "Cancel Subscription". Your access continues until the end of your current billing period. No charges after that.',
       },
       {
         q: 'Will I lose access after cancellation?',
