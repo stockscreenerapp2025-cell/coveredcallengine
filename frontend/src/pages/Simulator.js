@@ -456,10 +456,13 @@ const Simulator = () => {
     }
   };
 
-  const applyRecommendation = async () => {
+  const applyRecommendation = async (selectedAction) => {
     if (!manageResult || !manageTrade) return;
     setApplyLoading(true);
     try {
+      const overriddenRecommendation = selectedAction
+        ? { ...manageResult.recommendation, action: selectedAction }
+        : manageResult.recommendation;
       const res = await fetch(`/api/simulator/manage/${manageTrade.id}/apply`, {
         method: 'POST',
         headers: {
@@ -467,7 +470,7 @@ const Simulator = () => {
           'Authorization': `Bearer ${localStorage.getItem('token')}`
         },
         body: JSON.stringify({
-          recommendation: manageResult.recommendation,
+          recommendation: overriddenRecommendation,
           current_price: manageResult.current_price
         })
       });
