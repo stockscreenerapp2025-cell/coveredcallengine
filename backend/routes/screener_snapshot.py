@@ -2041,7 +2041,7 @@ async def get_dashboard_opportunities(
         # Criteria: weekly $20-$100, monthly $20-$200, DTE in range
         weekly_price_filter = {"stock_price": {"$gte": 20, "$lte": 100}}
         monthly_price_filter = {"stock_price": {"$gte": 20, "$lte": 200}}
-        weekly_query = {"run_id": run_id, "dte": {"$gte": WEEKLY_MIN_DTE, "$lte": WEEKLY_MAX_DTE}, **weekly_price_filter}
+        weekly_query = {"run_id": run_id, "dte": {"$gte": WEEKLY_MIN_DTE, "$lte": WEEKLY_MAX_DTE}, "roi_pct": {"$gte": 1.0}, **weekly_price_filter}
         monthly_query = {"run_id": run_id, "dte": {"$gte": MONTHLY_MIN_DTE, "$lte": MONTHLY_MAX_DTE}, **monthly_price_filter}
         weekly_cursor = db.scan_results_cc.find(weekly_query, {"_id": 0}).sort("score", -1).limit(50)
         monthly_cursor = db.scan_results_cc.find(monthly_query, {"_id": 0}).sort("score", -1).limit(50)
