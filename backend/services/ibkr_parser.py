@@ -1501,9 +1501,14 @@ class IBKRParser:
             if call_sells and put_buys:
                 return 'COLLAR'
             elif call_sells:
+                # If stock was obtained via CSP assignment → it's a Wheel (CSP → Assignment → CC)
+                if has_put_assignment:
+                    return 'WHEEL'
                 return 'COVERED_CALL'
             elif put_sells:
-                # Stock held alongside put sells = Wheel leg (not standalone CSP)
+                # Stock held alongside put sells = Wheel leg
+                if has_put_assignment:
+                    return 'WHEEL'
                 return 'COVERED_CALL'
             else:
                 # Pure stock - check if ETF or Index

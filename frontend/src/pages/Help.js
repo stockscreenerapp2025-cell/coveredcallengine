@@ -221,7 +221,122 @@ const sections = [
     ],
   },
 
-  /* ── 2. GETTING STARTED ── */
+  /* ── 2. OPTIONS TRADING BASICS ── */
+  {
+    id: 'options-basics',
+    icon: <TrendingUp className="w-5 h-5 text-violet-400" />,
+    title: 'Options Trading Basics',
+    color: 'violet',
+    articles: [
+      {
+        q: 'What is options trading?',
+        a: (
+          <RichAnswer>
+            <p>Options trading is a way to buy or sell the <span className="text-white font-semibold">right — but not the obligation</span> — to trade a stock at a fixed price within a certain time period.</p>
+            <Insight title="Key Point">
+              <p>Unlike buying stocks, you are not forced to complete the trade. You simply pay a small upfront cost called a <span className="text-emerald-400 font-semibold">premium</span> to hold that right.</p>
+            </Insight>
+            <Bullets items={[
+              'Options give you flexibility — you choose whether to act',
+              'You always pay a small upfront cost called a premium',
+              'Options have an expiry date — after which they become worthless',
+              'They can be used to generate income, hedge risk, or speculate',
+            ]} />
+          </RichAnswer>
+        ),
+      },
+      {
+        q: 'What is a Call Option?',
+        a: (
+          <RichAnswer>
+            <p>A <span className="text-emerald-400 font-semibold">call option</span> gives you the right to <span className="text-white font-semibold">BUY</span> a stock at a fixed price (called the strike price) before a certain date.</p>
+            <Block title="When do you use it?">
+              <p>When you believe the stock price will go <span className="text-emerald-400 font-semibold">UP</span>.</p>
+            </Block>
+            <Block title="Simple Example">
+              <div className="space-y-2">
+                <Scenario label="Setup" lines={[
+                  'Stock price today = $100',
+                  'You buy a call option at strike $105',
+                  'You pay a small premium upfront',
+                ]} />
+                <Scenario label="Stock goes to $120 — You profit" lines={[
+                  'You can still buy at $105 (your locked-in price)',
+                  'Immediately worth $120 in the market',
+                  'Profit = $120 − $105 = $15 per share',
+                ]} />
+                <Scenario label="Stock stays below $105 — Small loss" lines={[
+                  'You let the option expire — no obligation',
+                  'You only lose the small premium you paid',
+                ]} />
+              </div>
+            </Block>
+            <Insight title="Key Idea">
+              <p>Call options benefit when the stock goes <span className="text-emerald-400 font-semibold">UP</span>. Your maximum loss is limited to the premium paid.</p>
+            </Insight>
+          </RichAnswer>
+        ),
+      },
+      {
+        q: 'What is a Put Option?',
+        a: (
+          <RichAnswer>
+            <p>A <span className="text-red-400 font-semibold">put option</span> gives you the right to <span className="text-white font-semibold">SELL</span> a stock at a fixed price before a certain date.</p>
+            <Block title="When do you use it?">
+              <p>When you believe the stock price will go <span className="text-red-400 font-semibold">DOWN</span>.</p>
+            </Block>
+            <Block title="Simple Example">
+              <div className="space-y-2">
+                <Scenario label="Setup" lines={[
+                  'Stock price today = $100',
+                  'You buy a put option at strike $95',
+                  'You pay a small premium upfront',
+                ]} />
+                <Scenario label="Stock falls to $80 — You profit" lines={[
+                  'You can still sell at $95 (your locked-in price)',
+                  'Even though market price is only $80',
+                  'Profit = $95 − $80 = $15 per share',
+                ]} />
+                <Scenario label="Stock stays above $95 — Small loss" lines={[
+                  'You let the option expire — no obligation',
+                  'You only lose the small premium you paid',
+                ]} />
+              </div>
+            </Block>
+            <Insight title="Key Idea">
+              <p>Put options benefit when the stock goes <span className="text-red-400 font-semibold">DOWN</span>. Your maximum loss is limited to the premium paid.</p>
+            </Insight>
+          </RichAnswer>
+        ),
+      },
+      {
+        q: 'Quick Summary — Call vs Put',
+        a: (
+          <RichAnswer>
+            <div className="space-y-2">
+              <div className="bg-zinc-800/60 rounded-lg p-3 flex items-start gap-3">
+                <span className="text-emerald-400 font-bold text-lg mt-0.5">↑</span>
+                <div>
+                  <p className="text-white font-semibold">Call Option — Bullish</p>
+                  <p className="text-zinc-400 text-xs mt-0.5">Right to BUY · Profit when stock goes UP · Loss limited to premium paid</p>
+                </div>
+              </div>
+              <div className="bg-zinc-800/60 rounded-lg p-3 flex items-start gap-3">
+                <span className="text-red-400 font-bold text-lg mt-0.5">↓</span>
+                <div>
+                  <p className="text-white font-semibold">Put Option — Bearish</p>
+                  <p className="text-zinc-400 text-xs mt-0.5">Right to SELL · Profit when stock goes DOWN · Loss limited to premium paid</p>
+                </div>
+              </div>
+            </div>
+            <ProTip>On Covered Call Engine, you are always the <span className="text-white font-semibold">seller</span> of options — you collect the premium as income rather than paying it.</ProTip>
+          </RichAnswer>
+        ),
+      },
+    ],
+  },
+
+  /* ── 3. GETTING STARTED ── */
   {
     id: 'getting-started',
     icon: <BookOpen className="w-5 h-5 text-emerald-400" />,
