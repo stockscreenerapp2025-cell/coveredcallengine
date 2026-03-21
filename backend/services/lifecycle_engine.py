@@ -610,8 +610,42 @@ class LifecycleEngine:
                 key=lambda l: l.open_date,
             )
             if not covered_lots:
-                logger.warning("SELL_STOCK: no open lots for %s", symbol)
-                return
+                # Stock pre-dates the CSV — create a synthetic lot to record the sale
+                logger.warning("SELL_STOCK: no open lots for %s — creating synthetic lot (stock pre-dates CSV)", symbol)
+                synthetic_lot_id = f"LOT_{symbol}_{_uid()}_SYNTHETIC"
+                synthetic_lot = ShareLot(
+                    lot_id=synthetic_lot_id,
+                    symbol=symbol,
+                    open_date=date_str,
+                    shares_open=shares_to_sell,
+                    shares_remaining=shares_to_sell,
+                    entry_price=0.0,
+                    effective_entry=0.0,
+                    entry_type="SYNTHETIC",
+                    source_trade_ids=[],
+                )
+                cycle_id = self._new_cycle_id(symbol, "CC")
+                cycle = TradeCycle(
+                    cycle_id=cycle_id,
+                    symbol=symbol,
+                    strategy="CC",
+                    status="Open - Uncovered",
+                    entry_mode="STOCK_ENTRY",
+                    opened_date=date_str,
+                    lots=[synthetic_lot_id],
+                    total_shares_entered=shares_to_sell,
+                    shares_current=shares_to_sell,
+                    uncovered_shares=shares_to_sell,
+                    total_stock_cost=0.0,
+                    avg_cost=0.0,
+                    effective_avg_cost=0.0,
+                )
+                synthetic_lot.linked_cycle_id = cycle_id
+                self.lots[synthetic_lot_id] = synthetic_lot
+                self.cycles[cycle_id] = cycle
+                open_lots = self._get_open_lots(symbol)
+                if not open_lots:
+                    return
             # Find and mark covering calls as ASSIGNED, then release the shares
             covering_calls = [
                 op for op in self.options.values()
@@ -677,8 +711,47 @@ class LifecycleEngine:
         shares_needed = contracts * 100
         allocated_lots = self._fifo_allocate(symbol, shares_needed, same_day=date_str)
         if not allocated_lots:
-            logger.warning("SELL_CALL_OPEN: no uncovered lots for %s (contracts=%d)", symbol, contracts)
-            return
+            # Stock was likely bought before the uploaded CSV date range.
+            # Create a synthetic lot with unknown cost basis so options still get tracked.
+            logger.warning(
+                "SELL_CALL_OPEN: no uncovered lots for %s (contracts=%d) — creating synthetic lot (stock pre-dates CSV)",
+                symbol, contracts,
+            )
+            synthetic_lot_id = f"LOT_{symbol}_{_uid()}_SYNTHETIC"
+            synthetic_shares = shares_needed
+            synthetic_lot = ShareLot(
+                lot_id=synthetic_lot_id,
+                symbol=symbol,
+                open_date=date_str,
+                shares_open=synthetic_shares,
+                shares_remaining=synthetic_shares,
+                entry_price=0.0,
+                effective_entry=0.0,
+                entry_type="SYNTHETIC",
+                source_trade_ids=[],
+            )
+            cycle_id = self._new_cycle_id(symbol, "CC")
+            cycle = TradeCycle(
+                cycle_id=cycle_id,
+                symbol=symbol,
+                strategy="CC",
+                status="Open - Uncovered",
+                entry_mode="STOCK_ENTRY",
+                opened_date=date_str,
+                lots=[synthetic_lot_id],
+                total_shares_entered=synthetic_shares,
+                shares_current=synthetic_shares,
+                uncovered_shares=synthetic_shares,
+                total_stock_cost=0.0,
+                avg_cost=0.0,
+                effective_avg_cost=0.0,
+            )
+            synthetic_lot.linked_cycle_id = cycle_id
+            self.lots[synthetic_lot_id] = synthetic_lot
+            self.cycles[cycle_id] = cycle
+            allocated_lots = self._fifo_allocate(symbol, shares_needed, same_day=date_str)
+            if not allocated_lots:
+                return
 
         touched_cycle_ids = []
         shares_per_cycle: dict[str, int] = {}
