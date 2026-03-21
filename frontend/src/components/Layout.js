@@ -182,7 +182,7 @@ const Layout = ({ children }) => {
           {/* Navigation */}
           <nav className="flex-1 py-4 overflow-y-auto">
             {navItems.map((item) => {
-              const locked = !hasPageAccess(item.pageKey);
+              const locked = item.pageKey ? !hasPageAccess(item.pageKey) : false;
               if (locked) {
                 return (
                   <button
