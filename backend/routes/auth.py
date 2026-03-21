@@ -192,6 +192,33 @@ async def cancel_my_subscription(user: dict = Depends(get_current_user)):
     }
 
 
+class ChangePasswordRequest(BaseModel):
+    current_password: str
+    new_password: str
+
+@auth_router.post("/me/change-password")
+async def change_my_password(req: ChangePasswordRequest, user: dict = Depends(get_current_user)):
+    """Allow authenticated user to change their own password"""
+    from database import db as _db
+    if not verify_password(req.current_password, user.get("password_hash", "")):
+        raise HTTPException(status_code=400, detail="Current password is incorrect.")
+    if len(req.new_password) < 8:
+        raise HTTPException(status_code=400, detail="New password must be at least 8 characters.")
+    new_hash = hash_password(req.new_password)
+    now = datetime.now(timezone.utc)
+    await _db.users.update_one(
+        {"id": user["id"]},
+        {"$set": {"password_hash": new_hash, "updated_at": now.isoformat()}}
+    )
+    await _db.audit_logs.insert_one({
+        "action": "user_changed_password",
+        "user_id": user["id"],
+        "email": user.get("email"),
+        "timestamp": now.isoformat()
+    })
+    return {"success": True, "message": "Password updated successfully."}
+
+
 class ForgotPasswordRequest(BaseModel):
     email: EmailStr
 

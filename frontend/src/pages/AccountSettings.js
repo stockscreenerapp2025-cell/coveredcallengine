@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import api from '../lib/api';
 import { toast } from 'sonner';
-import { User, CreditCard, ShieldCheck, AlertTriangle, CheckCircle } from 'lucide-react';
+import { User, CreditCard, ShieldCheck, AlertTriangle, CheckCircle, Eye, EyeOff } from 'lucide-react';
 
 const PLAN_LABELS = {
   basic: 'Basic',
@@ -35,11 +35,42 @@ export default function AccountSettings() {
   const [cancelled, setCancelled] = useState(false);
   const [accessUntil, setAccessUntil] = useState(null);
 
+  // Change password state
+  const [pwForm, setPwForm] = useState({ current: '', next: '', confirm: '' });
+  const [showPw, setShowPw] = useState({ current: false, next: false, confirm: false });
+  const [pwLoading, setPwLoading] = useState(false);
+
   const status = sub.status || 'none';
   const planLabel = PLAN_LABELS[sub.plan_name] || PLAN_LABELS[sub.plan] || sub.plan_name || sub.plan || 'Free';
   const billingCycle = sub.billing_cycle === 'yearly' ? 'Yearly' : sub.billing_cycle === 'monthly' ? 'Monthly' : '—';
   const nextBilling = sub.current_period_end || sub.next_billing_date || sub.trial_end;
   const canCancel = ['active', 'trialing'].includes(status) && !cancelled;
+
+  const handleChangePassword = async (e) => {
+    e.preventDefault();
+    if (pwForm.next !== pwForm.confirm) {
+      toast.error('New passwords do not match.');
+      return;
+    }
+    if (pwForm.next.length < 8) {
+      toast.error('New password must be at least 8 characters.');
+      return;
+    }
+    setPwLoading(true);
+    try {
+      await api.post('/auth/me/change-password', {
+        current_password: pwForm.current,
+        new_password: pwForm.next,
+      });
+      toast.success('Password updated successfully.');
+      setPwForm({ current: '', next: '', confirm: '' });
+    } catch (err) {
+      const msg = err?.response?.data?.detail || 'Failed to update password.';
+      toast.error(msg);
+    } finally {
+      setPwLoading(false);
+    }
+  };
 
   const handleCancel = async () => {
     setCancelling(true);
@@ -179,12 +210,46 @@ export default function AccountSettings() {
         )}
       </div>
 
-      {/* Security */}
-      <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-5 space-y-3">
+      {/* Security — Change Password */}
+      <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-5 space-y-4">
         <h2 className="text-white font-semibold flex items-center gap-2">
           <ShieldCheck className="w-4 h-4 text-zinc-400" /> Security
         </h2>
-        <p className="text-zinc-400 text-sm">To change your password, please contact support at <span className="text-violet-400">support@coveredcallengine.com</span></p>
+        <form onSubmit={handleChangePassword} className="space-y-3">
+          {[
+            { key: 'current', label: 'Current Password' },
+            { key: 'next',    label: 'New Password' },
+            { key: 'confirm', label: 'Confirm New Password' },
+          ].map(({ key, label }) => (
+            <div key={key}>
+              <label className="block text-zinc-500 text-xs mb-1">{label}</label>
+              <div className="relative">
+                <input
+                  type={showPw[key] ? 'text' : 'password'}
+                  value={pwForm[key]}
+                  onChange={e => setPwForm(f => ({ ...f, [key]: e.target.value }))}
+                  className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-white text-sm pr-10 focus:outline-none focus:border-violet-500"
+                  placeholder="••••••••"
+                  required
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPw(s => ({ ...s, [key]: !s[key] }))}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-300"
+                >
+                  {showPw[key] ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
+            </div>
+          ))}
+          <button
+            type="submit"
+            disabled={pwLoading}
+            className="w-full bg-violet-600 hover:bg-violet-700 text-white rounded-lg py-2 text-sm font-medium transition-colors disabled:opacity-60"
+          >
+            {pwLoading ? 'Updating...' : 'Update Password'}
+          </button>
+        </form>
       </div>
     </div>
   );
