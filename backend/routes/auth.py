@@ -219,6 +219,48 @@ async def change_my_password(req: ChangePasswordRequest, user: dict = Depends(ge
     return {"success": True, "message": "Password updated successfully."}
 
 
+class UpdateNameRequest(BaseModel):
+    name: str
+
+@auth_router.post("/me/update-name")
+async def update_my_name(req: UpdateNameRequest, user: dict = Depends(get_current_user)):
+    """Allow authenticated user to update their display name"""
+    from database import db as _db
+    name = req.name.strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="Name cannot be empty.")
+    if len(name) > 100:
+        raise HTTPException(status_code=400, detail="Name is too long.")
+    now = datetime.now(timezone.utc)
+    await _db.users.update_one(
+        {"id": user["id"]},
+        {"$set": {"name": name, "updated_at": now.isoformat()}}
+    )
+    return {"success": True, "name": name}
+
+
+@auth_router.delete("/me/delete-account")
+async def delete_my_account(user: dict = Depends(get_current_user)):
+    """Allow authenticated user to permanently delete their account and all data"""
+    from database import db as _db
+    user_id = user["id"]
+    now = datetime.now(timezone.utc)
+    # Log before deleting
+    await _db.audit_logs.insert_one({
+        "action": "user_self_deleted",
+        "user_id": user_id,
+        "email": user.get("email"),
+        "timestamp": now.isoformat()
+    })
+    # Delete all user data
+    await _db.users.delete_one({"id": user_id})
+    await _db.ibkr_transactions.delete_many({"user_id": user_id})
+    await _db.ibkr_trades.delete_many({"user_id": user_id})
+    await _db.watchlist.delete_many({"user_id": user_id})
+    await _db.simulator_trades.delete_many({"user_id": user_id})
+    return {"success": True, "message": "Account deleted."}
+
+
 class ForgotPasswordRequest(BaseModel):
     email: EmailStr
 

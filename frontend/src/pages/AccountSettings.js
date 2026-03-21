@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import api from '../lib/api';
 import { toast } from 'sonner';
-import { User, CreditCard, ShieldCheck, AlertTriangle, CheckCircle, Eye, EyeOff } from 'lucide-react';
+import { User, CreditCard, ShieldCheck, AlertTriangle, CheckCircle, Eye, EyeOff, Trash2, Pencil } from 'lucide-react';
 
 const PLAN_LABELS = {
   basic: 'Basic',
@@ -35,16 +35,56 @@ export default function AccountSettings() {
   const [cancelled, setCancelled] = useState(false);
   const [accessUntil, setAccessUntil] = useState(null);
 
+  // Change name state
+  const [editingName, setEditingName] = useState(false);
+  const [nameVal, setNameVal] = useState('');
+  const [nameLoading, setNameLoading] = useState(false);
+
   // Change password state
   const [pwForm, setPwForm] = useState({ current: '', next: '', confirm: '' });
   const [showPw, setShowPw] = useState({ current: false, next: false, confirm: false });
   const [pwLoading, setPwLoading] = useState(false);
+
+  // Delete account state
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deleteInput, setDeleteInput] = useState('');
+  const [deleteLoading, setDeleteLoading] = useState(false);
 
   const status = sub.status || 'none';
   const planLabel = PLAN_LABELS[sub.plan_name] || PLAN_LABELS[sub.plan] || sub.plan_name || sub.plan || 'Free';
   const billingCycle = sub.billing_cycle === 'yearly' ? 'Yearly' : sub.billing_cycle === 'monthly' ? 'Monthly' : '—';
   const nextBilling = sub.current_period_end || sub.next_billing_date || sub.trial_end;
   const canCancel = ['active', 'trialing'].includes(status) && !cancelled;
+
+  const handleChangeName = async (e) => {
+    e.preventDefault();
+    if (!nameVal.trim()) return;
+    setNameLoading(true);
+    try {
+      await api.post('/auth/me/update-name', { name: nameVal.trim() });
+      toast.success('Name updated.');
+      setEditingName(false);
+      if (refreshUser) refreshUser();
+    } catch (err) {
+      toast.error(err?.response?.data?.detail || 'Failed to update name.');
+    } finally {
+      setNameLoading(false);
+    }
+  };
+
+  const handleDeleteAccount = async () => {
+    if (deleteInput !== 'DELETE') return;
+    setDeleteLoading(true);
+    try {
+      await api.delete('/auth/me/delete-account');
+      toast.success('Account deleted.');
+      localStorage.removeItem('token');
+      window.location.href = '/login';
+    } catch (err) {
+      toast.error(err?.response?.data?.detail || 'Failed to delete account.');
+      setDeleteLoading(false);
+    }
+  };
 
   const handleChangePassword = async (e) => {
     e.preventDefault();
@@ -108,7 +148,29 @@ export default function AccountSettings() {
         <div className="grid grid-cols-2 gap-4 text-sm">
           <div>
             <p className="text-zinc-500">Name</p>
-            <p className="text-white font-medium">{user?.name || '—'}</p>
+            {editingName ? (
+              <form onSubmit={handleChangeName} className="flex items-center gap-2 mt-1">
+                <input
+                  autoFocus
+                  value={nameVal}
+                  onChange={e => setNameVal(e.target.value)}
+                  className="bg-zinc-800 border border-zinc-700 rounded-lg px-2 py-1 text-white text-sm focus:outline-none focus:border-violet-500 w-36"
+                />
+                <button type="submit" disabled={nameLoading} className="text-violet-400 hover:text-violet-300 text-xs font-medium">
+                  {nameLoading ? 'Saving...' : 'Save'}
+                </button>
+                <button type="button" onClick={() => setEditingName(false)} className="text-zinc-500 hover:text-zinc-300 text-xs">
+                  Cancel
+                </button>
+              </form>
+            ) : (
+              <div className="flex items-center gap-2 mt-0.5">
+                <p className="text-white font-medium">{user?.name || '—'}</p>
+                <button onClick={() => { setNameVal(user?.name || ''); setEditingName(true); }} className="text-zinc-500 hover:text-violet-400 transition-colors">
+                  <Pencil className="w-3 h-3" />
+                </button>
+              </div>
+            )}
           </div>
           <div>
             <p className="text-zinc-500">Email</p>
@@ -204,6 +266,47 @@ export default function AccountSettings() {
                 className="flex-1 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-sm font-semibold py-2 rounded-lg transition-colors"
               >
                 Keep Subscription
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Danger Zone — Delete Account */}
+      <div className="bg-zinc-900 border border-red-900/40 rounded-xl p-5 space-y-3">
+        <h2 className="text-red-400 font-semibold flex items-center gap-2">
+          <Trash2 className="w-4 h-4" /> Danger Zone
+        </h2>
+        <p className="text-zinc-400 text-sm">Permanently delete your account and all associated data. This cannot be undone.</p>
+        {!showDeleteConfirm ? (
+          <button
+            onClick={() => setShowDeleteConfirm(true)}
+            className="text-sm text-red-400 hover:text-red-300 border border-red-500/30 hover:border-red-500/60 rounded-lg px-4 py-2 transition-colors"
+          >
+            Delete Account
+          </button>
+        ) : (
+          <div className="space-y-3">
+            <p className="text-zinc-400 text-xs">Type <span className="text-white font-mono font-bold">DELETE</span> to confirm:</p>
+            <input
+              value={deleteInput}
+              onChange={e => setDeleteInput(e.target.value)}
+              className="w-full bg-zinc-800 border border-red-500/40 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-red-500"
+              placeholder="DELETE"
+            />
+            <div className="flex gap-3">
+              <button
+                onClick={handleDeleteAccount}
+                disabled={deleteInput !== 'DELETE' || deleteLoading}
+                className="flex-1 bg-red-600 hover:bg-red-700 text-white text-sm font-semibold py-2 rounded-lg transition-colors disabled:opacity-40"
+              >
+                {deleteLoading ? 'Deleting...' : 'Permanently Delete Account'}
+              </button>
+              <button
+                onClick={() => { setShowDeleteConfirm(false); setDeleteInput(''); }}
+                className="flex-1 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-sm font-semibold py-2 rounded-lg transition-colors"
+              >
+                Cancel
               </button>
             </div>
           </div>
