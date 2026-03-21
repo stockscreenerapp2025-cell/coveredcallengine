@@ -629,7 +629,7 @@ const sections = [
       },
       {
         q: 'Is the data real-time?',
-        a: 'Data is near real-time or slightly delayed depending on your plan and exchange availability.',
+        a: 'Core data (prices, P&L, screener results) is based on the previous market close. Integrated charts are near real-time based on US Stock exchange availability.',
       },
       {
         q: 'How accurate is the AI Score?',
