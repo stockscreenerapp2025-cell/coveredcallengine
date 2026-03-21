@@ -1453,12 +1453,19 @@ const Portfolio = () => {
                         </TableCell>
                         <TableCell>
                           <Badge className={STRATEGY_COLORS[trade.strategy_type] || STRATEGY_COLORS.OTHER}>
-                            {trade.strategy_type === 'NAKED_PUT' ? 'Cash Secured Put'
+                            {trade.strategy_label
+                              ? trade.strategy_label
+                              : trade.strategy_type === 'NAKED_PUT' ? 'Cash Secured Put'
                               : trade.strategy_type === 'COVERED_CALL' ? 'Covered Call'
                               : trade.strategy_type === 'CC' ? 'Covered Call'
                               : trade.strategy_type === 'WHEEL' ? 'Wheel'
                               : trade.strategy_type === 'CSP' ? 'Cash Secured Put'
-                              : (trade.strategy_label || trade.strategy_type)}
+                              : trade.strategy_type === 'PMCC' ? 'PMCC'
+                              : trade.strategy_type === 'COLLAR' ? 'Collar'
+                              : trade.strategy_type === 'STOCK' ? 'Stock'
+                              : trade.strategy_type === 'ETF' ? 'ETF'
+                              : trade.strategy_type === 'OPTION' ? 'Option'
+                              : trade.strategy_type}
                           </Badge>
                         </TableCell>
                         <TableCell>
