@@ -24,6 +24,12 @@ STRATEGY_TYPES = {
     'NAKED_PUT': 'Cash Secured Put',
     'COLLAR': 'Collar',
     'OPTION': 'Option',
+    'NAKED_CALL': 'Naked Call',
+    'LONG_CALL': 'Long Call',
+    'LONG_PUT': 'Long Put',
+    'PUT_SPREAD': 'Put Spread',
+    'CALL_SPREAD': 'Call Spread',
+    'WHEEL': 'Wheel',
     'DIVIDEND': 'Dividend',
     'OTHER': 'Other'
 }
@@ -1530,7 +1536,17 @@ class IBKRParser:
                 return 'PMCC'
             elif put_sells and not put_buys:
                 return 'NAKED_PUT'
-            elif call_sells or put_sells or call_buys or put_buys:
+            elif call_sells and not call_buys:
+                return 'NAKED_CALL'
+            elif put_buys and not put_sells:
+                return 'LONG_PUT'
+            elif call_buys and not call_sells:
+                return 'LONG_CALL'
+            elif put_sells and put_buys:
+                return 'PUT_SPREAD'
+            elif call_sells and call_buys:
+                return 'CALL_SPREAD'
+            else:
                 return 'OPTION'
         
         return 'STOCK'  # Default to STOCK instead of OTHER

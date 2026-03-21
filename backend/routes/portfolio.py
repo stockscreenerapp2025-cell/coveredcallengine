@@ -1109,8 +1109,31 @@ async def close_trade(trade_id: str, close_price: float = Query(...), user: dict
 
 
 # ==================== HELPER FUNCTIONS ====================
+_STRATEGY_LABEL_MAP = {
+    'COVERED_CALL': 'Covered Call',
+    'CC': 'Covered Call',
+    'PMCC': 'PMCC',
+    'NAKED_PUT': 'Cash Secured Put',
+    'CSP': 'Cash Secured Put',
+    'COLLAR': 'Collar',
+    'WHEEL': 'Wheel',
+    'NAKED_CALL': 'Naked Call',
+    'LONG_CALL': 'Long Call',
+    'LONG_PUT': 'Long Put',
+    'PUT_SPREAD': 'Put Spread',
+    'CALL_SPREAD': 'Call Spread',
+    'ETF': 'ETF',
+    'INDEX': 'Index',
+    'STOCK': 'Stock',
+    'OPTION': 'Option',
+}
+
 def _normalize_trade_fields(trade: dict):
     """Normalize field names for frontend compatibility"""
+    # Ensure strategy_label is always human-readable
+    if not trade.get('strategy_label') or trade.get('strategy_label') == trade.get('strategy_type'):
+        st = trade.get('strategy_type', '')
+        trade['strategy_label'] = _STRATEGY_LABEL_MAP.get(st, st)
     if trade.get('strike') and not trade.get('option_strike'):
         trade['option_strike'] = trade.get('strike')
     if trade.get('expiry') and not trade.get('option_expiry'):

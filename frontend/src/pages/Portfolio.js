@@ -1453,19 +1453,24 @@ const Portfolio = () => {
                         </TableCell>
                         <TableCell>
                           <Badge className={STRATEGY_COLORS[trade.strategy_type] || STRATEGY_COLORS.OTHER}>
-                            {trade.strategy_label
-                              ? trade.strategy_label
-                              : trade.strategy_type === 'NAKED_PUT' ? 'Cash Secured Put'
-                              : trade.strategy_type === 'COVERED_CALL' ? 'Covered Call'
-                              : trade.strategy_type === 'CC' ? 'Covered Call'
-                              : trade.strategy_type === 'WHEEL' ? 'Wheel'
-                              : trade.strategy_type === 'CSP' ? 'Cash Secured Put'
-                              : trade.strategy_type === 'PMCC' ? 'PMCC'
-                              : trade.strategy_type === 'COLLAR' ? 'Collar'
-                              : trade.strategy_type === 'STOCK' ? 'Stock'
-                              : trade.strategy_type === 'ETF' ? 'ETF'
-                              : trade.strategy_type === 'OPTION' ? 'Option'
-                              : trade.strategy_type}
+                            {trade.strategy_label || {
+                              COVERED_CALL: 'Covered Call',
+                              CC: 'Covered Call',
+                              PMCC: 'PMCC',
+                              NAKED_PUT: 'Cash Secured Put',
+                              CSP: 'Cash Secured Put',
+                              WHEEL: 'Wheel',
+                              COLLAR: 'Collar',
+                              NAKED_CALL: 'Naked Call',
+                              LONG_CALL: 'Long Call',
+                              LONG_PUT: 'Long Put',
+                              PUT_SPREAD: 'Put Spread',
+                              CALL_SPREAD: 'Call Spread',
+                              ETF: 'ETF',
+                              INDEX: 'Index',
+                              STOCK: 'Stock',
+                              OPTION: 'Option',
+                            }[trade.strategy_type] || trade.strategy_type}
                           </Badge>
                         </TableCell>
                         <TableCell>
