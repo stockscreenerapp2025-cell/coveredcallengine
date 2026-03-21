@@ -181,8 +181,8 @@ CC_MANUAL_MAX_PRICE = 500.0     # Upper bound for manual
 
 # DTE Ranges per CCE Master Architecture
 WEEKLY_MIN_DTE = 5
-WEEKLY_MAX_DTE = 10
-MONTHLY_MIN_DTE = 14
+WEEKLY_MAX_DTE = 14
+MONTHLY_MIN_DTE = 15
 MONTHLY_MAX_DTE = 45
 
 # Earnings exclusion window (days before and after)
