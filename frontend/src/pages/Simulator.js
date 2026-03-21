@@ -2063,14 +2063,42 @@ const Simulator = () => {
 
     // Smart action label system
     const getActionLabel = (row) => {
-      const delta = row.delta ?? 0;
-      const dte = row.dte ?? 99;
-      const capture = row.capture_pct ?? 0;
-      if (delta >= 0.50)              return { label: '🔴 Roll or manage risk',    cls: 'bg-red-500/20 text-red-400 border-red-500/30' };
-      if (capture >= 90)              return { label: '⚪ Close (cycle complete)',  cls: 'bg-zinc-700/50 text-zinc-300 border-zinc-600/30' };
-      if (dte <= 7 && capture >= 70)  return { label: '🟢 Close near target',      cls: 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' };
-      if (capture < 50 && dte <= 14)  return { label: '🟡 Roll candidate',         cls: 'bg-amber-500/20 text-amber-400 border-amber-500/30' };
-      return                                 { label: '⚪ Monitor',                cls: 'bg-zinc-700/50 text-zinc-400 border-zinc-600/30' };
+      const delta    = row.delta ?? 0;
+      const dte      = row.dte ?? 99;
+      const capture  = row.capture_pct ?? 0;
+      const strategy = (row.strategy || '').toLowerCase();
+      const isPMCC   = strategy.includes('pmcc');
+
+      // Rule 1 — High delta (urgent risk), but only flag as urgent if DTE < 21
+      // If DTE >= 21 there is still time — softer message
+      if (delta >= 0.50 && dte < 21)
+        return { label: '🔴 High risk — manage or roll',          cls: 'bg-red-500/20 text-red-400 border-red-500/30' };
+      if (delta >= 0.50 && dte >= 21)
+        return { label: '🟡 Manage — monitor for roll opportunity', cls: 'bg-amber-500/20 text-amber-400 border-amber-500/30' };
+
+      // Rule 2 — Cycle complete (100% capture)
+      if (capture >= 100)
+        return { label: '⚪ Close (cycle complete)',               cls: 'bg-zinc-700/50 text-zinc-300 border-zinc-600/30' };
+
+      // Rule 3 — High profit lock (70%+ capture)
+      if (isPMCC && capture >= 70)
+        return { label: '🟢 Monitor — high profit, consider closing or rolling', cls: 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' };
+      if (capture >= 70)
+        return { label: '🟢 High profit — consider closing',       cls: 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' };
+
+      // Rule 4 — Near expiry with low capture
+      if (dte <= 10 && capture < 30)
+        return { label: '🟡 Near expiry — roll or let expire',     cls: 'bg-amber-500/20 text-amber-400 border-amber-500/30' };
+
+      // Rule 5 — Dead trade (long DTE, zero capture)
+      if (dte > 30 && capture === 0)
+        return { label: '⚪ Low progress — monitor or adjust',     cls: 'bg-zinc-700/50 text-zinc-400 border-zinc-600/30' };
+
+      // Rule 6 — Mid capture, approaching target
+      if (capture >= 50 && capture < 70)
+        return { label: '🟢 Monitor / consider early close',       cls: 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' };
+
+      return { label: '⚪ Monitor',                                cls: 'bg-zinc-700/50 text-zinc-400 border-zinc-600/30' };
     };
 
     // Derived values
