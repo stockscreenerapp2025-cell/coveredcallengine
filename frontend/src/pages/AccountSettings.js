@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import { api } from '../lib/api';
+import api from '../lib/api';
 import { toast } from 'sonner';
 import { User, CreditCard, ShieldCheck, AlertTriangle, CheckCircle } from 'lucide-react';
 
