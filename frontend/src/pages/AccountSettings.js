@@ -275,7 +275,7 @@ export default function AccountSettings() {
       {/* Danger Zone — Delete Account */}
       <div className="bg-zinc-900 border border-red-900/40 rounded-xl p-5 space-y-3">
         <h2 className="text-red-400 font-semibold flex items-center gap-2">
-          <Trash2 className="w-4 h-4" /> Danger Zone
+          <Trash2 className="w-4 h-4" /> Delete Account
         </h2>
         <p className="text-zinc-400 text-sm">Permanently delete your account and all associated data. This cannot be undone.</p>
         {!showDeleteConfirm ? (
