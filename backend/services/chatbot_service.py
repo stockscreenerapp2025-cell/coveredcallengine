@@ -171,14 +171,60 @@ class ChatbotService:
 
 
 # Predefined quick responses for common questions
+# ✏️ TO UPDATE: Edit the text values below and redeploy.
 QUICK_RESPONSES = {
-    "pricing": "Our pricing is simple:\n• **FREE Trial**: 7 days full access — no credit card needed\n• **Basic**: $29/month — Covered Call tools + 2,000 AI tokens\n• **Standard**: $59/month — Everything in Basic + PMCC Scanner, Watchlist AI + 6,000 AI tokens\n• **Premium**: $89/month — Full suite including Simulator, AI Trade Management + 15,000 AI tokens\n\nStart with the FREE trial today! 🚀",
-    
-    "features": "Covered Call Engine offers:\n• 📊 Real-time covered call scanner\n• 🎯 PMCC opportunity finder\n• 📈 Portfolio tracker with IBKR integration\n• 🤖 AI-powered trade suggestions\n• 📰 Market news & sentiment\n\nWant to try it? Start your FREE 7-day trial!",
-    
-    "covered_call": "A **covered call** is when you:\n1. Own 100+ shares of a stock\n2. Sell a call option against those shares\n3. Collect premium income!\n\nIt's a great way to generate income on stocks you already own. Our scanner finds the best opportunities! 💰",
-    
-    "pmcc": "**PMCC (Poor Man's Covered Call)** is a capital-efficient strategy:\n1. Buy a deep ITM LEAPS call (instead of stock)\n2. Sell short-term OTM calls against it\n3. Requires 60-80% less capital!\n\nOur PMCC screener finds the best setups. Try it FREE! 🎯",
-    
-    "trial": "Our **FREE 7-day trial** gives you:\n• Full platform access\n• All screener features\n• Portfolio tracking\n• AI suggestions\n• No credit card required!\n\n👉 Click 'Start Free Trial' to begin your options income journey!",
+    "pricing": (
+        "Our platform is designed for serious income-focused traders who want consistent results.\n\n"
+        "✅ Access advanced Covered Call & PMCC scanners\n"
+        "✅ AI-powered trade scoring & filtering\n"
+        "✅ Portfolio tracking, simulator & strategy tools\n"
+        "👉 Subscription: $29/month, $59/month or $89/month (USD)\n\n"
+        "💡 No hidden fees. No complicated tiers. Just one plan to help you generate income from options."
+    ),
+
+    "features": (
+        "Covered Call Engine is built to help you generate consistent income from options with clarity and confidence.\n\n"
+        "Key Features:\n"
+        "🔍 Smart Screener – Find high-quality Covered Call & PMCC opportunities\n"
+        "🤖 AI Scoring System – Instantly evaluate trades (risk vs reward)\n"
+        "📊 Portfolio & Analyzer – Track performance and income\n"
+        "🧪 Simulator – Test strategies before using real capital\n"
+        "📈 Income-Focused Design – Built specifically for recurring premium strategies\n\n"
+        "💡 Everything is designed to keep things simple, actionable, and income-driven."
+    ),
+
+    "covered_call": (
+        "A Covered Call is an income strategy where you:\n\n"
+        "• Own 100 shares of a stock\n"
+        "• Sell a call option against those shares\n"
+        "• Collect premium (cash) upfront\n\n"
+        "What happens next:\n"
+        "✅ Stock stays below strike → you keep premium (income)\n"
+        "📈 Stock rises above strike → shares get sold at profit + premium\n\n"
+        "💡 This is one of the most popular ways to generate regular cash flow from stocks you already own."
+    ),
+
+    "pmcc": (
+        "A PMCC (Poor Man's Covered Call) is a capital-efficient version of a covered call.\n\n"
+        "Instead of buying shares:\n"
+        "• You buy a long-term deep ITM call (LEAPS)\n"
+        "• Then sell short-term calls to generate income\n\n"
+        "Why traders use PMCC:\n"
+        "💰 Much lower capital required\n"
+        "🔁 Generate recurring premium income\n"
+        "📉 Risk limited to option cost\n"
+        "👉 It mimics a covered call but uses options instead of shares\n\n"
+        "💡 Ideal for traders who want income without tying up large capital."
+    ),
+
+    "trial": (
+        "You can get started with a FREE 7-day trial 🚀 for any Subscription Plan you choose\n\n"
+        "What you get:\n"
+        "• Full access to all features as per subscription plan selected\n"
+        "• Explore real trade opportunities\n"
+        "• Test strategies with simulator\n"
+        "• Understand how you can use AI for trade management\n\n"
+        "💡 No commitment — try it and see how it fits your trading style.\n\n"
+        "👉 Start here: Start FREE Trial"
+    ),
 }
