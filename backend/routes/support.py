@@ -583,6 +583,39 @@ async def delete_kb_article(
     return {"success": True, "message": "Article deleted"}
 
 
+# ==================== BULK CLEANUP ====================
+
+@support_router.delete("/admin/tickets/bulk-delete-bounce-spam")
+async def delete_bounce_spam_tickets(
+    user: dict = Depends(get_support_user),
+):
+    """Delete all bounce/mailer-daemon spam tickets"""
+    BOUNCE_SUBJECTS = [
+        "Undelivered Mail Returned",
+        "Delivery Status Notification",
+        "Mail Delivery Failed",
+        "Delivery Failure",
+        "Returned Mail",
+        "Undeliverable",
+    ]
+    BOUNCE_SENDERS = ["mailer-daemon", "postmaster", "mailchannels"]
+
+    subject_filter = {"subject": {"$regex": "|".join(BOUNCE_SUBJECTS), "$options": "i"}}
+    sender_filter = {"user_email": {"$regex": "|".join(BOUNCE_SENDERS), "$options": "i"}}
+
+    result = await db.support_tickets.delete_many({"$or": [subject_filter, sender_filter]})
+    deleted = result.deleted_count
+
+    await db.audit_logs.insert_one({
+        "action": "bulk_delete_bounce_spam",
+        "admin_id": user.get("id"),
+        "deleted_count": deleted,
+        "timestamp": datetime.now(timezone.utc).isoformat()
+    })
+
+    return {"success": True, "deleted": deleted, "message": f"Deleted {deleted} bounce/spam tickets"}
+
+
 # ==================== CATEGORY/STATUS LISTS ====================
 
 @support_router.get("/meta/categories")

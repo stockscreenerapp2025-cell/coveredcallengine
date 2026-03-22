@@ -357,6 +357,28 @@ class IMAPService:
                     result["details"].append(f"Skipped outbound email: {subject[:50]}")
                     processed_email_ids.append(email_data['email_id'])
                     continue
+
+                # Skip bounce/mailer-daemon emails
+                BOUNCE_SENDERS = ('mailer-daemon', 'postmaster', 'noreply', 'no-reply', 'mailchannels')
+                BOUNCE_SUBJECTS = (
+                    'undelivered mail returned',
+                    'delivery status notification',
+                    'mail delivery failed',
+                    'delivery failure',
+                    'returned mail',
+                    'undeliverable',
+                    'auto-reply',
+                    'automatic reply',
+                    'out of office',
+                )
+                is_bounce = (
+                    any(b in sender_email.lower() for b in BOUNCE_SENDERS) or
+                    any(b in subject.lower() for b in BOUNCE_SUBJECTS)
+                )
+                if is_bounce:
+                    result["details"].append(f"Skipped bounce/auto email: {subject[:50]}")
+                    processed_email_ids.append(email_data['email_id'])
+                    continue
                 
                 if ticket_number:
                     # Try to find existing ticket
