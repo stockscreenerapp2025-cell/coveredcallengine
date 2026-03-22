@@ -92,8 +92,7 @@ class AIExecutionService:
         self.guard = AIGuard(db)
         self.gemini_key = os.environ.get('GEMINI_API_KEY', '')
         self.groq_key = os.environ.get('GROQ_API_KEY', '')
-        # Legacy — kept for compatibility only, not used for AI calls
-        self.api_key = ''
+        self.openai_key = os.environ.get('OPENAI_API_KEY', '')
     
     async def execute(
         self,
@@ -168,7 +167,6 @@ class AIExecutionService:
                         # Fall through to next model for any error (404, 400, 403, etc.)
 
             if response_text is None and self.groq_key:
-                # Optional Groq fallback if GROQ_API_KEY is set
                 try:
                     response_text = await _call_groq(
                         prompt=prompt, system_message=system_message,
@@ -177,8 +175,31 @@ class AIExecutionService:
                     )
                     logger.info(f"[AI] Used Groq fallback for action={action}")
                 except RuntimeError as groq_err:
-                    if "429" not in str(groq_err):
-                        raise
+                    logger.warning(f"[AI] Groq failed: {str(groq_err)[:200]}")
+
+            if response_text is None and self.openai_key:
+                try:
+                    import httpx as _httpx
+                    headers = {"Authorization": f"Bearer {self.openai_key}", "Content-Type": "application/json"}
+                    payload = {
+                        "model": "gpt-4o-mini",
+                        "messages": [
+                            {"role": "system", "content": system_message},
+                            {"role": "user", "content": prompt}
+                        ],
+                        "max_tokens": max_tokens,
+                        "temperature": temperature
+                    }
+                    async with _httpx.AsyncClient(timeout=30.0) as client:
+                        resp = await client.post("https://api.openai.com/v1/chat/completions",
+                                                 json=payload, headers=headers)
+                        if resp.status_code == 200:
+                            response_text = resp.json()["choices"][0]["message"]["content"]
+                            logger.info(f"[AI] Used OpenAI fallback for action={action}")
+                        else:
+                            logger.warning(f"[AI] OpenAI failed: {resp.status_code}: {resp.text[:200]}")
+                except Exception as openai_err:
+                    logger.warning(f"[AI] OpenAI exception: {str(openai_err)[:200]}")
 
             if response_text is None:
                 # All providers at quota — reverse tokens so user is not charged
