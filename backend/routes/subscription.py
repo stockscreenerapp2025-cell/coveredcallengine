@@ -27,8 +27,8 @@ subscription_router = APIRouter(tags=["Subscription"])
 SUBSCRIPTION_PLANS: Dict[str, Dict[str, Any]] = {
     "basic": {
         "name": "Basic",
-        "monthly_price": 39,
-        "yearly_price": 390,
+        "monthly_price": 29,
+        "yearly_price": 290,
         "yearly_savings": "Save 2 months",
         "features": [
             "Access to Covered Call Dashboard",
@@ -45,8 +45,8 @@ SUBSCRIPTION_PLANS: Dict[str, Dict[str, Any]] = {
     },
     "standard": {
         "name": "Standard",
-        "monthly_price": 69,
-        "yearly_price": 690,
+        "monthly_price": 59,
+        "yearly_price": 590,
         "yearly_savings": "Save 2 months",
         "features": [
             "Everything in Basic",
@@ -58,8 +58,8 @@ SUBSCRIPTION_PLANS: Dict[str, Dict[str, Any]] = {
     },
     "premium": {
         "name": "Premium",
-        "monthly_price": 99,
-        "yearly_price": 990,
+        "monthly_price": 89,
+        "yearly_price": 890,
         "yearly_savings": "Save 2 months",
         "features": [
             "Everything in Standard",

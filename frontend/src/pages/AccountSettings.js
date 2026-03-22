@@ -371,7 +371,7 @@ export default function AccountSettings() {
                 <strong className="text-white">No credit or adjustment</strong> will be applied for the remaining period of your current plan.
               </p>
               <p className="text-zinc-500 text-xs italic">
-                Example: On Standard Monthly ($59/mo) and upgrading after 10 days — your current plan is cancelled immediately with no refund for the remaining 20 days. You will be charged the full amount for the new plan starting today.
+                Example: On Standard Monthly ($59/mo) and upgrading to Premium after 10 days — your current plan is cancelled immediately with no refund for the remaining 20 days. You will be charged the full $89/mo for the new plan starting today.
               </p>
             </div>
 
