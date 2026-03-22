@@ -798,7 +798,7 @@ function FAQCard({ article }) {
 
 /* ── Main component ───────────────────────────────────────────────────────── */
 export default function Help() {
-  const [activeSection, setActiveSection] = useState('income-strategies');
+  const [activeSection, setActiveSection] = useState('options-basics');
   const current = sections.find(s => s.id === activeSection);
 
   return (
