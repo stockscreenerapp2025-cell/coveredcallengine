@@ -158,7 +158,7 @@ export default function AccountSettings() {
         plan_id: selectedPlan,
         billing_cycle: selectedCycle,
         start_with_trial: false,
-        return_url: `${window.location.origin}/account?upgrade=success`,
+        return_url: `${window.location.origin}/api/paypal/checkout-return`,
         cancel_url: `${window.location.origin}/account?upgrade=cancelled`,
       });
       // Step 3: Redirect to PayPal
