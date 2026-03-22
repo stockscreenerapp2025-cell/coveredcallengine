@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import api from '../lib/api';
 import { toast } from 'sonner';
@@ -31,6 +32,7 @@ function formatDate(iso) {
 
 export default function AccountSettings() {
   const { user, refreshUser } = useAuth();
+  const [searchParams] = useSearchParams();
   const sub = user?.subscription || {};
 
   // Subscription cancel state
@@ -63,6 +65,18 @@ export default function AccountSettings() {
   const nextBilling = sub.current_period_end || sub.next_billing_date || sub.trial_end;
   const canCancel = ['active', 'trialing'].includes(status) && !cancelled;
   const canUpgrade = ['active', 'trialing', 'none', 'cancelled', 'expired'].includes(status);
+
+  useEffect(() => {
+    const upgradeStatus = searchParams.get('upgrade');
+    if (upgradeStatus === 'success') {
+      window.history.replaceState({}, '', '/account');
+      toast.success('Subscription upgraded successfully!');
+      refreshUser();
+    } else if (upgradeStatus === 'cancelled') {
+      window.history.replaceState({}, '', '/account');
+      toast.info('Upgrade cancelled.');
+    }
+  }, []);
 
   useEffect(() => {
     if (showUpgrade && Object.keys(plans).length === 0) {
@@ -145,6 +159,8 @@ export default function AccountSettings() {
         plan_id: selectedPlan,
         billing_cycle: selectedCycle,
         start_with_trial: false,
+        return_url: `${window.location.origin}/account?upgrade=success`,
+        cancel_url: `${window.location.origin}/account?upgrade=cancelled`,
       });
       // Step 3: Redirect to PayPal
       if (res.data.redirect_url) {
