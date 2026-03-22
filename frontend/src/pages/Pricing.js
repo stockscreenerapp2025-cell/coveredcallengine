@@ -183,29 +183,31 @@ const Pricing = () => {
           <span className="text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 to-cyan-400"> Trading Plan</span>
         </h1>
         <p className="text-zinc-400 text-lg">
-          All plans include a 7-day FREE trial. Cancel anytime.
+          All plans Monthly or Yearly include a 7-day FREE Trial. Cancel or Upgrade anytime.
         </p>
       </div>
 
       {/* Monthly/Yearly Toggle */}
-      <div className="flex items-center justify-center gap-4">
-        <span className={`text-sm font-medium ${!isYearly ? 'text-white' : 'text-zinc-500'}`}>
-          Monthly
-        </span>
-        <Switch
-          checked={isYearly}
-          onCheckedChange={setIsYearly}
-          className="data-[state=checked]:bg-emerald-600"
-          data-testid="billing-toggle"
-        />
-        <span className={`text-sm font-medium ${isYearly ? 'text-white' : 'text-zinc-500'}`}>
-          Yearly
-        </span>
-        {isYearly && (
-          <Badge className="bg-emerald-500/20 text-emerald-400 border-emerald-500/30 ml-2">
-            Save 2 months
-          </Badge>
-        )}
+      <div className="flex items-center justify-center">
+        <div className="flex items-center gap-4 border border-zinc-600 rounded-xl px-5 py-2.5 bg-zinc-900/60">
+          <span className={`text-sm font-medium ${!isYearly ? 'text-white' : 'text-zinc-500'}`}>
+            Monthly
+          </span>
+          <Switch
+            checked={isYearly}
+            onCheckedChange={setIsYearly}
+            className="data-[state=checked]:bg-emerald-600"
+            data-testid="billing-toggle"
+          />
+          <span className={`text-sm font-medium ${isYearly ? 'text-white' : 'text-zinc-500'}`}>
+            Yearly
+          </span>
+          {isYearly && (
+            <Badge className="bg-emerald-500/20 text-emerald-400 border-emerald-500/30">
+              Save 2 months
+            </Badge>
+          )}
+        </div>
       </div>
 
       {/* Pricing Cards */}
@@ -242,12 +244,10 @@ const Pricing = () => {
                 {/* Price */}
                 <div className="text-center py-4">
                   <div className="flex items-baseline justify-center">
+                    <span className="text-lg text-zinc-400 mr-1">USD</span>
                     <span className="text-lg text-zinc-500">$</span>
                     <span className="text-5xl font-bold text-white">{price}</span>
                     <span className="text-zinc-500 ml-1">{period}</span>
-                  </div>
-                  <div className="text-sm text-zinc-500 mt-1">
-                    (USD)
                   </div>
                   <div className="mt-3 flex justify-center">
                     <span className={`inline-flex items-center gap-1 text-xs font-medium px-3 py-1 rounded-full border ${colors.badge}`}>
