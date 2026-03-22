@@ -266,7 +266,7 @@ const Layout = ({ children }) => {
               </div>
               <div>
                 <h3 className="text-white font-bold text-lg">{upgradeModal.page} Locked</h3>
-                <p className="text-zinc-400 text-sm">Requires {upgradeModal.requiredPlan?.charAt(0).toUpperCase() + upgradeModal.requiredPlan?.slice(1)} plan or higher</p>
+                <p className="text-zinc-400 text-sm">Requires {upgradeModal.requiredPlan ? upgradeModal.requiredPlan.charAt(0).toUpperCase() + upgradeModal.requiredPlan.slice(1) : 'a higher'} plan or higher</p>
               </div>
             </div>
             <p className="text-zinc-400 text-sm mb-5">

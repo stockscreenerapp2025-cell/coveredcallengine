@@ -77,9 +77,9 @@ export const AuthProvider = ({ children }) => {
   const userPlan = user?.subscription?.plan_id?.toLowerCase() || null;
 
   const PLAN_ACCESS = {
-    basic:    ['dashboard', 'screener', 'portfolio', 'watchlist', 'ai-wallet'],
-    standard: ['dashboard', 'screener', 'pmcc', 'portfolio', 'watchlist', 'ai-wallet'],
-    premium:  ['dashboard', 'screener', 'pmcc', 'portfolio', 'simulator', 'watchlist', 'ai-wallet'],
+    basic:    ['dashboard', 'screener', 'portfolio', 'watchlist', 'ai-wallet', 'help'],
+    standard: ['dashboard', 'screener', 'pmcc', 'portfolio', 'watchlist', 'ai-wallet', 'help'],
+    premium:  ['dashboard', 'screener', 'pmcc', 'portfolio', 'simulator', 'watchlist', 'ai-wallet', 'help'],
   };
 
   const hasPageAccess = (page) => {
