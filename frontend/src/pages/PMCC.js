@@ -1148,8 +1148,8 @@ const PMCC = () => {
                         <th>Short Call</th>
                         <SortHeader field="net_debit" label="Net Debit" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
                         <SortHeader field="capital_efficiency_ratio" label="Cap Eff" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
-                        <th>Synth %</th>
-                        <SortHeader field="roi_per_cycle" label="Income/Cycle" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
+                        <th>Synth Prem %</th>
+                        <SortHeader field="roi_per_cycle" label="Income Cycle" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
                         <SortHeader field="max_return_pct" label="Max Return" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
                         <SortHeader field="payback_months" label="Payback" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
                         <SortHeader field="score" label="Score" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
