@@ -46,10 +46,23 @@ const AIWallet = () => {
     
     // Check for purchase result from URL params
     const purchaseStatus = searchParams.get('purchase');
-    if (purchaseStatus === 'success') {
-      toast.success('Purchase successful! Tokens will be credited shortly.');
-      // Clear the URL params
+    const purchaseId = searchParams.get('id');
+    if (purchaseStatus === 'success' && purchaseId) {
       window.history.replaceState({}, '', '/ai-wallet');
+      // Capture the payment and credit tokens immediately
+      try {
+        await api.post(`/ai-wallet/purchase/${purchaseId}/capture`);
+        toast.success('Payment confirmed! Tokens credited to your wallet.');
+        fetchWallet();
+      } catch (err) {
+        const msg = err?.response?.data?.detail || '';
+        if (msg.includes('already_processed') || err?.response?.status === 200) {
+          toast.success('Tokens already credited to your wallet.');
+        } else {
+          toast.error('Payment received but token crediting failed. Please contact support.');
+        }
+        fetchWallet();
+      }
     } else if (purchaseStatus === 'cancelled') {
       toast.info('Purchase cancelled');
       window.history.replaceState({}, '', '/ai-wallet');

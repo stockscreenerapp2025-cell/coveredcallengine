@@ -239,6 +239,57 @@ async def get_purchase_status(
     return purchase
 
 
+@ai_wallet_router.post("/purchase/{purchase_id}/capture")
+async def capture_purchase(
+    purchase_id: str,
+    user: dict = Depends(get_current_user)
+):
+    """
+    Capture a PayPal order and credit tokens immediately.
+    Called by frontend when user returns from PayPal after payment.
+    """
+    purchase = await db.ai_purchases.find_one({"purchase_id": purchase_id, "user_id": user["id"]})
+    if not purchase:
+        raise HTTPException(status_code=404, detail="Purchase not found")
+
+    # Already completed — idempotent
+    if purchase.get("status") == "completed":
+        return {"success": True, "tokens_credited": purchase.get("expected_tokens", 0), "already_processed": True}
+
+    paypal_order_id = purchase.get("paypal_order_id")
+    if not paypal_order_id:
+        raise HTTPException(status_code=400, detail="No PayPal order ID found")
+
+    paypal_service = PayPalTokenService(db)
+    try:
+        capture_result = await paypal_service.capture_order(paypal_order_id)
+    except Exception as e:
+        logger.error(f"PayPal capture failed for purchase {purchase_id}: {e}")
+        raise HTTPException(status_code=400, detail=f"Payment capture failed: {str(e)}")
+
+    status = capture_result.get("status")
+    if status != "COMPLETED":
+        raise HTTPException(status_code=400, detail=f"Payment not completed. Status: {status}")
+
+    tokens = purchase["expected_tokens"]
+    wallet_service = WalletService(db)
+    await wallet_service.credit_tokens(
+        user_id=user["id"],
+        tokens=tokens,
+        source="purchase",
+        request_id=purchase_id,
+        details={"pack_id": purchase["pack_id"], "paypal_order_id": paypal_order_id}
+    )
+
+    await db.ai_purchases.update_one(
+        {"purchase_id": purchase_id},
+        {"$set": {"status": "completed", "completed_at": datetime.now(timezone.utc).isoformat()}}
+    )
+
+    logger.info(f"Tokens credited: {tokens} to user {user['id']} for purchase {purchase_id}")
+    return {"success": True, "tokens_credited": tokens}
+
+
 # ==================== PAYPAL WEBHOOK ====================
 
 @ai_wallet_router.post("/webhook")
