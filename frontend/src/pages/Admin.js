@@ -357,6 +357,16 @@ const Admin = () => {
       toast.error(error.response?.data?.detail || 'Connection test failed');
     }
   };
+  const clearSpamTickets = async () => {
+    if (!window.confirm('Delete all bounce/mailer-daemon spam tickets? This cannot be undone.')) return;
+    try {
+      const response = await api.delete('/support/admin/tickets/bulk-delete-bounce-spam');
+      toast.success(`Deleted ${response.data.deleted} spam tickets.`);
+    } catch (error) {
+      toast.error(error.response?.data?.detail || 'Failed to delete spam tickets');
+    }
+  };
+
   const syncImapNow = async () => {
     setImapSyncing(true);
     try {
@@ -2833,6 +2843,9 @@ const Admin = () => {
                 <Button onClick={syncImapNow} variant="outline" className="border-violet-500 text-violet-400 hover:bg-violet-500/10" disabled={imapSyncing}>
                   {imapSyncing ? <RefreshCw className="w-4 h-4 mr-2 animate-spin" /> : <RefreshCw className="w-4 h-4 mr-2" />}
                   Sync Now
+                </Button>
+                <Button onClick={clearSpamTickets} variant="outline" className="border-red-500 text-red-400 hover:bg-red-500/10">
+                  Clear Spam Tickets
                 </Button>
               </div>
             </CardContent>
