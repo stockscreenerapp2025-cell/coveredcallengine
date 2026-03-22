@@ -831,7 +831,7 @@ PRICE DATA:
 - Entry Price: ${entry_price:.2f}
 - Current Price: ${current_price:.2f}
 - Break-Even: ${break_even:.2f}
-- Current Strike: ${option_strike:.2f if option_strike else 'N/A'}
+- Current Strike: {f"${option_strike:.2f}" if option_strike else "N/A"}
 - Option Expiry: {expiry}
 - DTE: {dte}
 - Moneyness: {itm_status} (${abs(itm_amount):.2f} {'ITM' if itm_status == 'ITM' else 'OTM'})
