@@ -1525,7 +1525,14 @@ class IBKRParser:
                     return 'INDEX'
                 return 'STOCK'
         elif has_stock_sell and not has_stock_buy:
-            # Just sold stock (maybe from assignment or transfer)
+            # Stock sold but no buy in CSV (bought before date range or via transfer)
+            # Still check if options were traded alongside
+            if call_sells and put_sells:
+                return 'WHEEL'
+            elif call_sells:
+                return 'COVERED_CALL'
+            elif put_sells:
+                return 'WHEEL'
             symbol = stock_txs[0].get('underlying_symbol', '') if stock_txs else ''
             if symbol in ETF_SYMBOLS:
                 return 'ETF'
