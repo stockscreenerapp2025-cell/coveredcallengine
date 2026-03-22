@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { MessageCircle, X, Send, Bot, User, Sparkles, ChevronDown } from 'lucide-react';
+import { MessageCircle, X, Send, Bot, User, Sparkles, ChevronDown, Maximize2, Minimize2 } from 'lucide-react';
 import { Button } from './ui/button';
 import axios from 'axios';
 
@@ -16,6 +16,7 @@ const QUICK_ACTIONS = [
 
 const AIChatbot = () => {
   const [isOpen, setIsOpen] = useState(false);
+  const [isExpanded, setIsExpanded] = useState(false);
   const [showWelcome, setShowWelcome] = useState(false);
   const [messages, setMessages] = useState([]);
   const [inputValue, setInputValue] = useState('');
@@ -149,17 +150,17 @@ const AIChatbot = () => {
   };
 
   const formatMessage = (content) => {
-    // Convert markdown-style formatting to HTML
     return content
+      // Strip markdown links [text](url) → just text
+      .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+      // Strip bare URLs
+      .replace(/https?:\/\/\S+/g, '')
       .split('\n')
       .map((line, i) => {
-        // Bold text
         line = line.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
-        // Bullet points
         if (line.startsWith('• ') || line.startsWith('- ')) {
           return `<li key=${i} class="ml-4">${line.substring(2)}</li>`;
         }
-        // Numbered lists
         if (/^\d+\.\s/.test(line)) {
           return `<li key=${i} class="ml-4">${line.substring(line.indexOf(' ') + 1)}</li>`;
         }
@@ -223,20 +224,23 @@ const AIChatbot = () => {
 
       {/* Chat Window */}
       {isOpen && (
-        <div className="fixed bottom-24 right-6 z-50 w-96 h-[500px] bg-zinc-900 rounded-2xl shadow-2xl border border-zinc-800 flex flex-col overflow-hidden animate-slide-up">
+        <div className={`fixed bottom-24 right-6 z-50 bg-zinc-900 rounded-2xl shadow-2xl border border-zinc-800 flex flex-col overflow-hidden animate-slide-up transition-all duration-300 ${isExpanded ? 'w-[480px] h-[75vh]' : 'w-96 h-[500px]'}`}>
           {/* Header */}
           <div className="bg-gradient-to-r from-violet-600/20 to-emerald-600/20 border-b border-zinc-800 p-4">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-full bg-gradient-to-r from-violet-500 to-emerald-500 flex items-center justify-center">
+              <div className="w-10 h-10 rounded-full bg-gradient-to-r from-violet-500 to-emerald-500 flex items-center justify-center flex-shrink-0">
                 <Bot className="w-5 h-5 text-white" />
               </div>
-              <div>
+              <div className="flex-1">
                 <h3 className="text-white font-semibold">AI Assistant</h3>
                 <p className="text-emerald-400 text-xs flex items-center gap-1">
                   <span className="w-2 h-2 bg-emerald-400 rounded-full animate-pulse"></span>
                   Online - Ready to help
                 </p>
               </div>
+              <button onClick={() => setIsExpanded(e => !e)} className="text-zinc-400 hover:text-white transition-colors">
+                {isExpanded ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
+              </button>
             </div>
           </div>
 
@@ -258,13 +262,14 @@ const AIChatbot = () => {
                     <Bot className="w-4 h-4 text-white" />
                   )}
                 </div>
-                <div className={`max-w-[75%] rounded-2xl px-4 py-2 ${
+                <div className={`max-w-[75%] rounded-2xl px-4 py-2 break-words overflow-hidden ${
                   msg.role === 'user'
                     ? 'bg-violet-600 text-white rounded-tr-sm'
                     : 'bg-zinc-800 text-zinc-100 rounded-tl-sm'
                 }`}>
-                  <div 
+                  <div
                     className="text-sm leading-relaxed"
+                    style={{ wordBreak: 'break-word', overflowWrap: 'break-word' }}
                     dangerouslySetInnerHTML={{ __html: formatMessage(msg.content) }}
                   />
                 </div>
