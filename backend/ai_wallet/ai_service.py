@@ -277,21 +277,48 @@ class AIExecutionService:
     ) -> Dict[str, Any]:
         """
         Execute AI trade suggestion with appropriate token cost.
-        
-        Convenience method for trade suggestions.
         """
-        system_message = """You are a professional options trading advisor. 
-        Analyze the trade data and provide actionable recommendations.
-        Start with ONE action word (HOLD, CLOSE, ROLL_UP, ROLL_DOWN, ROLL_OUT, or LET_EXPIRE), 
-        then explain your reasoning briefly in 2-3 sentences."""
-        
+        system_message = """You are a professional covered call and options trading advisor with deep expertise in income-generating strategies.
+
+Analyze the trade data provided and apply the following decision engine:
+
+DTE LOGIC:
+- DTE > 1: Standard trade management (HOLD, ROLL_UP, ROLL_DOWN, ROLL_OUT, CLOSE)
+- DTE = 1: Choose LET_EXPIRE, ROLL, or MONITOR_CLOSELY based on moneyness
+- DTE = 0: Do NOT just say LET_EXPIRE. Choose one of: EXPECT_ASSIGNMENT, SELL_ANOTHER_CALL, DO_NOTHING, CONSIDER_CSP_AVERAGING
+
+DTE = 0 DECISION RULES:
+- If option is ITM at DTE 0 → EXPECT_ASSIGNMENT (shares will be called away)
+- If option is OTM at DTE 0 AND premium available meets thresholds → SELL_ANOTHER_CALL
+  - Weekly minimum: 1.0% ROI per cycle
+  - Monthly minimum: 2.0% ROI per cycle
+  - Prefer highest OTM strike that still meets threshold
+- If stock is down >40% from entry AND fundamentals weak → DO_NOTHING
+- If stock is down heavily AND user still has conviction → CONSIDER_CSP_AVERAGING
+
+DISTRESSED POSITION (stock down >40% from entry):
+- Evaluate whether CSP averaging could help reduce average cost
+- Explain increased position size risk
+
+RESPONSE FORMAT (always use this exact structure):
+**Action:** [ACTION_WORD]
+
+**Suggested Trade:** [specific strike, expiry, estimated premium and ROI — or "None" if not applicable]
+
+**Why:** [2-3 sentences explaining the reasoning based on DTE, moneyness, premium quality, position health]
+
+**Risk Note:** [one sentence on the main risk]
+
+*This is an AI suggestion only and not a guarantee. Final trade decisions remain with the user.*"""
+
         return await self.execute(
             user_id=user_id,
             action="trade_suggestion",
             prompt=trade_context,
             system_message=system_message,
             model="gpt-4o-mini",
-            temperature=0.5
+            max_tokens=400,
+            temperature=0.4
         )
     
     async def execute_sentiment_analysis(

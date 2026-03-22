@@ -755,7 +755,7 @@ async def get_trade_ai_suggestion(trade_id: str, user: dict = Depends(get_curren
     full_suggestion = result["response"]
     action = "HOLD"
     first_line = full_suggestion.strip().split('\n')[0].strip().upper()
-    for possible_action in ["LET_EXPIRE", "HOLD", "CLOSE", "ROLL_UP", "ROLL_DOWN", "ROLL_OUT"]:
+    for possible_action in ["EXPECT_ASSIGNMENT", "SELL_ANOTHER_CALL", "DO_NOTHING", "CONSIDER_CSP_AVERAGING", "LET_EXPIRE", "HOLD", "CLOSE", "ROLL_UP", "ROLL_DOWN", "ROLL_OUT"]:
         if possible_action in first_line:
             action = possible_action
             break
@@ -780,42 +780,72 @@ async def get_trade_ai_suggestion(trade_id: str, user: dict = Depends(get_curren
 
 
 def _build_trade_context(trade: dict) -> str:
-    """Build context string for AI trade analysis."""
+    """Build rich context string for AI trade analysis."""
     MOCK_STOCKS, _ = _get_server_data()
-    
+
     symbol = trade.get('symbol', '')
-    entry_price = trade.get('underlying_price', 0) or trade.get('entry_price', 0)
+    entry_price = trade.get('underlying_price', 0) or trade.get('entry_price', 0) or 0
     stock_data = MOCK_STOCKS.get(symbol, {})
-    current_price = stock_data.get('price', entry_price)
+    current_price = stock_data.get('price', entry_price) or entry_price
     option_strike = trade.get('short_call_strike') or trade.get('strike_price') or trade.get('option_strike')
     premium = trade.get('total_premium', 0) or trade.get('short_call_premium', 0) or 0
-    dte = trade.get('dte', 0)
-    break_even = trade.get('break_even')
-    strategy = trade.get('strategy_type', '')
-    
-    profit_status = "N/A"
-    if current_price and entry_price:
-        profit_status = "Profitable" if current_price > (break_even or entry_price) else "At Loss"
-    
+    dte = trade.get('dte', 0) or 0
+    break_even = trade.get('break_even') or entry_price
+    shares = trade.get('shares', 0) or trade.get('quantity', 0) or 0
+    strategy = trade.get('strategy_type', '') or trade.get('strategy_label', '')
+    unrealized_pnl = trade.get('unrealized_pnl', 0) or 0
+    days_in_trade = trade.get('days_in_trade', 0) or 0
+    expiry = trade.get('option_expiry') or trade.get('expiry_date') or 'N/A'
+
+    # Moneyness
     itm_status = "N/A"
     if option_strike and current_price:
-        if 'CALL' in strategy.upper() or strategy in ['COVERED_CALL', 'PMCC']:
+        is_call = 'CALL' in strategy.upper() or strategy in ['COVERED_CALL', 'PMCC']
+        is_put = 'PUT' in strategy.upper() or strategy == 'NAKED_PUT'
+        if is_call:
             itm_status = "ITM" if current_price > option_strike else "OTM"
-        elif 'PUT' in strategy.upper() or strategy == 'NAKED_PUT':
+            itm_amount = current_price - option_strike
+        elif is_put:
             itm_status = "ITM" if current_price < option_strike else "OTM"
-    
-    current_price_str = f"${current_price:.2f}" if current_price else "N/A"
-    strike_str = f"${option_strike:.2f}" if option_strike else "N/A"
-    
-    return f"""
-    Analyze this options trade:
-    Symbol: {symbol}, Strategy: {trade.get('strategy_label', strategy)}
-    Entry: ${entry_price:.2f}, Current: {current_price_str}
-    Strike: {strike_str}, DTE: {dte}, Status: {itm_status}
-    Premium: ${premium:.2f}, Profit: {profit_status}
-    
-    Recommend: HOLD, LET_EXPIRE, ROLL_UP, ROLL_DOWN, ROLL_OUT, or CLOSE
-    """
+            itm_amount = option_strike - current_price
+        else:
+            itm_amount = 0
+    else:
+        itm_amount = 0
+
+    # Position health
+    pct_from_entry = ((current_price - entry_price) / entry_price * 100) if entry_price else 0
+    pct_from_be = ((current_price - break_even) / break_even * 100) if break_even else 0
+    distressed = pct_from_entry < -40
+
+    # ROI context
+    roi_pct = trade.get('roi_pct') or (premium / (entry_price * shares) * 100 if entry_price and shares else 0)
+
+    return f"""COVERED CALL TRADE ANALYSIS REQUEST
+
+Symbol: {symbol}
+Strategy: {trade.get('strategy_label', strategy)}
+Shares: {shares}
+
+PRICE DATA:
+- Entry Price: ${entry_price:.2f}
+- Current Price: ${current_price:.2f}
+- Break-Even: ${break_even:.2f}
+- Current Strike: ${option_strike:.2f if option_strike else 'N/A'}
+- Option Expiry: {expiry}
+- DTE: {dte}
+- Moneyness: {itm_status} (${abs(itm_amount):.2f} {'ITM' if itm_status == 'ITM' else 'OTM'})
+
+P&L:
+- Total Premium Collected: ${premium:.2f}
+- Unrealized P&L: ${unrealized_pnl:.2f}
+- % from Entry: {pct_from_entry:+.1f}%
+- % from Break-Even: {pct_from_be:+.1f}%
+- ROI this cycle: {roi_pct:.2f}%
+- Days in Trade: {days_in_trade}
+- Distressed Position (>40% down): {'YES' if distressed else 'No'}
+
+Apply the DTE decision engine and output in the required format."""
 
 
 @portfolio_router.post("/ibkr/generate-suggestions")
@@ -904,7 +934,7 @@ async def generate_all_suggestions(user: dict = Depends(get_current_user)):
             full_suggestion = result["response"]
             action = "HOLD"
             first_line = full_suggestion.strip().split('\n')[0].strip().upper()
-            for possible_action in ["LET_EXPIRE", "HOLD", "CLOSE", "ROLL_UP", "ROLL_DOWN", "ROLL_OUT"]:
+            for possible_action in ["EXPECT_ASSIGNMENT", "SELL_ANOTHER_CALL", "DO_NOTHING", "CONSIDER_CSP_AVERAGING", "LET_EXPIRE", "HOLD", "CLOSE", "ROLL_UP", "ROLL_DOWN", "ROLL_OUT"]:
                 if possible_action in first_line:
                     action = possible_action
                     break
@@ -1370,7 +1400,7 @@ async def _generate_ai_suggestion_for_trade(trade: dict) -> dict:
         
         action = "HOLD"
         first_line = full_suggestion.strip().split('\n')[0].strip().upper()
-        for possible_action in ["LET_EXPIRE", "HOLD", "CLOSE", "ROLL_UP", "ROLL_DOWN", "ROLL_OUT"]:
+        for possible_action in ["EXPECT_ASSIGNMENT", "SELL_ANOTHER_CALL", "DO_NOTHING", "CONSIDER_CSP_AVERAGING", "LET_EXPIRE", "HOLD", "CLOSE", "ROLL_UP", "ROLL_DOWN", "ROLL_OUT"]:
             if possible_action in first_line:
                 action = possible_action
                 break
