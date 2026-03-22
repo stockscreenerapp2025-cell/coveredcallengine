@@ -287,11 +287,17 @@ export default function AccountSettings() {
             </button>
           )}
 
-          {/* Cancel button */}
-          {canCancel && !showConfirm && !showUpgrade && (
+          {/* Cancel button — always visible, disabled if no active subscription */}
+          {!showConfirm && !showUpgrade && !cancelled && (
             <button
-              onClick={() => setShowConfirm(true)}
-              className="text-sm text-red-400 hover:text-red-300 border border-red-500/30 hover:border-red-500/60 rounded-lg px-4 py-2 transition-colors"
+              onClick={() => canCancel && setShowConfirm(true)}
+              disabled={!canCancel}
+              className={`text-sm border rounded-lg px-4 py-2 transition-colors ${
+                canCancel
+                  ? 'text-red-400 hover:text-red-300 border-red-500/30 hover:border-red-500/60 cursor-pointer'
+                  : 'text-zinc-600 border-zinc-700 cursor-not-allowed opacity-50'
+              }`}
+              title={!canCancel ? 'No active subscription to cancel' : ''}
             >
               Cancel Subscription
             </button>
