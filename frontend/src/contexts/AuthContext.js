@@ -84,6 +84,7 @@ export const AuthProvider = ({ children }) => {
 
   const hasPageAccess = (page) => {
     if (isAdmin || isTester) return true;
+    if (page === 'help') return true; // Help is available to all users
     if (!userPlan) return false;
     return (PLAN_ACCESS[userPlan] || []).includes(page);
   };
