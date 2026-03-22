@@ -1,14 +1,16 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import api from '../lib/api';
 import { toast } from 'sonner';
-import { User, CreditCard, ShieldCheck, AlertTriangle, CheckCircle, Eye, EyeOff, Trash2, Pencil } from 'lucide-react';
+import { User, CreditCard, ShieldCheck, AlertTriangle, CheckCircle, Eye, EyeOff, Pencil, ArrowUpCircle, X } from 'lucide-react';
 
 const PLAN_LABELS = {
   basic: 'Basic',
   standard: 'Standard',
   premium: 'Premium',
 };
+
+const PLAN_ORDER = ['basic', 'standard', 'premium'];
 
 const STATUS_COLORS = {
   active:    'bg-emerald-500/20 text-emerald-400 border-emerald-500/30',
@@ -30,10 +32,19 @@ function formatDate(iso) {
 export default function AccountSettings() {
   const { user, refreshUser } = useAuth();
   const sub = user?.subscription || {};
+
+  // Subscription cancel state
   const [showConfirm, setShowConfirm] = useState(false);
   const [cancelling, setCancelling] = useState(false);
   const [cancelled, setCancelled] = useState(false);
   const [accessUntil, setAccessUntil] = useState(null);
+
+  // Upgrade state
+  const [showUpgrade, setShowUpgrade] = useState(false);
+  const [plans, setPlans] = useState({});
+  const [selectedPlan, setSelectedPlan] = useState('');
+  const [selectedCycle, setSelectedCycle] = useState('monthly');
+  const [upgrading, setUpgrading] = useState(false);
 
   // Change name state
   const [editingName, setEditingName] = useState(false);
@@ -45,16 +56,24 @@ export default function AccountSettings() {
   const [showPw, setShowPw] = useState({ current: false, next: false, confirm: false });
   const [pwLoading, setPwLoading] = useState(false);
 
-  // Delete account state
-  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
-  const [deleteInput, setDeleteInput] = useState('');
-  const [deleteLoading, setDeleteLoading] = useState(false);
-
   const status = sub.status || 'none';
-  const planLabel = PLAN_LABELS[sub.plan_name] || PLAN_LABELS[sub.plan] || sub.plan_name || sub.plan || 'Free';
+  const currentPlan = (sub.plan_name || sub.plan || '').toLowerCase();
+  const planLabel = PLAN_LABELS[currentPlan] || sub.plan_name || sub.plan || 'Free';
   const billingCycle = sub.billing_cycle === 'yearly' ? 'Yearly' : sub.billing_cycle === 'monthly' ? 'Monthly' : '—';
   const nextBilling = sub.current_period_end || sub.next_billing_date || sub.trial_end;
   const canCancel = ['active', 'trialing'].includes(status) && !cancelled;
+  const canUpgrade = ['active', 'trialing', 'none', 'cancelled', 'expired'].includes(status);
+
+  useEffect(() => {
+    if (showUpgrade && Object.keys(plans).length === 0) {
+      api.get('/subscription/plans').then(res => {
+        setPlans(res.data.plans || {});
+        // Pre-select next plan above current
+        const idx = PLAN_ORDER.indexOf(currentPlan);
+        setSelectedPlan(PLAN_ORDER[idx + 1] || PLAN_ORDER[PLAN_ORDER.length - 1]);
+      }).catch(() => {});
+    }
+  }, [showUpgrade]);
 
   const handleChangeName = async (e) => {
     e.preventDefault();
@@ -69,20 +88,6 @@ export default function AccountSettings() {
       toast.error(err?.response?.data?.detail || 'Failed to update name.');
     } finally {
       setNameLoading(false);
-    }
-  };
-
-  const handleDeleteAccount = async () => {
-    if (deleteInput !== 'DELETE') return;
-    setDeleteLoading(true);
-    try {
-      await api.delete('/auth/me/delete-account');
-      toast.success('Account deleted.');
-      localStorage.removeItem('token');
-      window.location.href = '/login';
-    } catch (err) {
-      toast.error(err?.response?.data?.detail || 'Failed to delete account.');
-      setDeleteLoading(false);
     }
   };
 
@@ -105,8 +110,7 @@ export default function AccountSettings() {
       toast.success('Password updated successfully.');
       setPwForm({ current: '', next: '', confirm: '' });
     } catch (err) {
-      const msg = err?.response?.data?.detail || 'Failed to update password.';
-      toast.error(msg);
+      toast.error(err?.response?.data?.detail || 'Failed to update password.');
     } finally {
       setPwLoading(false);
     }
@@ -122,10 +126,36 @@ export default function AccountSettings() {
       toast.success('Subscription cancelled. You keep access until your billing period ends.');
       if (refreshUser) refreshUser();
     } catch (err) {
-      const msg = err?.response?.data?.detail || 'Failed to cancel. Please contact support.';
-      toast.error(msg);
+      toast.error(err?.response?.data?.detail || 'Failed to cancel. Please contact support.');
     } finally {
       setCancelling(false);
+    }
+  };
+
+  const handleUpgrade = async () => {
+    if (!selectedPlan) return;
+    setUpgrading(true);
+    try {
+      // Step 1: Cancel current subscription if active
+      if (['active', 'trialing'].includes(status)) {
+        await api.post('/auth/me/cancel-subscription');
+      }
+      // Step 2: Create new PayPal checkout for selected plan
+      const res = await api.post('/paypal/create-checkout', {
+        plan_id: selectedPlan,
+        billing_cycle: selectedCycle,
+        start_with_trial: false,
+      });
+      // Step 3: Redirect to PayPal
+      if (res.data.redirect_url) {
+        window.location.href = res.data.redirect_url;
+      } else {
+        toast.error('Could not create checkout. Please try again.');
+        setUpgrading(false);
+      }
+    } catch (err) {
+      toast.error(err?.response?.data?.detail || 'Upgrade failed. Please try again.');
+      setUpgrading(false);
     }
   };
 
@@ -230,17 +260,118 @@ export default function AccountSettings() {
           </div>
         )}
 
-        {/* Cancel button */}
-        {canCancel && !showConfirm && (
-          <button
-            onClick={() => setShowConfirm(true)}
-            className="mt-2 text-sm text-red-400 hover:text-red-300 border border-red-500/30 hover:border-red-500/60 rounded-lg px-4 py-2 transition-colors"
-          >
-            Cancel Subscription
-          </button>
+        {/* Action buttons */}
+        <div className="flex gap-3 flex-wrap">
+          {/* Upgrade button */}
+          {canUpgrade && !showUpgrade && (
+            <button
+              onClick={() => setShowUpgrade(true)}
+              className="text-sm text-violet-400 hover:text-violet-300 border border-violet-500/30 hover:border-violet-500/60 rounded-lg px-4 py-2 transition-colors flex items-center gap-2"
+            >
+              <ArrowUpCircle className="w-4 h-4" /> Upgrade Subscription
+            </button>
+          )}
+
+          {/* Cancel button */}
+          {canCancel && !showConfirm && !showUpgrade && (
+            <button
+              onClick={() => setShowConfirm(true)}
+              className="text-sm text-red-400 hover:text-red-300 border border-red-500/30 hover:border-red-500/60 rounded-lg px-4 py-2 transition-colors"
+            >
+              Cancel Subscription
+            </button>
+          )}
+        </div>
+
+        {/* Upgrade Plan Modal */}
+        {showUpgrade && (
+          <div className="bg-zinc-800/60 border border-violet-500/20 rounded-xl p-4 space-y-4">
+            <div className="flex items-center justify-between">
+              <p className="text-white font-semibold text-sm flex items-center gap-2">
+                <ArrowUpCircle className="w-4 h-4 text-violet-400" /> Select New Plan
+              </p>
+              <button onClick={() => setShowUpgrade(false)} className="text-zinc-500 hover:text-zinc-300">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Billing cycle toggle */}
+            <div className="flex gap-2">
+              {['monthly', 'yearly'].map(c => (
+                <button
+                  key={c}
+                  onClick={() => setSelectedCycle(c)}
+                  className={`flex-1 text-xs font-medium py-1.5 rounded-lg border transition-colors ${
+                    selectedCycle === c
+                      ? 'bg-violet-600 border-violet-500 text-white'
+                      : 'bg-zinc-800 border-zinc-700 text-zinc-400 hover:text-white'
+                  }`}
+                >
+                  {c.charAt(0).toUpperCase() + c.slice(1)}
+                  {c === 'yearly' && <span className="ml-1 text-emerald-400">(Save 2 months)</span>}
+                </button>
+              ))}
+            </div>
+
+            {/* Plan options */}
+            <div className="space-y-2">
+              {PLAN_ORDER.map(planKey => {
+                const plan = plans[planKey];
+                if (!plan) return null;
+                const price = selectedCycle === 'yearly' ? plan.yearly_price : plan.monthly_price;
+                const isCurrent = planKey === currentPlan;
+                const isSelected = planKey === selectedPlan;
+                return (
+                  <button
+                    key={planKey}
+                    onClick={() => !isCurrent && setSelectedPlan(planKey)}
+                    disabled={isCurrent}
+                    className={`w-full text-left p-3 rounded-lg border transition-colors ${
+                      isCurrent
+                        ? 'bg-zinc-800/40 border-zinc-700 opacity-50 cursor-not-allowed'
+                        : isSelected
+                        ? 'bg-violet-600/20 border-violet-500 text-white'
+                        : 'bg-zinc-800 border-zinc-700 text-zinc-300 hover:border-zinc-500'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="font-medium text-sm">{plan.name}</span>
+                      <span className="text-sm font-bold">
+                        ${price}<span className="text-xs font-normal text-zinc-400">/{selectedCycle === 'yearly' ? 'yr' : 'mo'}</span>
+                      </span>
+                    </div>
+                    {isCurrent && <p className="text-xs text-zinc-500 mt-0.5">Current plan</p>}
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Info note */}
+            {canCancel && (
+              <p className="text-zinc-500 text-xs">
+                Your current plan will be cancelled immediately and the new plan activated. You will be charged for the new plan right away.
+              </p>
+            )}
+
+            <div className="flex gap-3">
+              <button
+                onClick={handleUpgrade}
+                disabled={upgrading || !selectedPlan || selectedPlan === currentPlan}
+                className="flex-1 bg-violet-600 hover:bg-violet-700 text-white text-sm font-semibold py-2 rounded-lg transition-colors disabled:opacity-60"
+              >
+                {upgrading ? 'Redirecting to PayPal...' : `Upgrade to ${PLAN_LABELS[selectedPlan] || selectedPlan}`}
+              </button>
+              <button
+                onClick={() => setShowUpgrade(false)}
+                className="flex-1 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-sm font-semibold py-2 rounded-lg transition-colors"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
         )}
 
-        {/* Confirmation dialog */}
+        {/* Cancel confirmation dialog */}
         {showConfirm && (
           <div className="bg-red-500/10 border border-red-500/30 rounded-xl p-4 space-y-3">
             <div className="flex items-start gap-3">
@@ -266,47 +397,6 @@ export default function AccountSettings() {
                 className="flex-1 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-sm font-semibold py-2 rounded-lg transition-colors"
               >
                 Keep Subscription
-              </button>
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* Danger Zone — Delete Account */}
-      <div className="bg-zinc-900 border border-red-900/40 rounded-xl p-5 space-y-3">
-        <h2 className="text-red-400 font-semibold flex items-center gap-2">
-          <Trash2 className="w-4 h-4" /> Delete Account
-        </h2>
-        <p className="text-zinc-400 text-sm">Permanently delete your account and all associated data. This cannot be undone.</p>
-        {!showDeleteConfirm ? (
-          <button
-            onClick={() => setShowDeleteConfirm(true)}
-            className="text-sm text-red-400 hover:text-red-300 border border-red-500/30 hover:border-red-500/60 rounded-lg px-4 py-2 transition-colors"
-          >
-            Delete Account
-          </button>
-        ) : (
-          <div className="space-y-3">
-            <p className="text-zinc-400 text-xs">Type <span className="text-white font-mono font-bold">DELETE</span> to confirm:</p>
-            <input
-              value={deleteInput}
-              onChange={e => setDeleteInput(e.target.value)}
-              className="w-full bg-zinc-800 border border-red-500/40 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-red-500"
-              placeholder="DELETE"
-            />
-            <div className="flex gap-3">
-              <button
-                onClick={handleDeleteAccount}
-                disabled={deleteInput !== 'DELETE' || deleteLoading}
-                className="flex-1 bg-red-600 hover:bg-red-700 text-white text-sm font-semibold py-2 rounded-lg transition-colors disabled:opacity-40"
-              >
-                {deleteLoading ? 'Deleting...' : 'Permanently Delete Account'}
-              </button>
-              <button
-                onClick={() => { setShowDeleteConfirm(false); setDeleteInput(''); }}
-                className="flex-1 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-sm font-semibold py-2 rounded-lg transition-colors"
-              >
-                Cancel
               </button>
             </div>
           </div>
