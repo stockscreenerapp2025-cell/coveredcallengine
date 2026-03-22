@@ -69,27 +69,31 @@ class ChatbotService:
         self.openai_key = os.environ.get('OPENAI_API_KEY', os.environ.get('EMERGENT_LLM_KEY', ''))
 
     async def _call_ai(self, messages: List[Dict]) -> str:
-        """Call AI provider — Gemini first, OpenAI fallback."""
+        """Call AI provider — try multiple Gemini models, then OpenAI fallback."""
         import httpx
+        GEMINI_MODELS = [
+            "gemini-1.5-flash",
+            "gemini-1.5-flash-8b",
+            "gemini-2.0-flash",
+            "gemini-2.0-flash-lite",
+        ]
         if self.gemini_key:
-            # Build Gemini contents from message history
             contents = []
             for m in messages:
                 role = "user" if m["role"] == "user" else "model"
                 contents.append({"role": role, "parts": [{"text": m["content"]}]})
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={self.gemini_key}"
             payload = {
                 "system_instruction": {"parts": [{"text": CHATBOT_SYSTEM_PROMPT}]},
                 "contents": contents,
                 "generationConfig": {"maxOutputTokens": 500, "temperature": 0.7}
             }
-            async with httpx.AsyncClient(timeout=30.0) as client:
-                resp = await client.post(url, json=payload, headers={"Content-Type": "application/json"})
-                if resp.status_code == 200:
-                    return resp.json()["candidates"][0]["content"]["parts"][0]["text"]
-                if resp.status_code != 429:
-                    raise RuntimeError(f"Gemini error {resp.status_code}: {resp.text[:200]}")
-                logger.warning("Gemini quota exceeded, falling back to OpenAI")
+            for model in GEMINI_MODELS:
+                url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={self.gemini_key}"
+                async with httpx.AsyncClient(timeout=30.0) as client:
+                    resp = await client.post(url, json=payload, headers={"Content-Type": "application/json"})
+                    if resp.status_code == 200:
+                        return resp.json()["candidates"][0]["content"]["parts"][0]["text"]
+                    logger.warning(f"[Chatbot] {model} failed {resp.status_code}: {resp.text[:150]}")
         if self.openai_key:
             openai_messages = [{"role": "system", "content": CHATBOT_SYSTEM_PROMPT}] + messages
             async with httpx.AsyncClient(timeout=30.0) as client:
@@ -100,9 +104,8 @@ class ChatbotService:
                 )
                 if resp.status_code == 200:
                     return resp.json()["choices"][0]["message"]["content"]
-                raise RuntimeError(f"OpenAI error {resp.status_code}: {resp.text[:200]}")
-        else:
-            raise RuntimeError("No AI provider configured. Set GEMINI_API_KEY or OPENAI_API_KEY.")
+                logger.warning(f"[Chatbot] OpenAI failed {resp.status_code}: {resp.text[:150]}")
+        raise RuntimeError("No AI provider available.")
 
     async def get_response(self, session_id: str, message: str, history: List[Dict] = None) -> Dict:
         """Get AI response for a chat message"""
