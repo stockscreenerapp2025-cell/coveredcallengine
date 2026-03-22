@@ -144,9 +144,10 @@ class AIExecutionService:
             # gemini-2.0-flash → gemini-1.5-flash → gemini-1.5-flash-8b → friendly message
             import asyncio
             GEMINI_MODELS = [
-                "gemini-2.0-flash",       # Best quality, 15 RPM, 1500 RPD
-                "gemini-2.0-flash-lite",  # Lighter, 30 RPM, 1500 RPD
-                "gemini-1.5-flash-8b",    # Smallest, 30 RPM, 1500 RPD, own quota
+                "gemini-1.5-flash",       # Most widely available, 15 RPM, 1500 RPD
+                "gemini-1.5-flash-8b",    # Lightweight fallback, 30 RPM, 1500 RPD
+                "gemini-2.0-flash",       # Newer, may not be available in all regions
+                "gemini-2.0-flash-lite",  # Lighter 2.0 variant
             ]
             response_text = None
             if self.gemini_key:
@@ -161,13 +162,10 @@ class AIExecutionService:
                         break
                     except RuntimeError as gemini_err:
                         err_str = str(gemini_err)
+                        logger.warning(f"[AI] {attempt_model} failed: {err_str[:200]}, trying next model")
                         if "429" in err_str:
-                            logger.warning(f"[AI] {attempt_model} quota hit, trying next model")
                             await asyncio.sleep(1)
-                        elif "404" in err_str or "NOT_FOUND" in err_str:
-                            logger.warning(f"[AI] {attempt_model} not available, trying next model")
-                        else:
-                            raise
+                        # Fall through to next model for any error (404, 400, 403, etc.)
 
             if response_text is None and self.groq_key:
                 # Optional Groq fallback if GROQ_API_KEY is set
