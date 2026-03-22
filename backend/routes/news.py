@@ -278,9 +278,9 @@ NEGATIVE_KEYWORDS = [
 
 
 def _sentiment_label(score: float) -> str:
-    if score >= 0.30:
+    if score >= 0.20:
         return 'Positive'
-    if score <= -0.30:
+    if score <= -0.20:
         return 'Negative'
     return 'Neutral'
 
@@ -300,8 +300,12 @@ def _marketaux_weighted_score(items) -> float:
             mapped = 0.8
         elif raw >= 0.2:
             mapped = 0.5
-        elif raw >= -0.2:
+        elif raw >= 0.1:
+            mapped = 0.25
+        elif raw >= -0.1:
             mapped = 0.0
+        elif raw >= -0.2:
+            mapped = -0.25
         elif raw >= -0.6:
             mapped = -0.5
         else:
