@@ -28,6 +28,7 @@ class AdminSettings(BaseModel):
     massive_secret_key: Optional[str] = None
     marketaux_api_token: Optional[str] = None
     openai_api_key: Optional[str] = None
+    gemini_api_key: Optional[str] = None
     data_refresh_interval: int = 60
     enable_live_data: bool = False
 
@@ -75,7 +76,7 @@ async def get_settings(user: dict = Depends(get_admin_user)):
     settings = await db.admin_settings.find_one({}, {"_id": 0})
     if settings:
         # Mask API keys for security
-        for field in ["massive_api_key", "massive_access_id", "massive_secret_key", "marketaux_api_token", "openai_api_key"]:
+        for field in ["massive_api_key", "massive_access_id", "massive_secret_key", "marketaux_api_token", "openai_api_key", "gemini_api_key"]:
             if settings.get(field):
                 settings[field] = _mask_api_key(settings[field])
     return settings or {}
@@ -87,12 +88,19 @@ async def update_settings(settings: AdminSettings, user: dict = Depends(get_admi
     settings_dict = settings.model_dump(exclude_unset=True)
     
     # Don't update masked values
-    masked_fields = ["massive_api_key", "massive_access_id", "massive_secret_key", "marketaux_api_token", "openai_api_key"]
+    masked_fields = ["massive_api_key", "massive_access_id", "massive_secret_key", "marketaux_api_token", "openai_api_key", "gemini_api_key"]
     for field in masked_fields:
         if settings_dict.get(field) and "..." in settings_dict[field]:
             del settings_dict[field]
     
     await db.admin_settings.update_one({}, {"$set": settings_dict}, upsert=True)
+
+    # Apply API keys to environment immediately so AI services pick them up without restart
+    if settings_dict.get("gemini_api_key"):
+        os.environ["GEMINI_API_KEY"] = settings_dict["gemini_api_key"]
+    if settings_dict.get("openai_api_key"):
+        os.environ["OPENAI_API_KEY"] = settings_dict["openai_api_key"]
+
     return {"message": "Settings updated successfully"}
 
 

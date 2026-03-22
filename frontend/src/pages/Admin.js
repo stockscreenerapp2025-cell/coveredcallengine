@@ -63,6 +63,7 @@ const Admin = () => {
     massive_secret_key: '',
     marketaux_api_token: '',
     openai_api_key: '',
+    gemini_api_key: '',
     data_refresh_interval: 60,
     enable_live_data: false
   });
@@ -115,6 +116,7 @@ const Admin = () => {
   const [showMassiveSecretKey, setShowMassiveSecretKey] = useState(false);
   const [showMarketauxToken, setShowMarketauxToken] = useState(false);
   const [showOpenAIKey, setShowOpenAIKey] = useState(false);
+  const [showGeminiKey, setShowGeminiKey] = useState(false);
   const [showStripeWebhook, setShowStripeWebhook] = useState(false);
   const [showStripeSecret, setShowStripeSecret] = useState(false);
   const [showResendKey, setShowResendKey] = useState(false);
@@ -2965,6 +2967,21 @@ const Admin = () => {
                   show={showOpenAIKey}
                   onToggle={() => setShowOpenAIKey(!showOpenAIKey)}
                   placeholder="sk-..."
+                />
+              </div>
+              {/* Gemini */}
+              <div className="p-4 rounded-lg bg-zinc-800/50 space-y-4">
+                <h4 className="font-medium text-white flex items-center gap-2">
+                  <Brain className="w-4 h-4 text-blue-400" />
+                  Gemini (AI Suggestions & Chatbot)
+                </h4>
+                <PasswordInput
+                  label="API Key"
+                  value={settings.gemini_api_key}
+                  onChange={(v) => setSettings(s => ({ ...s, gemini_api_key: v }))}
+                  show={showGeminiKey}
+                  onToggle={() => setShowGeminiKey(!showGeminiKey)}
+                  placeholder="AIza..."
                 />
               </div>
               <div className="flex justify-end pt-4 border-t border-zinc-800">
