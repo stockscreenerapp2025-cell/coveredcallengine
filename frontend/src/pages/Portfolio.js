@@ -1424,7 +1424,7 @@ const Portfolio = () => {
                       <TableHead className="text-zinc-400 text-right">Unrealized</TableHead>
                       <TableHead className="text-zinc-400 text-right">Realized</TableHead>
                       <TableHead className="text-zinc-400 text-right">
-                        <span title="ROI = (Premium Received + Stock P&L) ÷ Capital Invested × 100. Capital = Entry Price × Shares.">Net ROI ⓘ</span>
+                        Net ROI
                       </TableHead>
                       <TableHead className="text-zinc-400 w-12"></TableHead>
                     </TableRow>
