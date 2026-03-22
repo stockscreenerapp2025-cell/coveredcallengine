@@ -31,7 +31,7 @@ function formatDate(iso) {
 }
 
 export default function AccountSettings() {
-  const { user, refreshUser } = useAuth();
+  const { user } = useAuth();
   const [searchParams] = useSearchParams();
   const sub = user?.subscription || {};
 
@@ -71,7 +71,6 @@ export default function AccountSettings() {
     if (upgradeStatus === 'success') {
       window.history.replaceState({}, '', '/account');
       toast.success('Subscription upgraded successfully!');
-      refreshUser();
     } else if (upgradeStatus === 'cancelled') {
       window.history.replaceState({}, '', '/account');
       toast.info('Upgrade cancelled.');
