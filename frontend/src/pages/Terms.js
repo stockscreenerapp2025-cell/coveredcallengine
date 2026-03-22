@@ -216,6 +216,29 @@ const Terms = () => {
               </p>
             </section>
 
+            {/* Section 7b — Subscription Upgrades */}
+            <section className="bg-amber-500/10 border border-amber-500/20 rounded-xl p-6">
+              <h2 className="text-xl font-semibold text-white flex items-center gap-2 mb-4">
+                <DollarSign className="w-6 h-6 text-amber-400" />
+                <span>7b. Subscription Upgrades</span>
+              </h2>
+              <p className="text-zinc-300 leading-relaxed mb-4">
+                If you choose to upgrade your subscription plan at any time, the following terms apply:
+              </p>
+              <ul className="list-disc pl-6 space-y-2 text-zinc-400 mb-4">
+                <li>Your current subscription is <strong className="text-white">cancelled immediately</strong> upon upgrading;</li>
+                <li><strong className="text-white">No refund</strong> will be provided for any unused days remaining on your current plan;</li>
+                <li>Your new plan is activated immediately and you will be charged the <strong className="text-white">full amount</strong> for the new plan;</li>
+                <li>No credit, proration, or adjustment will be applied for the remaining period of your previous plan.</li>
+              </ul>
+              <p className="text-zinc-300 leading-relaxed mb-2">
+                <strong className="text-white">Example:</strong> If you are on a Standard Monthly plan ($59/month) and choose to upgrade to Premium Yearly ($890/year) after 10 days, your Standard plan is cancelled immediately with no refund for the remaining 20 days. You will be charged $890 for the full Premium Yearly plan starting on the date of upgrade.
+              </p>
+              <p className="text-amber-400 font-medium">
+                By proceeding with an upgrade, you acknowledge and accept these terms.
+              </p>
+            </section>
+
             {/* Section 8 */}
             <section>
               <h2 className="text-xl font-semibold text-white flex items-center gap-2 mb-4">
