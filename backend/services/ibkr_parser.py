@@ -1503,18 +1503,25 @@ class IBKRParser:
                    if t.get('transaction_type') == 'Buy' and t.get('option_details', {}).get('option_type') == 'Put']
         
         # Determine strategy
+        # Rule: if the last option sell was a Call → CC, if Put → CSP
+        def _last_sell_is_call(calls, puts):
+            all_sells = sorted(calls + puts, key=lambda t: t.get('datetime', t.get('date', '')))
+            if not all_sells:
+                return True
+            return all_sells[-1].get('option_details', {}).get('option_type') == 'Call'
+
         if has_stock:
             if call_sells and put_buys:
                 return 'COLLAR'
             elif call_sells:
-                # If stock was obtained via CSP assignment → it's a Wheel (CSP → Assignment → CC)
+                # If stock was obtained via CSP assignment, determine current Wheel phase
                 if has_put_assignment:
-                    return 'WHEEL'
+                    return 'COVERED_CALL' if _last_sell_is_call(call_sells, put_sells) else 'NAKED_PUT'
                 return 'COVERED_CALL'
             elif put_sells:
-                # Stock held alongside put sells = Wheel leg
+                # Put sells with assignment = CSP phase of Wheel
                 if has_put_assignment:
-                    return 'WHEEL'
+                    return 'NAKED_PUT'
                 return 'COVERED_CALL'
             else:
                 # Pure stock - check if ETF or Index
@@ -1528,11 +1535,11 @@ class IBKRParser:
             # Stock sold but no buy in CSV (bought before date range or via transfer)
             # Still check if options were traded alongside
             if call_sells and put_sells:
-                return 'WHEEL'
+                return 'COVERED_CALL' if _last_sell_is_call(call_sells, put_sells) else 'NAKED_PUT'
             elif call_sells:
                 return 'COVERED_CALL'
             elif put_sells:
-                return 'WHEEL'
+                return 'NAKED_PUT'
             symbol = stock_txs[0].get('underlying_symbol', '') if stock_txs else ''
             if symbol in ETF_SYMBOLS:
                 return 'ETF'
