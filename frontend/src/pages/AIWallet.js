@@ -16,7 +16,12 @@ import {
   Zap,
   AlertCircle,
   CheckCircle2,
-  ChevronRight
+  ChevronRight,
+  MessageSquare,
+  BarChart2,
+  Brain,
+  Lightbulb,
+  ScanSearch
 } from 'lucide-react';
 import { toast } from 'sonner';
 import BuyTokensModal from '../components/BuyTokensModal';
@@ -325,6 +330,44 @@ const AIWallet = () => {
           </CardContent>
         </Card>
       </div>
+
+      {/* Token Cost Reference */}
+      <Card className="glass-card">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-lg flex items-center gap-2">
+            <Zap className="w-5 h-5 text-amber-400" />
+            Token Cost per Action
+          </CardTitle>
+          <CardDescription className="text-zinc-500">
+            How many tokens are deducted for each AI feature you use
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="grid sm:grid-cols-2 gap-3">
+            {[
+              { icon: MessageSquare, label: 'Chatbot Message', desc: 'Each message sent to the AI chatbot', cost: 50, color: 'text-blue-400', bg: 'bg-blue-500/10 border-blue-500/20' },
+              { icon: BarChart2, label: 'Sentiment Analysis', desc: 'News sentiment scan for a symbol', cost: 150, color: 'text-cyan-400', bg: 'bg-cyan-500/10 border-cyan-500/20' },
+              { icon: Brain, label: 'AI Analysis', desc: 'Deep analysis of a single position', cost: 200, color: 'text-violet-400', bg: 'bg-violet-500/10 border-violet-500/20' },
+              { icon: Lightbulb, label: 'Trade Suggestion', desc: 'AI suggestion for one trade (Portfolio)', cost: 300, color: 'text-amber-400', bg: 'bg-amber-500/10 border-amber-500/20' },
+              { icon: ScanSearch, label: 'Portfolio Scan', desc: 'AI suggestions for all open trades at once', cost: 500, color: 'text-emerald-400', bg: 'bg-emerald-500/10 border-emerald-500/20' },
+            ].map(({ icon: Icon, label, desc, cost, color, bg }) => (
+              <div key={label} className={`flex items-center gap-3 rounded-lg p-3 border ${bg}`}>
+                <div className={`w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 ${bg}`}>
+                  <Icon className={`w-4 h-4 ${color}`} />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-white text-sm font-medium">{label}</p>
+                  <p className="text-zinc-500 text-xs truncate">{desc}</p>
+                </div>
+                <div className="text-right flex-shrink-0">
+                  <span className={`text-sm font-bold ${color}`}>{cost}</span>
+                  <p className="text-zinc-500 text-xs">tokens</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Info Section */}
       <Card className="glass-card">
