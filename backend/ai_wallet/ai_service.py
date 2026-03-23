@@ -291,26 +291,70 @@ class AIExecutionService:
         """
         Execute AI trade suggestion with appropriate token cost.
         """
-        system_message = "You are a covered call trading educator. Always write complete sentences and never leave a sentence unfinished."
+        system_message = (
+            "You are a covered call and PMCC trading educator. "
+            "Always write complete sentences. Never leave a sentence unfinished. "
+            "Follow the decision rules exactly. End every response with: "
+            "'This is an AI suggestion only and not a guarantee. Final trade decisions remain with the user.'"
+        )
 
         prompt = f"""{trade_context}
 
 ---
-Decision rules:
-- DTE<0 (option already expired days ago) + ITM → ALREADY_ASSIGNED (shares were called away at strike price)
-- DTE<0 (option already expired days ago) + OTM → OPTION_EXPIRED_WORTHLESS (you keep premium and shares, now sell a new call)
-- DTE=0 + option ITM → EXPECT_ASSIGNMENT
-- DTE=0 + option OTM + weekly ROI>=1% or monthly ROI>=2% → SELL_ANOTHER_CALL
-- DTE=0 + stock down >40% + weak outlook → DO_NOTHING
-- DTE=0 + stock down but trader has conviction → CONSIDER_CSP_AVERAGING
-- DTE>1 → HOLD, ROLL_UP, ROLL_DOWN, ROLL_OUT, or CLOSE
+=== COVERED CALL (CC) DECISION RULES ===
 
-Write a 4-line response. Each line must be complete. Do not stop mid-sentence.
+DTE < 0 (already expired):
+- Stock Price > Strike → ALREADY_ASSIGNED (shares called away at strike price)
+- Stock Price ≤ Strike → OPTION_EXPIRED_WORTHLESS (keep premium + shares, recommend new call)
 
-Line 1 — Action: [write only the action word]
-Line 2 — Suggested Trade: [write the specific trade details, or write None]
-Line 3 — Why: [write two full sentences explaining what is happening with this position and what the trader should expect]
-Line 4 — Risk: [write one full sentence about the key risk]"""
+DTE = 1:
+- Evaluate moneyness and assignment likelihood
+- Select one of: LET_EXPIRE, ROLL, MONITOR_CLOSELY
+
+DTE = 0 (expiry day) — mandatory action set:
+- Stock Price > Strike → EXPECT_ASSIGNMENT
+- Stock Price ≤ Strike + weekly ROI ≥ 1% or monthly ROI ≥ 2% → SELL_ANOTHER_CALL
+- Stock Price ≤ Strike + premiums too low or position below break-even → DO_NOTHING
+- Stock down >40% + weak fundamentals → DO_NOTHING
+- Stock down >40% + trader has conviction → CONSIDER_CSP_AVERAGING
+
+DTE > 1:
+- Standard management: HOLD, ROLL_UP, ROLL_DOWN, ROLL_OUT, or CLOSE
+
+=== PMCC DECISION RULES ===
+
+DTE = 1 (short call):
+- Select one of: LET_EXPIRE, ROLL, MONITOR_CLOSELY
+
+DTE = 0 (short call expiry) — mandatory action set:
+- Stock Price > Strike → EXPECT_ASSIGNMENT (assignment risk disrupts PMCC structure, LEAPS may be forced closed)
+- Stock Price ≤ Strike + weekly ROI ≥ 1% or monthly ROI ≥ 2% → SELL_ANOTHER_CALL (LEAPS remains intact)
+- Stock Price ≤ Strike + premiums too low → DO_NOTHING
+- Stock down >30-40% + weak fundamentals → DO_NOTHING
+- Stock down >30-40% + reasonable conviction → CONSIDER_PMCC_ADJUSTMENT
+
+DTE > 1:
+- Standard management: HOLD, ROLL, MONITOR_CLOSELY
+
+=== NEXT CALL RECOMMENDATION (when shares/LEAPS remain) ===
+Strike selection:
+- Prefer OTM strikes
+- Prefer liquid options
+- Prefer highest strike meeting ROI threshold
+- Avoid illiquid / low-quality contracts
+- For PMCC: prefer delta ~0.20–0.35
+
+If recommending a new call, output must include:
+Strike | Expiry date | Estimated premium | Expected ROI | Brief explanation
+
+=== OUTPUT FORMAT (follow exactly, all lines mandatory) ===
+
+Action: [action word only]
+Suggested Trade: [specific trade details, or None]
+Why: [two full sentences — what is happening and what to expect]
+Risk Note: [one full sentence — the key risk]
+
+This is an AI suggestion only and not a guarantee. Final trade decisions remain with the user."""
 
         return await self.execute(
             user_id=user_id,
