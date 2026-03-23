@@ -111,9 +111,8 @@ async def _get_best_opportunity_live(symbol: str, stock_price: float = None) -> 
             logging.warning(f"Could not compute IV metrics for {symbol}: {e}")
             iv_metrics = None
         
-        best_opp = None
-        best_score = 0
-        
+        candidates = []
+
         for call in calls:
             strike = call.get("strike", 0)
             expiry = call.get("expiry", "")
@@ -122,26 +121,26 @@ async def _get_best_opportunity_live(symbol: str, stock_price: float = None) -> 
             ask = call.get("ask", 0)
             open_interest = call.get("open_interest", 0)
             iv_raw = call.get("implied_volatility", 0)
-            
+
             # PRICING RULES - SELL leg (covered call):
             # - Use BID only
             # - If BID is None, 0, or missing → reject the contract
             # - Never use: lastPrice, mid, ASK, theoretical price
             if not bid or bid <= 0:
                 continue  # Reject - no valid BID for SELL leg
-            
+
             if strike <= 0 or dte < 1:
                 continue
-            
+
             premium = bid  # SELL leg uses BID only
-            
+
             # Filter for reasonable strikes
             if strike <= stock_price * 0.98 or strike > stock_price * 1.15:
                 continue
-            
+
             # Normalize IV
             iv_data = normalize_iv_fields(iv_raw)
-            
+
             # Calculate delta using Black-Scholes (not moneyness fallback)
             T = max(dte, 1) / 365.0
             greeks_result = calculate_greeks(
@@ -151,46 +150,62 @@ async def _get_best_opportunity_live(symbol: str, stock_price: float = None) -> 
                 sigma=iv_data["iv"] if iv_data["iv"] > 0 else None,
                 option_type="call"
             )
-            
+
             # Calculate ROI
             roi_pct = (premium / stock_price) * 100 if stock_price > 0 else 0
             roi_annualized = (roi_pct * 365 / dte) if dte > 0 else 0
-            
-            # Simple scoring: ROI + IV consideration
-            score = roi_pct * 2 + (iv_data["iv_pct"] * 0.1 if iv_data["iv_pct"] else 0)
-            
-            if score > best_score:
-                best_score = score
-                best_opp = {
-                    "symbol": symbol,
-                    "strike": strike,
-                    "expiry": expiry,
-                    "dte": dte,
-                    "premium": round(premium, 2),
-                    "bid": round(bid, 2),
-                    "ask": round(ask, 2) if ask else None,
-                    "stock_price": round(stock_price, 2),
-                    "roi_pct": round(roi_pct, 2),
-                    "roi_annualized": round(roi_annualized, 1),
-                    # Greeks (Black-Scholes) - ALWAYS POPULATED
-                    "delta": greeks_result.delta,
-                    "delta_source": greeks_result.delta_source,
-                    "gamma": greeks_result.gamma,
-                    "theta": greeks_result.theta,
-                    "vega": greeks_result.vega,
-                    # IV fields (standardized) - ALWAYS POPULATED
-                    "iv": iv_data["iv"],
-                    "iv_pct": iv_data["iv_pct"],
-                    # IV Rank (industry standard) - ALWAYS POPULATED
-                    "iv_rank": iv_metrics.iv_rank if iv_metrics else 50.0,
-                    "iv_percentile": iv_metrics.iv_percentile if iv_metrics else 50.0,
-                    "iv_rank_source": iv_metrics.iv_rank_source if iv_metrics else "DEFAULT_NEUTRAL",
-                    "iv_samples": iv_metrics.iv_samples if iv_metrics else 0,
-                    # Liquidity
-                    "open_interest": open_interest,
-                    "data_source": "live"
-                }
-        
+
+            # Weekly vs Monthly ROI threshold:
+            # Weekly (DTE <= 14): minimum 1% ROI
+            # Monthly (DTE > 14): minimum 2% ROI
+            is_weekly = dte <= 14
+            min_roi = 1.0 if is_weekly else 2.0
+            if roi_pct < min_roi:
+                continue
+
+            candidates.append({
+                "symbol": symbol,
+                "strike": strike,
+                "expiry": expiry,
+                "dte": dte,
+                "premium": round(premium, 2),
+                "bid": round(bid, 2),
+                "ask": round(ask, 2) if ask else None,
+                "stock_price": round(stock_price, 2),
+                "roi_pct": round(roi_pct, 2),
+                "roi_annualized": round(roi_annualized, 1),
+                # Greeks (Black-Scholes) - ALWAYS POPULATED
+                "delta": greeks_result.delta,
+                "delta_source": greeks_result.delta_source,
+                "gamma": greeks_result.gamma,
+                "theta": greeks_result.theta,
+                "vega": greeks_result.vega,
+                # IV fields (standardized) - ALWAYS POPULATED
+                "iv": iv_data["iv"],
+                "iv_pct": iv_data["iv_pct"],
+                # IV Rank (industry standard) - ALWAYS POPULATED
+                "iv_rank": iv_metrics.iv_rank if iv_metrics else 50.0,
+                "iv_percentile": iv_metrics.iv_percentile if iv_metrics else 50.0,
+                "iv_rank_source": iv_metrics.iv_rank_source if iv_metrics else "DEFAULT_NEUTRAL",
+                "iv_samples": iv_metrics.iv_samples if iv_metrics else 0,
+                # Liquidity
+                "open_interest": open_interest,
+                "data_source": "live",
+                "_is_weekly": is_weekly,
+            })
+
+        # Prefer weekly options (nearest expiry, then best ROI)
+        # Fall back to monthly if no weekly candidates qualify
+        weekly = [c for c in candidates if c["_is_weekly"]]
+        monthly = [c for c in candidates if not c["_is_weekly"]]
+        pool = weekly if weekly else monthly
+
+        if not pool:
+            return None
+
+        pool.sort(key=lambda x: (x["dte"], -x["roi_pct"]))
+        best_opp = pool[0]
+        best_opp.pop("_is_weekly", None)
         return best_opp
         
     except Exception as e:
@@ -251,9 +266,8 @@ async def _get_best_opportunity(symbol: str, api_key: str, underlying_price: flo
             logging.warning(f"Could not compute IV metrics for {symbol}: {e}")
             iv_metrics = None
         
-        best_opp = None
-        best_score = 0
-        
+        candidates = []
+
         for call in calls:
             strike = call.get("strike", 0)
             expiry = call.get("expiry", "")
@@ -262,13 +276,13 @@ async def _get_best_opportunity(symbol: str, api_key: str, underlying_price: flo
             ask = call.get("ask", 0)
             open_interest = call.get("open_interest", 0)
             iv_raw = call.get("implied_volatility", 0)
-            
+
             if premium <= 0 or strike <= 0 or dte < 1:
                 continue
-            
+
             # Normalize IV
             iv_data = normalize_iv_fields(iv_raw)
-            
+
             # Calculate delta using Black-Scholes (not moneyness fallback)
             T = max(dte, 1) / 365.0
             greeks_result = calculate_greeks(
@@ -278,69 +292,82 @@ async def _get_best_opportunity(symbol: str, api_key: str, underlying_price: flo
                 sigma=iv_data["iv"] if iv_data["iv"] > 0 else None,
                 option_type="call"
             )
-            
+
             # Calculate ROI
             roi_pct = (premium / stock_price) * 100 if stock_price > 0 else 0
             annualized_roi = roi_pct * (365 / dte) if dte > 0 else 0
-            
-            if roi_pct < 0.3:  # Minimum 0.3% yield
+
+            # Weekly vs Monthly ROI threshold:
+            # Weekly (DTE <= 14): minimum 1% ROI
+            # Monthly (DTE > 14): minimum 2% ROI
+            is_weekly = dte <= 14
+            min_roi = 1.0 if is_weekly else 2.0
+            if roi_pct < min_roi:
                 continue
-            
-            # Determine type: Weekly (<=14 DTE) or Monthly
-            option_type = "Weekly" if dte <= 14 else "Monthly"
-            
-            # Calculate AI Score
+
+            # Determine type label
+            option_type = "Weekly" if is_weekly else "Monthly"
+
+            # Calculate AI Score (kept for reference)
             roi_score = min(roi_pct * 15, 40)
             iv_score = min(iv_data["iv_pct"] / 5, 20) if iv_data["iv_pct"] > 0 else 10
             delta_score = max(0, 20 - abs(greeks_result.delta - 0.35) * 50)
             liquidity_score = 10 if open_interest >= 500 else 5 if open_interest >= 100 else 2
-            
             ai_score = round(roi_score + iv_score + delta_score + liquidity_score, 1)
-            
-            if ai_score > best_score:
-                best_score = ai_score
-                
-                # Calculate spread percentage
-                spread_pct = ((ask - premium) / premium * 100) if premium > 0 and ask else 0
-                
-                # Build contract in Layer 3 authoritative format
-                best_opp = {
-                    # SHORT_CALL fields (Layer 3 contract)
-                    "strike": strike,
-                    "expiry": expiry,
-                    "dte": dte,
-                    "premium": round(premium, 2),  # BID ONLY
-                    "bid": round(premium, 2),
-                    "ask": round(ask, 2) if ask else None,
-                    "spread_pct": round(spread_pct, 2),
-                    # Greeks (Black-Scholes) - ALWAYS POPULATED
-                    "delta": greeks_result.delta,
-                    "delta_source": greeks_result.delta_source,
-                    "gamma": greeks_result.gamma,
-                    "theta": greeks_result.theta,
-                    "vega": greeks_result.vega,
-                    # IV fields (standardized) - ALWAYS POPULATED
-                    "iv": iv_data["iv"],
-                    "iv_pct": iv_data["iv_pct"],
-                    "implied_volatility": iv_data["iv_pct"],  # Legacy alias
-                    # IV Rank (industry standard) - ALWAYS POPULATED
-                    "iv_rank": iv_metrics.iv_rank if iv_metrics else 50.0,
-                    "iv_percentile": iv_metrics.iv_percentile if iv_metrics else 50.0,
-                    "iv_rank_source": iv_metrics.iv_rank_source if iv_metrics else "DEFAULT_NEUTRAL",
-                    "iv_samples": iv_metrics.iv_samples if iv_metrics else 0,
-                    # Liquidity
-                    "volume": call.get("volume", 0),
-                    "open_interest": open_interest,
-                    # ECONOMICS fields (Layer 3 contract)
-                    "roi_pct": round(roi_pct, 2),
-                    "annualized_roi_pct": round(annualized_roi, 1),
-                    # METADATA fields
-                    "type": option_type,
-                    "ai_score": ai_score,
-                    "source": "snapshot",
-                    "data_source": "layer3"
-                }
-        
+
+            # Calculate spread percentage
+            spread_pct = ((ask - premium) / premium * 100) if premium > 0 and ask else 0
+
+            candidates.append({
+                # SHORT_CALL fields (Layer 3 contract)
+                "strike": strike,
+                "expiry": expiry,
+                "dte": dte,
+                "premium": round(premium, 2),  # BID ONLY
+                "bid": round(premium, 2),
+                "ask": round(ask, 2) if ask else None,
+                "spread_pct": round(spread_pct, 2),
+                # Greeks (Black-Scholes) - ALWAYS POPULATED
+                "delta": greeks_result.delta,
+                "delta_source": greeks_result.delta_source,
+                "gamma": greeks_result.gamma,
+                "theta": greeks_result.theta,
+                "vega": greeks_result.vega,
+                # IV fields (standardized) - ALWAYS POPULATED
+                "iv": iv_data["iv"],
+                "iv_pct": iv_data["iv_pct"],
+                "implied_volatility": iv_data["iv_pct"],  # Legacy alias
+                # IV Rank (industry standard) - ALWAYS POPULATED
+                "iv_rank": iv_metrics.iv_rank if iv_metrics else 50.0,
+                "iv_percentile": iv_metrics.iv_percentile if iv_metrics else 50.0,
+                "iv_rank_source": iv_metrics.iv_rank_source if iv_metrics else "DEFAULT_NEUTRAL",
+                "iv_samples": iv_metrics.iv_samples if iv_metrics else 0,
+                # Liquidity
+                "volume": call.get("volume", 0),
+                "open_interest": open_interest,
+                # ECONOMICS fields (Layer 3 contract)
+                "roi_pct": round(roi_pct, 2),
+                "annualized_roi_pct": round(annualized_roi, 1),
+                # METADATA fields
+                "type": option_type,
+                "ai_score": ai_score,
+                "source": "snapshot",
+                "data_source": "layer3",
+                "_is_weekly": is_weekly,
+            })
+
+        # Prefer weekly options (nearest expiry, then best ROI)
+        # Fall back to monthly if no weekly candidates qualify
+        weekly = [c for c in candidates if c["_is_weekly"]]
+        monthly = [c for c in candidates if not c["_is_weekly"]]
+        pool = weekly if weekly else monthly
+
+        if not pool:
+            return None
+
+        pool.sort(key=lambda x: (x["dte"], -x["roi_pct"]))
+        best_opp = pool[0]
+        best_opp.pop("_is_weekly", None)
         return best_opp
     except Exception as e:
         logging.error(f"Error getting opportunity for {symbol} from snapshot: {e}")
