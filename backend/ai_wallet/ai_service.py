@@ -300,14 +300,14 @@ DISTRESSED POSITION (stock down >40% from entry):
 - Evaluate whether CSP averaging could help reduce average cost
 - Explain increased position size risk
 
-RESPONSE FORMAT (always use this exact structure):
-**Action:** [ACTION_WORD]
+RESPONSE FORMAT — you MUST include ALL four sections below, no exceptions:
+**Action:** [ACTION_WORD only, e.g. EXPECT_ASSIGNMENT]
 
 **Suggested Trade:** [specific strike, expiry, estimated premium and ROI — or "None" if not applicable]
 
-**Why:** [2-3 sentences explaining the reasoning based on DTE, moneyness, premium quality, position health]
+**Why:** [2-3 sentences explaining the reasoning based on DTE, moneyness, premium quality, and position health. Always write this section even for EXPECT_ASSIGNMENT.]
 
-**Risk Note:** [one sentence on the main risk]
+**Risk Note:** [one sentence on the main risk the trader should be aware of]
 
 *This is an AI suggestion only and not a guarantee. Final trade decisions remain with the user.*"""
 
@@ -317,7 +317,7 @@ RESPONSE FORMAT (always use this exact structure):
             prompt=trade_context,
             system_message=system_message,
             model="gpt-4o-mini",
-            max_tokens=400,
+            max_tokens=600,
             temperature=0.4
         )
     
