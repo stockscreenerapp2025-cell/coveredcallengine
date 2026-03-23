@@ -286,43 +286,34 @@ class AIExecutionService:
         """
         Execute AI trade suggestion with appropriate token cost.
         """
-        system_message = """You are a professional covered call and options trading advisor with deep expertise in income-generating strategies.
+        system_message = "You are a covered call trading education tool. You explain options trade situations clearly and completely."
 
-Analyze the trade data provided and apply the following decision engine:
+        prompt = f"""{trade_context}
 
-DTE LOGIC:
-- DTE > 1: Standard trade management (HOLD, ROLL_UP, ROLL_DOWN, ROLL_OUT, CLOSE)
-- DTE = 1: Choose LET_EXPIRE, ROLL, or MONITOR_CLOSELY based on moneyness
-- DTE = 0: Do NOT just say LET_EXPIRE. Choose one of: EXPECT_ASSIGNMENT, SELL_ANOTHER_CALL, DO_NOTHING, CONSIDER_CSP_AVERAGING
+---
+Based on the trade data above, apply these decision rules:
+- DTE = 0 and option ITM → action is EXPECT_ASSIGNMENT
+- DTE = 0 and option OTM and weekly ROI >= 1% or monthly ROI >= 2% → action is SELL_ANOTHER_CALL
+- DTE = 0 and stock down >40% and weak fundamentals → action is DO_NOTHING
+- DTE = 0 and stock down heavily but trader has conviction → action is CONSIDER_CSP_AVERAGING
+- DTE > 1 → action is one of HOLD, ROLL_UP, ROLL_DOWN, ROLL_OUT, CLOSE
 
-DTE = 0 DECISION RULES:
-- If option is ITM at DTE 0 → EXPECT_ASSIGNMENT (shares will be called away)
-- If option is OTM at DTE 0 AND premium available meets thresholds → SELL_ANOTHER_CALL
-  - Weekly minimum: 1.0% ROI per cycle
-  - Monthly minimum: 2.0% ROI per cycle
-  - Prefer highest OTM strike that still meets threshold
-- If stock is down >40% from entry AND fundamentals weak → DO_NOTHING
-- If stock is down heavily AND user still has conviction → CONSIDER_CSP_AVERAGING
+Now write your response using EXACTLY this format. Each section is required. Write complete sentences — do not stop early.
 
-DISTRESSED POSITION (stock down >40% from entry):
-- Evaluate whether CSP averaging could help reduce average cost
-- Explain increased position size risk
+**Action:** [single action word from the list above]
 
-RESPONSE FORMAT — you MUST include ALL four sections below, no exceptions:
-**Action:** [ACTION_WORD only, e.g. EXPECT_ASSIGNMENT]
+**Suggested Trade:** [specific strike, expiry, estimated premium and ROI if applicable — otherwise write None]
 
-**Suggested Trade:** [specific strike, expiry, estimated premium and ROI — or "None" if not applicable]
+**Why:** [Write exactly 2 complete sentences. First sentence: explain what is happening with this position right now based on DTE and moneyness. Second sentence: explain what it means for the trader and what happens next.]
 
-**Why:** [2-3 sentences explaining the reasoning based on DTE, moneyness, premium quality, and position health. Always write this section even for EXPECT_ASSIGNMENT.]
-
-**Risk Note:** [one sentence on the main risk the trader should be aware of]
+**Risk Note:** [Write exactly 1 complete sentence about the main risk the trader faces.]
 
 *This is an AI suggestion only and not a guarantee. Final trade decisions remain with the user.*"""
 
         return await self.execute(
             user_id=user_id,
             action="trade_suggestion",
-            prompt=trade_context,
+            prompt=prompt,
             system_message=system_message,
             model="gpt-4o-mini",
             max_tokens=600,
