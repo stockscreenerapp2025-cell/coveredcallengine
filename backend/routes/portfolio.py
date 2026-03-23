@@ -789,13 +789,23 @@ def _build_trade_context(trade: dict) -> str:
     current_price = stock_data.get('price', entry_price) or entry_price
     option_strike = trade.get('short_call_strike') or trade.get('strike_price') or trade.get('option_strike')
     premium = trade.get('total_premium', 0) or trade.get('short_call_premium', 0) or 0
-    dte = trade.get('dte', 0) or 0
     break_even = trade.get('break_even') or entry_price
     shares = trade.get('shares', 0) or trade.get('quantity', 0) or 0
     strategy = trade.get('strategy_type', '') or trade.get('strategy_label', '')
     unrealized_pnl = trade.get('unrealized_pnl', 0) or 0
     days_in_trade = trade.get('days_in_trade', 0) or 0
     expiry = trade.get('option_expiry') or trade.get('expiry_date') or 'N/A'
+
+    # Compute true DTE allowing negative (option already expired)
+    true_dte: int = trade.get('dte', 0) or 0
+    if expiry and expiry != 'N/A':
+        try:
+            from datetime import date as _date
+            expiry_d = datetime.strptime(expiry, "%Y-%m-%d").date()
+            true_dte = (expiry_d - _date.today()).days
+        except Exception:
+            pass
+    dte = true_dte
 
     # Moneyness
     itm_status = "N/A"
@@ -821,6 +831,13 @@ def _build_trade_context(trade: dict) -> str:
     # ROI context
     roi_pct = trade.get('roi_pct') or (premium / (entry_price * shares) * 100 if entry_price and shares else 0)
 
+    already_expired = dte < 0
+    expiry_note = (
+        f"⚠️ OPTION ALREADY EXPIRED {abs(dte)} day(s) ago (expiry was {expiry}). "
+        "Assignment or expiry has already occurred — no further action is needed on the option itself."
+        if already_expired else ""
+    )
+
     return f"""COVERED CALL TRADE ANALYSIS REQUEST
 
 Symbol: {symbol}
@@ -833,8 +850,9 @@ PRICE DATA:
 - Break-Even: ${break_even:.2f}
 - Current Strike: {f"${option_strike:.2f}" if option_strike else "N/A"}
 - Option Expiry: {expiry}
-- DTE: {dte}
+- DTE: {dte} {"(EXPIRED)" if already_expired else ""}
 - Moneyness: {itm_status} (${abs(itm_amount):.2f} {'ITM' if itm_status == 'ITM' else 'OTM'})
+{expiry_note}
 
 P&L:
 - Total Premium Collected: ${premium:.2f}

@@ -297,6 +297,8 @@ class AIExecutionService:
 
 ---
 Decision rules:
+- DTE<0 (option already expired days ago) + ITM → ALREADY_ASSIGNED (shares were called away at strike price)
+- DTE<0 (option already expired days ago) + OTM → OPTION_EXPIRED_WORTHLESS (you keep premium and shares, now sell a new call)
 - DTE=0 + option ITM → EXPECT_ASSIGNMENT
 - DTE=0 + option OTM + weekly ROI>=1% or monthly ROI>=2% → SELL_ANOTHER_CALL
 - DTE=0 + stock down >40% + weak outlook → DO_NOTHING
