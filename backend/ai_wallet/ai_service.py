@@ -60,8 +60,14 @@ async def _call_gemini(prompt: str, system_message: str, api_key: str,
         if resp.status_code != 200:
             raise RuntimeError(f"Gemini API error {resp.status_code}: {resp.text[:300]}")
         data = resp.json()
+        candidate = data["candidates"][0]
+        finish_reason = candidate.get("finishReason", "UNKNOWN")
+        if finish_reason not in ("STOP", "MAX_TOKENS"):
+            logger.warning(f"[Gemini] Unexpected finishReason={finish_reason} model={model}")
+        if finish_reason == "MAX_TOKENS":
+            logger.warning(f"[Gemini] Response hit MAX_TOKENS limit ({max_tokens}) — consider increasing")
         # Gemini may split response into multiple parts — join them all
-        parts = data["candidates"][0]["content"]["parts"]
+        parts = candidate.get("content", {}).get("parts", [])
         return "".join(p.get("text", "") for p in parts)
 
 
@@ -151,8 +157,8 @@ class AIExecutionService:
             # gemini-2.0-flash → gemini-1.5-flash → gemini-1.5-flash-8b → friendly message
             import asyncio
             GEMINI_MODELS = [
-                "gemini-2.5-flash",
                 "gemini-2.0-flash",
+                "gemini-2.5-flash",
                 "gemini-2.0-flash-lite",
             ]
             response_text = None
@@ -316,8 +322,8 @@ Now write your response using EXACTLY this format. Each section is required. Wri
             prompt=prompt,
             system_message=system_message,
             model="gpt-4o-mini",
-            max_tokens=600,
-            temperature=0.4
+            max_tokens=800,
+            temperature=0.7
         )
     
     async def execute_sentiment_analysis(
