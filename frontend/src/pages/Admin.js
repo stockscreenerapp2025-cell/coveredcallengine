@@ -309,6 +309,8 @@ const Admin = () => {
           paypal_enabled: p.enabled ?? prev.paypal_enabled,
           paypal_mode: p.mode || prev.paypal_mode,
           paypal_webhook_id: p.webhook_id || prev.paypal_webhook_id,
+          paypal_client_id: '',    // never pre-fill for security
+          paypal_client_secret: '' // never pre-fill for security
         }));
       }
     } catch (error) {

@@ -523,10 +523,12 @@ async def get_integration_settings(admin: dict = Depends(get_admin_user)):
             "configured": paypal_configured,
             "enabled": paypal_enabled,
             "mode": paypal_mode,
-            "has_client_id": bool(paypal_settings and paypal_settings.get("client_id")),
-            "has_client_secret": bool(paypal_settings and paypal_settings.get("client_secret")),
-            "webhook_id_set": bool(paypal_settings and paypal_settings.get("webhook_id")),
-            "webhook_id": paypal_settings.get("webhook_id", "") if paypal_settings else ""
+            "has_client_id": bool(paypal_settings and (paypal_settings.get(f"{paypal_mode}_client_id") or paypal_settings.get("client_id"))),
+            "has_client_secret": bool(paypal_settings and (paypal_settings.get(f"{paypal_mode}_client_secret") or paypal_settings.get("client_secret"))),
+            "webhook_id_set": bool(paypal_settings and (paypal_settings.get(f"{paypal_mode}_webhook_id") or paypal_settings.get("webhook_id"))),
+            "webhook_id": (paypal_settings.get(f"{paypal_mode}_webhook_id") or paypal_settings.get("webhook_id", "")) if paypal_settings else "",
+            "live_configured": bool(paypal_settings and paypal_settings.get("live_client_id") and paypal_settings.get("live_client_secret")),
+            "sandbox_configured": bool(paypal_settings and paypal_settings.get("sandbox_client_id") and paypal_settings.get("sandbox_client_secret"))
         }
     }
 
@@ -580,11 +582,16 @@ async def update_integration_settings(
             paypal_update["enabled"] = paypal_enabled
         if paypal_mode:
             paypal_update["mode"] = paypal_mode
+        # Store credentials per mode (live_client_id / sandbox_client_id)
+        active_mode = paypal_mode or "sandbox"
         if paypal_client_id:
-            paypal_update["client_id"] = paypal_client_id
+            paypal_update[f"{active_mode}_client_id"] = paypal_client_id
+            paypal_update["client_id"] = paypal_client_id  # keep generic for backward compat
         if paypal_client_secret:
+            paypal_update[f"{active_mode}_client_secret"] = paypal_client_secret
             paypal_update["client_secret"] = paypal_client_secret
         if paypal_webhook_id:
+            paypal_update[f"{active_mode}_webhook_id"] = paypal_webhook_id
             paypal_update["webhook_id"] = paypal_webhook_id
 
         await db.admin_settings.update_one(

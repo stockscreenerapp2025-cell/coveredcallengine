@@ -40,9 +40,10 @@ class PayPalService:
                 {"_id": 0}
             )
             if settings:
-                self.client_id = settings.get("client_id")
-                self.client_secret = settings.get("client_secret")
                 self.mode = settings.get("mode", "sandbox")
+                # Load mode-specific credentials, fall back to generic
+                self.client_id = settings.get(f"{self.mode}_client_id") or settings.get("client_id")
+                self.client_secret = settings.get(f"{self.mode}_client_secret") or settings.get("client_secret")
                 self._initialized = bool(self.client_id and self.client_secret)
             return self._initialized
         except Exception as e:
