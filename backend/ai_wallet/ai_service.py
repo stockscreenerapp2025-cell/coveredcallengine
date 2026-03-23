@@ -157,7 +157,6 @@ class AIExecutionService:
             # gemini-2.0-flash → gemini-1.5-flash → gemini-1.5-flash-8b → friendly message
             import asyncio
             GEMINI_MODELS = [
-                "gemini-2.0-flash",
                 "gemini-2.5-flash",
                 "gemini-2.0-flash-lite",
             ]
@@ -292,29 +291,24 @@ class AIExecutionService:
         """
         Execute AI trade suggestion with appropriate token cost.
         """
-        system_message = "You are a covered call trading education tool. You explain options trade situations clearly and completely."
+        system_message = "You are a covered call trading educator. Always write complete sentences and never leave a sentence unfinished."
 
         prompt = f"""{trade_context}
 
 ---
-Based on the trade data above, apply these decision rules:
-- DTE = 0 and option ITM → action is EXPECT_ASSIGNMENT
-- DTE = 0 and option OTM and weekly ROI >= 1% or monthly ROI >= 2% → action is SELL_ANOTHER_CALL
-- DTE = 0 and stock down >40% and weak fundamentals → action is DO_NOTHING
-- DTE = 0 and stock down heavily but trader has conviction → action is CONSIDER_CSP_AVERAGING
-- DTE > 1 → action is one of HOLD, ROLL_UP, ROLL_DOWN, ROLL_OUT, CLOSE
+Decision rules:
+- DTE=0 + option ITM → EXPECT_ASSIGNMENT
+- DTE=0 + option OTM + weekly ROI>=1% or monthly ROI>=2% → SELL_ANOTHER_CALL
+- DTE=0 + stock down >40% + weak outlook → DO_NOTHING
+- DTE=0 + stock down but trader has conviction → CONSIDER_CSP_AVERAGING
+- DTE>1 → HOLD, ROLL_UP, ROLL_DOWN, ROLL_OUT, or CLOSE
 
-Now write your response using EXACTLY this format. Each section is required. Write complete sentences — do not stop early.
+Write a 4-line response. Each line must be complete. Do not stop mid-sentence.
 
-**Action:** [single action word from the list above]
-
-**Suggested Trade:** [specific strike, expiry, estimated premium and ROI if applicable — otherwise write None]
-
-**Why:** [Write exactly 2 complete sentences. First sentence: explain what is happening with this position right now based on DTE and moneyness. Second sentence: explain what it means for the trader and what happens next.]
-
-**Risk Note:** [Write exactly 1 complete sentence about the main risk the trader faces.]
-
-*This is an AI suggestion only and not a guarantee. Final trade decisions remain with the user.*"""
+Line 1 — Action: [write only the action word]
+Line 2 — Suggested Trade: [write the specific trade details, or write None]
+Line 3 — Why: [write two full sentences explaining what is happening with this position and what the trader should expect]
+Line 4 — Risk: [write one full sentence about the key risk]"""
 
         return await self.execute(
             user_id=user_id,
@@ -322,7 +316,7 @@ Now write your response using EXACTLY this format. Each section is required. Wri
             prompt=prompt,
             system_message=system_message,
             model="gpt-4o-mini",
-            max_tokens=800,
+            max_tokens=2000,
             temperature=0.7
         )
     

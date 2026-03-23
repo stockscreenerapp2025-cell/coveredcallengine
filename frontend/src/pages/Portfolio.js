@@ -2121,11 +2121,15 @@ const Portfolio = () => {
                   <div className="bg-violet-500/10 border border-violet-500/30 rounded-lg p-4 space-y-2">
                     {selectedTrade.ai_suggestion.split('\n').map((line, i) => {
                       if (!line.trim()) return null;
-                      // Bold headers like **Action:** or **Why:**
-                      const formatted = line.replace(/\*\*([^*]+)\*\*/g, '<strong class="text-white">$1</strong>');
+                      // Strip "Line N — " prefix from new format
+                      let display = line.replace(/^Line \d+ — /i, '');
+                      // Bold label before first colon: "Action: ..." → "<strong>Action:</strong> ..."
+                      display = display.replace(/^([^:]+:)/, '<strong class="text-white">$1</strong>');
+                      // Also handle **bold** markdown for legacy suggestions
+                      display = display.replace(/\*\*([^*]+)\*\*/g, '<strong class="text-white">$1</strong>');
                       return (
                         <p key={i} className="text-sm text-zinc-300 leading-relaxed"
-                          dangerouslySetInnerHTML={{ __html: formatted }} />
+                          dangerouslySetInnerHTML={{ __html: display }} />
                       );
                     })}
                   </div>
