@@ -91,7 +91,8 @@ class ChatbotService:
                 async with httpx.AsyncClient(timeout=30.0) as client:
                     resp = await client.post(url, json=payload, headers={"Content-Type": "application/json"})
                     if resp.status_code == 200:
-                        return resp.json()["candidates"][0]["content"]["parts"][0]["text"]
+                        parts = resp.json()["candidates"][0]["content"]["parts"]
+                        return "".join(p.get("text", "") for p in parts)
                     logger.warning(f"[Chatbot] {model} failed {resp.status_code}: {resp.text[:150]}")
         if self.openai_key:
             openai_messages = [{"role": "system", "content": CHATBOT_SYSTEM_PROMPT}] + messages

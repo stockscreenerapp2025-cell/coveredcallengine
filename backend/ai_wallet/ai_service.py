@@ -54,7 +54,9 @@ async def _call_gemini(prompt: str, system_message: str, api_key: str,
         if resp.status_code != 200:
             raise RuntimeError(f"Gemini API error {resp.status_code}: {resp.text[:300]}")
         data = resp.json()
-        return data["candidates"][0]["content"]["parts"][0]["text"]
+        # Gemini may split response into multiple parts — join them all
+        parts = data["candidates"][0]["content"]["parts"]
+        return "".join(p.get("text", "") for p in parts)
 
 
 async def _call_groq(prompt: str, system_message: str, api_key: str,

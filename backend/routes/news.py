@@ -403,7 +403,8 @@ async def analyze_news_sentiment(
                       'generationConfig': {'temperature': 0.2, 'maxOutputTokens': 400}},
             )
         if resp.status_code == 200:
-            text = resp.json()['candidates'][0]['content']['parts'][0]['text']
+            _parts = resp.json()['candidates'][0]['content']['parts']
+            text = "".join(p.get('text', '') for p in _parts)
             m = re.search(r'\{[\s\S]*\}', text)
             if m:
                 result = json.loads(m.group())
