@@ -301,6 +301,16 @@ const Admin = () => {
     try {
       const response = await api.get('/admin/integration-settings');
       setIntegrationStatus(response.data);
+      // Populate form fields from saved settings
+      const p = response.data?.paypal;
+      if (p) {
+        setIntegrationSettings(prev => ({
+          ...prev,
+          paypal_enabled: p.enabled ?? prev.paypal_enabled,
+          paypal_mode: p.mode || prev.paypal_mode,
+          paypal_webhook_id: p.webhook_id || prev.paypal_webhook_id,
+        }));
+      }
     } catch (error) {
       console.error('Integration settings error:', error);
     }

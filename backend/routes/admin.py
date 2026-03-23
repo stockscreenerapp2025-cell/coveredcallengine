@@ -524,7 +524,9 @@ async def get_integration_settings(admin: dict = Depends(get_admin_user)):
             "enabled": paypal_enabled,
             "mode": paypal_mode,
             "has_client_id": bool(paypal_settings and paypal_settings.get("client_id")),
-            "has_client_secret": bool(paypal_settings and paypal_settings.get("client_secret"))
+            "has_client_secret": bool(paypal_settings and paypal_settings.get("client_secret")),
+            "webhook_id_set": bool(paypal_settings and paypal_settings.get("webhook_id")),
+            "webhook_id": paypal_settings.get("webhook_id", "") if paypal_settings else ""
         }
     }
 
