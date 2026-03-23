@@ -72,9 +72,9 @@ class ChatbotService:
         """Call AI provider — try multiple Gemini models, then OpenAI fallback."""
         import httpx
         GEMINI_MODELS = [
+            "gemini-2.5-flash",
             "gemini-2.0-flash",
             "gemini-2.0-flash-lite",
-            "gemini-2.5-flash",
         ]
         if self.gemini_key:
             contents = []
