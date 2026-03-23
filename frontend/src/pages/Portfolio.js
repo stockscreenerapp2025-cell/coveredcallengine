@@ -89,6 +89,10 @@ const ACTION_COLORS = {
   'ROLL_UP': 'bg-cyan-500/20 text-cyan-400 border-cyan-500/30',
   'ROLL_DOWN': 'bg-amber-500/20 text-amber-400 border-amber-500/30',
   'ROLL_OUT': 'bg-violet-500/20 text-violet-400 border-violet-500/30',
+  'EXPECT_ASSIGNMENT': 'bg-orange-500/20 text-orange-400 border-orange-500/30',
+  'SELL_ANOTHER_CALL': 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30',
+  'DO_NOTHING': 'bg-zinc-500/20 text-zinc-400 border-zinc-500/30',
+  'CONSIDER_CSP_AVERAGING': 'bg-amber-500/20 text-amber-400 border-amber-500/30',
   'N/A': 'bg-zinc-500/20 text-zinc-400 border-zinc-500/30'
 };
 
@@ -1475,7 +1479,7 @@ const Portfolio = () => {
                           {trade.status === 'Open' ? (
                             trade.ai_action ? (
                               <Badge className={ACTION_COLORS[trade.ai_action] || ACTION_COLORS['N/A']}>
-                                {trade.ai_action.replace('_', ' ')}
+                                {trade.ai_action.replace(/_/g, ' ')}
                               </Badge>
                             ) : (
                               <span className="text-zinc-500 text-xs">-</span>
@@ -2114,8 +2118,16 @@ const Portfolio = () => {
                   </Button>
                 </div>
                 {selectedTrade.ai_suggestion ? (
-                  <div className="bg-violet-500/10 border border-violet-500/30 rounded-lg p-4">
-                    <p className="text-sm text-zinc-300 whitespace-pre-wrap">{selectedTrade.ai_suggestion}</p>
+                  <div className="bg-violet-500/10 border border-violet-500/30 rounded-lg p-4 space-y-2">
+                    {selectedTrade.ai_suggestion.split('\n').map((line, i) => {
+                      if (!line.trim()) return null;
+                      // Bold headers like **Action:** or **Why:**
+                      const formatted = line.replace(/\*\*([^*]+)\*\*/g, '<strong class="text-white">$1</strong>');
+                      return (
+                        <p key={i} className="text-sm text-zinc-300 leading-relaxed"
+                          dangerouslySetInnerHTML={{ __html: formatted }} />
+                      );
+                    })}
                   </div>
                 ) : (
                   <div className="bg-zinc-800/50 rounded-lg p-4 text-center text-sm text-zinc-500">
