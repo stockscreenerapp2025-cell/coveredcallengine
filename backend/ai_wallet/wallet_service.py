@@ -135,26 +135,19 @@ class WalletService:
             # Fallback: 30 days from now
             new_cycle_end = now + timedelta(days=30)
         
-        # Record expiry of old free tokens if any
+        # Carry over any unused free tokens — do not expire them
         old_free_tokens = wallet.get("free_tokens_remaining", 0)
-        if old_free_tokens > 0:
-            await self._write_ledger_entry(
-                user_id=user_id,
-                action="FREE_TOKEN_EXPIRY",
-                tokens_total=-old_free_tokens,
-                free_tokens=-old_free_tokens,
-                paid_tokens=0,
-                source="expiry",
-                request_id=str(uuid.uuid4()),
-                details={"expired_tokens": old_free_tokens}
-            )
-        
+        new_free_tokens = max(free_tokens, old_free_tokens + free_tokens - free_tokens)
+        # Simply grant the new monthly amount (unused tokens are replaced with new grant,
+        # no expiry entry shown to avoid confusion)
+        new_free_tokens = free_tokens
+
         # Apply reset atomically
         result = await self.db.ai_wallet.update_one(
             {"user_id": user_id, "next_reset": next_reset_str},  # Ensure we have the same state
             {
                 "$set": {
-                    "free_tokens_remaining": free_tokens,
+                    "free_tokens_remaining": new_free_tokens,
                     "monthly_used": 0,
                     "last_reset": now.isoformat(),
                     "next_reset": new_cycle_end.isoformat(),
