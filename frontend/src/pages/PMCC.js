@@ -620,9 +620,14 @@ const PMCC = () => {
       if (synthA !== synthB) return synthA - synthB;
       return (b.max_return_pct || 0) - (a.max_return_pct || 0);
     }
-    const aVal = a[sortField] || 0;
-    const bVal = b[sortField] || 0;
-    return sortDirection === 'asc' ? aVal - bVal : bVal - aVal;
+    const aVal = a[sortField];
+    const bVal = b[sortField];
+    if (typeof aVal === 'string' || typeof bVal === 'string') {
+      const aStr = (aVal || '').toString();
+      const bStr = (bVal || '').toString();
+      return sortDirection === 'asc' ? aStr.localeCompare(bStr) : bStr.localeCompare(aStr);
+    }
+    return sortDirection === 'asc' ? (aVal || 0) - (bVal || 0) : (bVal || 0) - (aVal || 0);
   });
 
   return (
@@ -1148,12 +1153,12 @@ const PMCC = () => {
                         <th>Short Call</th>
                         <SortHeader field="net_debit" label="Net Debit" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
                         <SortHeader field="capital_efficiency_ratio" label="Cap Eff" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
-                        <th>Synth Prem %</th>
+                        <SortHeader field="synthetic_premium_pct" label="Synth Prem %" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
                         <SortHeader field="roi_per_cycle" label="Income Cycle" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
                         <SortHeader field="max_return_pct" label="Max Return" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
                         <SortHeader field="payback_months" label="Payback" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
                         <SortHeader field="score" label="Score" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
-                        <th>PMCC Verdict</th>
+                        <SortHeader field="verdict" label="PMCC Verdict" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
                         <th>
                           <div>Analyst Rating</div>
                           <div className="text-[9px] font-normal text-zinc-500 normal-case">Stock view only</div>
