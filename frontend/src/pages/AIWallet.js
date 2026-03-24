@@ -345,7 +345,6 @@ const AIWallet = () => {
         <CardContent>
           <div className="grid sm:grid-cols-2 gap-3">
             {[
-              { icon: MessageSquare, label: 'Chatbot Message', desc: 'Each message sent to the AI chatbot', cost: 50, color: 'text-blue-400', bg: 'bg-blue-500/10 border-blue-500/20' },
               { icon: BarChart2, label: 'Sentiment Analysis', desc: 'News sentiment scan for a symbol', cost: 150, color: 'text-cyan-400', bg: 'bg-cyan-500/10 border-cyan-500/20' },
               { icon: Brain, label: 'AI Analysis', desc: 'Deep analysis of a single position', cost: 200, color: 'text-violet-400', bg: 'bg-violet-500/10 border-violet-500/20' },
               { icon: Lightbulb, label: 'Trade Suggestion', desc: 'AI suggestion for one trade (Portfolio)', cost: 300, color: 'text-amber-400', bg: 'bg-amber-500/10 border-amber-500/20' },
