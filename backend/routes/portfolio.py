@@ -738,6 +738,17 @@ async def get_trade_ai_suggestion(trade_id: str, user: dict = Depends(get_curren
         {"_id": 0}
     ).to_list(20)
 
+    # Inject live price so AI sees the real current price, not the stale entry price
+    try:
+        quote = await fetch_stock_quote(symbol)
+        if quote and quote.get("price"):
+            live_price = quote["price"]
+            trade["current_price"] = live_price
+            for t in all_symbol_trades:
+                t["current_price"] = live_price
+    except Exception:
+        pass  # fall back to whatever is stored
+
     # Build trade context with all related positions visible to AI
     trade_context = _build_trade_context(trade, related_trades=all_symbol_trades)
 
@@ -798,7 +809,8 @@ def _build_trade_context(trade: dict, related_trades: list = None) -> str:
     symbol = trade.get('symbol', '')
     entry_price = trade.get('underlying_price', 0) or trade.get('entry_price', 0) or 0
     stock_data = MOCK_STOCKS.get(symbol, {})
-    current_price = stock_data.get('price', entry_price) or entry_price
+    # Prefer live price injected by the caller, then MOCK_STOCKS, then entry price
+    current_price = trade.get('current_price') or stock_data.get('price') or entry_price
     option_strike = trade.get('short_call_strike') or trade.get('strike_price') or trade.get('option_strike')
     premium = trade.get('total_premium', 0) or trade.get('short_call_premium', 0) or 0
     break_even = trade.get('break_even') or entry_price
@@ -992,6 +1004,17 @@ async def generate_all_suggestions(user: dict = Depends(get_current_user)):
             if all_fresh:
                 skipped_cached += len(group)
                 continue
+
+            # Inject live price before building context
+            try:
+                quote = await fetch_stock_quote(sym)
+                if quote and quote.get("price"):
+                    live_price = quote["price"]
+                    for t in group:
+                        t["current_price"] = live_price
+                    primary["current_price"] = primary.get("current_price") or live_price
+            except Exception:
+                pass
 
             # Build context using the primary trade but with all group members as related
             trade_context = _build_trade_context(primary, related_trades=group)
