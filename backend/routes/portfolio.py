@@ -730,8 +730,16 @@ async def get_trade_ai_suggestion(trade_id: str, user: dict = Depends(get_curren
     if not trade:
         raise HTTPException(status_code=404, detail="Trade not found")
 
-    # Build trade context
-    trade_context = _build_trade_context(trade)
+    # Fetch all other open trades for the same symbol + account to build complete context
+    symbol = trade.get("symbol", "")
+    account = trade.get("account", "")
+    all_symbol_trades = await db.ibkr_trades.find(
+        {"user_id": user["id"], "symbol": symbol, "account": account, "status": "Open"},
+        {"_id": 0}
+    ).to_list(20)
+
+    # Build trade context with all related positions visible to AI
+    trade_context = _build_trade_context(trade, related_trades=all_symbol_trades)
 
     # Execute through AI service with token guard
     ai_service = AIExecutionService(db)
@@ -779,8 +787,12 @@ async def get_trade_ai_suggestion(trade_id: str, user: dict = Depends(get_curren
     }
 
 
-def _build_trade_context(trade: dict) -> str:
-    """Build rich context string for AI trade analysis."""
+def _build_trade_context(trade: dict, related_trades: list = None) -> str:
+    """Build rich context string for AI trade analysis.
+
+    related_trades: all open trades for the same symbol (including the current trade).
+    When present, the AI sees the full combined position picture.
+    """
     MOCK_STOCKS, _ = _get_server_data()
 
     symbol = trade.get('symbol', '')
@@ -838,6 +850,38 @@ def _build_trade_context(trade: dict) -> str:
         if already_expired else ""
     )
 
+    # Build combined position summary when there are multiple open trades for the same symbol
+    combined_section = ""
+    if related_trades and len(related_trades) > 1:
+        total_combined_premium = sum(
+            (t.get('total_premium', 0) or t.get('short_call_premium', 0) or t.get('premium_received', 0) or 0)
+            for t in related_trades
+        )
+        # For CC/PMCC, all records represent the SAME underlying shares — use the max, not sum
+        max_shares = max(
+            (t.get('shares', 0) or t.get('quantity', 0) or 0)
+            for t in related_trades
+        )
+        cycles = []
+        for t in sorted(related_trades, key=lambda x: x.get('date_opened', '')):
+            t_strike = t.get('short_call_strike') or t.get('option_strike')
+            t_expiry = t.get('option_expiry') or t.get('expiry_date') or 'N/A'
+            t_prem = t.get('total_premium', 0) or t.get('premium_received', 0) or 0
+            t_id = t.get('id', '')
+            label = "(THIS TRADE)" if t_id == trade.get('id') else ""
+            cycles.append(
+                f"  • {t.get('date_opened','?')}  Strike={f'${t_strike:.2f}' if t_strike else 'N/A'}  "
+                f"Expiry={t_expiry}  Premium=${t_prem:.2f} {label}"
+            )
+        combined_section = f"""
+COMBINED POSITION FOR {symbol} ({len(related_trades)} open trade records):
+- Underlying Shares: {max_shares}
+- Total Premium Collected (all cycles combined): ${total_combined_premium:.2f}
+All cycles:
+{chr(10).join(cycles)}
+Note: Multiple records exist for {symbol} — evaluate based on the COMBINED premiums above.
+"""
+
     return f"""COVERED CALL TRADE ANALYSIS REQUEST
 
 Symbol: {symbol}
@@ -853,7 +897,7 @@ PRICE DATA:
 - DTE: {dte} {"(EXPIRED)" if already_expired else ""}
 - Moneyness: {itm_status} (${abs(itm_amount):.2f} {'ITM' if itm_status == 'ITM' else 'OTM'})
 {expiry_note}
-
+{combined_section}
 P&L:
 - Total Premium Collected: ${premium:.2f}
 - Unrealized P&L: ${unrealized_pnl:.2f}
@@ -914,40 +958,58 @@ async def generate_all_suggestions(user: dict = Depends(get_current_user)):
     updated = 0
     total_tokens_used = 0
     errors = []
-    
+
+    # Group trades by (symbol, account) to avoid billing tokens multiple times for same position
+    from collections import defaultdict
+    symbol_groups: dict = defaultdict(list)
+    for t in open_trades:
+        symbol_groups[(t.get("symbol", ""), t.get("account", ""))].append(t)
+
     skipped_cached = 0
-    for trade in open_trades:
+    for (sym, acct), group in symbol_groups.items():
         try:
-            # Skip if suggestion was generated within the last 24 hours
-            suggestion_updated = trade.get("suggestion_updated")
-            if suggestion_updated and trade.get("ai_suggestion"):
+            # Use the trade with most data as the "primary" representative for this symbol
+            primary = max(group, key=lambda t: t.get("premium_received", 0) or 0)
+
+            # Skip if ALL trades in this group were updated within the last 24 hours
+            all_fresh = True
+            for t in group:
+                suggestion_updated = t.get("suggestion_updated")
+                if not (suggestion_updated and t.get("ai_suggestion")):
+                    all_fresh = False
+                    break
                 try:
                     from datetime import timezone as _tz
                     last_updated = datetime.fromisoformat(suggestion_updated.replace("Z", "+00:00"))
                     age_hours = (datetime.now(_tz.utc) - last_updated).total_seconds() / 3600
-                    if age_hours < 24:
-                        skipped_cached += 1
-                        continue
+                    if age_hours >= 24:
+                        all_fresh = False
+                        break
                 except Exception:
-                    pass  # If parsing fails, regenerate
+                    all_fresh = False
+                    break
 
-            trade_context = _build_trade_context(trade)
+            if all_fresh:
+                skipped_cached += len(group)
+                continue
+
+            # Build context using the primary trade but with all group members as related
+            trade_context = _build_trade_context(primary, related_trades=group)
             result = await ai_service.execute_trade_suggestion(
                 user_id=user["id"],
                 trade_context=trade_context
             )
-            
+
             if not result["success"]:
                 if result.get("error_code") == "INSUFFICIENT_TOKENS":
                     errors.append(f"Insufficient tokens after {updated} trades")
                     break
                 if result.get("error_code") == "QUOTA_EXCEEDED":
-                    # All AI providers at quota — stop immediately, no point trying remaining trades
                     errors.append("AI is temporarily busy. Please try again in a few minutes. Your tokens have not been charged.")
                     break
-                errors.append(f"{trade.get('symbol')}: {result.get('error', 'Unknown error')}")
+                errors.append(f"{sym}: {result.get('error', 'Unknown error')}")
                 continue
-            
+
             # Parse action from response
             full_suggestion = result["response"]
             action = "HOLD"
@@ -956,21 +1018,24 @@ async def generate_all_suggestions(user: dict = Depends(get_current_user)):
                 if possible_action in first_line:
                     action = possible_action
                     break
-            
-            await db.ibkr_trades.update_one(
-                {"user_id": user["id"], "id": trade["id"]},
-                {"$set": {
-                    "ai_suggestion": full_suggestion,
-                    "ai_action": action,
-                    "suggestion_updated": datetime.now(timezone.utc).isoformat()
-                }}
-            )
-            updated += 1
+
+            now_iso = datetime.now(timezone.utc).isoformat()
+            # Apply the same suggestion to ALL trades in this symbol group
+            for t in group:
+                await db.ibkr_trades.update_one(
+                    {"user_id": user["id"], "id": t["id"]},
+                    {"$set": {
+                        "ai_suggestion": full_suggestion,
+                        "ai_action": action,
+                        "suggestion_updated": now_iso
+                    }}
+                )
+            updated += len(group)
             total_tokens_used += result.get("tokens_used", 0)
-            
+
         except Exception as e:
-            logging.error(f"Error generating suggestion for {trade.get('symbol')}: {e}")
-            errors.append(f"{trade.get('symbol')}: {str(e)}")
+            logging.error(f"Error generating suggestion for {sym}: {e}")
+            errors.append(f"{sym}: {str(e)}")
             continue
     
     newly_generated = updated
