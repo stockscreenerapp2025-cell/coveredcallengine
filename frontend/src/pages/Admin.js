@@ -2491,25 +2491,35 @@ const Admin = () => {
               {/* REST API Credentials */}
               <div className="space-y-4">
                 <div className="space-y-2">
-                  <Label htmlFor="paypal_client_id">Client ID</Label>
+                  <div className="flex items-center gap-2">
+                    <Label htmlFor="paypal_client_id">Client ID</Label>
+                    {integrationStatus?.paypal?.has_client_id && (
+                      <span className="text-xs text-emerald-400 font-medium">✓ Saved</span>
+                    )}
+                  </div>
                   <Input
                     id="paypal_client_id"
                     type="text"
                     value={integrationSettings.paypal_client_id}
                     onChange={(e) => setIntegrationSettings(prev => ({ ...prev, paypal_client_id: e.target.value }))}
-                    placeholder={integrationStatus?.paypal?.has_client_id ? '••••••••' : 'AZsFCrZe... (from developer.paypal.com)'}
+                    placeholder={integrationStatus?.paypal?.has_client_id ? '(already saved — enter new value to update)' : 'AZsFCrZe... (from developer.paypal.com)'}
                     className="bg-zinc-800 border-zinc-700"
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="paypal_client_secret">Client Secret</Label>
+                  <div className="flex items-center gap-2">
+                    <Label htmlFor="paypal_client_secret">Client Secret</Label>
+                    {integrationStatus?.paypal?.has_client_secret && (
+                      <span className="text-xs text-emerald-400 font-medium">✓ Saved</span>
+                    )}
+                  </div>
                   <div className="relative">
                     <Input
                       id="paypal_client_secret"
                       type={showPayPalPassword ? 'text' : 'password'}
                       value={integrationSettings.paypal_client_secret}
                       onChange={(e) => setIntegrationSettings(prev => ({ ...prev, paypal_client_secret: e.target.value }))}
-                      placeholder={integrationStatus?.paypal?.has_client_secret ? '••••••••' : 'EPbroVPM... (from developer.paypal.com)'}
+                      placeholder={integrationStatus?.paypal?.has_client_secret ? '(already saved — enter new value to update)' : 'EPbroVPM... (from developer.paypal.com)'}
                       className="bg-zinc-800 border-zinc-700 pr-10"
                     />
                     <button
@@ -2523,13 +2533,18 @@ const Admin = () => {
                 </div>
               </div>
                 <div className="space-y-2">
-                  <Label htmlFor="paypal_webhook_id">Webhook ID <span className="text-zinc-500 text-xs">(REST — for signature verification)</span></Label>
+                  <div className="flex items-center gap-2">
+                    <Label htmlFor="paypal_webhook_id">Webhook ID <span className="text-zinc-500 text-xs">(REST — for signature verification)</span></Label>
+                    {integrationStatus?.paypal?.webhook_id_set && (
+                      <span className="text-xs text-emerald-400 font-medium">✓ Saved</span>
+                    )}
+                  </div>
                   <Input
                     id="paypal_webhook_id"
                     type="text"
                     value={integrationSettings.paypal_webhook_id}
                     onChange={(e) => setIntegrationSettings(prev => ({ ...prev, paypal_webhook_id: e.target.value }))}
-                    placeholder={integrationStatus?.paypal?.webhook_id_set ? '••••••••' : 'WH-XXXX... (from developer.paypal.com → Webhooks)'}
+                    placeholder={integrationStatus?.paypal?.webhook_id_set ? '(already saved — enter new value to update)' : 'WH-XXXX... (from developer.paypal.com → Webhooks)'}
                     className="bg-zinc-800 border-zinc-700"
                   />
                   <p className="text-xs text-zinc-500">Required for webhook signature verification. Leave blank to accept all events (permissive mode).</p>
