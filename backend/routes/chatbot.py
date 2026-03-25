@@ -1,7 +1,7 @@
 """
 Chatbot routes
 """
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Request, HTTPException
 from typing import Optional
 import uuid
 
@@ -10,59 +10,91 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from database import db
-from utils.auth import get_current_user
 
 chatbot_router = APIRouter(tags=["Chatbot"])
 
 
+async def _get_optional_user(request: Request) -> Optional[dict]:
+    """Return the logged-in user if a valid token is present, otherwise None."""
+    try:
+        from utils.auth import get_current_user
+        from fastapi.security import OAuth2PasswordBearer
+        token = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
+        if not token:
+            return None
+        # Reuse the existing JWT verification logic
+        import jwt, os
+        secret = os.environ.get("JWT_SECRET_KEY", "")
+        if not secret:
+            return None
+        payload = jwt.decode(token, secret, algorithms=["HS256"])
+        user_id = payload.get("sub") or payload.get("user_id")
+        if not user_id:
+            return None
+        user = await db.users.find_one({"_id": user_id}) or await db.users.find_one({"id": user_id})
+        return user
+    except Exception:
+        return None
+
+
 @chatbot_router.post("/message")
 async def send_chatbot_message(
+    request: Request,
     message: str,
     session_id: Optional[str] = None,
-    user: dict = Depends(get_current_user),
 ):
-    """Send a message to the AI chatbot and get a response (uses AI tokens)"""
+    """
+    Send a message to the AI chatbot.
+    - Public visitors (no token): free, no token deduction.
+    - Logged-in users: 50 tokens deducted and logged in Usage History.
+    """
     from services.chatbot_service import ChatbotService
-    from ai_wallet.ai_service import AIExecutionService
 
-    # Generate session ID if not provided
     if not session_id:
         session_id = str(uuid.uuid4())
 
-    # Check and deduct tokens before calling AI
-    ai_service = AIExecutionService(db)
-    guard_result = await ai_service.guard.check_and_deduct(
-        user_id=user["id"],
-        action="chatbot_message",
-    )
-    if not guard_result.allowed:
-        raise HTTPException(status_code=402, detail=guard_result.error_message)
+    user = await _get_optional_user(request)
+
+    # Charge tokens only for authenticated users
+    guard_result = None
+    if user:
+        from ai_wallet.ai_service import AIExecutionService
+        ai_service = AIExecutionService(db)
+        guard_result = await ai_service.guard.check_and_deduct(
+            user_id=user["id"],
+            action="chatbot_message",
+        )
+        if not guard_result.allowed:
+            raise HTTPException(status_code=402, detail=guard_result.error_message)
 
     chatbot = ChatbotService(db)
-
-    # Get conversation history for context
     history = await chatbot.get_conversation_history(session_id, limit=10)
 
-    # Get AI response
     try:
         result = await chatbot.get_response(session_id, message, history)
     except Exception as e:
-        await ai_service.guard.reverse_on_failure(
-            user_id=user["id"],
-            result=guard_result,
-            reason=f"Chatbot error: {e}",
-        )
-        await ai_service.guard.release(user["id"], guard_result.request_id)
+        if user and guard_result:
+            from ai_wallet.ai_service import AIExecutionService
+            ai_service = AIExecutionService(db)
+            await ai_service.guard.reverse_on_failure(
+                user_id=user["id"],
+                result=guard_result,
+                reason=f"Chatbot error: {e}",
+            )
+            await ai_service.guard.release(user["id"], guard_result.request_id)
         raise HTTPException(status_code=500, detail="Chatbot error. Tokens not charged.")
 
-    await ai_service.guard.release(user["id"], guard_result.request_id)
+    if user and guard_result:
+        from ai_wallet.ai_service import AIExecutionService
+        ai_service = AIExecutionService(db)
+        await ai_service.guard.release(user["id"], guard_result.request_id)
 
     return {
         "response": result.get("response", ""),
         "session_id": session_id,
         "success": result.get("success", False),
-        "tokens_used": guard_result.tokens_deducted,
-        "remaining_balance": guard_result.remaining_balance,
+        "tokens_used": guard_result.tokens_deducted if guard_result else 0,
+        "remaining_balance": guard_result.remaining_balance if guard_result else None,
     }
 
 
