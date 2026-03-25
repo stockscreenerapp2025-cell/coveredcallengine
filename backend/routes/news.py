@@ -382,6 +382,7 @@ async def analyze_news_sentiment(
         return _keyword_fallback(news_items)
 
     try:
+        from ai_wallet.ai_service import AIExecutionService
         news_text = ''.join(
             f"{i}. {item.title}\n{(item.description or '')[:200]}\n\n"
             for i, item in enumerate(news_items[:5], 1)
@@ -395,16 +396,17 @@ async def analyze_news_sentiment(
             'overall_score: -1.0 to +1.0\n\n'
             + news_text
         )
-        async with httpx.AsyncClient(timeout=20) as client:
-            resp = await client.post(
-                f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={gemini_key}",
-                headers={'Content-Type': 'application/json'},
-                json={'contents': [{'role': 'user', 'parts': [{'text': prompt}]}],
-                      'generationConfig': {'temperature': 0.2, 'maxOutputTokens': 400}},
-            )
-        if resp.status_code == 200:
-            _parts = resp.json()['candidates'][0]['content']['parts']
-            text = "".join(p.get('text', '') for p in _parts)
+        ai_service = AIExecutionService(db)
+        ai_result = await ai_service.execute(
+            user_id=user["id"],
+            action="sentiment_analysis",
+            prompt=prompt,
+            system_message="You are a financial sentiment analyst. Respond in JSON ONLY (no markdown).",
+            max_tokens=400,
+            temperature=0.2,
+        )
+        if ai_result.get("success"):
+            text = ai_result["response"]
             m = re.search(r'\{[\s\S]*\}', text)
             if m:
                 result = json.loads(m.group())
@@ -421,7 +423,7 @@ async def analyze_news_sentiment(
                         'sentiment_score': round(raw, 2), 'overall_score': _score_to_display(raw),
                         'confidence': round(min(0.9, 0.5 + abs(raw) * 0.4), 2),
                         'source': 'Gemini', 'summary': result.get('summary', '')}
-        logging.warning(f'Gemini sentiment fallback: status={resp.status_code}')
+        logging.warning(f'Gemini sentiment fallback: ai_result={ai_result.get("error_code")}')
     except Exception as e:
         logging.error(f'Gemini sentiment error: {e}')
 
