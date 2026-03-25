@@ -635,13 +635,21 @@ async def fetch_options_chain(
 ) -> List[Dict[str, Any]]:
     """
     Options chain - Yahoo primary, Polygon backup.
+    Hard timeout of 12s so a slow Yahoo response never hangs the caller.
     """
     loop = asyncio.get_event_loop()
-    opts = await loop.run_in_executor(
-        _yahoo_executor,
-        _fetch_options_chain_yahoo_sync,
-        symbol, max_dte, min_dte, option_type, current_price,
-    )
+    try:
+        opts = await asyncio.wait_for(
+            loop.run_in_executor(
+                _yahoo_executor,
+                _fetch_options_chain_yahoo_sync,
+                symbol, max_dte, min_dte, option_type, current_price,
+            ),
+            timeout=12.0,
+        )
+    except asyncio.TimeoutError:
+        logging.warning(f"fetch_options_chain: Yahoo timed out for {symbol} — skipping")
+        opts = []
     if opts:
         return opts
 

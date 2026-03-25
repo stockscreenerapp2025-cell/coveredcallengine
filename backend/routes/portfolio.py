@@ -1090,6 +1090,7 @@ async def generate_all_suggestions(user: dict = Depends(get_current_user)):
                 )
 
             if not result["success"]:
+                logging.error(f"AI suggestion failed for {sym}: error_code={result.get('error_code')} error={result.get('error')}")
                 if result.get("error_code") == "INSUFFICIENT_TOKENS":
                     errors.append(f"Insufficient tokens after {updated} trades")
                     break
