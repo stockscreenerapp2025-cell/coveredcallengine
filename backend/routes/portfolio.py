@@ -766,8 +766,14 @@ async def get_trade_ai_suggestion(trade_id: str, user: dict = Depends(get_curren
             min_dte=1,
             current_price=live_price or None,
         )
-        state = evaluate_position_state(trade, live_price or float(trade.get("entry_price") or 0))
-        engine_decision = generate_cc_decision(state, calls)
+        if calls:
+            state = evaluate_position_state(trade, live_price or float(trade.get("entry_price") or 0))
+            engine_decision = generate_cc_decision(state, calls)
+        else:
+            import logging as _logging
+            _logging.getLogger(__name__).warning(
+                f"No option chain data for {symbol} — falling back to legacy AI prompt"
+            )
     except Exception as _de_err:
         import logging as _logging
         _logging.getLogger(__name__).warning(
@@ -1013,6 +1019,25 @@ async def generate_all_suggestions(user: dict = Depends(get_current_user)):
     for t in open_trades:
         symbol_groups[(t.get("symbol", ""), t.get("account", ""))].append(t)
 
+    # ── Pre-fetch all option chains in parallel (max 12s each, all at once) ─────
+    from services.data_provider import fetch_options_chain as _fetch_calls
+    from ai_wallet.decision_engine import evaluate_position_state, generate_cc_decision
+
+    unique_symbols = list({sym for (sym, _) in symbol_groups.keys()})
+    chain_tasks = {
+        sym: _fetch_calls(symbol=sym, option_type="call", max_dte=60, min_dte=1)
+        for sym in unique_symbols
+    }
+    chain_results_list = await asyncio.gather(*chain_tasks.values(), return_exceptions=True)
+    options_cache_bulk: Dict[str, list] = {}
+    for sym, result in zip(chain_tasks.keys(), chain_results_list):
+        if isinstance(result, Exception) or not result:
+            logging.warning(f"[bulk scan] No option chain for {sym}: {result}")
+            options_cache_bulk[sym] = []
+        else:
+            options_cache_bulk[sym] = result
+    logging.info(f"[bulk scan] Pre-fetched option chains for {len(unique_symbols)} symbols")
+
     skipped_cached = 0
     for (sym, acct), group in symbol_groups.items():
         try:
@@ -1055,25 +1080,19 @@ async def generate_all_suggestions(user: dict = Depends(get_current_user)):
             # Build context using the primary trade but with all group members as related
             trade_context = _build_trade_context(primary, related_trades=group)
 
-            # Run decision engine (fetch call chain, evaluate state, determine action)
-            from ai_wallet.decision_engine import evaluate_position_state, generate_cc_decision
-            from services.data_provider import fetch_options_chain as _fetch_calls
-
+            # Run decision engine using pre-fetched option chain
             sym_live_price = primary.get("current_price") or 0.0
             engine_decision = None
             try:
-                calls = await _fetch_calls(
-                    symbol=sym,
-                    option_type="call",
-                    max_dte=60,
-                    min_dte=1,
-                    current_price=sym_live_price or None,
-                )
-                state = evaluate_position_state(
-                    primary,
-                    sym_live_price or float(primary.get("entry_price") or 0),
-                )
-                engine_decision = generate_cc_decision(state, calls)
+                calls = options_cache_bulk.get(sym, [])
+                if calls:
+                    state = evaluate_position_state(
+                        primary,
+                        sym_live_price or float(primary.get("entry_price") or 0),
+                    )
+                    engine_decision = generate_cc_decision(state, calls)
+                else:
+                    logging.warning(f"No option chain data for {sym} — falling back to legacy AI prompt")
             except Exception as _de_err:
                 logging.warning(f"Decision engine failed for {sym}: {_de_err} — using legacy prompt")
 

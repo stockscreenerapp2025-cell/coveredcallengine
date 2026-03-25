@@ -625,6 +625,23 @@ def _fetch_options_chain_yahoo_sync(
         logging.warning(f"Yahoo options chain failed for {symbol}: {e}")
         return []
 
+# ── In-memory options chain cache (30-minute TTL) ─────────────────────────────
+_options_cache: Dict[str, Dict] = {}   # key → {data, expires_at}
+_OPTIONS_CACHE_TTL = 1800              # 30 minutes
+
+def _cache_key(symbol: str, option_type: str, max_dte: int, min_dte: int) -> str:
+    return f"{symbol.upper()}:{option_type}:{min_dte}:{max_dte}"
+
+def _get_cached_options(key: str) -> Optional[List[Dict]]:
+    entry = _options_cache.get(key)
+    if entry and time.time() < entry["expires_at"]:
+        return entry["data"]
+    return None
+
+def _set_cached_options(key: str, data: List[Dict]) -> None:
+    _options_cache[key] = {"data": data, "expires_at": time.time() + _OPTIONS_CACHE_TTL}
+
+
 async def fetch_options_chain(
     symbol: str,
     api_key: str = None,
@@ -635,8 +652,15 @@ async def fetch_options_chain(
 ) -> List[Dict[str, Any]]:
     """
     Options chain - Yahoo primary, Polygon backup.
-    Hard timeout of 12s so a slow Yahoo response never hangs the caller.
+    - 30-minute in-memory cache to avoid repeated slow Yahoo calls.
+    - Hard 12s timeout so a slow Yahoo response never hangs the caller.
     """
+    key = _cache_key(symbol, option_type, max_dte, min_dte)
+    cached = _get_cached_options(key)
+    if cached is not None:
+        logging.debug(f"fetch_options_chain: cache hit for {symbol}")
+        return cached
+
     loop = asyncio.get_event_loop()
     try:
         opts = await asyncio.wait_for(
@@ -651,6 +675,7 @@ async def fetch_options_chain(
         logging.warning(f"fetch_options_chain: Yahoo timed out for {symbol} — skipping")
         opts = []
     if opts:
+        _set_cached_options(key, opts)
         return opts
 
     if api_key:
