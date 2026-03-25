@@ -8,7 +8,7 @@ PHASE 1 REFACTOR (December 2025):
 """
 from fastapi import APIRouter, Depends, Query, HTTPException, File, UploadFile
 from pydantic import BaseModel, Field
-from typing import Optional
+from typing import Optional, Dict
 from datetime import datetime, timezone
 import asyncio
 import uuid
@@ -26,6 +26,100 @@ from utils.auth import get_current_user
 from services.data_provider import fetch_stock_quote
 
 portfolio_router = APIRouter(tags=["Portfolio"])
+
+
+# ==================== PRECOMPUTED CALL CANDIDATE HELPERS ====================
+
+async def _get_latest_run_id() -> Optional[str]:
+    """Return the latest completed EOD run_id from scan_runs."""
+    for status in ("COMPLETED", "completed"):
+        doc = await db.scan_runs.find_one({"status": status}, sort=[("completed_at", -1)])
+        if doc:
+            return doc["run_id"]
+    return None
+
+
+def _scan_result_to_call_dict(r: dict) -> Optional[dict]:
+    """
+    Convert a scan_results_cc document into the option-chain dict format
+    expected by the decision engine's build_valid_call_candidates().
+    """
+    strike = r.get("strike")
+    bid    = r.get("premium_bid") or r.get("premium")
+    dte    = r.get("dte")
+    if not strike or not bid or dte is None:
+        return None
+    return {
+        "strike":           float(strike),
+        "expiry":           r.get("expiry") or "",
+        "dte":              int(dte),
+        "bid":              float(bid),
+        "ask":              float(r.get("premium_ask") or bid * 1.05),
+        "open_interest":    int(r.get("open_interest") or 0),
+        "volume":           int(r.get("volume") or 0),
+        "implied_volatility": float(r.get("iv") or 0),
+        "source":           "precomputed",
+    }
+
+
+async def _get_call_candidates(symbol: str, min_dte: int = 1, max_dte: int = 60) -> tuple:
+    """
+    Return (candidates: list, source: str) for the given symbol.
+
+    Priority:
+      1. scan_results_cc  — precomputed by EOD pipeline (O(1), no Yahoo)
+      2. Live Yahoo        — single-symbol fallback ONLY when precomputed missing/stale
+                            bounded by 12s timeout, result cached immediately
+
+    Logs clearly show: precomputed | live_fallback | none
+    """
+    # ── 1. Precomputed scan results (primary) ─────────────────────────────────
+    run_id = await _get_latest_run_id()
+    if run_id:
+        docs = await db.scan_results_cc.find(
+            {
+                "run_id": run_id,
+                "symbol": symbol.upper(),
+                "dte": {"$gte": min_dte, "$lte": max_dte},
+            },
+            {"_id": 0},
+        ).to_list(100)
+
+        calls = [c for c in (_scan_result_to_call_dict(d) for d in docs) if c]
+        if calls:
+            logging.info(
+                f"[AI candidates] {symbol}: precomputed — {len(calls)} candidates "
+                f"(run_id={run_id})"
+            )
+            return calls, "precomputed"
+        else:
+            logging.info(f"[AI candidates] {symbol}: no precomputed data for run_id={run_id}")
+
+    # ── 2. Live Yahoo fallback — single symbol only ───────────────────────────
+    logging.warning(
+        f"[AI candidates] {symbol}: precomputed missing — using live Yahoo fallback"
+    )
+    try:
+        from services.data_provider import fetch_options_chain
+        calls = await asyncio.wait_for(
+            fetch_options_chain(
+                symbol=symbol,
+                option_type="call",
+                max_dte=max_dte,
+                min_dte=min_dte,
+            ),
+            timeout=12.0,
+        )
+        if calls:
+            logging.info(f"[AI candidates] {symbol}: live_fallback — {len(calls)} candidates")
+            return calls, "live_fallback"
+    except asyncio.TimeoutError:
+        logging.warning(f"[AI candidates] {symbol}: live Yahoo timed out")
+    except Exception as e:
+        logging.warning(f"[AI candidates] {symbol}: live Yahoo error: {e}")
+
+    logging.warning(f"[AI candidates] {symbol}: no data available — engine will skip")
+    return [], "none"
 
 
 # ==================== PYDANTIC MODELS ====================
@@ -752,33 +846,21 @@ async def get_trade_ai_suggestion(trade_id: str, user: dict = Depends(get_curren
     # Build trade context with all related positions visible to AI
     trade_context = _build_trade_context(trade, related_trades=all_symbol_trades)
 
-    # ── Decision Engine: fetch live call chain, run deterministic rules ────────
+    # ── Decision Engine: read from precomputed data, live Yahoo only as fallback ─
     from ai_wallet.decision_engine import evaluate_position_state, generate_cc_decision
-    from services.data_provider import fetch_options_chain
 
     live_price = trade.get("current_price") or 0.0
     engine_decision = None
     try:
-        calls = await fetch_options_chain(
-            symbol=symbol,
-            option_type="call",
-            max_dte=60,
-            min_dte=1,
-            current_price=live_price or None,
-        )
+        calls, candidates_source = await _get_call_candidates(symbol, min_dte=1, max_dte=60)
         if calls:
             state = evaluate_position_state(trade, live_price or float(trade.get("entry_price") or 0))
             engine_decision = generate_cc_decision(state, calls)
+            logging.info(f"[AI suggestion] {symbol}: engine decision={engine_decision.get('action')} source={candidates_source}")
         else:
-            import logging as _logging
-            _logging.getLogger(__name__).warning(
-                f"No option chain data for {symbol} — falling back to legacy AI prompt"
-            )
+            logging.warning(f"[AI suggestion] {symbol}: no candidates — falling back to legacy AI prompt")
     except Exception as _de_err:
-        import logging as _logging
-        _logging.getLogger(__name__).warning(
-            f"Decision engine failed for {symbol}: {_de_err} — falling back to legacy prompt"
-        )
+        logging.warning(f"[AI suggestion] {symbol}: decision engine error: {_de_err} — falling back to legacy prompt")
 
     # Execute through AI service with token guard
     ai_service = AIExecutionService(db)
@@ -1019,24 +1101,60 @@ async def generate_all_suggestions(user: dict = Depends(get_current_user)):
     for t in open_trades:
         symbol_groups[(t.get("symbol", ""), t.get("account", ""))].append(t)
 
-    # ── Pre-fetch all option chains in parallel (max 12s each, all at once) ─────
-    from services.data_provider import fetch_options_chain as _fetch_calls
+    # ── Pre-load call candidates from precomputed data (O(1) per symbol) ────────
     from ai_wallet.decision_engine import evaluate_position_state, generate_cc_decision
 
     unique_symbols = list({sym for (sym, _) in symbol_groups.keys()})
-    chain_tasks = {
-        sym: _fetch_calls(symbol=sym, option_type="call", max_dte=60, min_dte=1)
-        for sym in unique_symbols
-    }
-    chain_results_list = await asyncio.gather(*chain_tasks.values(), return_exceptions=True)
-    options_cache_bulk: Dict[str, list] = {}
-    for sym, result in zip(chain_tasks.keys(), chain_results_list):
-        if isinstance(result, Exception) or not result:
-            logging.warning(f"[bulk scan] No option chain for {sym}: {result}")
-            options_cache_bulk[sym] = []
-        else:
-            options_cache_bulk[sym] = result
-    logging.info(f"[bulk scan] Pre-fetched option chains for {len(unique_symbols)} symbols")
+
+    # Query precomputed data for ALL symbols at once (single MongoDB query)
+    run_id = await _get_latest_run_id()
+    options_cache_bulk: dict = {sym: [] for sym in unique_symbols}
+    candidates_source_map: dict = {sym: "none" for sym in unique_symbols}
+
+    if run_id:
+        all_precomputed = await db.scan_results_cc.find(
+            {
+                "run_id": run_id,
+                "symbol": {"$in": [s.upper() for s in unique_symbols]},
+                "dte": {"$gte": 1, "$lte": 60},
+            },
+            {"_id": 0},
+        ).to_list(500)
+
+        for doc in all_precomputed:
+            sym = doc.get("symbol", "")
+            call = _scan_result_to_call_dict(doc)
+            if call:
+                options_cache_bulk.setdefault(sym, []).append(call)
+
+        for sym in unique_symbols:
+            if options_cache_bulk.get(sym):
+                candidates_source_map[sym] = "precomputed"
+
+        precomputed_hit  = sum(1 for s in unique_symbols if candidates_source_map[s] == "precomputed")
+        precomputed_miss = len(unique_symbols) - precomputed_hit
+        logging.info(
+            f"[bulk scan] Precomputed: {precomputed_hit} hits, {precomputed_miss} misses "
+            f"(run_id={run_id})"
+        )
+    else:
+        logging.warning("[bulk scan] No completed EOD run found — all symbols will use live fallback")
+        precomputed_miss = len(unique_symbols)
+
+    # Single-symbol live fallback only for symbols missing precomputed data
+    # (max 3 concurrent to avoid Yahoo rate limits)
+    missing_syms = [s for s in unique_symbols if not options_cache_bulk.get(s)]
+    if missing_syms:
+        fallback_semaphore = asyncio.Semaphore(3)
+
+        async def _fallback_one(sym: str):
+            async with fallback_semaphore:
+                calls, src = await _get_call_candidates(sym, min_dte=1, max_dte=60)
+                options_cache_bulk[sym] = calls
+                candidates_source_map[sym] = src
+
+        await asyncio.gather(*[_fallback_one(s) for s in missing_syms], return_exceptions=True)
+        logging.info(f"[bulk scan] Live fallback attempted for {len(missing_syms)} symbols")
 
     skipped_cached = 0
     for (sym, acct), group in symbol_groups.items():
@@ -1080,21 +1198,23 @@ async def generate_all_suggestions(user: dict = Depends(get_current_user)):
             # Build context using the primary trade but with all group members as related
             trade_context = _build_trade_context(primary, related_trades=group)
 
-            # Run decision engine using pre-fetched option chain
+            # Run decision engine using precomputed/fallback candidates
             sym_live_price = primary.get("current_price") or 0.0
             engine_decision = None
             try:
                 calls = options_cache_bulk.get(sym, [])
+                src   = candidates_source_map.get(sym, "none")
                 if calls:
                     state = evaluate_position_state(
                         primary,
                         sym_live_price or float(primary.get("entry_price") or 0),
                     )
                     engine_decision = generate_cc_decision(state, calls)
+                    logging.info(f"[bulk scan] {sym}: action={engine_decision.get('action')} source={src}")
                 else:
-                    logging.warning(f"No option chain data for {sym} — falling back to legacy AI prompt")
+                    logging.warning(f"[bulk scan] {sym}: no candidates (source={src}) — falling back to legacy AI prompt")
             except Exception as _de_err:
-                logging.warning(f"Decision engine failed for {sym}: {_de_err} — using legacy prompt")
+                logging.warning(f"[bulk scan] {sym}: decision engine error: {_de_err} — using legacy prompt")
 
             if engine_decision:
                 result = await ai_service.execute_trade_suggestion_v2(
