@@ -366,6 +366,107 @@ This is an AI suggestion only and not a guarantee. Final trade decisions remain 
             temperature=0.7
         )
     
+    async def execute_trade_suggestion_v2(
+        self,
+        user_id: str,
+        decision: dict,
+        trade_context: str,
+    ) -> Dict[str, Any]:
+        """
+        Execute AI narrative for a decision already made by the rule engine.
+
+        The rule engine has already determined the action (e.g. SELL_ANOTHER_CALL,
+        DO_NOTHING).  The AI's only job is to write a clear, human-readable
+        explanation of *why* the engine chose that action and what the trader
+        should do next.  It must NOT second-guess or override the decision.
+        """
+        action          = decision.get("action", "HOLD")
+        suggested_trade = decision.get("suggested_trade")
+        alternatives    = decision.get("alternatives", [])
+        risk_note       = decision.get("risk_note", "")
+        insight         = decision.get("strategy_insight", "")
+        drawdown_flag   = decision.get("drawdown_flag", "none")
+        strategy_mode   = decision.get("strategy_mode", "BALANCED")
+        pct_from_be     = decision.get("pct_from_be", 0.0)
+        current_price   = decision.get("current_price", 0)
+        break_even      = decision.get("break_even", 0)
+
+        trade_block = ""
+        if suggested_trade:
+            trade_block = (
+                f"\nRECOMMENDED TRADE:\n"
+                f"  Strike : ${suggested_trade.get('strike', 0):.2f}\n"
+                f"  Expiry : {suggested_trade.get('expiry', 'N/A')}  "
+                f"({suggested_trade.get('dte', '?')} DTE, {suggested_trade.get('type', '?')})\n"
+                f"  Bid    : ${suggested_trade.get('bid', 0):.2f}\n"
+                f"  ROI    : {suggested_trade.get('roi_pct', 0):.2f}%\n"
+                f"  Score  : {suggested_trade.get('score', 0):.3f}\n"
+                f"  vs BE  : ${suggested_trade.get('strike_vs_be', 0):+.2f}\n"
+                f"  Candidates screened: {suggested_trade.get('total_candidates', 0)}\n"
+            )
+            if alternatives:
+                alts_text = "\n".join(
+                    f"  #{i+2}: Strike ${a.get('strike',0):.2f}  "
+                    f"Expiry {a.get('expiry','?')}  ROI {a.get('roi_pct',0):.2f}%"
+                    for i, a in enumerate(alternatives)
+                )
+                trade_block += f"ALTERNATIVE OPTIONS:\n{alts_text}\n"
+
+        prompt = f"""You are a covered call trading educator writing for a real investor.
+
+The rule-based decision engine has already determined the recommended action.
+Your ONLY job is to explain this decision clearly in plain English. Do NOT
+override or question the action — just explain why it makes sense.
+
+=== DECISION ENGINE OUTPUT ===
+Action        : {action}
+Drawdown Flag : {drawdown_flag}
+Strategy Mode : {strategy_mode}
+% from BE     : {pct_from_be:+.1f}%
+Current Price : ${current_price:.2f}
+Break-Even    : ${break_even:.2f}
+Engine Reason : {decision.get('reason', '')}
+Risk Note     : {risk_note}
+Strategy Hint : {insight}
+{trade_block}
+=== TRADE CONTEXT ===
+{trade_context}
+
+=== YOUR TASK ===
+Write 3-4 sentences in a warm, professional tone:
+1. Confirm what the action is and why the engine chose it.
+2. Explain what it means for the trader's position.
+3. Mention the key risk the trader should watch.
+4. If a specific trade was suggested, describe it briefly (strike, expiry, ROI).
+   If no trade was suggested (DO_NOTHING / CONSIDER_CSP_AVERAGING), explain why
+   and what to watch for instead.
+
+Output format (follow exactly, all lines mandatory):
+
+Action: {action}
+Suggested Trade: [specific trade details, or None]
+Why: [2 full sentences explaining the decision]
+Risk Note: [1 full sentence — the key risk]
+
+This is an AI suggestion only and not a guarantee. Final trade decisions remain with the user."""
+
+        return await self.execute(
+            user_id=user_id,
+            action="trade_suggestion",
+            prompt=prompt,
+            system_message=(
+                "You are a covered call and PMCC trading educator. "
+                "Always write complete sentences. Never leave a sentence unfinished. "
+                "The decision has already been made by a deterministic rule engine — "
+                "do not override or question it, only explain it clearly. "
+                "End every response with: "
+                "'This is an AI suggestion only and not a guarantee. "
+                "Final trade decisions remain with the user.'"
+            ),
+            max_tokens=2000,
+            temperature=0.5,
+        )
+
     async def execute_sentiment_analysis(
         self,
         user_id: str,

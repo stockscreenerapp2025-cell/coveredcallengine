@@ -752,15 +752,44 @@ async def get_trade_ai_suggestion(trade_id: str, user: dict = Depends(get_curren
     # Build trade context with all related positions visible to AI
     trade_context = _build_trade_context(trade, related_trades=all_symbol_trades)
 
+    # ── Decision Engine: fetch live call chain, run deterministic rules ────────
+    from ai_wallet.decision_engine import evaluate_position_state, generate_cc_decision
+    from services.data_provider import fetch_options_chain
+
+    live_price = trade.get("current_price") or 0.0
+    engine_decision = None
+    try:
+        calls = await fetch_options_chain(
+            symbol=symbol,
+            option_type="call",
+            max_dte=60,
+            min_dte=1,
+            current_price=live_price or None,
+        )
+        state = evaluate_position_state(trade, live_price or float(trade.get("entry_price") or 0))
+        engine_decision = generate_cc_decision(state, calls)
+    except Exception as _de_err:
+        import logging as _logging
+        _logging.getLogger(__name__).warning(
+            f"Decision engine failed for {symbol}: {_de_err} — falling back to legacy prompt"
+        )
+
     # Execute through AI service with token guard
     ai_service = AIExecutionService(db)
-    result = await ai_service.execute_trade_suggestion(
-        user_id=user["id"],
-        trade_context=trade_context
-    )
-    
+    if engine_decision:
+        result = await ai_service.execute_trade_suggestion_v2(
+            user_id=user["id"],
+            decision=engine_decision,
+            trade_context=trade_context,
+        )
+    else:
+        # Fallback: no option chain / engine error — use legacy prompt
+        result = await ai_service.execute_trade_suggestion(
+            user_id=user["id"],
+            trade_context=trade_context,
+        )
+
     if not result["success"]:
-        # Return error with token info
         raise HTTPException(
             status_code=402 if result.get("error_code") == "INSUFFICIENT_TOKENS" else 500,
             detail={
@@ -769,16 +798,22 @@ async def get_trade_ai_suggestion(trade_id: str, user: dict = Depends(get_curren
                 "remaining_balance": result.get("remaining_balance")
             }
         )
-    
-    # Parse action from response
+
     full_suggestion = result["response"]
-    action = "HOLD"
-    first_line = full_suggestion.strip().split('\n')[0].strip().upper()
-    for possible_action in ["EXPECT_ASSIGNMENT", "SELL_ANOTHER_CALL", "DO_NOTHING", "CONSIDER_CSP_AVERAGING", "LET_EXPIRE", "HOLD", "CLOSE", "ROLL_UP", "ROLL_DOWN", "ROLL_OUT"]:
-        if possible_action in first_line:
-            action = possible_action
-            break
-    
+
+    # Action is authoritative from the engine; fall back to parsing AI response
+    if engine_decision:
+        action = engine_decision["action"]
+    else:
+        action = "HOLD"
+        first_line = full_suggestion.strip().split('\n')[0].strip().upper()
+        for possible_action in ["EXPECT_ASSIGNMENT", "SELL_ANOTHER_CALL", "DO_NOTHING",
+                                 "CONSIDER_CSP_AVERAGING", "LET_EXPIRE", "HOLD", "CLOSE",
+                                 "ROLL_UP", "ROLL_DOWN", "ROLL_OUT", "MONITOR_CLOSELY", "ROLL"]:
+            if possible_action in first_line:
+                action = possible_action
+                break
+
     # Update trade with suggestion
     await db.ibkr_trades.update_one(
         {"user_id": user["id"], "id": trade_id},
@@ -788,13 +823,14 @@ async def get_trade_ai_suggestion(trade_id: str, user: dict = Depends(get_curren
             "suggestion_updated": datetime.now(timezone.utc).isoformat()
         }}
     )
-    
+
     return {
-        "suggestion": full_suggestion, 
-        "action": action, 
+        "suggestion": full_suggestion,
+        "action": action,
         "trade_id": trade_id,
         "tokens_used": result.get("tokens_used", 0),
-        "remaining_balance": result.get("remaining_balance", 0)
+        "remaining_balance": result.get("remaining_balance", 0),
+        "engine_decision": engine_decision,  # expose for debugging / frontend
     }
 
 
@@ -1018,10 +1054,40 @@ async def generate_all_suggestions(user: dict = Depends(get_current_user)):
 
             # Build context using the primary trade but with all group members as related
             trade_context = _build_trade_context(primary, related_trades=group)
-            result = await ai_service.execute_trade_suggestion(
-                user_id=user["id"],
-                trade_context=trade_context
-            )
+
+            # Run decision engine (fetch call chain, evaluate state, determine action)
+            from ai_wallet.decision_engine import evaluate_position_state, generate_cc_decision
+            from services.data_provider import fetch_options_chain as _fetch_calls
+
+            sym_live_price = primary.get("current_price") or 0.0
+            engine_decision = None
+            try:
+                calls = await _fetch_calls(
+                    symbol=sym,
+                    option_type="call",
+                    max_dte=60,
+                    min_dte=1,
+                    current_price=sym_live_price or None,
+                )
+                state = evaluate_position_state(
+                    primary,
+                    sym_live_price or float(primary.get("entry_price") or 0),
+                )
+                engine_decision = generate_cc_decision(state, calls)
+            except Exception as _de_err:
+                logging.warning(f"Decision engine failed for {sym}: {_de_err} — using legacy prompt")
+
+            if engine_decision:
+                result = await ai_service.execute_trade_suggestion_v2(
+                    user_id=user["id"],
+                    decision=engine_decision,
+                    trade_context=trade_context,
+                )
+            else:
+                result = await ai_service.execute_trade_suggestion(
+                    user_id=user["id"],
+                    trade_context=trade_context,
+                )
 
             if not result["success"]:
                 if result.get("error_code") == "INSUFFICIENT_TOKENS":
@@ -1033,14 +1099,19 @@ async def generate_all_suggestions(user: dict = Depends(get_current_user)):
                 errors.append(f"{sym}: {result.get('error', 'Unknown error')}")
                 continue
 
-            # Parse action from response
+            # Action is authoritative from the engine; fall back to parsing AI response
             full_suggestion = result["response"]
-            action = "HOLD"
-            first_line = full_suggestion.strip().split('\n')[0].strip().upper()
-            for possible_action in ["EXPECT_ASSIGNMENT", "SELL_ANOTHER_CALL", "DO_NOTHING", "CONSIDER_CSP_AVERAGING", "LET_EXPIRE", "HOLD", "CLOSE", "ROLL_UP", "ROLL_DOWN", "ROLL_OUT"]:
-                if possible_action in first_line:
-                    action = possible_action
-                    break
+            if engine_decision:
+                action = engine_decision["action"]
+            else:
+                action = "HOLD"
+                first_line = full_suggestion.strip().split('\n')[0].strip().upper()
+                for possible_action in ["EXPECT_ASSIGNMENT", "SELL_ANOTHER_CALL", "DO_NOTHING",
+                                         "CONSIDER_CSP_AVERAGING", "LET_EXPIRE", "HOLD", "CLOSE",
+                                         "ROLL_UP", "ROLL_DOWN", "ROLL_OUT", "MONITOR_CLOSELY", "ROLL"]:
+                    if possible_action in first_line:
+                        action = possible_action
+                        break
 
             now_iso = datetime.now(timezone.utc).isoformat()
             # Apply the same suggestion to ALL trades in this symbol group
