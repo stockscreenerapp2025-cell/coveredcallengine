@@ -1234,44 +1234,54 @@ async def generate_all_suggestions(user: dict = Depends(get_current_user)):
 
     skipped_cached = 0
 
-    # ── Build work items (skip cached, inject prices, run engine) ────────────
-    work_items = []  # list of (sym, group, trade_context, engine_decision)
+    # ── Determine which groups need processing ────────────────────────────────
+    pending_groups = []  # (sym, acct, group, primary)
     for (sym, acct), group in symbol_groups.items():
-        try:
-            primary = max(group, key=lambda t: t.get("premium_received", 0) or 0)
-
-            # Skip if ALL trades in this group were updated within the last 24 hours
-            all_fresh = True
-            for t in group:
-                suggestion_updated = t.get("suggestion_updated")
-                if not (suggestion_updated and t.get("ai_suggestion")):
-                    all_fresh = False
-                    break
-                try:
-                    last_updated = datetime.fromisoformat(suggestion_updated.replace("Z", "+00:00"))
-                    age_hours = (datetime.now(timezone.utc) - last_updated).total_seconds() / 3600
-                    if age_hours >= 24:
-                        all_fresh = False
-                        break
-                except Exception:
-                    all_fresh = False
-                    break
-
-            if all_fresh:
-                skipped_cached += len(group)
-                continue
-
-            # Inject live price
+        primary = max(group, key=lambda t: t.get("premium_received", 0) or 0)
+        all_fresh = True
+        for t in group:
+            suggestion_updated = t.get("suggestion_updated")
+            if not (suggestion_updated and t.get("ai_suggestion")):
+                all_fresh = False
+                break
             try:
-                quote = await fetch_stock_quote(sym)
-                if quote and quote.get("price"):
-                    live_price = quote["price"]
-                    for t in group:
-                        t["current_price"] = live_price
-                    primary["current_price"] = primary.get("current_price") or live_price
+                last_updated = datetime.fromisoformat(suggestion_updated.replace("Z", "+00:00"))
+                age_hours = (datetime.now(timezone.utc) - last_updated).total_seconds() / 3600
+                if age_hours >= 24:
+                    all_fresh = False
+                    break
             except Exception:
-                pass
+                all_fresh = False
+                break
+        if all_fresh:
+            skipped_cached += len(group)
+        else:
+            pending_groups.append((sym, acct, group, primary))
 
+    # ── Fetch all live prices in parallel ────────────────────────────────────
+    async def _fetch_price(sym):
+        try:
+            quote = await fetch_stock_quote(sym)
+            return quote.get("price") if quote else None
+        except Exception:
+            return None
+
+    price_results = await asyncio.gather(
+        *[_fetch_price(sym) for sym, _, _, _ in pending_groups],
+        return_exceptions=True,
+    )
+
+    for (sym, acct, group, primary), price in zip(pending_groups, price_results):
+        if isinstance(price, Exception) or not price:
+            continue
+        for t in group:
+            t["current_price"] = price
+        primary["current_price"] = primary.get("current_price") or price
+
+    # ── Build work items (context + engine decision) ──────────────────────────
+    work_items = []  # list of (sym, group, trade_context, engine_decision)
+    for sym, acct, group, primary in pending_groups:
+        try:
             trade_context = _build_trade_context(primary, related_trades=group)
 
             sym_live_price = primary.get("current_price") or 0.0
