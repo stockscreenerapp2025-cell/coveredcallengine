@@ -1158,27 +1158,56 @@ async def generate_all_suggestions(user: dict = Depends(get_current_user)):
     options_cache_bulk: dict = {sym: [] for sym in unique_symbols}
     candidates_source_map: dict = {sym: "none" for sym in unique_symbols}
 
+    today_bulk = datetime.now(timezone.utc).date()
     if run_id:
-        all_precomputed = await db.scan_results_cc.find(
-            {
-                "run_id": run_id,
-                "symbol": {"$in": [s.upper() for s in unique_symbols]},
-                "dte": {"$gte": 1, "$lte": 60},
-            },
-            {"_id": 0},
-        ).to_list(500)
+        # Read full option chain from symbol_snapshot for all symbols at once
+        snaps = await db.symbol_snapshot.find(
+            {"run_id": run_id, "symbol": {"$in": [s.upper() for s in unique_symbols]}},
+            {"_id": 0, "symbol": 1, "option_chain": 1},
+        ).to_list(len(unique_symbols) + 10)
 
-        for doc in all_precomputed:
-            sym = doc.get("symbol", "")
-            call = _scan_result_to_call_dict(doc)
-            if call:
-                options_cache_bulk.setdefault(sym, []).append(call)
+        for snap in snaps:
+            sym = snap.get("symbol", "")
+            chain = snap.get("option_chain") or []
+            for opt in chain:
+                if opt.get("type", "call").lower() != "call":
+                    continue
+                c = _snapshot_option_to_call_dict(opt, today_bulk)
+                if c and 1 <= c["dte"] <= 60:
+                    options_cache_bulk.setdefault(sym, []).append(c)
 
         for sym in unique_symbols:
             if options_cache_bulk.get(sym):
-                candidates_source_map[sym] = "precomputed"
+                candidates_source_map[sym] = "snapshot"
+            else:
+                # fallback to scan_results_cc if snapshot missing
+                docs = await db.scan_results_cc.find(
+                    {"run_id": run_id, "symbol": sym.upper()},
+                    {"_id": 0},
+                ).to_list(20)
+                for d in docs:
+                    expiry = d.get("expiry") or ""
+                    try:
+                        exp_date = datetime.strptime(expiry, "%Y-%m-%d").date()
+                        dte = (exp_date - today_bulk).days
+                    except Exception:
+                        dte = int(d.get("dte") or 0)
+                    bid = float(d.get("premium_bid") or d.get("premium") or 0)
+                    strike = d.get("strike")
+                    if not strike or not bid or not (1 <= dte <= 60):
+                        continue
+                    options_cache_bulk[sym].append({
+                        "strike": float(strike), "expiry": expiry, "dte": dte,
+                        "bid": bid, "ask": float(d.get("premium_ask") or bid * 1.05),
+                        "open_interest": int(d.get("open_interest") or 0),
+                        "volume": int(d.get("volume") or 0),
+                        "implied_volatility": float(d.get("iv") or 0),
+                        "source": "precomputed",
+                    })
+                if options_cache_bulk.get(sym):
+                    candidates_source_map[sym] = "precomputed"
 
-        precomputed_hit  = sum(1 for s in unique_symbols if candidates_source_map[s] == "precomputed")
+        precomputed_hit  = sum(1 for s in unique_symbols if candidates_source_map[s] in ("snapshot", "precomputed"))
         precomputed_miss = len(unique_symbols) - precomputed_hit
         logging.info(
             f"[bulk scan] Precomputed: {precomputed_hit} hits, {precomputed_miss} misses "
