@@ -9,7 +9,7 @@ PHASE 1 REFACTOR (December 2025):
 from fastapi import APIRouter, Depends, Query, HTTPException, File, UploadFile
 from pydantic import BaseModel, Field
 from typing import Optional, Dict
-from datetime import datetime, timezone
+from datetime import datetime, timezone, date
 import asyncio
 import uuid
 import csv
@@ -39,26 +39,36 @@ async def _get_latest_run_id() -> Optional[str]:
     return None
 
 
-def _scan_result_to_call_dict(r: dict) -> Optional[dict]:
+def _snapshot_option_to_call_dict(opt: dict, today: date) -> Optional[dict]:
     """
-    Convert a scan_results_cc document into the option-chain dict format
-    expected by the decision engine's build_valid_call_candidates().
+    Convert a raw option entry from symbol_snapshot.option_chain into the
+    format expected by the decision engine. Recalculates DTE from today.
     """
-    strike = r.get("strike")
-    bid    = r.get("premium_bid") or r.get("premium")
-    dte    = r.get("dte")
-    if not strike or not bid or dte is None:
+    strike = opt.get("strike")
+    bid    = float(opt.get("bid") or 0)
+    expiry = opt.get("expiry") or ""
+    if not strike or not expiry:
         return None
+    try:
+        exp_date = datetime.strptime(expiry, "%Y-%m-%d").date()
+        dte = (exp_date - today).days
+    except Exception:
+        return None
+    if bid <= 0:
+        ask = float(opt.get("ask") or 0)
+        if ask <= 0:
+            return None
+        bid = ask * 0.90  # estimate bid from ask if missing
     return {
-        "strike":           float(strike),
-        "expiry":           r.get("expiry") or "",
-        "dte":              int(dte),
-        "bid":              float(bid),
-        "ask":              float(r.get("premium_ask") or bid * 1.05),
-        "open_interest":    int(r.get("open_interest") or 0),
-        "volume":           int(r.get("volume") or 0),
-        "implied_volatility": float(r.get("iv") or 0),
-        "source":           "precomputed",
+        "strike":             float(strike),
+        "expiry":             expiry,
+        "dte":                dte,
+        "bid":                bid,
+        "ask":                float(opt.get("ask") or bid * 1.05),
+        "open_interest":      int(opt.get("open_interest") or 0),
+        "volume":             int(opt.get("volume") or 0),
+        "implied_volatility": float(opt.get("implied_volatility") or opt.get("iv") or 0),
+        "source":             "snapshot",
     }
 
 
@@ -67,35 +77,72 @@ async def _get_call_candidates(symbol: str, min_dte: int = 1, max_dte: int = 60)
     Return (candidates: list, source: str) for the given symbol.
 
     Priority:
-      1. scan_results_cc  — precomputed by EOD pipeline (O(1), no Yahoo)
-      2. Live Yahoo        — single-symbol fallback ONLY when precomputed missing/stale
-                            bounded by 12s timeout, result cached immediately
+      1. symbol_snapshot.option_chain — full chain from EOD pipeline, DTE recalculated
+      2. scan_results_cc              — fallback if snapshot missing (only best picks)
+      3. Live Yahoo                   — single-symbol fallback, bounded 12s timeout
 
-    Logs clearly show: precomputed | live_fallback | none
+    Logs clearly show: snapshot | precomputed | live_fallback | none
     """
-    # ── 1. Precomputed scan results (primary) ─────────────────────────────────
+    today = datetime.now(timezone.utc).date()
+
+    # ── 1. Full option chain from symbol_snapshot (primary) ───────────────────
     run_id = await _get_latest_run_id()
     if run_id:
+        snap = await db.symbol_snapshot.find_one(
+            {"run_id": run_id, "symbol": symbol.upper()},
+            {"_id": 0, "option_chain": 1},
+        )
+        if snap and snap.get("option_chain"):
+            calls = []
+            for opt in snap["option_chain"]:
+                if opt.get("type", "call").lower() != "call":
+                    continue
+                c = _snapshot_option_to_call_dict(opt, today)
+                if c and min_dte <= c["dte"] <= max_dte:
+                    calls.append(c)
+            if calls:
+                logging.info(
+                    f"[AI candidates] {symbol}: snapshot — {len(calls)} candidates "
+                    f"(run_id={run_id}, DTE recalculated from {today})"
+                )
+                return calls, "snapshot"
+
+        # ── 2. scan_results_cc fallback (fewer candidates but still precomputed) ──
         docs = await db.scan_results_cc.find(
-            {
-                "run_id": run_id,
-                "symbol": symbol.upper(),
-                "dte": {"$gte": min_dte, "$lte": max_dte},
-            },
+            {"run_id": run_id, "symbol": symbol.upper()},
             {"_id": 0},
         ).to_list(100)
+        if docs:
+            calls = []
+            for d in docs:
+                expiry = d.get("expiry") or ""
+                try:
+                    exp_date = datetime.strptime(expiry, "%Y-%m-%d").date()
+                    dte = (exp_date - today).days
+                except Exception:
+                    dte = int(d.get("dte") or 0)
+                bid = float(d.get("premium_bid") or d.get("premium") or 0)
+                strike = d.get("strike")
+                if not strike or not bid or not (min_dte <= dte <= max_dte):
+                    continue
+                calls.append({
+                    "strike":             float(strike),
+                    "expiry":             expiry,
+                    "dte":                dte,
+                    "bid":                bid,
+                    "ask":                float(d.get("premium_ask") or bid * 1.05),
+                    "open_interest":      int(d.get("open_interest") or 0),
+                    "volume":             int(d.get("volume") or 0),
+                    "implied_volatility": float(d.get("iv") or 0),
+                    "source":             "precomputed",
+                })
+            if calls:
+                logging.info(f"[AI candidates] {symbol}: precomputed — {len(calls)} candidates")
+                return calls, "precomputed"
 
-        calls = [c for c in (_scan_result_to_call_dict(d) for d in docs) if c]
-        if calls:
-            logging.info(
-                f"[AI candidates] {symbol}: precomputed — {len(calls)} candidates "
-                f"(run_id={run_id})"
-            )
-            return calls, "precomputed"
-        else:
-            logging.info(f"[AI candidates] {symbol}: no precomputed data for run_id={run_id}")
+        logging.info(f"[AI candidates] {symbol}: no snapshot/precomputed data for run_id={run_id}")
 
-    # ── 2. Live Yahoo fallback — single symbol only ───────────────────────────
+    # ── 3. Live Yahoo fallback — single symbol only ───────────────────────────
     logging.warning(
         f"[AI candidates] {symbol}: precomputed missing — using live Yahoo fallback"
     )
