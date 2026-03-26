@@ -1233,9 +1233,11 @@ async def generate_all_suggestions(user: dict = Depends(get_current_user)):
         logging.info(f"[bulk scan] Live fallback attempted for {len(missing_syms)} symbols")
 
     skipped_cached = 0
+
+    # ── Build work items (skip cached, inject prices, run engine) ────────────
+    work_items = []  # list of (sym, group, trade_context, engine_decision)
     for (sym, acct), group in symbol_groups.items():
         try:
-            # Use the trade with most data as the "primary" representative for this symbol
             primary = max(group, key=lambda t: t.get("premium_received", 0) or 0)
 
             # Skip if ALL trades in this group were updated within the last 24 hours
@@ -1246,9 +1248,8 @@ async def generate_all_suggestions(user: dict = Depends(get_current_user)):
                     all_fresh = False
                     break
                 try:
-                    from datetime import timezone as _tz
                     last_updated = datetime.fromisoformat(suggestion_updated.replace("Z", "+00:00"))
-                    age_hours = (datetime.now(_tz.utc) - last_updated).total_seconds() / 3600
+                    age_hours = (datetime.now(timezone.utc) - last_updated).total_seconds() / 3600
                     if age_hours >= 24:
                         all_fresh = False
                         break
@@ -1260,7 +1261,7 @@ async def generate_all_suggestions(user: dict = Depends(get_current_user)):
                 skipped_cached += len(group)
                 continue
 
-            # Inject live price before building context
+            # Inject live price
             try:
                 quote = await fetch_stock_quote(sym)
                 if quote and quote.get("price"):
@@ -1271,10 +1272,8 @@ async def generate_all_suggestions(user: dict = Depends(get_current_user)):
             except Exception:
                 pass
 
-            # Build context using the primary trade but with all group members as related
             trade_context = _build_trade_context(primary, related_trades=group)
 
-            # Run decision engine using precomputed/fallback candidates
             sym_live_price = primary.get("current_price") or 0.0
             engine_decision = None
             try:
@@ -1292,17 +1291,36 @@ async def generate_all_suggestions(user: dict = Depends(get_current_user)):
             except Exception as _de_err:
                 logging.warning(f"[bulk scan] {sym}: decision engine error: {_de_err} — using legacy prompt")
 
-            if engine_decision:
-                result = await ai_service.execute_trade_suggestion_v2(
-                    user_id=user["id"],
-                    decision=engine_decision,
-                    trade_context=trade_context,
-                )
-            else:
-                result = await ai_service.execute_trade_suggestion(
-                    user_id=user["id"],
-                    trade_context=trade_context,
-                )
+            work_items.append((sym, group, trade_context, engine_decision))
+        except Exception as _prep_err:
+            logging.warning(f"[bulk scan] {sym}: prep error: {_prep_err}")
+            errors.append(f"{sym}: prep error")
+
+    # ── Fire all AI calls in parallel ────────────────────────────────────────
+    async def _run_one(sym, group, trade_context, engine_decision):
+        if engine_decision:
+            return await ai_service.execute_trade_suggestion_v2(
+                user_id=user["id"],
+                decision=engine_decision,
+                trade_context=trade_context,
+            )
+        return await ai_service.execute_trade_suggestion(
+            user_id=user["id"],
+            trade_context=trade_context,
+        )
+
+    ai_results = await asyncio.gather(
+        *[_run_one(sym, group, ctx, dec) for sym, group, ctx, dec in work_items],
+        return_exceptions=True,
+    )
+
+    now_iso = datetime.now(timezone.utc).isoformat()
+    for (sym, group, trade_context, engine_decision), result in zip(work_items, ai_results):
+        try:
+            if isinstance(result, Exception):
+                logging.error(f"[bulk scan] {sym}: AI call raised exception: {result}")
+                errors.append(f"{sym}: AI error")
+                continue
 
             if not result["success"]:
                 logging.error(f"AI suggestion failed for {sym}: error_code={result.get('error_code')} error={result.get('error')}")
@@ -1315,7 +1333,6 @@ async def generate_all_suggestions(user: dict = Depends(get_current_user)):
                 errors.append(f"{sym}: {result.get('error', 'Unknown error')}")
                 continue
 
-            # Action is authoritative from the engine; fall back to parsing AI response
             full_suggestion = result["response"]
             if engine_decision:
                 action = engine_decision["action"]
@@ -1329,7 +1346,6 @@ async def generate_all_suggestions(user: dict = Depends(get_current_user)):
                         action = possible_action
                         break
 
-            now_iso = datetime.now(timezone.utc).isoformat()
             # Apply the same suggestion to ALL trades in this symbol group
             for t in group:
                 await db.ibkr_trades.update_one(
