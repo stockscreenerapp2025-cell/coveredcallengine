@@ -36,7 +36,7 @@ from services.data_provider import (
 from services.greeks_service import calculate_greeks, normalize_iv_fields
 from services.iv_rank_service import get_iv_metrics_for_symbol
 # Import enrichment service for IV Rank and Analyst data
-from services.enrichment_service import enrich_row, strip_enrichment_debug
+from services.enrichment_service import enrich_row, enrich_rows_batch, strip_enrichment_debug
 
 # ADR-001: Import EOD Price Contract (for backward compat only)
 from services.eod_ingestion_service import (
@@ -769,7 +769,7 @@ async def get_watchlist(
             for item in items
         ])
 
-    # Enrich items with prices and opportunities
+    # Build enriched items list
     enriched_items = []
     for item, opp in zip(items, opp_results):
         symbol = item.get("symbol", "")
@@ -786,7 +786,7 @@ async def get_watchlist(
             movement = 0
             movement_pct = 0
 
-        enriched = {
+        enriched_items.append({
             **item,
             "current_price": current_price,
             "stock_price_source": price_data.get("stock_price_source", stock_price_source),
@@ -802,15 +802,12 @@ async def get_watchlist(
             "analyst_rating": price_data.get("analyst_rating"),
             "opportunity": opp,
             "opportunity_source": ("live" if use_live_prices else "eod_precomputed") if opp else None,
-        }
+        })
 
-        enriched = enrich_row(
-            symbol, enriched,
-            stock_price=current_price,
-            skip_iv_rank=True
-        )
+    # Enrich all items in parallel (replaces sequential per-item enrich_row calls)
+    enriched_items = await enrich_rows_batch(enriched_items, skip_iv_rank=True)
+    for enriched in enriched_items:
         strip_enrichment_debug(enriched, include_debug=debug_enrichment)
-        enriched_items.append(enriched)
     
     return {
         "items": enriched_items,
