@@ -411,7 +411,7 @@ async def send_invitation_email(
             custom_message_html = f"""
             <div style="background-color: #18181b; border-left: 3px solid #10b981; padding: 15px; margin: 20px 0; border-radius: 0 8px 8px 0;">
                 <p style="color: #a1a1aa; margin: 0; font-style: italic;">"{message}"</p>
-                <p style="color: #71717a; margin: 10px 0 0 0; font-size: 12px;">— {invited_by}</p>
+                <p style="color: #71717a; margin: 10px 0 0 0; font-size: 12px;">— CCE Team</p>
             </div>
             """
         
